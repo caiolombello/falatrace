@@ -17,10 +17,11 @@ import { queuePlayback, readPlayback } from "./playback";
 import { parsePlayerTranscript, type PlayerTranscript } from "../../src/player/transcript";
 import { findAlignedSubtitles } from "../../src/subtitles/aligned";
 import { queueAlignedSubtitles } from "../subtitles/service";
+import { subtitleUnitStatus } from "../subtitles/status";
 import { TimeEntryStore } from "../../src/timesheet/store";
 import { formatHours } from "../../src/timesheet/format";
 import { ArchiveStore } from "../../src/archive/store";
-import { DiarizationStore } from "../../src/diarization/store";
+import { DiarizationStore, type DiarizationResult } from "../../src/diarization/store";
 import { nameDiarizationSpeaker, queueDiarization, readCanonicalTranscript, readDiarizationStatus, resultStatus } from "../../src/diarization/service";
 
 import { readOnboarding, saveLocalOnboarding } from "../config/onboarding";
@@ -115,7 +116,21 @@ const loadLibrary = async (force = false): Promise<{ config: Awaited<ReturnType<
 const readPlainArtifact = async (job: JobRecord, kind: "transcript" | "summary"): Promise<string> => {
   try { return await readArtifact(job, kind); } catch { return ""; }
 };
-export type DiarizationView = { state: "idle" | "running" | "ready" | "failed" | "review"; message?: string; speakerCount?: number; matchedTokenRatio?: number; turns?: Array<{ start: number; end: number; speaker?: string; label?: string }> };
+export type DiarizationView = { state: "idle" | "running" | "ready" | "failed" | "review"; message?: string; speakerCount?: number; matchedTokenRatio?: number; textCoverage?: { shownTurns: number; totalTurns: number; maxBytes: number }; turns?: Array<{ start: number; end: number; speaker?: string; label?: string; text?: string }> };
+const DIARIZATION_VIEW_TEXT_BYTES = 256 * 1024;
+// This text belongs to the acoustic diarizer, not the canonical transcript.
+// Bound only the added text payload; never hide omission behind a complete label.
+export const buildDiarizationView = (result: DiarizationResult): DiarizationView => {
+  let bytes = 0, shownTurns = 0;
+  const turns = result.turns.map(({ start, end, speaker, text }) => {
+    const addedBytes = Buffer.byteLength(JSON.stringify(text), "utf8") + 8;
+    const include = bytes + addedBytes <= DIARIZATION_VIEW_TEXT_BYTES;
+    if (include) { bytes += addedBytes; shownTurns += 1; }
+    return { start, end, speaker, label: result.labels[speaker], ...(include ? { text } : {}) };
+  });
+  return { ...resultStatus(result), turns,
+    textCoverage: { shownTurns, totalTurns: turns.length, maxBytes: DIARIZATION_VIEW_TEXT_BYTES } };
+};
 export const buildTranscriptBoundary = (canonical: Transcript | undefined, captionTranscript: PlayerTranscript, diarization: DiarizationView): { transcript: PlayerTranscript; captionTranscript: PlayerTranscript; diarization: DiarizationView } => ({
   transcript: canonical ? { ...parsePlayerTranscript(canonical), text: canonical.text } : captionTranscript,
   captionTranscript,
@@ -162,16 +177,18 @@ const detail = async (key: string): Promise<unknown> => {
   const diarizationResult = job && canonical ? await new DiarizationStore().read(job.id, job.source.sha256, canonical.text) : undefined;
   // Speaker timing comes from its own acoustic timeline. A lexical match inside
   // a 10-minute transcript block is not enough evidence to invent word timing.
-  const diarization: DiarizationView = diarizationResult ? { ...resultStatus(diarizationResult), turns: diarizationResult.turns.map(({ start, end, speaker }) => ({ start, end, speaker, label: diarizationResult.labels[speaker] })) }
+  const diarization: DiarizationView = diarizationResult ? buildDiarizationView(diarizationResult)
     : job && canonical ? await readDiarizationStatus(job, canonical) : { state: "idle" };
   const boundary = buildTranscriptBoundary(canonical, originalTranscript, diarization);
   let subtitleState = originalTranscript.timing === "segment" ? "ready" : "idle";
+  let subtitleMessage: string | undefined;
   if (subtitleId && subtitleState !== "ready") {
-    const status = await runCommand("systemctl", ["--user", "show", `recording-cli-subtitles-${subtitleId}.service`, "--property=ActiveState"], { timeoutMs: 5000 }).catch(() => ({ stdout: "", stderr: "" }));
-    if (/ActiveState=(active|activating)/.test(status.stdout)) subtitleState = "running";
-    else if (/ActiveState=failed/.test(status.stdout)) subtitleState = "failed";
+    const status = await runCommand("systemctl", ["--user", "show", `recording-cli-subtitles-${subtitleId}.service`, "--property=ActiveState"], { timeoutMs: 5000 }).catch(() => undefined);
+    const operation = subtitleUnitStatus(status?.stdout);
+    subtitleState = operation.state;
+    subtitleMessage = operation.message;
   }
-  return { key: entry.sourcePath, recordingId:registeredAgentRecordingId(entry), title: titleOf(entry), status: entry.jobs[0]?.state || statusOf(entry), backup: backupOf(entry), ...boundary, summary: summary, visualReview, summaryInfo: job ? `${job.summary.provider}/${job.summary.model} · ${job.summary.provider === "openai" ? "provedor externo" : "Ollama: endpoint configurado"}` : "", timesheet, subtitleState,
+  return { key: entry.sourcePath, recordingId:registeredAgentRecordingId(entry), title: titleOf(entry), status: entry.jobs[0]?.state || statusOf(entry), backup: backupOf(entry), ...boundary, summary: summary, visualReview, summaryInfo: job ? `${job.summary.provider}/${job.summary.model} · ${job.summary.provider === "openai" ? "provedor externo" : "Ollama: endpoint configurado"}` : "", timesheet, subtitleState, subtitleMessage,
     ...(job && canonical ? { diarizationId: job.id, jobId: job.id } : {}), ...(subtitleId ? { subtitleId } : {}) };
 };
 const resolvePlayback = async (key: string): Promise<unknown> => {

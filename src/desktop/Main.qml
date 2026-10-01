@@ -54,7 +54,7 @@ ApplicationWindow {
     property int transcriptSegments: (detail.transcript.segments || []).length
     property int activeSegment: -1
     property var captionTrack: detail.captionTranscript || detail.transcript
-    property int activeCaptionSegment: -1
+    property string activeCaptionText: captionTextAt(position)
     property int diarizationTurns: (detail.diarization.turns || []).length
     property bool diarizationTab: tabs.currentIndex === 2
     property var captureStatus: ({active: false, session: null, audio: {configured: false}})
@@ -437,6 +437,12 @@ ApplicationWindow {
     function origin(value) { return ({local: "Neste computador", vaio: "Worker remoto", proton: "Proton Drive", missing: "Mídia indisponível"})[value] || "" }
     function statusText(value) { return ({completed: "Processada", archived: "Backup concluído", failed: "Processamento falhou", queued: "Na fila", processing: "Processando", "archive-pending": "Backup pendente", unprocessed: "Sem processamento"})[value] || value }
     function speakerLabel(segment) { return segment.speaker || "Falante incerto" }
+    function captionTextAt(seconds) {
+        return (captionTrack.segments || [])
+            .filter(segment => segment.start <= seconds && seconds < segment.end)
+            .map(segment => (segment.speaker ? segment.speaker + ": " : "") + segment.text)
+            .join("\n")
+    }
     function audioSummary() {
         const configured = captureStatus.audio && captureStatus.audio.configured
         if (!configured) return "Áudio ainda não validado"
@@ -632,7 +638,7 @@ ApplicationWindow {
                 if (smokeDiarization && (result.diarization.turns || []).length > 0) tabs.currentIndex = 2
                 if (subtitleQueued && result.subtitleState === "ready") { subtitleQueued = false; notice = "Legendas prontas." }
                 else if (result.subtitleState === "running") subtitleQueued = true
-                else if (subtitleQueued && ["idle", "failed"].includes(result.subtitleState)) { subtitleQueued = false; notice = ""; errorText = "A geração terminou sem produzir legendas. Você pode tentar novamente." }
+                else if (subtitleQueued && ["idle", "failed", "unknown"].includes(result.subtitleState)) { subtitleQueued = false; notice = ""; errorText = result.subtitleMessage || "Não há legendas alinhadas verificadas. O estado da solicitação está indisponível; a transcrição original foi preservada." }
             } else if (request.op === "resolve" || request.op === "playback-status") {
                 if (result.state === "running") { playbackOperation = result.operationId; return }
                 resolving = false; playbackOperation = ""
@@ -672,7 +678,6 @@ ApplicationWindow {
             paused = video.getProperty("pause") !== false
             const segments = detail.transcript.segments || []
             activeSegment = segments.findIndex(segment => segment.start <= position && position < segment.end)
-            activeCaptionSegment = (captionTrack.segments || []).findIndex(segment => segment.start <= position && position < segment.end)
         }
     }
 
@@ -768,8 +773,8 @@ ApplicationWindow {
                             Rectangle {
                                 anchors.bottom: parent.bottom; anchors.bottomMargin: 24; anchors.horizontalCenter: parent.horizontalCenter
                                 width: Math.min(parent.width - 36, caption.implicitWidth + 28); height: caption.implicitHeight + 16; radius: 5; color: "#d910141a"
-                                visible: captions && mediaReady && captionTrack.timing === "segment" && activeCaptionSegment >= 0
-                                Label { id: caption; anchors.centerIn: parent; width: parent.width - 28; text: activeCaptionSegment >= 0 ? captionTrack.segments[activeCaptionSegment].text : ""; textFormat: Text.PlainText; color: "white"; wrapMode: Text.WordWrap; horizontalAlignment: Text.AlignHCenter; font.pixelSize: 16 }
+                                visible: captions && mediaReady && captionTrack.timing === "segment" && activeCaptionText.length > 0
+                                Label { id: caption; anchors.centerIn: parent; width: parent.width - 28; text: activeCaptionText; textFormat: Text.PlainText; color: "white"; wrapMode: Text.WordWrap; horizontalAlignment: Text.AlignHCenter; font.pixelSize: 16 }
                             }
                         }
                         Slider { id: timeline; Layout.fillWidth: true; from: 0; to: window.duration || 1; value: window.position; enabled: mediaReady; Accessible.name: "Posição do vídeo"; onMoved: window.seek(value) }
@@ -812,7 +817,7 @@ ApplicationWindow {
                                     width: ListView.view.width; height: segmentContent.implicitHeight + 20
                                     enabled: mediaReady
                                     background: Rectangle { radius: 6; color: activeSegment === index ? selectedSurface : parent.hovered ? hoverSurface : "transparent" }
-                                    contentItem: ColumnLayout { id: segmentContent; spacing: 5; Label { text: clock(modelData.start); color: accent; font.pixelSize: 11; font.family: "monospace" } Label { text: modelData.text; textFormat: Text.PlainText; color: ink; wrapMode: Text.WordWrap; Layout.fillWidth: true; font.pixelSize: 13 } }
+                                    contentItem: ColumnLayout { id: segmentContent; spacing: 5; Label { text: clock(modelData.start); color: accent; font.pixelSize: 11; font.family: "monospace" } Label { visible: !!modelData.speaker; text: "Falante: " + (modelData.speaker || ""); textFormat: Text.PlainText; color: muted; font.pixelSize: 11 } Label { text: modelData.text; textFormat: Text.PlainText; color: ink; wrapMode: Text.WordWrap; Layout.fillWidth: true; font.pixelSize: 13 } }
                                     onClicked: seek(modelData.start)
                                 }
                             }
@@ -835,15 +840,20 @@ ApplicationWindow {
                                         }
                                     }
                                 }
-                                Label { text: "Linha acústica · clique para navegar"; color: muted; font.pixelSize: 10 }
+                                Label { text: "Falas do diarizador · texto automático, revisar"; color: muted; font.pixelSize: 10; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                                Label { visible: !!detail.diarization.textCoverage && detail.diarization.textCoverage.shownTurns < detail.diarization.textCoverage.totalTurns; text: detail.diarization.textCoverage ? "Texto parcial na interface: " + detail.diarization.textCoverage.shownTurns + "/" + detail.diarization.textCoverage.totalTurns + " falas. Os horários e nomes continuam disponíveis; o resultado local completo foi preservado." : ""; textFormat: Text.PlainText; color: warningColor; wrapMode: Text.WordWrap; Layout.fillWidth: true; font.pixelSize: 10 }
                                 ListView {
                                     Layout.fillWidth: true; Layout.fillHeight: true; model: detail.diarization.turns || []; clip: true; spacing: 3
                                     ScrollBar.vertical: ScrollBar {}
                                     delegate: ItemDelegate {
                                         required property var modelData
-                                        width: ListView.view.width; height: 38; enabled: mediaReady
+                                        width: ListView.view.width; height: turnContent.implicitHeight + 18; enabled: mediaReady
                                         Accessible.name: (modelData.label || modelData.speaker || "Falante incerto") + ", " + preciseClock(modelData.start) + " a " + preciseClock(modelData.end)
-                                        contentItem: RowLayout { spacing: 6; Label { text: preciseClock(modelData.start) + "–" + preciseClock(modelData.end); color: accent; font.family: "monospace"; font.pixelSize: 10; Layout.preferredWidth: 92 } Label { text: modelData.label || modelData.speaker || "Falante incerto"; textFormat: Text.PlainText; color: ink; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight } }
+                                        contentItem: ColumnLayout {
+                                            id: turnContent; spacing: 5
+                                            RowLayout { spacing: 6; Label { text: preciseClock(modelData.start) + "–" + preciseClock(modelData.end); color: accent; font.family: "monospace"; font.pixelSize: 10; Layout.preferredWidth: 128 } Label { text: modelData.label || modelData.speaker || "Falante incerto"; textFormat: Text.PlainText; color: accent; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight } }
+                                            Label { text: modelData.text !== undefined ? modelData.text : "Texto não disponível nesta prévia."; textFormat: Text.PlainText; color: modelData.text !== undefined ? ink : muted; wrapMode: Text.WordWrap; Layout.fillWidth: true; font.pixelSize: 13 }
+                                        }
                                         onClicked: seek(Number(modelData.start))
                                     }
                                 }

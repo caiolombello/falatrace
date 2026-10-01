@@ -1,6 +1,6 @@
 {
   "scope": "sanitized experimental source alpha, no private history/config/media/dependencies/binaries",
-  "version": "0.2.0-alpha.6",
+  "version": "0.2.0-alpha.7",
   "selfExcluded": "SOURCE-MANIFEST.json; external release manifest includes this file",
   "files": [
     {
@@ -35,8 +35,8 @@
     },
     {
       "path": "README.md",
-      "sha256": "732323559cbb032402ce0dff580b06ebccb5a618f13c18bfa626a04b704d2500",
-      "bytes": 14660
+      "sha256": "2494f200b74c5b9bb774bd367711201260c06fc10ac8f9234cf42a33739b0390",
+      "bytes": 14598
     },
     {
       "path": "SECURITY.md",
@@ -149,6 +149,11 @@
       "bytes": 6483
     },
     {
+      "path": "docs/ALPHA7.md",
+      "sha256": "fa3f641158e3379ac800bf7ff52278db7c1b30b2938f5d1051deb332a8ee023a",
+      "bytes": 4533
+    },
+    {
       "path": "docs/CAPTURE-CALL-LIGHT.md",
       "sha256": "f87543872470792d18bde3621530c2c17509af8df789d564d403691c529df484",
       "bytes": 2404
@@ -180,7 +185,7 @@
     },
     {
       "path": "docs/UX-VERIFICATION.md",
-      "sha256": "cd7d19489dc046efd8a457dcd0e4fdfd7ed266f2e93660eb128b4aca684716e7",
+      "sha256": "a38160dd501e6276590dd171b82c842ea3a7740b5a3bd8b47557ce7acfa01aff",
       "bytes": 6934
     },
     {
@@ -310,12 +315,12 @@
     },
     {
       "path": "docs/en/index.html",
-      "sha256": "10e8dd3606fe6d7ebac6edf5ef69b59d10fb3685364351c3f27ad63e72b9de4d",
+      "sha256": "9c68f22fb7b0026db241aa98086202f745070a32522f63ab120f48241783fccf",
       "bytes": 11804
     },
     {
       "path": "docs/index.html",
-      "sha256": "df4a2a8608dbaf0ea426bd1854a4c4a1c5dd3be24d521069a99ab957f0e42b3d",
+      "sha256": "6a75474af44db48d85179664056c9a68c3c363a116ba599fe41f82aa96cd99ff",
       "bytes": 12116
     },
     {
@@ -325,7 +330,7 @@
     },
     {
       "path": "package.json",
-      "sha256": "aa627179b28f0cdce4addf8734a839a3f22e2374f1027d607872f827dac4350a",
+      "sha256": "36d71a2f01d7e7b8877cd54e910e66d62030843b8f0d2e5f694c4a5ed2cab442",
       "bytes": 1338
     },
     {
@@ -385,7 +390,7 @@
     },
     {
       "path": "skills/README.md",
-      "sha256": "b3037652d1901bacf77781026a45127de392af0c07d5a4677813739b7a365c43",
+      "sha256": "8d1f8a3ff2d7e6e4772e248d72d6e23b90f9ba9e110db80ce2f2f0054c4fdee7",
       "bytes": 2145
     },
     {
@@ -395,8 +400,8 @@
     },
     {
       "path": "skills/falatrace/SKILL.md",
-      "sha256": "2b4bf5da98877fd0f521308bfff8a5a19444ece392f6ae64c73c0c3fcd528632",
-      "bytes": 7495
+      "sha256": "2a00e639932e79e15b7a49483bbf7ba9420eaf3fc2adacea50de296a5359b77b",
+      "bytes": 7778
     },
     {
       "path": "skills/falatrace/evals/evals.json",
@@ -410,8 +415,8 @@
     },
     {
       "path": "skills/falatrace/references/commands.md",
-      "sha256": "a0d4e9783eb8417ca58bddd93ab92237c76101b74a1aca7b00ca8a9385158d21",
-      "bytes": 3250
+      "sha256": "1c5b5a63ff4b0473b46b4b18477d018d219e2f0fc325a154c98771824ce407a9",
+      "bytes": 3277
     },
     {
       "path": "skills/falatrace/references/provider-analysis.md",
@@ -690,8 +695,8 @@
     },
     {
       "path": "src/desktop/Main.qml",
-      "sha256": "e702f1d280b2d891e66e89620ff54eb4dfa9a12cf559c2f7de7cd4baada96729",
-      "bytes": 102441
+      "sha256": "92550284790ef79cb7f444908989a00eda7d1525743135a8f15c38459654c14c",
+      "bytes": 103919
     },
     {
       "path": "src/desktop/__tests__/alpha6-build.test.ts",
@@ -705,8 +710,13 @@
     },
     {
       "path": "src/desktop/bridge.ts",
-      "sha256": "57f37b481c0be1b4ecc5b7d4f0fd97ae4961b4551f6cd78ca159bcae59801baf",
-      "bytes": 32041
+      "sha256": "062abf018629643d73f2eb201c232070c03da13f562b1c9e5da0e4bdc948d879",
+      "bytes": 32941
+    },
+    {
+      "path": "src/desktop/diarization-view.test.ts",
+      "sha256": "9c075865d04e8a41aa193f78c53ff056c5b8a7c15b0d1e930c8aa21609469a22",
+      "bytes": 4593
     },
     {
       "path": "src/desktop/main.cpp",
@@ -1194,6 +1204,11 @@
       "bytes": 6054
     },
     {
+      "path": "src/subtitles/__tests__/status.test.ts",
+      "sha256": "6f1324cff90efaa10a1647379f87a6f945699b43f5740935db9af0b60e6eab8a",
+      "bytes": 1929
+    },
+    {
       "path": "src/subtitles/aligned.ts",
       "sha256": "e4d9a0680090ca1c6b1fad2b5f1b9f74449e43ffb369a9b69a3eed2df3740dbc",
       "bytes": 15280
@@ -1207,6 +1222,11 @@
       "path": "src/subtitles/source.ts",
       "sha256": "fc54a1fe601e17cd200bcd65bc7dd7e1ad87a4d67b72df80e8514f70c301e059",
       "bytes": 1429
+    },
+    {
+      "path": "src/subtitles/status.ts",
+      "sha256": "c2d022e2da442e5542ba62e5098ec40db575139bccdff3f259bdd01e65611e77",
+      "bytes": 803
     },
     {
       "path": "src/summary/__tests__/chunks.test.ts",

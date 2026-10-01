@@ -5,11 +5,11 @@
 
 # FalaTrace — experimental Linux source alpha
 
-Linux tools for authorized recording, meeting search and notes linked to source timestamps. FalaTrace 0.2.0-alpha.6 is an experimental source alpha. Native capture, desktop compatibility, model quality and redistributed binaries have not been certified.
+Linux tools for authorized recording, meeting search and notes linked to source timestamps. FalaTrace 0.2.0-alpha.7 is an experimental source alpha. Native capture, desktop compatibility, model quality and redistributed binaries have not been certified.
 
 ## Current verification
 
-The reviewed alpha.6 candidate passed 486 offline tests (0 failures, 3,835 assertions across 81 files in 108.98 seconds), including regressions for missing consent flags, interrupted native builds, client selection and generated-context cleanup. Validation scope and limitations are recorded in [alpha.6 notes](docs/ALPHA6.md). Native capture, playback, actual client vision, model quality and billing remain unvalidated.
+Alpha.7 fixes speaker-turn text presentation, simultaneous captions, stale captions after changing recordings and unknown subtitle-operation status. It preserves the canonical transcript and does not fix the underlying subtitle worker failure or certify acoustic/model quality. Validation scope and limitations are recorded in [alpha.7 notes](docs/ALPHA7.md).
 
 Landing: [Português](https://caiolombello.github.io/falatrace/) · [English](https://caiolombello.github.io/falatrace/en/). The Studio interface is currently Portuguese.
 
