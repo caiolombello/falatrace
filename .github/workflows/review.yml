@@ -1,0 +1,21 @@
+# Prepared for source review; not executed or published.
+# Enable only after dependency/bootstrap and action supply-chain review.
+name: Offline candidate review
+on: workflow_dispatch
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4, verified 2026-09-30
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2, verified 2026-09-30
+        with:
+          bun-version: 1.4.0
+          no-cache: true
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg rsync
+      - run: bun install --frozen-lockfile --ignore-scripts
+      - run: bun run typecheck && bun run desktop:check && bun run build
+      - run: bash scripts/test-offline.sh

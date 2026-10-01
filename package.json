@@ -1,0 +1,43 @@
+{
+  "name": "falatrace",
+  "version": "0.2.0-alpha.1",
+  "type": "module",
+  "scripts": {
+    "dev": "bun run src/cli/index.ts",
+    "init": "bun run src/cli/index.ts init",
+    "build": "bun build src/cli/index.ts --target=bun --outdir dist",
+    "build:standalone": "bun build --compile src/cli/index.ts --outfile dist/falatrace",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "desktop": "bun run src/desktop/run.ts",
+    "desktop:setup": "bun run src/desktop/setup.ts",
+    "desktop:build": "bun run src/desktop/run.ts --build",
+    "desktop:check": "tsc --noEmit --project src/desktop/tsconfig.json",
+    "start": "bun run dist/index.js"
+  },
+  "dependencies": {
+    "debug": "^4.4.0",
+    "obs-websocket-js": "^5.0.8",
+    "openai": "^6.46.0",
+    "x11": "^2.3.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.5",
+    "typescript": "^5.9.3"
+  },
+  "overrides": {
+    "ws": "^8.20.1"
+  },
+  "description": "Authorized Linux recordings and bounded AI context with traceable evidence.",
+  "license": "MIT",
+  "private": true,
+  "author": "Caio Barbieri",
+  "homepage": "https://caiolombello.github.io/falatrace/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/caiolombello/falatrace.git"
+  },
+  "bugs": {
+    "url": "https://github.com/caiolombello/falatrace/issues"
+  }
+}

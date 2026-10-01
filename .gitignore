@@ -1,0 +1,27 @@
+node_modules/
+dist/
+.env
+*.log
+.DS_Store
+.env.*
+!.env.example
+.agents/
+.codex/
+.aws/
+undefined/
+recordings/
+config.json
+worker.env
+*.mp4
+*.mkv
+*.webm
+*.wav
+*.mp3
+*.flac
+*.jpg
+*.png
+*.partial/
+
+# Only explicitly curated public design and synthetic UI assets are versioned.
+!docs/assets/*.png
+!docs/assets/*.jpg
