@@ -1,6 +1,6 @@
 {
   "scope": "sanitized experimental source alpha, no private history/config/media/dependencies/binaries",
-  "version": "0.2.0-alpha.3",
+  "version": "0.2.0-alpha.4",
   "files": [
     {
       "path": ".github/workflows/ci.yml",
@@ -19,8 +19,8 @@
     },
     {
       "path": "CHANGELOG.md",
-      "sha256": "8957372c719fe6afc1e8146c1b59dd06e097b412a1fc5753630def64b2fec645",
-      "bytes": 1750
+      "sha256": "3c15d3ee0b8febab1db9bbea64dd2848aa50a91adc63eb8050edc4e346687e94",
+      "bytes": 2206
     },
     {
       "path": "LICENSE",
@@ -34,8 +34,8 @@
     },
     {
       "path": "README.md",
-      "sha256": "0cfd0d4c3ed43983a6991e4bf0f0854b8764bbea1f09166ffe9df8df2b01f2df",
-      "bytes": 10804
+      "sha256": "1dd9aa7e31b605e01c5aef0a389d1fcf6e267c03825fefe6df45cee8e25e1df3",
+      "bytes": 11226
     },
     {
       "path": "SECURITY.md",
@@ -126,6 +126,11 @@
       "path": "docs/ALPHA3.md",
       "sha256": "ab0ab998b756af793b02013f3e516d22e54d2136108c73d13ad96fae9be0de1c",
       "bytes": 4093
+    },
+    {
+      "path": "docs/ALPHA4.md",
+      "sha256": "74d44391e7725a6f854669b8bd78054319c7bc892cb384ded5a781c89fddc65c",
+      "bytes": 1688
     },
     {
       "path": "docs/CAPTURE-CALL-LIGHT.md",
@@ -264,8 +269,8 @@
     },
     {
       "path": "docs/index.html",
-      "sha256": "7bda9fc122ba9d90c2daf32c33295b78992f5eb4966de4219d11b623fafc473d",
-      "bytes": 9140
+      "sha256": "4a5feb29dcdab19006bca13ebe5988126ae7d4a8fd254250de595bf29ebbcb72",
+      "bytes": 9534
     },
     {
       "path": "docs/style.css",
@@ -274,7 +279,7 @@
     },
     {
       "path": "package.json",
-      "sha256": "573a0e60c0a452d1ba3a63ae7329e4cf4be47d702f859f4c5800efadd4f7cf67",
+      "sha256": "3d0462737d339d93c793b5678c96969787f2bbfecce55f85c5846ffba65d0d15",
       "bytes": 1338
     },
     {
@@ -331,6 +336,36 @@
       "path": "scripts/test-scope-ux.py",
       "sha256": "6d91c43e5f6dd067026d3d7d5b58926927be468de29d35bcc9d26857c809fcae",
       "bytes": 14163
+    },
+    {
+      "path": "skills/README.md",
+      "sha256": "0f214a9516e9a984eafc8b1528edd733b0801767896bb5b92303b067c68f55c6",
+      "bytes": 2122
+    },
+    {
+      "path": "skills/falatrace/LICENSE",
+      "sha256": "ad88173d0c0840e39ef487c5d269786f47cae5a6aa42e4871f806f5a63d23716",
+      "bytes": 1070
+    },
+    {
+      "path": "skills/falatrace/SKILL.md",
+      "sha256": "cc1cf2a23877b0a058df0f7930c889b719271c6073ed5a190d2b51263b3fb661",
+      "bytes": 5453
+    },
+    {
+      "path": "skills/falatrace/evals/evals.json",
+      "sha256": "ea0b00ea217fe94d683e23d7b51d5cb7b150a60b7c54f13d521d845cee6eb402",
+      "bytes": 936
+    },
+    {
+      "path": "skills/falatrace/references/commands.md",
+      "sha256": "a0427bde3b0c284d13649de028b78ae43049fee62263f6be3d19dd6781ff00b5",
+      "bytes": 3250
+    },
+    {
+      "path": "skills/falatrace/references/visual-evidence.md",
+      "sha256": "aeb70f1dad4b4e8d690d4cbf60ecfd478147f347582e091a1c61021624627c41",
+      "bytes": 2780
     },
     {
       "path": "src/archive/__tests__/import.test.ts",
@@ -501,6 +536,11 @@
       "path": "src/calls/validation.ts",
       "sha256": "8e57fc2adf224f58385a7db910d50d52800382e892fc2a625a8919ca3b7b8a60",
       "bytes": 4227
+    },
+    {
+      "path": "src/cli/__tests__/skill-contracts.test.ts",
+      "sha256": "1cc6f7430028c1bd78d8c9f05c919ad8975bf43468bfc09e60ffbd474cbe1eb1",
+      "bytes": 3634
     },
     {
       "path": "src/cli/__tests__/ux-contracts.test.ts",

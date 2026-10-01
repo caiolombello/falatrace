@@ -1,6 +1,6 @@
 {
   "name": "falatrace",
-  "version": "0.2.0-alpha.3",
+  "version": "0.2.0-alpha.4",
   "type": "module",
   "scripts": {
     "dev": "bun run src/cli/index.ts",

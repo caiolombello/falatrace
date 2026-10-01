@@ -5,7 +5,7 @@
 
 # FalaTrace — experimental Linux source alpha
 
-Linux tools for authorized recording, meeting search and notes linked to source timestamps. FalaTrace 0.2.0-alpha.3 is an experimental source alpha. Native capture, desktop compatibility, model quality and redistributed binaries have not been certified.
+Linux tools for authorized recording, meeting search and notes linked to source timestamps. FalaTrace 0.2.0-alpha.4 is an experimental source alpha. Native capture, desktop compatibility, model quality and redistributed binaries have not been certified.
 
 ## Current verification
 
@@ -95,3 +95,7 @@ Synthetic native Qt renders cover light/dark, compact (900×640), summary, conse
 ## Alpha.3: bounded evidence and processing admission
 
 See [experimental alpha.3 scope and limits](docs/ALPHA3.md). Scoped visual review uses local Ollama; existing provider/config choices are preserved. Call-light is opt-in and has no demonstrated call-performance benefit. `recording-cli`/`recording-studio` may remain compatibility aliases for `falatrace`/`falatrace-studio`.
+
+## AI assistant skill
+
+[skills/falatrace](skills/falatrace/SKILL.md) teaches bounded recording retrieval, existing CLI contracts and explicit-consent Studio visual review. See [installation and legacy compatibility](skills/README.md). The skill grants no capture/upload/inference/deletion permissions and contains only synthetic examples. Alpha.4 adds this shareable skill without changing the alpha.3 evidence pipeline.

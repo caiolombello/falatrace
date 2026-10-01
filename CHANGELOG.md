@@ -17,3 +17,12 @@ Production Studio visual consent/adapter/summary path with persistent root guard
 - Include offline synthetic regression, benchmark and scripted demonstration tools.
 
 Native capture/desktop compatibility and semantic model quality are unvalidated in real environments. Visual selection is an internal API without a CLI toggle. No binary/model/native-runtime distribution is part of this release.
+
+## 0.2.0-alpha.4
+
+- Shareable MIT FalaTrace skill with real command/output references, bounded retrieval, explicit-consent visual guidance and synthetic contract validation.
+- Version/help use the package version; previous alpha.3 tag remains unchanged.
+
+## 0.2.0-alpha.3
+
+- Transcript-first scoped review, persistent policy/consent/attempt guards and processing admission. Call-light remains opt-in; native/model/call-performance limits remain explicit.
