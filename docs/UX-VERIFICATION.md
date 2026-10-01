@@ -1,3 +1,5 @@
+Current alpha.5 verification and limits: [ALPHA5.md](ALPHA5.md#verification). The historical matrix below describes earlier releases and is not the current feature inventory.
+
 This original matrix documents published alpha.1. The alpha.2 changes and exact validation are in ALPHA2-LOCAL-REVIEW.md and OPUS-REVIEW-RESOLUTION.md.
 
 # UX/UI verification — alpha.1 baseline and alpha.2 increment

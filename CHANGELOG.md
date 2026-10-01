@@ -1,3 +1,12 @@
+## 0.2.0-alpha.5 — experimental source alpha
+
+- Persistent, explicit grants for named agents and selected recordings; separate frames-only installation opt-in for current/future registered media, with pause, revocation and operator exclusions.
+- Local JPEG retrieval with verified/unknown timestamps, source hashes, private TTL and lifetime installation budgets. No implicit grants or provider authentication claims.
+- Separate OpenAI/Google analysis adapters, disabled by default; partial observations, without complete-summary regeneration or durable visual memory.
+- Studio navigation, fixed consent/error actions, visible keyboard focus and immediately accessible capture stop.
+- Equivalent Portuguese and English landing pages with accessible language links and honest experimental limits.
+- 447 offline tests passed. Synthetic fixtures/stub transports do not certify native capture, actual model quality or billing. No extra dependencies or public binary distribution.
+
 ## 0.2.0-alpha.2 — experimental source alpha
 
 Production Studio visual consent/adapter/summary path with persistent root guard; Opus-reviewed findings fixed and offline/synthetic validation documented. No installed-model/capture quality certification, or redistributed binaries.

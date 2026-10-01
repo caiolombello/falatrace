@@ -5,18 +5,20 @@
 
 # FalaTrace — experimental Linux source alpha
 
-Linux tools for authorized recording, meeting search and notes linked to source timestamps. FalaTrace 0.2.0-alpha.4 is an experimental source alpha. Native capture, desktop compatibility, model quality and redistributed binaries have not been certified.
+Linux tools for authorized recording, meeting search and notes linked to source timestamps. FalaTrace 0.2.0-alpha.5 is an experimental source alpha. Native capture, desktop compatibility, model quality and redistributed binaries have not been certified.
 
 ## Current verification
 
-This source alpha passed 362 offline tests (0 failures, 1,657 assertions across 61 files), plus the final coordinator subset and 18 Qt synthetic renders / 43 checks. CLI and desktop TypeScript checks and CLI build passed. Capture backends were inspected and exercised through synthetic fixtures; real desktop capture and semantic model quality have not been certified.
+The alpha.5 release passed 447 offline tests (0 failures, 3,642 assertions across 75 files), plus targeted Qt UI and keyboard checks using synthetic data. Final release checks and limitations are recorded in [alpha.5 notes](docs/ALPHA5.md). Native capture, playback, actual client vision, model quality and billing remain unvalidated.
+
+Landing: [Português](https://caiolombello.github.io/falatrace/) · [English](https://caiolombello.github.io/falatrace/en/). The Studio interface is currently Portuguese.
 
 ## Install deliberately
 
 Requires Bun, FFmpeg and the dependencies in `package.json`. Bun 1.4.0 with bun.lock is the tested installation path. A fresh node_modules installation of 17 exact locked packages from a local cache, plus standalone build/install/init/uninstall, passed. Download on a machine without a cache remains untested. The legacy pnpm lock is not the canonical installation path.
 
 ```sh
-bun install --frozen-lockfile
+bun install --frozen-lockfile --ignore-scripts
 bun run typecheck
 bun run build
 make install-cli INSTALL_PREFIX="$HOME/.local"
@@ -72,7 +74,7 @@ bun run benchmarks/synthetic-demo.ts /tmp/new-synthetic-demo-directory
 
 The demo requires a new output directory and generates a three-second test video plus scripted transcript/model responses. It proves plumbing and cache reuse, not capture or semantic model quality. Never pass production media.
 
-Tests must run with synthetic HOME/XDG and fixture media. Some tests use local sockets and local rsync fixtures. Do not run integration tests with production credentials or active capture/cloud services. The audit harness blocks those commands and external fetches; it is included in scripts/test-offline.sh. A manual-only CI draft is prepared but was not executed; action SHAs are pinned and token persistence disabled; the workflow still requires review before any manual run.
+Tests must run with synthetic HOME/XDG and fixture media. Some tests use local sockets and local rsync fixtures. Do not run integration tests with production credentials or active capture/cloud services. The audit harness blocks those commands and external fetches; it is included in scripts/test-offline.sh. The public CI workflow runs offline validation on main and pull requests. Action SHAs are pinned and token persistence disabled. Passing CI does not validate native capture or live providers.
 
 MIT applies to code authored by Caio Barbieri; third-party notices and licenses remain unchanged. Dependencies, native runtimes and models are not bundled. Compiling a standalone binary locally is supported by the build command; distributing that binary requires a separate review of embedded runtime obligations. Native capture and real-model quality remain experimental. Preserve existing persisted `recording-cli` identifiers; legacy archive schema keys are retained for compatibility. No public history, private config or media belongs in the package.
 
@@ -99,3 +101,19 @@ See [experimental alpha.3 scope and limits](docs/ALPHA3.md). Scoped visual revie
 ## AI assistant skill
 
 [skills/falatrace](skills/falatrace/SKILL.md) teaches bounded recording retrieval, existing CLI contracts and explicit-consent Studio visual review. See [installation and legacy compatibility](skills/README.md). The skill grants no capture/upload/inference/deletion permissions and contains only synthetic examples. Alpha.4 adds this shareable skill without changing the alpha.3 evidence pipeline.
+
+## Persistent agent access in alpha.5
+
+Studio and `agent-context` provide explicit grants for named recipients and selected existing recording IDs, bounded context/frame retrieval, pause/revoke and optional preview. No grant or agent connection is created by installation; future recordings are not automatically included. Images delivered to a cloud-backed assistant may be transmitted by that client to its provider. Retrieval itself does not run a model. See [agent access](skills/falatrace/references/agent-frames.md).
+
+OpenAI/Google analysis adapters require a separate provider/model/data/budget grant and runtime opt-in; API dispatch is disabled by default, before reading credentials. Existing transcription/summary provider configuration does not authorize visual dispatch. Tests stub network transport. Results are partial observations with locally bound timestamps, not complete-summary regeneration or durable memory. See [provider boundaries](skills/falatrace/references/provider-analysis.md).
+
+## Explicit installation-wide frames opt-in
+
+Alpha.5 additionally supports `agent-context authorize-installation --recipient codex-openai|claude-anthropic|gemini-google --include-future --exclude-secrets --consent`. This is a separate frames-only opt-in covering current/future registered media in this installation. It never enables API analysis or transcript/summary retrieval. Ordinary per-recording grants stay fixed. Installation grants can list only opaque recording IDs with `agent-context recordings --grant UUID --recipient NAME [--offset N] [--limit N]`. MCP exposes only `list_recordings` and `get_frames` for this scope.
+
+Pause/revoke use existing commands. `agent-context exclude-recording --grant UUID --recording UUID` blocks a sensitive recording for that grant, including cached/pending access; apply the exclusion to every recipient that must not receive it. Exclusion increments revision, so subsequent previews for other recordings may require fresh extraction and consume the same lifetime budget. Exclusions persist; no automatic un-exclude. Finalized registered sources and hashes are verified on each retrieval; missing, unsealed, changed or out-of-installation media is refused. Source versions intentionally replaced in the registered catalog are covered by this broad scope; in-flight changes are refused.
+
+A recipient label is not cryptographic provider authentication. The local stdio launcher fixes the recipient/grant, and requests cannot select another one. Other processes with the same OS-account filesystem access are outside this identity boundary. No client connector is installed by the package. Codex/Claude/Gemini clients require their own supported setup and session refresh; this does not imply the hosted ChatGPT/Claude/Gemini websites can access local tools.
+
+Secret exclusion is an operator obligation, not automatic detection/redaction. Exclude recordings known to contain passwords, keys or other secrets before letting assistants retrieve them. Images already delivered may be uploaded by that assistant to its provider and cannot be recalled. This option does not guarantee that unreviewed media is secret-free.

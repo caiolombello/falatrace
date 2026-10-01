@@ -32,6 +32,8 @@ for line in sys.stdin:
   v={'items':[] if mode=='empty' else [item]}
  elif op=='capture-status':v={'active':mode=='recording','session':{'startedAt':(datetime.datetime.now(datetime.timezone.utc)-datetime.timedelta(seconds=128)).isoformat()} if mode=='recording' else None,'paused':mode=='paused','audio':{'configured':False},'warning':'Fixture sintético: nenhuma captura ou dispositivo real'}
  elif op=='jobs-list':v={'items':[]}
+ elif op=='processing-status':v={'waiting':[]}
+ elif op=='ux-capabilities':v={'mockFrames':False,'realFrames':True}
  elif op=='detail':v={'transcript':{'segments':[{'start':0,'end':2,'text':'Este texto foi criado para testar a interface.'}],'text':'Este texto foi criado para testar a interface.','timing':'segment'},'diarization':{'state':'idle','turns':[]},'summary':'Nota sintética em [00:00]. Não houve inferência de IA. Confira a fonte.','summaryInfo':'adapter scripted/local fixture','status':'completed','backup':'none','jobId':'synthetic-demo'}
  elif op=='resolve' and mode not in ['error','loading']:v={'state':'completed','location':'local','path':os.environ['FALATRACE_SYNTHETIC_VIDEO']}
  elif op=='context-meeting':v={'context':'STALE-CONTEXT-MUST-NOT-APPEAR','citations':['00:00']}
@@ -43,8 +45,14 @@ for line in sys.stdin:
   base=source.replace('../../docs/assets/',(repo/'docs/assets').as_uri()+'/').rstrip()
   light='true' if mode in ['light','compact'] else 'false'
   action='captureConsent.open()' if mode=='consent' else 'tabs.currentIndex = 1' if mode=='summary' else ''
-  if mode=='compact':action+='; window.width = 900; window.height = 640'
+  if mode in ['compact','recording']:action+='; window.width = 900; window.height = 640'
   extra=f'\n Timer {{ interval: 350; running: true; repeat: false; onTriggered: {{ window.lightTheme = {light}; {action} }} }}\n'
+  if mode=='recording':extra+='''
+ Timer { interval:700; running:true; repeat:false; onTriggered:{
+  const p=headerStop.mapToItem(window.contentItem,0,0);headerStop.forceActiveFocus(Qt.TabFocusReason);
+  console.log("UX_ASSERTIONS "+JSON.stringify([{name:"stop visible without opening dialog",pass:headerStop.visible&&headerStop.enabled&&!recordingTools.visible},{name:"stop inside 900x640 viewport",pass:p.x>=0&&p.y>=0&&p.x+headerStop.width<=window.width&&p.y+headerStop.height<=window.height},{name:"stop has visible keyboard focus",pass:headerStop.activeFocus&&headerStop.visualFocus}]))
+ } }
+'''
   if mode=='regression':extra+='''
  Timer { interval: 450; running: true; repeat: false; onTriggered: {
   const a=[]; function check(name,pass){a.push({name:name,pass:!!pass})}

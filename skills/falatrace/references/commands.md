@@ -1,4 +1,4 @@
-# Command contracts (experimental alpha.4)
+# Command contracts (experimental alpha.5)
 
 Replace `falatrace` with installed `recording-cli` for the compatibility alias. Failures normally report stderr and nonzero exit; `--version` and help return text. Do not assume a global `--json` flag or undocumented command/option.
 

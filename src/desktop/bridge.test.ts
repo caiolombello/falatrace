@@ -52,3 +52,14 @@ describe("desktop operation boundary", () => {
     expect(output).not.toContain("private-sentinel");
   });
 });
+
+import {registeredAgentRecordingId} from './bridge';
+test('agent bridge resolves normal library path key to registered recording UUID, including silent failed jobs',()=>{
+ const id='11111111-1111-4111-8111-111111111111';
+ const entry={sourcePath:'/tmp/synthetic.mp4',jobs:[{id,state:'failed',target:'local'}]} as any;
+ expect(registeredAgentRecordingId(entry)).toBe(id);
+ expect(parseRequest({id:1,op:'agent-status',key:entry.sourcePath}).key).toBe(entry.sourcePath);
+ expect(()=>parseRequest({id:2,op:'agent-authorize',key:entry.sourcePath,payload:{recipientId:'synthetic',data:['context','frames'],consent:true}})).not.toThrow();
+ expect(()=>parseRequest({id:3,op:'agent-authorize',payload:{recipientId:'https://invalid',data:['context'],consent:true}})).toThrow();
+ expect(()=>parseRequest({id:4,op:'agent-frames',payload:{grantId:id,timestamps:[-1]}})).toThrow();
+});
