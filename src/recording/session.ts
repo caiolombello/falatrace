@@ -17,6 +17,7 @@ export type RecordingSession = {
   audio?: AudioSources;
   app?: "slack" | "zen" | "helium";
   flatpak?: boolean;
+  captureProfile?: "standard"|"call-light";
 };
 
 export const getRecordingStateDir = (): string =>
@@ -32,6 +33,7 @@ export class RecordingSessionStore {
       if (session.version !== 1 || !["manual", "call"].includes(session.owner) ||
         !["audio", "gpu-screen-recorder", "obs"].includes(session.backend) ||
         !["starting", "recording", "stopped"].includes(session.phase) ||
+        (session.captureProfile !== undefined && !["standard","call-light"].includes(session.captureProfile)) ||
         (session.flatpak !== undefined && typeof session.flatpak !== "boolean") ||
         typeof session.outputPath !== "string" || !isAbsolute(session.outputPath) || /[\r\n\0]/.test(session.outputPath) ||
         !Number.isFinite(Date.parse(session.startedAt))) {

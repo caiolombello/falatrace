@@ -1,3 +1,4 @@
+import { assertCaptureProfile, CALL_LIGHT_PROFILE } from './profile';
 import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -113,6 +114,7 @@ export const buildCaptureCommand = (
   outputPath: string,
   tokenPath: string
 ): CaptureCommand => {
+  const profile = assertCaptureProfile(backend, config);
   const entries = Object.entries(sources);
   if (backend === "gpu-screen-recorder") {
     const devices = entries.map(([, device]) => `device:${device}`);
@@ -120,8 +122,9 @@ export const buildCaptureCommand = (
     return {
       command: "gpu-screen-recorder",
       args: ["-w", "portal", "-restore-portal-session", "yes", "-portal-session-token-filepath", tokenPath,
-        "-f", String(config.framerate), "-k", "h264", "-encoder", config.encoder,
-        "-fallback-cpu-encoding", "no", "-q", "very_high", "-ac", "aac", "-c", "mkv",
+        "-f", String(profile === "call-light" ? Math.min(config.framerate,CALL_LIGHT_PROFILE.maxFps) : config.framerate),
+        ...(profile === "call-light" ? ["-s", CALL_LIGHT_PROFILE.maxResolution] : []), "-k", "h264", "-encoder", config.encoder,
+        "-fallback-cpu-encoding", "no", "-q", profile === "call-light" ? CALL_LIGHT_PROFILE.quality : "very_high", "-ac", "aac", "-c", "mkv",
         ...tracks.flatMap((device) => ["-a", device]), "-o", outputPath]
     };
   }

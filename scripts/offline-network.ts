@@ -1,3 +1,4 @@
+import './qa-isolation-guard';
 const nativeFetch = globalThis.fetch;
 globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
  const url = new URL(input instanceof Request ? input.url : String(input));

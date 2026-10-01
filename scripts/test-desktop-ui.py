@@ -4,17 +4,19 @@ Requires a locally built desktop binary and existing Qt runtime. No runtime inst
 Exit 77 means native runtime unavailable. Video playback and OS keyboard events are unverified.
 """
 from pathlib import Path
-import tempfile,subprocess,os,json,sys,hashlib,shutil
+import runpy
+import tempfile,subprocess,os,json,sys,hashlib,shutil,secrets
 repo=Path(__file__).resolve().parents[1]
 binary=repo/'dist/desktop/recording-studio'
 if not binary.is_file():
  print('Desktop binary missing; explicitly build with existing SDK first.',file=sys.stderr);sys.exit(77)
-out=Path(sys.argv[1]).resolve() if len(sys.argv)>1 else Path(tempfile.mkdtemp(prefix='falatrace-ui-output-'))
+out=Path(sys.argv[1]).resolve() if len(sys.argv)>1 else Path(tempfile.mkdtemp(dir='/tmp',prefix='falatrace-ui-output-'))
 out.mkdir(parents=True,exist_ok=True)
 source=(repo/'src/desktop/Main.qml').read_text()
 checks=[];screens=[]
-with tempfile.TemporaryDirectory(prefix='falatrace-ui-fixture-') as scratch:
- root=Path(scratch); (root/'home').mkdir(); (root/'runtime').mkdir(mode=0o700)
+with tempfile.TemporaryDirectory(dir='/tmp',prefix='falatrace-ui-fixture-') as scratch:
+ root=Path(scratch);nonce=secrets.token_hex(16);(root/'.falatrace-qa').write_text(nonce);(root/'.falatrace-qa').chmod(0o600)
+ for name in ['home','runtime','config','state','data','cache','tmp']:(root/name).mkdir(mode=0o700)
  video=root/'synthetic.mp4'
  subprocess.run(['/usr/bin/ffmpeg','-nostdin','-v','error','-f','lavfi','-i','testsrc2=size=640x360:rate=5','-t','3','-an','-c:v','mpeg4',str(video)],check=True,capture_output=True,timeout=15)
  stub=root/'bridge-stub.py'
@@ -64,7 +66,8 @@ for line in sys.stdin:
 '''
   (qml/'Main.qml').write_text(base[:-1]+extra+'}\n')
   image=out/f'studio-{mode}.png'
-  env={'HOME':str(root/'home'),'XDG_RUNTIME_DIR':str(root/'runtime'),'LANG':'C.UTF-8','PATH':'/usr/bin:/bin','QT_QPA_PLATFORM':'offscreen','QT_QUICK_BACKEND':'software','RECORDING_DESKTOP_SOFTWARE_SMOKE':'1','RECORDING_DESKTOP_SMOKE_KEY':'synthetic-demo' if mode not in ['empty','error','loading'] else '', 'RECORDING_DESKTOP_SNAPSHOT':str(image),'RECORDING_DESKTOP_SNAPSHOT_MS':'1300','FALATRACE_TEST_MODE':mode,'FALATRACE_SYNTHETIC_VIDEO':str(video)}
+  env={'FALATRACE_QA_ISOLATED':'1','FALATRACE_QA_ROOT':str(root),'FALATRACE_QA_NONCE':nonce,'XDG_CONFIG_HOME':str(root/'config'),'XDG_STATE_HOME':str(root/'state'),'XDG_DATA_HOME':str(root/'data'),'HOME':str(root/'home'),'XDG_RUNTIME_DIR':str(root/'runtime'),'XDG_CACHE_HOME':str(root/'cache'),'TMPDIR':str(root/'tmp'),'LANG':'C.UTF-8','PATH':'/usr/bin:/bin','QT_QPA_PLATFORM':'offscreen','QT_QUICK_BACKEND':'software','RECORDING_DESKTOP_SOFTWARE_SMOKE':'1','RECORDING_DESKTOP_SMOKE_KEY':'synthetic-demo' if mode not in ['empty','error','loading'] else '', 'RECORDING_DESKTOP_SNAPSHOT':str(image),'RECORDING_DESKTOP_SNAPSHOT_MS':'1300','FALATRACE_TEST_MODE':mode,'FALATRACE_SYNTHETIC_VIDEO':str(video)}
+  runpy.run_path(str(repo/'scripts/qa-run.py'))['require_isolated'](env)
   r=subprocess.run([str(binary),str(qml),str(stub)],env=env,capture_output=True,text=True,timeout=15)
   (out/f'studio-{mode}.stderr').write_text(r.stderr)
   receipt=json.loads(Path(str(image)+'.json').read_text()) if Path(str(image)+'.json').exists() else {}

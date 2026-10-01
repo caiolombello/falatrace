@@ -1,3 +1,4 @@
+import { withHeavyAdmission, cliAdmissionWait } from '../runtime/heavy-admission';
 import { promises as fs } from "node:fs";
 import { createHash } from "node:crypto";
 import { getDefaultJobStateDir, hashFile } from "./store";
@@ -7,6 +8,7 @@ import type { AppConfig } from "../config/defaults";
 import { summarizeWithOllama } from "../summary/ollama";
 import { summarizeWithOpenAI } from "../summary/openai";
 import { runVisualSession, type LocalVisualAdapter, type ManualVisualConsent } from "../visual/session";
+import {validatePipelineVisualReview,withPipelineVisualClaim,pipelineSessionIdentity,commitPipelineVisualReview} from '../visual/pipeline-review';
 import {VisualAppBudget} from "../visual/app-budget";
 import { summarizeInChunks } from "../summary/chunks";
 import { transcribeWithOpenAI } from "../transcription/openai";
@@ -51,19 +53,20 @@ const loadReusableTranscript = async (outputDir: string, manifest: JobManifest):
   return {transcript,legacy:false};
 };
 
-export const processJob = async (
+const processJobOwned = async (
   config: AppConfig,
   manifest: JobManifest,
   sourcePath: string,
   outputDir: string,
-  options: { signal?: AbortSignal; visual?: { root: string; adapter: LocalVisualAdapter; ttlSeconds?: number; manual?: ManualVisualConsent } } = {}
-): Promise<void> => {
+  options: { signal?: AbortSignal; visual?: { root: string; adapter: LocalVisualAdapter; ttlSeconds?: number; manual?: ManualVisualConsent; review?:{id:string;consent:boolean;consentKey:string} } } = {}
+): Promise<void|{committedGrantId:string}> => {
   options.signal?.throwIfAborted();
   await fs.mkdir(outputDir, { recursive: true, mode: 0o700 });
   let transcriptionWorkDir: string | undefined;
   try {
     const reusable = await loadReusableTranscript(outputDir, manifest);
     let transcript = reusable?.transcript;
+    if(options.visual&&(!transcript||!options.visual.review))throw Error('Pipeline visual review requires an existing transcript and fresh scoped preview consent');
     if (transcript) assertUsableTranscript(transcript);
     if (await hashFile(sourcePath) !== manifest.source.sha256) throw new Error("Source media hash differs from manifest; no provider request");
     if (!transcript) {
@@ -109,29 +112,35 @@ export const processJob = async (
     }
     await writePrivateArtifact(join(outputDir, "transcript.md"), formatTranscriptMarkdown(transcript));
 
+    if(options.visual&&manifest.summary.provider!=='ollama')throw Error('Scoped visual pipeline supports local Ollama summary only');
+    const summaryIdentity=JSON.stringify({provider:manifest.summary.provider,model:manifest.summary.model,endpoint:config.summary.ollamaUrl});
+    const validateReview=async()=>options.visual?validatePipelineVisualReview({...options.visual.review!,transcript:transcript!,mediaHash:manifest.source.sha256,duration:await probeMedia(sourcePath,options.signal),adapter:options.visual.adapter,adapterIdentity:options.visual.adapter.identity,summaryIdentity,policy:config.visualReview,signal:options.signal}):undefined;
+    const scoped=await validateReview();
+    if(options.visual?.manual&&(options.visual.manual.consent!==true||options.visual.manual.planKey!==scoped!.review.planKey||digest(JSON.stringify(options.visual.manual.requests))!==digest(JSON.stringify(scoped!.review.requests))))throw Error('Legacy pipeline consent differs from approved preview');
     const appBudget=options.visual?new VisualAppBudget(join(dirname(getDefaultJobStateDir()),'visual-review')):undefined;
     const budgetIdentity=digest(JSON.stringify({media:manifest.source.sha256,transcript,visualAdapter:options.visual?.adapter.identity,summaryProvider:manifest.summary.provider,summaryModel:manifest.summary.model}));
-    const visualAdapter=options.visual?{...options.visual.adapter,
-      select:async(input:Parameters<LocalVisualAdapter['select']>[0],signal?:AbortSignal)=>{await appBudget!.reserve('inference',manifest.id,budgetIdentity);signal?.throwIfAborted();return options.visual!.adapter.select(input,signal);},
-      inspect:async(input:Parameters<LocalVisualAdapter['inspect']>[0],signal?:AbortSignal)=>{await appBudget!.reserve('inference',manifest.id,budgetIdentity);signal?.throwIfAborted();return options.visual!.adapter.inspect(input,signal);}
+    const visualAdapter=options.visual?{...options.visual.adapter,identity:pipelineSessionIdentity(options.visual.adapter.identity,scoped!.review),
+      select:async()=>{throw Error('Pipeline selection requires separate scoped planner/preview; cannot infer images in one call');},
+      inspect:async(input:Parameters<LocalVisualAdapter['inspect']>[0],signal?:AbortSignal)=>{const approved=await validateReview();if(digest(JSON.stringify(input.frames.map(({file,timestampSeconds,sha256,bytes})=>({file,timestampSeconds,sha256,bytes}))))!==digest(JSON.stringify(approved!.review.frames)))throw Error('Pipeline frames changed after consent');await appBudget!.reserve('inference',manifest.id,budgetIdentity,config.visualReview,true,scoped!.review.policyRevision);signal?.throwIfAborted();return options.visual!.adapter.inspect(input,signal);}
     }:undefined;
     const visual = options.visual ? await runVisualSession({
       mediaHash: manifest.source.sha256, transcript, durationSeconds: await probeMedia(sourcePath, options.signal), sourcePath,
-      root: options.visual.root, adapter: visualAdapter!, ttlSeconds: options.visual.ttlSeconds, manual: options.visual.manual, signal: options.signal
+      root: options.visual.root, adapter: visualAdapter!, ttlSeconds: options.visual.ttlSeconds, manual: {requests:scoped!.review.requests,planKey:scoped!.review.planKey,consent:true,origin:scoped!.review.origin==='planner'?'planner':undefined}, signal: options.signal
     }) : undefined;
+    if(options.visual&&(visual?.expired||!visual?.observations.length||visual.expiresAt<=Date.now()))throw Error('Pipeline visual evidence expired/unavailable; no summary inference permitted');
     const visualEvidence = visual?.observations.length ? {
       adapterIdentity: options.visual!.adapter.identity, expiresAt: visual.expiresAt,
       observations: visual.observations.map(({timestampSeconds,frameSha256,text,uncertainty}) => ({timestampSeconds,frameSha256,text,uncertainty}))
     } : undefined;
     const summary = await summarizeInChunks({
-      transcript, mediaHash: manifest.source.sha256, context: manifest.summary.context, visual: visualEvidence,
+      transcript, segmentIds:scoped?.scope.segments.map(s=>s.id), mediaHash: manifest.source.sha256, context: scoped?undefined:manifest.summary.context, visual: visualEvidence,
       maxCharacters: config.summary.maxInputCharacters, provider: manifest.summary.provider,
       model: manifest.summary.model, adapterIdentity: manifest.summary.provider === "ollama" ? config.summary.ollamaUrl : "openai-chat", cacheDir: join(outputDir, ".summary-chunks"), signal: options.signal,
       adapter: async(part, signal) => {
-        if(appBudget)await appBudget.reserve('inference',manifest.id,budgetIdentity);
+        if(appBudget){await validateReview();await appBudget.reserve('inference',manifest.id,budgetIdentity,config.visualReview,true,scoped!.review.policyRevision);}
         signal?.throwIfAborted();return manifest.summary.provider === "openai"
-        ? summarizeWithOpenAI(config, part.text, manifest.summary.model, manifest.summary.context, part.evidence, signal)
-        : summarizeWithOllama(config, part.text, manifest.summary.model, manifest.summary.context, part.evidence, signal);
+        ? summarizeWithOpenAI(config, part.text, manifest.summary.model, scoped?undefined:manifest.summary.context, part.evidence, signal)
+        : summarizeWithOllama(config, part.text, manifest.summary.model, scoped?undefined:manifest.summary.context, part.evidence, signal);
       }
     });
     if (visualEvidence) {
@@ -149,13 +158,21 @@ export const processJob = async (
     }
     options.signal?.throwIfAborted();
     if (await hashFile(sourcePath) !== manifest.source.sha256) throw new Error("Source changed during summary; artifacts not published");
+    if(options.visual)await validateReview();
+    if(scoped)summary.limitations=[...(summary.limitations||[]),"Resumo parcial do intervalo selecionado; restante omitido."];
+    const summaryPrefix=scoped?"visual-summary":"summary";
     const summaryJson=JSON.stringify(summary,null,2);
     // Sidecars bind to exact summary bytes; summary.json is the final commit file.
-    await writePrivateArtifact(join(outputDir,"summary.md"),formatSummaryMarkdown(summary));
-    if (visualEvidence) await writePrivateArtifact(join(outputDir,"visual-evidence.json"),JSON.stringify({version:1,summarySha256:digest(summaryJson),mediaSha256:manifest.source.sha256,...visualEvidence},null,2));
-    else await fs.unlink(join(outputDir,"visual-evidence.json")).catch(error=>{if(error.code!=='ENOENT')throw error;});
-    await writePrivateArtifact(join(outputDir,"summary.json"),summaryJson);
+    const publish=async()=>{
+    await writePrivateArtifact(join(outputDir,summaryPrefix+".md"),formatSummaryMarkdown(summary));
+    if (visualEvidence) await writePrivateArtifact(join(outputDir,scoped?'visual-summary-evidence.json':'visual-evidence.json'),JSON.stringify({version:1,summarySha256:digest(summaryJson),mediaSha256:manifest.source.sha256,...visualEvidence},null,2));
+    else await fs.unlink(join(outputDir,scoped?'visual-summary-evidence.json':'visual-evidence.json')).catch(error=>{if(error.code!=='ENOENT')throw error;});
+    await writePrivateArtifact(join(outputDir,summaryPrefix+".json"),summaryJson);
+    };if(scoped)return await commitPipelineVisualReview(scoped.review.id,scoped.review.consentKey,{jobId:manifest.id,outputDir,sessionRoot:options!.visual!.root},publish);else await publish();
   } finally {
     if (transcriptionWorkDir) await fs.rm(transcriptionWorkDir, {recursive:true,force:true});
   }
 };
+
+export const processJob = (...args: Parameters<typeof processJobOwned>): Promise<void> =>
+  withHeavyAdmission('pipeline',args[1].id,async()=>{const [config,manifest,sourcePath,outputDir,options]=args;if(!options?.visual){await processJobOwned(...args);return;}const grant=options.visual.review;if(!grant)throw Error('Pipeline requires scoped preview consent');const cached=await loadReusableTranscript(outputDir,manifest);if(!cached)throw Error('Pipeline visual review requires existing transcript');if(await hashFile(sourcePath)!==manifest.source.sha256)throw Error('Pipeline source changed');await validatePipelineVisualReview({...grant,transcript:cached.transcript,mediaHash:manifest.source.sha256,duration:await probeMedia(sourcePath,options.signal),adapter:options.visual.adapter,adapterIdentity:options.visual.adapter.identity,summaryIdentity:JSON.stringify({provider:manifest.summary.provider,model:manifest.summary.model,endpoint:config.summary.ollamaUrl}),policy:config.visualReview,signal:options.signal});return withPipelineVisualClaim(grant.id,grant.consentKey,{jobId:manifest.id,outputDir,sessionRoot:options.visual.root},()=>processJobOwned(...args));},{signal:args[4]?.signal,onWait:cliAdmissionWait});

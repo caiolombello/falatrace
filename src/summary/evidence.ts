@@ -9,13 +9,15 @@ export type SummaryInputEvidence = {
   segments: Array<{ id: string; start: number; end: number; text: string }>;
 };
 
-export const buildSummaryEvidence = (transcript: Transcript, mediaSha256: string, maxSegments = 1000): SummaryInputEvidence => {
+export const buildSummaryEvidence = (transcript: Transcript, mediaSha256: string, maxSegments = 1000, selectedSegmentIds?:string[]): SummaryInputEvidence => {
   if (!/^[a-f0-9]{64}$/.test(mediaSha256)) throw new Error("Invalid media hash for summary evidence");
-  if (transcript.segments.length > maxSegments) throw new Error("Transcript has too many segments for one summary; chunking is required");
+  const selection=selectedSegmentIds?new Set(selectedSegmentIds):undefined;
+  if(selection && (!selection.size||selection.size!==selectedSegmentIds!.length||selectedSegmentIds!.some(id=>!/^s[0-9]{6}$/.test(id)||Number(id.slice(1))>=transcript.segments.length)))throw Error('Invalid explicit summary segment selection');
+  if ((selection?.size ?? transcript.segments.length) > maxSegments) throw new Error("Transcript has too many segments for one summary; chunking is required");
   return {
     mediaSha256, transcriptSha256: createHash("sha256").update(JSON.stringify(transcript, null, 2)).digest("hex"),
     timingQuality: !transcript.segments.some((segment) => segment.end > segment.start) ? "none" : transcript.provider === "whisper-cpp" ? "segment" : "approximate-block",
-    segments: transcript.segments.map((segment, index) => ({ id: `s${String(index).padStart(6,"0")}`, start: segment.start, end: segment.end, text: segment.text }))
+    segments: transcript.segments.map((segment, index) => ({ id: `s${String(index).padStart(6,"0")}`, start: segment.start, end: segment.end, text: segment.text })).filter(s=>!selection||selection.has(s.id))
   };
 };
 

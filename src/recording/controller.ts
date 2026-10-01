@@ -1,3 +1,4 @@
+import { assertCaptureProfile, verifyCallLightSupport, captureProfileNotice } from './profile';
 import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
@@ -138,13 +139,15 @@ export class RecordingController {
       const folder = join(this.config.recordingsDir, `${safeName}-${id.slice(0, 8)}`);
       const outputPath = join(folder, `recording.${backend === "audio" ? "mka" : "mkv"}`);
       const captureConfig = { ...this.config.capture, audioSource: options.audioSource || this.config.capture.audioSource };
+      const profile = assertCaptureProfile(backend,captureConfig);
       const audio = backend === "obs" || captureConfig.audioSource === "none"
         ? {} : (await inspectAudioSources(captureConfig, this.run)).selected;
       const gpu = backend === "gpu-screen-recorder" ? await resolveGpuRecorder() : null;
       if (backend === "gpu-screen-recorder" && !gpu) throw new Error("GPU Screen Recorder is not installed (native or Flatpak)");
+      if(profile === "call-light") { await verifyCallLightSupport(gpu!,this.run); console.error(captureProfileNotice(captureConfig)); }
       await fs.mkdir(folder, { recursive: true, mode: 0o700 });
       const session: RecordingSession = { version: 1, id, owner: this.owner, backend,
-        phase: "starting", outputPath, startedAt: new Date().toISOString(), audio, app: options.app,
+        phase: "starting", captureProfile: profile, outputPath, startedAt: new Date().toISOString(), audio, app: options.app,
         ...(gpu?.args.includes("run") ? { flatpak: true } : {}) };
       await this.store.write(session);
       this.session = session;

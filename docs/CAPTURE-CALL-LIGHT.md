@@ -1,0 +1,11 @@
+# Perfil call-light — opt-in local, não ativado
+
+O código aceita `capture.profile: "call-light"` ou `record start --capture-profile call-light`. A escolha é explícita; não detecta uma chamada para trocar o perfil sozinho. A flag só afeta a invocação atual; editar config afeta futuras capturas gerenciadas GPU. Não executei esses comandos de captura nem alterei configuração pessoal/serviços.
+
+Parâmetros: GPU Screen Recorder, encoder GPU, máximo de 15 FPS (não eleva FPS configurado menor), limite proporcional de saída 1280×720, qualidade `high`. `standard`/campo ausente conserva os argumentos anteriores. As fontes/três trilhas de áudio existentes são preservadas. Menor resolução/FPS/qualidade pode prejudicar leitura visual e frames; não foi demonstrado ganho de áudio ou latência em chamada.
+
+Antes de criar pasta/session de gravação, `--help` somente verifica suporte às opções. Resposta completa de uso com exit 1 é aceita porque o encoder instalado se comporta assim; timeout, cancelamento, erro diferente ou help incompleto recusam o início. Backend diferente ou encoder CPU é recusado para call-light. Nenhum fallback CPU/backend silencioso; depois da recusa, standard precisa ser escolhido explicitamente. Suporte em help não comprova sucesso de encoder/hardware/captura no dispositivo.
+
+Inspeção read-only do Flatpak instalado: GPU Screen Recorder 6.1.2. Help/manual instalados documentam `-s`, `-f`, `-q`, `-encoder`, `-fallback-cpu-encoding`. Não há controle genérico de threads do encoder documentado. `-tune performance` é específico NVIDIA e já default; `-low-power` AMD tem ressalva de driver que pode piorar desempenho, portanto não usado. Não executei consulta/captura de tela/microfone ou teste de encoder real. Runtime GPL-3.0 externo não é incorporado ao código MIT nem ao pacote local de revisão.
+
+Testes offline verificam argumentos exatos, FPS menor preservado, áudio idêntico, ausência de CPU fallback e recusa segura de help inválido. O único comparativo de desempenho executado é extração FFmpeg de vídeo sintético descrita no review; não é benchmark do call-light/GPU. Para atribuir o lag ainda falta observação consentida da chamada/captura real, codec/resolução efetivos, carga/IO/GPU e perdas de áudio/frames sincronizadas. Sem essa evidência não atribuí causa nem apliquei ajuste no produto ativo.

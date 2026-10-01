@@ -1,3 +1,4 @@
+import { withHeavyAdmission, cliAdmissionWait } from '../runtime/heavy-admission';
 import { promises as fs } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { homedir } from "node:os";
@@ -79,7 +80,7 @@ export const queueDiarization = async (id: string, dependencies: QueueDiarizatio
   } finally { await lease.release(); }
 };
 
-export const createDiarization = async (
+const createDiarizationOwned = async (
   config: AppConfig, id: string, dependencies: { diarize?: typeof diarizeAudioWithOpenAI } = {}
 ): Promise<DiarizationResult> => {
   validateJobId(id);
@@ -156,3 +157,6 @@ export const nameDiarizationSpeaker = async (id: string, speakerId: string, labe
     await store.save(result);
   } finally { await lease.release(); }
 };
+
+export const createDiarization = (...args: Parameters<typeof createDiarizationOwned>) =>
+  withHeavyAdmission('diarization', args[1], () => createDiarizationOwned(...args), { onWait: cliAdmissionWait });

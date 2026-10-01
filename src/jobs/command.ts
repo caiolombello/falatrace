@@ -1,3 +1,4 @@
+import { withHeavyAdmission, cliAdmissionWait } from '../runtime/heavy-admission';
 import { spawn } from "node:child_process";
 
 export type CommandResult = {
@@ -5,7 +6,7 @@ export type CommandResult = {
   stderr: string;
 };
 
-export const runCommand = async (
+const runCommandOwned = async (
   command: string,
   args: string[],
   options: { cwd?: string; env?: NodeJS.ProcessEnv; timeoutMs?: number; inherit?: boolean; signal?: AbortSignal } = {}
@@ -73,3 +74,7 @@ export const runCommand = async (
       }
     });
   });
+
+// Capture uses its backend spawn and is deliberately never admitted here.
+export const runCommand = (...args: Parameters<typeof runCommandOwned>): Promise<CommandResult> =>
+  args[0] === 'ffmpeg' ? withHeavyAdmission('command', 'ffmpeg', () => runCommandOwned(...args), { signal: args[2]?.signal, onWait: cliAdmissionWait }) : runCommandOwned(...args);

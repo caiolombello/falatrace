@@ -1,3 +1,4 @@
+import { withHeavyAdmission, cliAdmissionWait } from '../runtime/heavy-admission';
 import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -171,7 +172,7 @@ const processQueuedJob = async (config: AppConfig, jobId: string): Promise<void>
   }
 };
 
-const runWorkerCycle = async (config: AppConfig, runRetention = true): Promise<number> => {
+const runWorkerCycle = async (config: AppConfig, runRetention = true, admissionSignal?: AbortSignal): Promise<number> => {
   await recoverProcessingJobs();
   await fs.mkdir(serverPath("queue"), { recursive: true, mode: 0o700 });
   const entries = await fs.readdir(serverPath("queue"), { withFileTypes: true });
@@ -188,9 +189,9 @@ const runWorkerCycle = async (config: AppConfig, runRetention = true): Promise<n
     .map((entry) => entry.name)
     .sort();
   for (const jobId of jobs) {
-    await processQueuedJob(config, jobId);
+    await withHeavyAdmission('pipeline',jobId,()=>processQueuedJob(config,jobId),{signal:admissionSignal,onWait:cliAdmissionWait});
   }
-  if (runRetention) {
+  if (runRetention && !admissionSignal?.aborted) {
     try {
       const report = await cleanupRemoteServer(config, { serverRoot: SERVER_ROOT });
       if (retentionTotal(report) > 0) {
@@ -218,18 +219,21 @@ export const runWorkerOnce = async (config: AppConfig): Promise<number> => {
 export const runWorker = async (config: AppConfig): Promise<void> => {
   const lease = await acquireSingleton("processing-worker");
   let stopped = false;
+  const admission = new AbortController();
   let nextRetentionAt = 0;
   process.once("SIGINT", () => {
-    stopped = true;
+    stopped = true; admission.abort();
   });
   process.once("SIGTERM", () => {
-    stopped = true;
+    stopped = true; admission.abort();
   });
   try {
     while (!stopped) {
       const now = Date.now();
       const runRetention = now >= nextRetentionAt;
-      await runWorkerCycle(config, runRetention);
+      try { await runWorkerCycle(config, runRetention, admission.signal); }
+      catch(error) { if(!stopped)throw error; }
+      if (stopped) break;
       if (runRetention) nextRetentionAt = now + RETENTION_INTERVAL_MS;
       await new Promise((resolvePromise) => setTimeout(resolvePromise, 5000));
     }

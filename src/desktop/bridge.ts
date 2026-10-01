@@ -1,3 +1,4 @@
+import { readHeavyStatus } from '../runtime/heavy-admission';
 /** JSONL bridge for the desktop application. */
 import { promises as fs } from "node:fs";
 import { basename, resolve, join, dirname } from "node:path";
@@ -30,16 +31,19 @@ const studioFrames=new StudioVisualFlow(join(dirname(getDefaultJobStateDir()),'v
 export const handleRealFrameOperation=async(flow:StudioVisualFlow,request:Request,source:StudioSource)=>{
  const p=request.payload||{};
  if(request.op==='frames-check-models')return flow.check(source.config,p.visionModel||'',p.summaryModel||'');
- if(request.op==='frames-cancel')return flow.cancel(source.key,p.previewId||'');
+ if(request.op==='frames-cancel')return flow.cancel(source.key,p.previewId||'',p.scopeId);
  if(request.op==='frames-confirm')return flow.confirm(source,p.previewId||'',p.consent===true,p.consentKey||'');
+ if(request.op==='frames-scope')return flow.scope(source,p.startSeconds??NaN,p.endSeconds??NaN);
+ if(request.op==='frames-plan'){if(!p.scopeId)throw Error('Explicit reviewed transcript scope required');return flow.plan(source,p.capabilityId||'',p.consentTranscript===true,p.scopeId);}
+ if(request.op==='frames-preview-plan')return flow.previewPlan(source,p.planId||'');
  if(request.op==='frames-preview')return flow.preview(source,p.capabilityId||'',p.question||'',p.seconds??NaN);
  throw Error('Unknown visual operation');
 };
 
 import { setAutomationPaused } from "../calls/control";
 
-const OPERATIONS = ["ux-capabilities", "onboarding-read", "onboarding-save-local", "frames-check-models", "frames-preview", "frames-confirm", "frames-cancel", "list", "detail", "resolve", "playback-status", "subtitles", "diarization", "automation-pause", "automation-resume", "capture-status", "capture-start", "capture-stop", "capture-recover", "audio-defaults", "jobs-list", "job-process", "job-retry", "diarization-name", "context-meeting"] as const;
-type Request = { id: number; op: typeof OPERATIONS[number]; key?: string; payload?: { title?: string; speakerId?: string; label?: string; maxCharacters?: number; query?: string; offset?: number; question?: string; seconds?: number; previewId?: string; consent?: boolean; revision?: string; visionModel?: string; summaryModel?: string; capabilityId?: string; consentKey?: string } };
+const OPERATIONS = ["processing-status", "ux-capabilities", "onboarding-read", "onboarding-save-local", "frames-check-models", "frames-scope", "frames-plan", "frames-preview-plan", "frames-preview", "frames-confirm", "frames-cancel", "list", "detail", "resolve", "playback-status", "subtitles", "diarization", "automation-pause", "automation-resume", "capture-status", "capture-start", "capture-stop", "capture-recover", "audio-defaults", "jobs-list", "job-process", "job-retry", "diarization-name", "context-meeting"] as const;
+type Request = { id: number; op: typeof OPERATIONS[number]; key?: string; payload?: { title?: string; speakerId?: string; label?: string; maxCharacters?: number; query?: string; offset?: number; question?: string; seconds?: number; previewId?: string; consent?: boolean; revision?: string; visionModel?: string; summaryModel?: string; capabilityId?: string; consentKey?: string; planId?:string; consentTranscript?:boolean; scopeId?:string; startSeconds?:number; endSeconds?:number } };
 type Response = { id: number; ok: true; result: unknown } | { id: number; ok: false; error: string };
 const MAX_LINE = 1024 * 1024;
 const UUID = /^[a-f0-9-]{36}$/i;
@@ -159,7 +163,7 @@ const detail = async (key: string): Promise<unknown> => {
     if (/ActiveState=(active|activating)/.test(status.stdout)) subtitleState = "running";
     else if (/ActiveState=failed/.test(status.stdout)) subtitleState = "failed";
   }
-  return { key: entry.sourcePath, title: titleOf(entry), status: entry.jobs[0]?.state || statusOf(entry), backup: backupOf(entry), ...boundary, summary: visualReview?.summaryMarkdown || summary, visualReview, summaryInfo: visualReview ? `Resumo visual solicitado: ${visualReview.visionModel}/${visualReview.summaryModel} · revisar origem` : job ? `${job.summary.provider}/${job.summary.model} · ${job.summary.provider === "openai" ? "provedor externo" : "Ollama: endpoint configurado"}` : "", timesheet, subtitleState,
+  return { key: entry.sourcePath, title: titleOf(entry), status: entry.jobs[0]?.state || statusOf(entry), backup: backupOf(entry), ...boundary, summary: summary, visualReview, summaryInfo: job ? `${job.summary.provider}/${job.summary.model} · ${job.summary.provider === "openai" ? "provedor externo" : "Ollama: endpoint configurado"}` : "", timesheet, subtitleState,
     ...(job && canonical ? { diarizationId: job.id, jobId: job.id } : {}), ...(subtitleId ? { subtitleId } : {}) };
 };
 const resolvePlayback = async (key: string): Promise<unknown> => {
@@ -188,7 +192,7 @@ export const parseRequest = (value: unknown): Request => {
   if (request.key !== undefined && (typeof request.key !== "string" || request.key.length > 4096 || /[\x00-\x1f]/.test(request.key))) throw new Error("key inválido");
   if (request.payload !== undefined && (!request.payload || typeof request.payload !== "object" || Array.isArray(request.payload))) throw new Error("payload inválido");
   const payload = (request.payload || {}) as Record<string, unknown>;
-  const allowed = request.op === "frames-check-models" ? ["visionModel", "summaryModel"] : request.op === "frames-preview" ? ["question", "seconds", "capabilityId"] : request.op === "frames-confirm" ? ["previewId", "consent", "consentKey"] : request.op === "frames-cancel" ? ["previewId"] : request.op === "onboarding-save-local" ? ["revision"] : request.op === "capture-start" ? ["title"] : request.op === "diarization-name" ? ["speakerId", "label"] : request.op === "context-meeting" ? ["maxCharacters", "query", "offset"] : [];
+  const allowed = request.op === "frames-check-models" ? ["visionModel", "summaryModel"] : request.op === "frames-scope" ? ["startSeconds","endSeconds"] : request.op === "frames-plan" ? ["capabilityId","consentTranscript","scopeId"] : request.op === "frames-preview-plan" ? ["planId"] : request.op === "frames-preview" ? ["question", "seconds", "capabilityId"] : request.op === "frames-confirm" ? ["previewId", "consent", "consentKey"] : request.op === "frames-cancel" ? ["previewId","scopeId"] : request.op === "onboarding-save-local" ? ["revision"] : request.op === "capture-start" ? ["title"] : request.op === "diarization-name" ? ["speakerId", "label"] : request.op === "context-meeting" ? ["maxCharacters", "query", "offset"] : [];
   if (Object.keys(payload).some((key) => !allowed.includes(key))) throw new Error("payload inválido");
   for (const [key, max] of [["title", 200], ["speakerId", 8], ["label", 80], ["query", 1000], ["question", 1000], ["previewId", 36], ["revision", 64], ["visionModel", 200], ["summaryModel", 200], ["capabilityId", 36], ["consentKey", 64]] as const) {
     if (payload[key] !== undefined && (typeof payload[key] !== "string" || (payload[key] as string).length > max || /[\x00-\x1f\x7f]/.test(payload[key] as string))) throw new Error("payload inválido");
@@ -196,22 +200,32 @@ export const parseRequest = (value: unknown): Request => {
   if (payload.maxCharacters !== undefined && (!Number.isSafeInteger(payload.maxCharacters) || (payload.maxCharacters as number) < 4096 || (payload.maxCharacters as number) > 24000)) throw new Error("payload inválido");
   if (payload.offset !== undefined && (!Number.isSafeInteger(payload.offset) || (payload.offset as number) < 0)) throw new Error("payload inválido");
   if (payload.seconds !== undefined && (typeof payload.seconds !== "number" || !Number.isFinite(payload.seconds) || payload.seconds < 0)) throw new Error("payload inválido");
+  for(const name of ["startSeconds","endSeconds"] as const)if(payload[name]!==undefined && (typeof payload[name]!=="number"||!Number.isFinite(payload[name])||payload[name]!<0||payload[name]!>86400))throw Error("payload inválido");
+  if(payload.scopeId!==undefined && (typeof payload.scopeId!=="string"||payload.scopeId.length>100||/[\x00-\x1f]/.test(payload.scopeId)))throw Error("payload inválido");
+  if(payload.planId!==undefined && (typeof payload.planId!=="string"||payload.planId.length>100||/[\x00-\x1f]/.test(payload.planId)))throw Error("payload inválido");
+  if(payload.consentTranscript!==undefined && typeof payload.consentTranscript!=="boolean")throw Error("payload inválido");
   if (payload.consent !== undefined && typeof payload.consent !== "boolean") throw new Error("payload inválido");
   return { id: request.id as number, op: request.op as Request["op"], ...(request.key === undefined ? {} : { key: request.key as string }), payload };
 };
 const handle = async (request: Request): Promise<unknown> => {
+  if(request.op === "processing-status") return readHeavyStatus();
   if (request.op === "ux-capabilities") return {mockFrames: process.env.FALATRACE_UX_MOCK_ONLY === "1",realFrames:true};
   if (request.op === "onboarding-read") return readOnboarding();
   if (request.op === "onboarding-save-local") { const result=await saveLocalOnboarding(request.payload?.revision || ""); libraryCache=undefined; return result; }
   if (request.op.startsWith("frames-")) {
     const key=request.key || "";
     if(process.env.FALATRACE_UX_MOCK_ONLY !== "1"){
-      if(request.op==='frames-cancel')return studioFrames.cancel(key,request.payload?.previewId||'');
-      const {entry}=await findEntry(key);const {config}=await loadConfig();const job=completedJob(entry);
-      if(!job)throw Error('A completed transcript is required');
-      await assertExistingManagedPath(config,entry.sourcePath);
-      const transcript=await readCanonicalTranscript(job);if(!transcript)throw Error('Transcript unavailable');
-      return handleRealFrameOperation(studioFrames,request,{key,jobId:job.id,path:entry.sourcePath,mediaHash:job.source.sha256,transcript,config});
+      if(request.op==='frames-cancel')return studioFrames.cancel(key,request.payload?.previewId||'',request.payload?.scopeId);
+      const readSource=async():Promise<StudioSource>=>{
+        libraryCache=undefined;
+        const {entry}=await findEntry(key);const {config}=await loadConfig();const candidate=completedJob(entry);
+        if(!candidate)throw Error('A completed transcript is required');
+        const job=await new JobStore().get(candidate.id);if(job.state!=='completed')throw Error('Completed job changed');
+        await assertExistingManagedPath(config,entry.sourcePath);
+        const transcript=await readCanonicalTranscript(job);if(!transcript)throw Error('Transcript unavailable');
+        return {key,jobId:job.id,path:entry.sourcePath,mediaHash:job.source.sha256,transcript,config};
+      };
+      return handleRealFrameOperation(studioFrames,request,{...await readSource(),refresh:readSource});
     }
     if(request.op === "frames-confirm") return frameReview.confirm(key,request.payload?.previewId || "",request.payload?.consent === true);
     if(request.op === "frames-cancel") return frameReview.cancel(key,request.payload?.previewId || "");
@@ -306,6 +320,7 @@ export const runDesktopBridge = async (): Promise<void> => {
     }
   }
   if (!dropping && buffer.length) accept(buffer.toString("utf8"));
+  studioFrames.cancelAll();
   await Promise.allSettled([...pending]);
 };
 if (import.meta.main) void runDesktopBridge();

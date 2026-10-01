@@ -1,3 +1,4 @@
+import { withHeavyAdmission, cliAdmissionWait } from '../runtime/heavy-admission';
 import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
@@ -207,7 +208,7 @@ const remoteCommand = (config: AppConfig, input: AlignedSubtitleInput, stage: st
   ].join("; ");
 };
 
-export const createAlignedSubtitles = async (
+const createAlignedSubtitlesOwned = async (
   config: AppConfig,
   input: AlignedSubtitleInput,
   dependencies: SubtitleDependencies = {}
@@ -279,3 +280,6 @@ export const createAlignedSubtitles = async (
     }
   } finally { await lease.release(); }
 };
+
+export const createAlignedSubtitles = (...args: Parameters<typeof createAlignedSubtitlesOwned>) =>
+  withHeavyAdmission('subtitles', args[1].source.sha256, () => createAlignedSubtitlesOwned(...args), { onWait: cliAdmissionWait });

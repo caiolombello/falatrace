@@ -43,6 +43,7 @@ ApplicationWindow {
     property bool captions: true
     property bool subtitleQueued: false
     property string notice: ""
+    property string processingWait: ""
     property string pendingPath: ""
     property string playbackOperation: ""
     property bool operationPolling: false
@@ -91,8 +92,11 @@ ApplicationWindow {
     property bool mockFramesEnabled: false
     property bool realFramesEnabled: false
     property var frameCapability: ({})
+    property var frameScope: ({})
+    property var framePlan: ({})
     property var framePreview: ({})
     property var frameResult: ({})
+    property bool showVisualSummary: false
     property real sourceReferenceSeconds: -1
     property int frameGeneration: 0
     property var onboardingDraft: ({})
@@ -100,12 +104,32 @@ ApplicationWindow {
     property string uxError: ""
     property bool uxModal: captureConsent.visible || framesDialog.visible || onboardingDialog.visible
     function cancelFramePreview() {
-        if (framePreview.id) send("frames-cancel", selected.key, {previewId: framePreview.id})
-        frameGeneration += 1; framePreview = ({}); frameResult = ({})
+        if (framePlan.id || framePreview.id || hasPending("frames-preview") || hasPending("frames-plan") || hasPending("frames-preview-plan") || hasPending("frames-scope")) send("frames-cancel", selected.key, {previewId: framePreview.id || ""})
+        frameGeneration += 1; framePlan = ({}); framePreview = ({}); frameResult = ({})
     }
     function prepareFrames() {
         cancelFramePreview(); uxError = ""
         send("frames-preview", selected.key, {question: frameQuestion.text, seconds: Number(frameSeconds.text), capabilityId: frameCapability.id || ""})
+    }
+    function selectionChanged() {
+        const id=frameScope.id || ""; cancelFramePreview();
+        send("frames-cancel",selected.key,{previewId:"",scopeId:id})
+        frameScope=({}); plannerTranscriptConsent.checked=false
+    }
+    function prepareTranscriptScope() {
+        selectionChanged(); uxError=""
+        send("frames-scope",selected.key,{startSeconds:Number(scopeStart.text),endSeconds:Number(scopeEnd.text)})
+    }
+    function planFrames() {
+        cancelFramePreview(); uxError = ""
+        send("frames-plan",selected.key,{capabilityId:frameCapability.id || "",consentTranscript:plannerTranscriptConsent.checked,scopeId:frameScope.id || ""})
+    }
+    function previewPlannedFrames() {
+        framePreview=({}); frameResult=({}); uxError=""
+        send("frames-preview-plan",selected.key,{planId:framePlan.id || ""})
+    }
+    function followAt(time) {
+        sourceReferenceSeconds=time; framesDialog.close(); if(mediaReady)seek(time); else notice="Referência selecionada em " + preciseClock(time) + ". Playback físico não validado."
     }
     function followFrameReference() {
         if (!frameResult.sourceKey || frameResult.sourceKey !== selected.key) return
@@ -123,28 +147,44 @@ ApplicationWindow {
         anchors.centerIn: parent; width: Math.min(window.width - 64, 560)
         height: Math.min(implicitHeight, window.height - 64)
         modal: true; closePolicy: Popup.CloseOnEscape
-        onOpened: { frameQuestion.text = "O que falta verificar neste momento?"; frameSeconds.text = "0"; uxError = "" }
-        onClosed: cancelFramePreview()
+        onOpened: { frameQuestion.text = "O que falta verificar neste momento?"; frameSeconds.text = "0"; frameScope=({}); scopeStart.text="0"; scopeEnd.text=""; plannerTranscriptConsent.checked=false; uxError = "" }
+        onClosed: selectionChanged()
         contentItem: ScrollView {
           id: frameScroll; clip: true; contentWidth: availableWidth; implicitHeight: frameColumn.implicitHeight
           ColumnLayout {
             id: frameColumn; width: frameScroll.availableWidth; spacing: 12
-            Label { text: mockFramesEnabled ? "Preview: extração local limitada · provider mock-local, nenhuma IA real. Preview baseado no transcript, tempo aproximado. Budget: 8 previews/4 inferências mock por sessão. Abrir esta tela não chama o mock." : "Ollama loopback apenas. Verificar modelos consulta metadados; preview extrai localmente. Só Confirmar envia o frame/pergunta à visão e transcrição/observações ao resumo. Limite persistente comum: 24 inferências / 16 previews; falhas consomem; sem reset por clique. Nenhuma assinatura/API externa é usada."; textFormat: Text.PlainText; wrapMode: Text.WordWrap; color: muted; Layout.fillWidth: true }
+            Label { objectName: "processingWaitLabel"; visible: !!processingWait; text: "Fila global · " + processingWait; textFormat: Text.PlainText; wrapMode: Text.WordWrap; color: warningColor; Layout.fillWidth: true }
+            Label { text: mockFramesEnabled ? "Preview: extração local limitada · provider mock-local, nenhuma IA real. Preview baseado no transcript, tempo aproximado. Budget: 8 previews/4 inferências mock por sessão. Abrir esta tela não chama o mock." : "Ollama loopback apenas. Verificar modelos consulta metadados; preview extrai localmente. Só Confirmar envia o frame/pergunta à visão e transcrição/observações ao resumo. Budget comum da instalação: limites e período abaixo após verificar modelos. 24/16 são defaults temporários alpha, configuráveis explicitamente; não são orçamento financeiro. Falhas consomem; sem reset por sessão. Nenhuma assinatura/API externa é usada."; textFormat: Text.PlainText; wrapMode: Text.WordWrap; color: muted; Layout.fillWidth: true }
             Label { visible: !mockFramesEnabled; text: "Provider: Ollama local · modelos explícitos (não salva configuração)"; wrapMode: Text.WordWrap; color: ink; Layout.fillWidth: true }
             TextField { id: frameVisionModel; objectName: "frameVisionModel"; visible: !mockFramesEnabled; placeholderText: "Modelo instalado com capability vision"; Layout.fillWidth: true; maximumLength: 200; onTextEdited: { cancelFramePreview(); frameCapability=({}) } }
             TextField { id: frameSummaryModel; objectName: "frameSummaryModel"; visible: !mockFramesEnabled; placeholderText: "Modelo instalado com capability completion"; Layout.fillWidth: true; maximumLength: 200; onTextEdited: { cancelFramePreview(); frameCapability=({}) } }
             Button { visible: !mockFramesEnabled; text: hasPending("frames-check-models") ? "Verificando…" : "Verificar modelos locais"; enabled: !!selected.key && !!frameVisionModel.text && !!frameSummaryModel.text && !hasPending("frames-check-models") && !hasPending("frames-confirm"); onClicked: { cancelFramePreview(); frameCapability=({}); send("frames-check-models",selected.key,{visionModel:frameVisionModel.text,summaryModel:frameSummaryModel.text}) } }
             Label { visible: !mockFramesEnabled && !!frameCapability.id; text: "Capabilities observadas: vision / completion · " + (frameCapability.endpoint || "") + " · " + frameCapability.visionModel + " / " + frameCapability.summaryModel + " · verificação expira em 5 min"; wrapMode: Text.WordWrap; textFormat: Text.PlainText; color: accent; Layout.fillWidth: true }
+            Label { visible: !mockFramesEnabled && !!frameCapability.id; text: "Budget · usuário/instalação · período lifetime (sem renovação): " + (frameCapability.budgetLimits ? frameCapability.budgetLimits.maxInferences + " inferências / " + frameCapability.budgetLimits.maxPreviews + " previews" : "indisponível") + (frameCapability.temporaryAlphaDefaults ? " · defaults temporários alpha" : " · configuração explícita, mudanças auditadas") + ". Modelo local usa recursos da máquina; nenhum preço monetário estimado."; textFormat: Text.PlainText; wrapMode: Text.WordWrap; color: muted; Layout.fillWidth: true }
+            Label { visible: !mockFramesEnabled; text: "Seleção explícita da transcrição · segundos absolutos do vídeo. Somente segmentos inteiros dentro do intervalo; trechos que cruzam bordas ficam omitidos."; wrapMode: Text.WordWrap; textFormat: Text.PlainText; color: muted; Layout.fillWidth: true }
+            RowLayout { visible: !mockFramesEnabled; Layout.fillWidth:true; TextField { id:scopeStart; objectName:"scopeStart"; placeholderText:"Início (s)"; text:"0"; maximumLength:16; Layout.fillWidth:true; Accessible.name:"Início absoluto da seleção em segundos"; onTextEdited:selectionChanged() } TextField { id:scopeEnd; objectName:"scopeEnd"; placeholderText:"Fim (s)"; maximumLength:16; Layout.fillWidth:true; Accessible.name:"Fim absoluto da seleção em segundos"; onTextEdited:selectionChanged() } }
+            Button { objectName:"prepareScopeButton"; visible:!mockFramesEnabled; text:hasPending("frames-scope")?"Preparando trecho…":"Revisar trecho incluído e omitido"; enabled:!!selected.key && !!scopeEnd.text && !hasPending("frames-scope") && !hasPending("frames-confirm"); onClicked:prepareTranscriptScope() }
+            Label { objectName:"scopeSummaryLabel"; visible:!!frameScope.id; text:frameScope.id?"Incluído: " + preciseClock(frameScope.startSeconds) + "–" + preciseClock(frameScope.endSeconds) + " · " + frameScope.includedCount + " de " + frameScope.totalSegments + " segmentos · " + frameScope.characters + "/" + frameScope.maxCharacters + " caracteres serializados\nOmitido: " + frameScope.omittedCount + " (antes " + frameScope.omittedBefore + ", depois " + frameScope.omittedAfter + ", cruzam borda " + frameScope.omittedIntersecting + "). Limite: " + frameScope.maxSegments + " segmentos. " + (frameScope.withinLimits?"Trecho abaixo disponível para revisar; nada enviado ao planner.":"Acima do limite ou vazio: nenhum conteúdo enviado; reduza/ajuste a seleção. Sem truncamento automático."):""; wrapMode:Text.WordWrap; textFormat:Text.PlainText; color:frameScope.withinLimits?ink:warningColor; Layout.fillWidth:true }
+            Repeater { model: frameScope.segments || []; delegate: Label { required property var modelData; text:modelData.id + " · " + preciseClock(modelData.start) + "–" + preciseClock(modelData.end) + " · " + modelData.text; wrapMode:Text.WordWrap; textFormat:Text.PlainText; color:muted; Layout.fillWidth:true } }
+            CheckBox { id: plannerTranscriptConsent; objectName: "plannerTranscriptConsent"; visible: !mockFramesEnabled; text: "Autorizar somente o trecho revisado ao planner local (sem imagens)"; checked: false; enabled:!!frameScope.id && frameScope.withinLimits; Layout.fillWidth: true; onToggled: { if (!checked) cancelFramePreview() } }
+            Button { objectName: "planFramesButton"; visible: !mockFramesEnabled; text: hasPending("frames-plan") ? "Planejando…" : "Decidir pelo transcript: precisa de frames?"; enabled: !!frameCapability.id && !!frameScope.id && frameScope.withinLimits && plannerTranscriptConsent.checked && !hasPending("frames-plan") && !hasPending("frames-confirm"); onClicked: planFrames() }
+            Label { objectName: "plannerDecisionLabel"; visible: !!framePlan.id; text: framePlan.id ? "Decisão: " + framePlan.decision + " · " + framePlan.rationale + (framePlan.plannerCacheHit ? "\nPlano reutilizado do cache; nenhuma nova inferência de planejamento." : "\nUma tentativa de planner local consumida.") + (framePlan.decision === "frames" ? "\nPlano proposto; nenhum frame enviado. Revisar fonte → preview → consentimento." : "\nNenhum frame solicitado/enviado; resumo existente preservado.") : ""; textFormat: Text.PlainText; wrapMode: Text.WordWrap; color: ink; Layout.fillWidth: true }
+            Repeater { model: framePlan.sources || []; delegate: Label { required property var modelData; text: modelData.segmentId + " · citação: " + modelData.quote; textFormat: Text.PlainText; wrapMode: Text.WordWrap; color: muted; Layout.fillWidth: true } }
+            Repeater { model: framePlan.plan ? framePlan.plan.requests : []; delegate: Label { required property var modelData; text: preciseClock(modelData.timestampSeconds) + " · " + modelData.reason + " · " + modelData.segmentIds.join(", ") + "\nPergunta visual: " + modelData.question; textFormat: Text.PlainText; wrapMode: Text.WordWrap; color: ink; Layout.fillWidth: true } }
+            Button { visible: framePlan.decision === "frames"; text: "Preparar previews do plano revisado"; enabled: !!framePlan.id && !hasPending("frames-preview-plan") && !hasPending("frames-confirm"); onClicked: previewPlannedFrames() }
             Label { text: "Pergunta"; color: ink }
             TextField { id: frameQuestion; objectName: "frameQuestion"; Layout.fillWidth: true; maximumLength: 1000; Accessible.name: "Pergunta para evidência visual"; onTextEdited: cancelFramePreview() }
             Label { text: "Horário em segundos, dentro de um segmento"; color: ink }
             TextField { id: frameSeconds; objectName: "frameSeconds"; Layout.fillWidth: true; maximumLength: 10; Accessible.name: "Timestamp em segundos"; onTextEdited: cancelFramePreview() }
-            Button { text: hasPending("frames-preview") ? "Preparando…" : "Preparar preview"; enabled: !!selected.key && (mockFramesEnabled || !!frameCapability.id) && !hasPending("frames-preview") && !hasPending("frames-confirm"); onClicked: prepareFrames() }
-            Label { visible: !!framePreview.id; text: framePreview.id ? "Origem: item selecionado · " + preciseClock(framePreview.plan.requests[0].timestampSeconds) + " · " + framePreview.plan.requests[0].segmentIds.join(", ") + (mockFramesEnabled ? "\n1 pedido · provider mock-local · sem custo de modelo · expira em 5 min" : "\nDestino: " + framePreview.endpoint + "\nVisão: " + framePreview.visionModel + " · resumo: " + framePreview.summaryModel + "\nEnviar: 1 JPEG (" + framePreview.frameBytes + " bytes), pergunta e metadata; depois transcrição + observações para resumo.\nHash mídia: " + framePreview.mediaHash + "\nHash transcrição: " + framePreview.transcriptHash + "\nHash frame: " + framePreview.frameSha256 + "\nSaldo no preview (antes de confirmar): " + framePreview.remainingInferences + " inferências comuns / " + framePreview.remainingPreviews + " previews. Consentimento expira em até 5 min.") : ""; textFormat: Text.PlainText; wrapMode: Text.WordWrap; color: accent; Layout.fillWidth: true }
+            Button { text: hasPending("frames-preview") ? "Preview pendente…" : "Preparar preview"; enabled: !!selected.key && (mockFramesEnabled || !!frameCapability.id) && !hasPending("frames-preview") && !hasPending("frames-confirm"); onClicked: prepareFrames() }
+            Label { visible: !!framePreview.id; text: framePreview.id ? "Origem: item selecionado · " + preciseClock(framePreview.plan.requests[0].timestampSeconds) + " · " + framePreview.plan.requests[0].segmentIds.join(", ") + (mockFramesEnabled ? "\n1 pedido · provider mock-local · sem custo de modelo · expira em 5 min" : "\nDestino: " + framePreview.endpoint + "\nVisão: " + framePreview.visionModel + " · resumo: " + framePreview.summaryModel + "\nEnviar: " + (framePreview.frames ? framePreview.frames.length : 1) + " JPEG(s); primeiro (" + framePreview.frameBytes + " bytes), pergunta e metadata; depois " + (framePreview.scope ? "somente trecho selecionado + observações para resumo parcial." : "transcrição completa + observações para resumo.") + "\nHash mídia: " + framePreview.mediaHash + "\nHash transcrição: " + framePreview.transcriptHash + "\nFrames: " + (framePreview.frames || []).map(function(f){return preciseClock(f.timestampSeconds) + " · " + f.bytes + " bytes · " + f.sha256}).join("\n") + "\nSaldo no preview (antes de confirmar): " + framePreview.remainingInferences + " inferências comuns / " + framePreview.remainingPreviews + " previews. Consentimento expira em até 5 min.") : ""; textFormat: Text.PlainText; wrapMode: Text.WordWrap; color: accent; Layout.fillWidth: true }
             Image { visible: !!framePreview.frameData; source: framePreview.frameData || ""; Layout.fillWidth: true; Layout.preferredHeight: visible ? 100 : 0; fillMode: Image.PreserveAspectFit; Accessible.name: "Frame local do timestamp solicitado; não é resultado de IA" }
-            Button { text: hasPending("frames-confirm") ? "Analisando…" : (mockFramesEnabled ? "Confirmar uso do mock local" : "Autorizar visão + novo resumo local"); enabled: !!framePreview.id && !hasPending("frames-confirm") && !frameResult.sourceKey; onClicked: confirmFrames() }
+            Repeater { model: framePreview.framePreviews ? framePreview.framePreviews.slice(1) : []; delegate: Image { required property var modelData; source: modelData.frameData; Layout.fillWidth: true; Layout.preferredHeight: 100; fillMode: Image.PreserveAspectFit; Accessible.name: "Frame adicional do plano consentido" } }
+            Button { text: hasPending("frames-confirm") ? "Pedido pendente…" : (mockFramesEnabled ? "Confirmar uso do mock local" : "Autorizar visão + novo resumo local"); enabled: !!framePreview.id && !hasPending("frames-confirm") && !frameResult.sourceKey; onClicked: confirmFrames() }
             Label { visible: !!frameResult.sourceKey; text: (frameResult.synthetic ? "Resultado sintético · requer revisão\n" : "Observação do adapter local · requer revisão\n") + (frameResult.text || ""); textFormat: Text.PlainText; wrapMode: Text.WordWrap; color: ink; Layout.fillWidth: true }
+            Label { visible: !!frameResult.summaryMarkdown; text: frameResult.scope ? "Resumo parcial do intervalo selecionado · requer revisão\n" + frameResult.summaryMarkdown : "Resumo visual solicitado · requer revisão\n" + (frameResult.summaryMarkdown || ""); textFormat: Text.PlainText; wrapMode: Text.WordWrap; color: ink; Layout.fillWidth: true }
             Button { visible: !!frameResult.sourceKey; text: "Ir à origem " + preciseClock(frameResult.timestampSeconds); onClicked: followFrameReference() }
+            Repeater { model: frameResult.observations || []; delegate: Button { required property var modelData; text: "Origem " + preciseClock(modelData.timestampSeconds) + " · " + modelData.uncertainty; onClicked: followAt(modelData.timestampSeconds) } }
             Label { visible: !!uxError; text: uxError; textFormat: Text.PlainText; wrapMode: Text.WordWrap; color: errorColor; Layout.fillWidth: true }
           }
         }
@@ -217,7 +257,7 @@ ApplicationWindow {
         if (playerInitialized) video.commandAsync(["stop"])
         search.forceActiveFocus()
     }
-    function selectRecording(item) {
+    function selectRecording(item) { showVisualSummary=false;
         framesDialog.close(); cancelFramePreview()
         generation += 1; sourceReferenceSeconds = -1
         selected = item
@@ -281,6 +321,8 @@ ApplicationWindow {
         }
     }
     Shortcut { sequence: "Escape"; enabled: !!selected.key && !uxModal; onActivated: backToLibrary() }
+    Timer { interval: processingWait || hasPending("frames-preview") || hasPending("frames-confirm") ? 500 : 2000; running: backend.available; repeat: true; onTriggered: { if (!hasPending("processing-status")) send("processing-status", "") } }
+    Label { z: 100; anchors.bottom: parent.bottom; anchors.horizontalCenter: parent.horizontalCenter; width: parent.width - 32; visible: !!processingWait; text: processingWait; textFormat: Text.PlainText; wrapMode: Text.WordWrap; color: warningColor; padding: 8; background: Rectangle { color: panel } }
     Timer { interval: 1000; running: captureStatus.active; repeat: true; onTriggered: statusNow = Date.now() }
     Component.onCompleted: if (backend.available) { send("list", ""); send("capture-status", ""); send("jobs-list", ""); send("ux-capabilities", "") }
     Connections {
@@ -300,15 +342,20 @@ ApplicationWindow {
             if (request.op === "playback-status") operationPolling = false
             if (request.op === "list") loading = false
             if (request.op === "detail") detailLoading = false
-            if (request.op.startsWith("frames-") && (request.generation !== generation || request.frameGeneration !== frameGeneration)) return
+            if (request.op.startsWith("frames-") && request.op !== "frames-cancel" && (request.generation !== generation || request.frameGeneration !== frameGeneration)) return
             if (request.op.startsWith("onboarding-") && request.onboardingGeneration !== onboardingGeneration) return
+            if (!message.ok && request.op === "processing-status") { processingWait = "Estado do processamento indisponível; nenhuma alteração na captura."; return }
             if (!message.ok && (request.op.startsWith("frames-") || request.op.startsWith("onboarding-"))) { uxError = message.error; return }
             if (!message.ok) { errorText = message.error; notice = ""; captureBusy = false; contextLoading = false; if (request.op === "subtitles") subtitleQueued = false; if (request.op === "diarization") diarizationQueued = false; if (request.op === "resolve" || request.op === "playback-status") { resolving = false; playbackOperation = "" } return }
             const result = message.result
             if (request.op === "ux-capabilities") { mockFramesEnabled = !!result.mockFrames; realFramesEnabled = !!result.realFrames
+            } else if (request.op === "processing-status") { processingWait = result.waiting.length ? result.waiting[0].message : ""
+            } else if (request.op === "frames-cancel") { send("processing-status", "")
             } else if (request.op === "frames-check-models") { frameCapability = result
-            } else if (request.op === "frames-preview") { framePreview = result
-            } else if (request.op === "frames-confirm") { frameResult = result; if (!result.synthetic && result.summaryMarkdown) { const updated=Object.assign({},detail); updated.summary=result.summaryMarkdown; updated.summaryInfo="Resumo visual solicitado · " + result.visionModel + " / " + result.summaryModel + " · revisar origem"; detail=updated }
+            } else if (request.op === "frames-scope") { frameScope = result
+            } else if (request.op === "frames-plan") { framePlan = result
+            } else if (request.op === "frames-preview" || request.op === "frames-preview-plan") { framePreview = result
+            } else if (request.op === "frames-confirm") { frameResult = result; showVisualSummary=false; if (!result.synthetic && result.summaryMarkdown) { const updated=Object.assign({},detail); updated.visualReview=result; detail=updated }
             } else if (request.op === "onboarding-read") { onboardingDraft = result
             } else if (request.op === "onboarding-save-local") { notice = "Escolha local salva; nenhum serviço iniciado."; onboardingDialog.close()
             } else if (request.op === "list") {
@@ -538,6 +585,8 @@ ApplicationWindow {
                                     }
                                 }
                             }
+                            Button { id: visualSummaryButton; objectName: "visualSummaryButton"; visible: tabs.currentIndex===1 && !!detail.visualReview && !!detail.visualReview.summaryMarkdown; text: showVisualSummary ? "Voltar ao resumo original" : (detail.visualReview && detail.visualReview.scope ? "Ver resumo parcial do intervalo visual" : "Ver resumo visual solicitado"); onClicked: showVisualSummary=!showVisualSummary }
+                            Label { visible: tabs.currentIndex===1 && showVisualSummary && !!detail.visualReview; text: detail.visualReview && detail.visualReview.scope ? "PARCIAL · " + preciseClock(detail.visualReview.scope.startSeconds) + "–" + preciseClock(detail.visualReview.scope.endSeconds) + " · restante omitido; revisar origem" : "Resumo visual solicitado · revisar origem"; textFormat: Text.PlainText; color: warningColor; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                             Label { visible: tabs.currentIndex === 1; text: detail.summaryInfo ? "Configuração do job: " + detail.summaryInfo + " · Resumo de IA: confira a fonte e os avisos de revisão." : "Resumo de IA: confira a fonte e os avisos de revisão."; textFormat: Text.PlainText; color: muted; wrapMode: Text.WordWrap; Layout.fillWidth: true; font.pixelSize: 11 }
                             Label { visible: tabs.currentIndex === 0 && detail.transcript.timing === "block"; text: "Texto original; tempos aproximados por bloco."; color: muted; font.pixelSize: 11; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                             Label { visible: tabs.currentIndex === 2; textFormat: Text.PlainText; text: detail.diarization.message || "Identifique os falantes para revisar suas participações nesta gravação."; color: detail.diarization.state === "failed" ? errorColor : muted; font.pixelSize: 11; wrapMode: Text.WordWrap; Layout.fillWidth: true }
@@ -599,7 +648,7 @@ ApplicationWindow {
                             ScrollView {
                                 visible: tabs.currentIndex !== 0 && tabs.currentIndex !== 2 || (tabs.currentIndex === 0 && !(detail.transcript.segments || []).length)
                                 Layout.fillWidth: true; Layout.fillHeight: true; clip: true
-                                TextArea { id: contextArea; readOnly: true; selectByMouse: true; wrapMode: TextEdit.Wrap; textFormat: TextEdit.PlainText; color: ink; font.pixelSize: 13; text: tabs.currentIndex === 0 ? detail.transcript.text || (detailLoading ? "Carregando…" : "Transcrição ainda não disponível.") : tabs.currentIndex === 1 ? detail.summary || "Resumo ainda não disponível." : tabs.currentIndex === 3 ? (contextText || (contextLoading ? "Preparando contexto sob demanda…" : "Peça o contexto para esta gravação quando precisar.")) : detail.timesheet || "Nenhum apontamento vinculado a esta gravação." }
+                                TextArea { id: contextArea; readOnly: true; selectByMouse: true; wrapMode: TextEdit.Wrap; textFormat: TextEdit.PlainText; color: ink; font.pixelSize: 13; text: tabs.currentIndex === 0 ? detail.transcript.text || (detailLoading ? "Carregando…" : "Transcrição ainda não disponível.") : tabs.currentIndex === 1 ? (showVisualSummary && detail.visualReview ? detail.visualReview.summaryMarkdown : detail.summary) || "Resumo ainda não disponível." : tabs.currentIndex === 3 ? (contextText || (contextLoading ? "Preparando contexto sob demanda…" : "Peça o contexto para esta gravação quando precisar.")) : detail.timesheet || "Nenhum apontamento vinculado a esta gravação." }
                             }
                             Button { opacity: enabled ? 1 : 0.5; visible: tabs.currentIndex === 0 && !!detail.subtitleId; Layout.fillWidth: true; text: subtitleQueued ? "Legendas em preparação…" : "Gerar legendas no worker configurado"; enabled: backend.available && !subtitleQueued && detail.subtitleState !== "ready"; onClicked: { subtitleQueued = true; if (send("subtitles", detail.subtitleId) < 0) subtitleQueued = false } }
                             Button { opacity: enabled ? 1 : 0.5; visible: (tabs.currentIndex === 0 || tabs.currentIndex === 2) && !!detail.diarizationId && !(tabs.currentIndex === 2 && detail.diarization.state === "review"); Layout.fillWidth: true; text: diarizationQueued ? "Identificação em preparação…" : detail.diarization.state === "review" ? "Ver falantes" : "Identificar falantes"; enabled: backend.available && !diarizationQueued; onClicked: { if (detail.diarization.state === "review") tabs.currentIndex = 2; else { diarizationQueued = true; if (send("diarization", detail.diarizationId) < 0) diarizationQueued = false } } }

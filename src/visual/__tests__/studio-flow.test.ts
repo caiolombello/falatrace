@@ -84,3 +84,33 @@ test('distinct consented questions work, TTL renews only with fresh consent and 
  expect(calls).toEqual({vision:3,summary:3});const budget=JSON.parse(await fs.readFile(join(root,'app/budget.json'),'utf8'));expect(budget.inferences).toBe(6);expect(budget.previews).toBe(3);
  const restarted=new StudioVisualFlow(join(root,'app'),()=>now);cap=await restarted.check(s.config,'vision-fixture','summary-fixture');const reused=await restarted.preview(s,cap.id,'Pergunta A',1.2);await restarted.confirm(s,reused.id,true,reused.consentKey);expect(calls).toEqual({vision:3,summary:3});expect(JSON.parse(await fs.readFile(join(root,'app/budget.json'),'utf8')).inferences).toBe(6);
 }));
+test('consent expiring while queued is refused before any vision or summary; fresh preview remains required',async()=>fixture(async(s,root,calls)=>{
+ const admission=await import('../../runtime/heavy-admission');let now=1000;
+ const flow=new StudioVisualFlow(join(root,'app'),()=>now),p=await prepared(flow,s);
+ let release!:()=>void;
+ const blocker=admission.withHeavyAdmission('pipeline','other-heavy-job',async()=>new Promise<void>(r=>release=r));
+ try {
+  for(let i=0;i<100&&!release;i++)await Bun.sleep(10);expect(!!release).toBe(true);
+  const pending=flow.confirm(s,p.id,true,p.consentKey);const refused=pending.then(()=>{throw Error('Unexpected consent acceptance');},error=>error);
+  for(let i=0;i<100;i++){if((await admission.readHeavyStatus()).waiting.length)break;await Bun.sleep(10);}
+  expect((await admission.readHeavyStatus()).waiting.length).toBe(1);
+  now=301001;release();await blocker;expect((await refused).message).toContain('Consent expired while waiting');expect(calls).toEqual({vision:0,summary:0});
+  expect(await flow.readResult(s.jobId,s.mediaHash,s.transcript)).toBeUndefined();
+ }finally{release?.();await blocker;}
+}));
+test('production refresh contract refuses provider/transcript changes after queue wait before inference',async()=>fixture(async(s,root,calls)=>{
+ const admission=await import('../../runtime/heavy-admission');
+ for(const change of ['provider','transcript']){
+  const flow=new StudioVisualFlow(join(root,change));let changed=false;const source={...s,refresh:async()=>{
+   const next=structuredClone(s);if(changed){if(change==='provider')next.config.summary.ollamaUrl='http://localhost:11435';else next.transcript.text+=' corrected';}return next;
+  }};
+  const p=await prepared(flow,source);let release!:()=>void;
+  const blocker=admission.withHeavyAdmission('pipeline','another-job',async()=>new Promise<void>(r=>release=r));
+  try{
+   for(let i=0;i<100&&!release;i++)await Bun.sleep(10);expect(!!release).toBe(true);
+   const result=flow.confirm(source,p.id,true,p.consentKey).then(()=>{throw Error('Unexpected inference');},error=>error);
+   for(let i=0;i<100;i++){if((await admission.readHeavyStatus()).waiting.length)break;await Bun.sleep(10);}
+   changed=true;release();await blocker;expect((await result).message).toContain('changed while waiting');expect(calls).toEqual({vision:0,summary:0});
+  }finally{release?.();await blocker;}
+ }
+}));

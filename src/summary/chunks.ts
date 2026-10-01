@@ -11,9 +11,9 @@ import { SUMMARY_SYSTEM_PROMPT, SUMMARY_JSON_SCHEMA } from "./schema";
 export type SummaryChunk = { text: string; evidence: SummaryInputEvidence; key: string };
 export type SummaryAdapter = (chunk: SummaryChunk, signal?: AbortSignal) => Promise<RecordingSummary>;
 const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
-export const planSummaryChunks = (transcript: Transcript, mediaHash: string, context: SummaryContext | undefined, maxCharacters: number, visual?: Evidence["visual"]): SummaryChunk[] => {
-  const evidence = { ...buildSummaryEvidence(transcript,mediaHash,8000), ...(visual ? { visual } : {}) };
-  const fullText = transcript.text.trim() ? transcript.text : transcript.segments.map(s=>s.text.trim()).filter(Boolean).join("\n");
+export const planSummaryChunks = (transcript: Transcript, mediaHash: string, context: SummaryContext | undefined, maxCharacters: number, visual?: Evidence["visual"],segmentIds?:string[]): SummaryChunk[] => {
+  const evidence = { ...buildSummaryEvidence(transcript,mediaHash,8000,segmentIds), ...(visual ? { visual } : {}) };
+  const fullText = segmentIds ? evidence.segments.map(s=>s.text).join("\n") : transcript.text.trim() ? transcript.text : transcript.segments.map(s=>s.text.trim()).filter(Boolean).join("\n");
   const fits = (text:string, source:SummaryInputEvidence) => {try {buildSummaryUserContent(text,context,source,maxCharacters);return source.segments.length<=1000;} catch {return false;}};
   const chunk = (text:string,source:SummaryInputEvidence) => ({text,evidence:source,key:hash({text,source,context,maxCharacters})});
   if(fits(fullText,evidence))return [chunk(fullText,evidence)];
@@ -36,8 +36,8 @@ export const planSummaryChunks = (transcript: Transcript, mediaHash: string, con
   }
   return chunks;
 };
-export const summarizeInChunks = async (options:{transcript:Transcript;mediaHash:string;context?:SummaryContext;maxCharacters:number;provider:SummaryProvider;model:string;adapterIdentity:string;visual?:Evidence["visual"];cacheDir:string;adapter:SummaryAdapter;signal?:AbortSignal}):Promise<RecordingSummary> => {
-  const chunks=planSummaryChunks(options.transcript,options.mediaHash,options.context,options.maxCharacters,options.visual);
+export const summarizeInChunks = async (options:{transcript:Transcript;mediaHash:string;context?:SummaryContext;maxCharacters:number;provider:SummaryProvider;model:string;adapterIdentity:string;visual?:Evidence["visual"];segmentIds?:string[];cacheDir:string;adapter:SummaryAdapter;signal?:AbortSignal}):Promise<RecordingSummary> => {
+  const chunks=planSummaryChunks(options.transcript,options.mediaHash,options.context,options.maxCharacters,options.visual,options.segmentIds);
   if(chunks.length>1 && options.provider==='openai')throw new Error('Multi-request API summary requires an explicit paid-budget policy; use local summary');
   options.signal?.throwIfAborted();await fs.mkdir(options.cacheDir,{recursive:true,mode:0o700});
   const dir=await fs.lstat(options.cacheDir);if(!dir.isDirectory()||dir.isSymbolicLink())throw new Error('Unsafe summary cache directory');
@@ -53,5 +53,5 @@ export const summarizeInChunks = async (options:{transcript:Transcript;mediaHash
   const merged:RecordingSummary={...results[0],support:undefined,overview:results.map(s=>s.overview).join('\n\n'),topics:[],decisions:[],actionItems:[],citations:[],limitations:[]};
   for(const item of results){for(const citation of item.citations||[]){const offset=citation.section==='topic'?merged.topics.length:citation.section==='decision'?merged.decisions.length:citation.section==='action'?merged.actionItems.length:0;merged.citations!.push({...citation,index:citation.section==='overview'?0:citation.index+offset});}merged.topics.push(...item.topics);merged.decisions.push(...item.decisions);merged.actionItems.push(...item.actionItems);merged.limitations!.push(...item.limitations||[]);}
   merged.limitations=[...new Set(merged.limitations)].concat('Resumo montado por partes: revisar redundâncias, contexto global e eventuais conflitos. Fragmentos mantêm o intervalo do segmento original.');
-  const output=attachSummarySupport(validateSummary(merged,options.provider,options.model),buildSummaryEvidence(options.transcript,options.mediaHash,8000));output.support!.reviewRequired=true;return output;
+  const output=attachSummarySupport(validateSummary(merged,options.provider,options.model),buildSummaryEvidence(options.transcript,options.mediaHash,8000,options.segmentIds));output.support!.reviewRequired=true;return output;
 };

@@ -1,0 +1,3 @@
+[test]
+# Raw bun test must fail closed outside a marked disposable HOME/XDG environment.
+preload = ["./scripts/offline-network.ts"]

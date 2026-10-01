@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Real Qt UI -> fixture bridge -> actual mock review/config modules. Offline, disposable HOME."""
+"""Real Qt UI -> fixture bridge -> actual admission/preview coordinator, synthetic state and HTTP fixture. Offline, disposable HOME."""
 from pathlib import Path
 import runpy
 import tempfile,subprocess,json,sys,hashlib,shutil,secrets
@@ -16,7 +16,7 @@ with tempfile.TemporaryDirectory(dir='/tmp',prefix='falatrace-local-ux-') as tem
  video=root/'synthetic.mp4'
  subprocess.run(['/usr/bin/ffmpeg','-nostdin','-v','error','-f','lavfi','-i','testsrc2=size=320x180:rate=5','-t','3','-an','-c:v','mpeg4',str(video)],check=True,capture_output=True,timeout=15)
  videoHash=hashlib.sha256(video.read_bytes()).hexdigest()
- for mode in ['frames-preview','frames-result','frames-reference','frames-compact','frames-cancel','frames-stale','onboarding-view','onboarding-saved','onboarding-cancel','onboarding-invalid','real-preview','real-result','real-reference','real-cancel','real-no-consent','real-model-error','real-compact','real-summary']:
+ for mode in ['real-wait','real-wait-cancel']:
   folder=root/mode;folder.mkdir();config=folder/'config.json';before='{"future":{"synthetic":true},"obs":{"password":"synthetic-secret"}}' if mode!='onboarding-invalid' else '{invalid';config.write_text(before)
   receipt=folder/'bridge-receipt.json'
   bridge='''import GUARD_MODULE;
@@ -41,11 +41,11 @@ globalThis.fetch=async(url,init)=>{
  if(b.model==='vision-fixture'){vision++;const f=input.frames[0];return Response.json({message:{content:JSON.stringify({observations:[{frameFile:f.file,timestampSeconds:f.timestampSeconds,frameSha256:f.sha256,text:'Resposta do adapter via transporte stub: verificar o frame sintético.',uncertainty:'uncertain'}]})}});}
  summaries++;return Response.json({message:{content:JSON.stringify({title:'Resumo do transporte stub',overview:'Notas ligadas ao instante solicitado. Fixture sintética; modelo não executado.',topics:[],decisions:[],actionItems:[],citations:[],limitations:['Transporte stub; não valida qualidade de modelo.']})}});
 };
-for await(const line of createInterface({input:process.stdin})){
+async function accept(line){
  let r;try{r=parseRequest(JSON.parse(line));operations.push(r.op);let value;
  switch(r.op){
  case 'list':value={items:[item]};break;
- case 'capture-status':value={active:false,paused:true,audio:{configured:false},warning:'Fixture offline; nenhuma captura real'};break;
+ case 'capture-status':value={active:true,paused:true,session:{startedAt:new Date().toISOString(),owner:'call',backend:'gpu-screen-recorder'},audio:{configured:false},warning:'Estado de captura sintético; nenhuma captura real'};break;
  case 'processing-status':value=await readHeavyStatus();break;
  case 'jobs-list':value={items:[]};break;
  case 'ux-capabilities':value={mockFrames:!MODE.startsWith('real-'),realFrames:true};break;
@@ -62,6 +62,7 @@ for await(const line of createInterface({input:process.stdin})){
  await writeFile(RECEIPT,JSON.stringify({mockCalls:flow.calls,saves,operations,vision,summaries}));console.log(JSON.stringify({id:r.id,ok:true,result:value}));
  }catch(e){await writeFile(RECEIPT,JSON.stringify({mockCalls:flow.calls,saves,operations,vision,summaries,error:String(e)}));console.log(JSON.stringify({id:r?.id||JSON.parse(line).id,ok:false,error:'Configuração/pedido recusado; fixture preservado.'}));}
 }
+createInterface({input:process.stdin}).on('line',line=>void accept(line));
 '''
   for token,value in {'GUARD_MODULE':str(repo/'scripts/qa-isolation-guard.ts'),'HEAVY_MODULE':str(repo/'src/runtime/heavy-admission.ts'),'FRAME_MODULE':str(repo/'src/visual/review-flow.ts'),'PREVIEW_MODULE':str(repo/'src/visual/mock-preview.ts'),'VIDEO_PATH':str(video),'VIDEO_HASH':videoHash,'CONFIG_MODULE':str(repo/'src/config/onboarding.ts'),'BRIDGE_MODULE':str(repo/'src/desktop/bridge.ts'),'CONFIG_PATH':str(config),'RECEIPT':str(receipt),'MODE':mode,'REAL_MODULE':str(repo/'src/visual/studio-flow.ts'),'DEFAULT_MODULE':str(repo/'src/config/defaults.ts'),'REAL_ROOT':str(folder/'visual-state')}.items():bridge=bridge.replace(token,json.dumps(value))
   (folder/'bridge.ts').write_text(bridge)
@@ -73,13 +74,13 @@ for await(const line of createInterface({input:process.stdin})){
   if mode.startswith('real-'):
    action='framesDialog.open(); frameVisionModel.text="vision-fixture"; frameSummaryModel.text="summary-fixture"; send("frames-check-models",selected.key,{visionModel:frameVisionModel.text,summaryModel:frameSummaryModel.text})'
    second='' if mode=='real-model-error' else 'frameSeconds.text="1.2"; prepareFrames()'
-   assertion='check("real path preview has bound consent", !!framePreview.consentKey && framePreview.visionModel==="vision-fixture" && !frameResult.sourceKey)' if mode in ['real-preview','real-no-consent'] else 'check("real result separates visual and original summary", frameResult.sourceKey && !frameResult.synthetic && detail.summary==="Fixture sem IA real." && detail.visualReview.summaryMarkdown.includes("Resumo do transporte stub")); check("real timestamp exact",frameResult.timestampSeconds===1.2)' if mode in ['real-result','real-compact'] else 'check("real cancellation clears preview",!framesDialog.visible && !framePreview.id)' if mode=='real-cancel' else 'check("model missing error visible, no capability",!!uxError && !frameCapability.id)' if mode=='real-model-error' else 'check("real source reference exact",sourceReferenceSeconds===1.2 && !framesDialog.visible && notice.includes("00:01.200"))'
-   if mode=='real-summary':assertion='check("summary visible after real adapter result",tabs.currentIndex===1 && !framesDialog.visible && contextArea.text.includes("Resumo do transporte stub") && detail.summary==="Fixture sem IA real." && showVisualSummary)'
+   assertion='check("real path preview has bound consent", !!framePreview.consentKey && framePreview.visionModel==="vision-fixture" && !frameResult.sourceKey)' if mode in ['real-preview','real-no-consent'] else 'check("real adapter result updates summary UI", frameResult.sourceKey && !frameResult.synthetic && detail.summary.includes("Resumo do transporte stub")); check("real timestamp exact",frameResult.timestampSeconds===1.2)' if mode in ['real-result','real-compact'] else 'check("real cancellation clears preview",!framesDialog.visible && !framePreview.id)' if mode=='real-cancel' else 'check("model missing error visible, no capability",!!uxError && !frameCapability.id)' if mode=='real-model-error' else 'check("real source reference exact",sourceReferenceSeconds===1.2 && !framesDialog.visible && notice.includes("00:01.200"))'
+   if mode=='real-summary':assertion='check("summary visible after real adapter result",tabs.currentIndex===1 && !framesDialog.visible && contextArea.text.includes("Resumo do transporte stub"))'
    extra=extra.replace('interval: 1100','interval: 1900')
    third='confirmFrames(); confirmFrames()' if mode in ['real-result','real-compact','real-reference','real-summary'] else 'framesDialog.reject()' if mode=='real-cancel' else 'send("frames-confirm",selected.key,{previewId:framePreview.id,consent:false,consentKey:framePreview.consentKey})' if mode=='real-no-consent' else ''
    extra+='\n Timer { interval: 1100; running: true; onTriggered: { '+third+' } }\n'
    if mode in ['real-result','real-compact']:extra+='\n Timer { interval: 1700; running: true; onTriggered: { frameScroll.contentItem.contentY=Math.max(0,frameScroll.contentItem.contentHeight-frameScroll.availableHeight) } }\n'
-   if mode=='real-summary':extra+='\n Timer { interval: 1650; running: true; onTriggered: { framesDialog.close(); tabs.currentIndex=1; visualSummaryButton.clicked() } }\n'
+   if mode=='real-summary':extra+='\n Timer { interval: 1650; running: true; onTriggered: { framesDialog.close(); tabs.currentIndex=1 } }\n'
    if mode=='real-reference':extra+='\n Timer { interval: 1650; running: true; onTriggered: followFrameReference() }\n'
    if mode=='real-compact':action='window.width=900; window.height=640; '+action;assertion+='; check("real compact cancel visible",framesDialog.height<=window.height-64 && frameCancelButton.visible && frameColumn.width<=frameScroll.availableWidth)'
   elif mode.startswith('frames-'):
@@ -94,10 +95,17 @@ for await(const line of createInterface({input:process.stdin})){
   if mode=='frames-reference':
    extra+='\n Timer { interval: 900; running: true; onTriggered: followFrameReference() }\n'
    assertion='check("reference points to exact source time", sourceReferenceSeconds === 1.2 && !framesDialog.visible && notice.includes("00:01.200"))'
+  if mode.startswith('real-wait'):
+   assertion='check("wait reason visible with zero preview/inference",processingWait.includes("gravação") && !framePreview.id && hasPending("frames-preview"))'
+   extra=extra.replace('interval: 1900','interval: 2150')
+   if mode=='real-wait-cancel':
+    extra+='\n Timer { interval: 2250; running: true; onTriggered: framesDialog.reject() }\n Timer { interval: 2650; running: true; onTriggered: console.log("LOCAL_UX_ASSERTIONS "+JSON.stringify([{name:"cancel pending admission closes and clears preview",pass:!framesDialog.visible && !hasPending("frames-preview") && !framePreview.id && !processingWait}])) }\n'
   extra=extra.replace('ACTION',action).replace('SECOND',second).replace('/*TEST_ASSERT*/',assertion)
   qml=source.replace('../../docs/assets/',(repo/'docs/assets').as_uri()+'/').rstrip();(folder/'Main.qml').write_text(qml[:-1]+extra+'}\n')
   png=out/(mode+'.png')
-  env={'FALATRACE_QA_ISOLATED':'1','FALATRACE_QA_ROOT':str(root),'FALATRACE_QA_NONCE':nonce,'XDG_CONFIG_HOME':str(root/'config'),'XDG_STATE_HOME':str(root/'state'),'XDG_DATA_HOME':str(root/'data'),'FALATRACE_HEAVY_PAUSE':'off','HOME':str(root/'home'),'XDG_RUNTIME_DIR':str(root/'runtime'),'XDG_CACHE_HOME':str(root/'cache'),'TMPDIR':str(root/'tmp'),'LANG':'C.UTF-8','PATH':'/usr/bin:/bin','QT_QPA_PLATFORM':'offscreen','QT_QUICK_BACKEND':'software','RECORDING_DESKTOP_SOFTWARE_SMOKE':'1','RECORDING_DESKTOP_SMOKE_KEY':'synthetic-demo','RECORDING_DESKTOP_SNAPSHOT':str(png),'RECORDING_DESKTOP_SNAPSHOT_MS':'2400' if mode.startswith('real-') else '1400'}
+  state=folder/'state';managed=state/'recording-cli';managed.mkdir(parents=True)
+  (managed/'recording-session.json').write_text(json.dumps({'version':1,'phase':'recording','id':'123e4567-e89b-42d3-a456-426614174000','owner':'manual','backend':'gpu-screen-recorder','startedAt':'2026-10-01T00:00:00Z','outputPath':str(video)}))
+  env={'FALATRACE_QA_ISOLATED':'1','FALATRACE_QA_ROOT':str(root),'FALATRACE_QA_NONCE':nonce,'XDG_CONFIG_HOME':str(root/'config'),'XDG_DATA_HOME':str(root/'data'),'FALATRACE_HEAVY_PAUSE':'capture','XDG_STATE_HOME':str(state),'HOME':str(root/'home'),'XDG_RUNTIME_DIR':str(root/'runtime'),'XDG_CACHE_HOME':str(root/'cache'),'TMPDIR':str(root/'tmp'),'LANG':'C.UTF-8','PATH':'/usr/bin:/bin','QT_QPA_PLATFORM':'offscreen','QT_QUICK_BACKEND':'software','RECORDING_DESKTOP_SOFTWARE_SMOKE':'1','RECORDING_DESKTOP_SMOKE_KEY':'synthetic-demo','RECORDING_DESKTOP_SNAPSHOT':str(png),'RECORDING_DESKTOP_SNAPSHOT_MS':'2900'}
   runpy.run_path(str(repo/'scripts/qa-run.py'))['require_isolated'](env)
   result=subprocess.run([str(binary),str(folder),bun],env=env,capture_output=True,text=True,timeout=15)
   (out/(mode+'.stderr')).write_text(result.stderr)
@@ -113,5 +121,5 @@ for await(const line of createInterface({input:process.stdin})){
   checks.append({'name':mode+' provider/save count and preservation','pass':True})
   screens.append({'mode':mode,'sha256':hashlib.sha256(png.read_bytes()).hexdigest(),'mockCalls':data['mockCalls'],'saves':data['saves'],'visionTransportCalls':data['vision'],'summaryTransportCalls':data['summaries'],'exitCode':result.returncode})
 assert checks and all(c['pass'] for c in checks),checks
-final={'screens':screens,'assertions':checks,'actualQmlSha256':hashlib.sha256(source.encode()).hexdigest(),'realConfigModules':True,'studioFlowSha256':hashlib.sha256((repo/'src/visual/studio-flow.ts').read_bytes()).hexdigest(),'appBudgetSha256':hashlib.sha256((repo/'src/visual/app-budget.ts').read_bytes()).hexdigest(),'bridgeSha256':hashlib.sha256((repo/'src/desktop/bridge.ts').read_bytes()).hexdigest(),'mockOnly':False,'realAdapterWithStubTransport':True,'privateCapture':False,'networkProviderCalls':0,'limits':['Offscreen scripted input, no physical key events/playback/native capture/model quality','Demo-only MockFrameReview is session scoped; normal production flow uses the persistent common budget. All displayed model output here is HTTP-fixture data; no real model quality validated.']}
+final={'screens':screens,'assertions':checks,'actualQmlSha256':hashlib.sha256(source.encode()).hexdigest(),'realConfigModules':True,'studioFlowSha256':hashlib.sha256((repo/'src/visual/studio-flow.ts').read_bytes()).hexdigest(),'appBudgetSha256':hashlib.sha256((repo/'src/visual/app-budget.ts').read_bytes()).hexdigest(),'bridgeSha256':hashlib.sha256((repo/'src/desktop/bridge.ts').read_bytes()).hexdigest(),'mockOnly':False,'realAdapterWithStubTransport':True,'privateCapture':False,'networkProviderCalls':0,'heavyAdmissionSha256':hashlib.sha256((repo/'src/runtime/heavy-admission.ts').read_bytes()).hexdigest(),'limits':['Offscreen scripted input, no physical key events/playback/native capture/model quality','Demo-only MockFrameReview is session scoped; normal production flow uses the persistent common budget. All displayed model output here is HTTP-fixture data; no real model quality validated.']}
 (out/'receipt.json').write_text(json.dumps(final,indent=2));print(json.dumps({'screens':len(screens),'assertions':len(checks),'passed':True}))

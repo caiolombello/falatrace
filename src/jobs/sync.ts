@@ -1,3 +1,4 @@
+import { withHeavyAdmission, cliAdmissionWait } from '../runtime/heavy-admission';
 import { promises as fs } from "node:fs";
 import { createHash } from "node:crypto";
 import { join, resolve } from "node:path";
@@ -81,7 +82,7 @@ export const processLocalJob = async (
   config: AppConfig, store: JobStore, record: JobRecord
 ): Promise<JobRecord> => withJobLease(store, record.id, async (current) => {
   if (["completed", "failed", "processing"].includes(current.state)) return current;
-  return processLocalJobOwned(config, store, current);
+  return withHeavyAdmission('pipeline',current.id,async()=>{const fresh=await store.get(current.id);if(['completed','failed','processing'].includes(fresh.state)||fresh.target!=='local')return fresh;return processLocalJobOwned(config,store,fresh);},{onWait:cliAdmissionWait});
 });
 
 const syncRemoteJob = async (
@@ -144,14 +145,16 @@ const syncRemoteJob = async (
 export const syncJob = async (
   config: AppConfig,
   store: JobStore,
-  id: string
+  id: string,
+  admissionSignal?: AbortSignal
 ): Promise<JobRecord> => withJobLease(store, id, async (job) => {
   if (["completed", "failed", "processing"].includes(job.state)) return job;
   try {
     return job.target === "local"
-      ? await processLocalJobOwned(config, store, job)
+      ? await withHeavyAdmission('pipeline',job.id,async()=>{const fresh=await store.get(job.id);if(['completed','failed','processing'].includes(fresh.state)||fresh.target!=='local')return fresh;return processLocalJobOwned(config,store,fresh);},{onWait:cliAdmissionWait,signal:admissionSignal})
       : await syncRemoteJob(config, store, job);
   } catch (err) {
+    const fresh=await store.get(job.id);if(fresh.state!==job.state||admissionSignal?.aborted)return fresh;
     return store.update(job.id, job.state === "transferring" ? "pending" : job.state, {
       error: err instanceof Error ? err.message : String(err)
     });
@@ -164,7 +167,8 @@ export const syncJobs = async (
 ): Promise<JobRecord[]> => {
   const jobs = await store.list();
   const updated: JobRecord[] = [];
-  for (const job of jobs) {
+  // Keep remote transfers progressing before bounded local admission waits.
+  for (const job of [...jobs.filter(j=>j.target!=="local"),...jobs.filter(j=>j.target==="local")]) {
     if (job.state === "completed") {
       await reconcileTimeEntryForJob(config, job).catch(() => undefined);
       continue;
@@ -172,7 +176,7 @@ export const syncJobs = async (
     if (job.state === "failed" || job.state === "processing") {
       continue;
     }
-    updated.push(await syncJob(config, store, job.id));
+    updated.push(await syncJob(config, store, job.id,job.target==="local"?AbortSignal.timeout(1000):undefined));
   }
   return updated;
 };

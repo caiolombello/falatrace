@@ -1,13 +1,13 @@
 {
   "name": "falatrace",
-  "version": "0.2.0-alpha.2",
+  "version": "0.2.0-alpha.3",
   "type": "module",
   "scripts": {
     "dev": "bun run src/cli/index.ts",
     "init": "bun run src/cli/index.ts init",
     "build": "bun build src/cli/index.ts --target=bun --outdir dist",
     "build:standalone": "bun build --compile src/cli/index.ts --outfile dist/falatrace",
-    "test": "bun test",
+    "test": "bash scripts/test-offline.sh",
     "typecheck": "tsc --noEmit",
     "desktop": "bun run src/desktop/run.ts",
     "desktop:setup": "bun run src/desktop/setup.ts",

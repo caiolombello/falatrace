@@ -49,3 +49,11 @@ test("overlapping selected and queue processing acquire one job lease", async ()
     expect((await store.get(selected.id)).state).toBe("failed");
   } finally { await fs.rm(root, { recursive: true, force: true }); }
 });
+
+test('sync queue bounds paused local admission and preserves pending state without processing or losing media',async()=>{
+ const root=await fs.mkdtemp(join(tmpdir(),'sync-paused-'));const previous=process.env.FALATRACE_HEAVY_PAUSE;
+ try {
+  const config=structuredClone(DEFAULT_CONFIG);config.timesheet.enabled=false;config.processing.defaultTarget='local';const store=new JobStore(join(root,'state'),join(root,'data'));const media=join(root,'synthetic.mkv');await fs.writeFile(media,'synthetic-kept');const record=await store.enqueue(config,media);
+  process.env.FALATRACE_HEAVY_PAUSE='capture-and-call';const before=Date.now();const results=await syncJobs(config,store);expect(Date.now()-before).toBeLessThan(3000);expect(results.find(r=>r.id===record.id)?.state).toBe('pending');expect(await store.get(record.id)).toEqual(record);expect(await fs.readFile(media,'utf8')).toBe('synthetic-kept');
+ }finally{if(previous===undefined)delete process.env.FALATRACE_HEAVY_PAUSE;else process.env.FALATRACE_HEAVY_PAUSE=previous;await fs.rm(root,{recursive:true,force:true});}
+});

@@ -31,6 +31,7 @@ export type AppConfig = {
   recordingsDir: string;
   backend: RecordingBackend;
   capture: {
+    profile?: "standard" | "call-light";
     audioSource: "none" | "microphone" | "desktop" | "both";
     microphone: string;
     desktop: string;
@@ -121,6 +122,7 @@ export type AppConfig = {
     ollamaUrl: string;
     ollamaModel: string;
   };
+  visualReview?: { maxInferences:number; maxPreviews:number; period:"lifetime" };
   calendar: {
     enabled: boolean;
   };

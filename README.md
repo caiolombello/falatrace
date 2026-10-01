@@ -5,7 +5,7 @@
 
 # FalaTrace — experimental Linux source alpha
 
-Linux tools for authorized recording, meeting search and notes linked to source timestamps. FalaTrace 0.2.0-alpha.2 is an experimental source alpha. Native capture, desktop compatibility, model quality and redistributed binaries have not been certified.
+Linux tools for authorized recording, meeting search and notes linked to source timestamps. FalaTrace 0.2.0-alpha.3 is an experimental source alpha. Native capture, desktop compatibility, model quality and redistributed binaries have not been certified.
 
 ## Current verification
 
@@ -91,3 +91,7 @@ Before recording: `falatrace init`, `falatrace config`, `falatrace record doctor
 Synthetic native Qt renders cover light/dark, compact (900×640), summary, consent, empty, loading, error, REC and paused states. Nine programmatic QML checks passed; real keyboard input, Orca, portal capture and video decode remain unverified. See [UX verification](docs/UX-VERIFICATION.md). Optional repeatable native check: build the desktop with the existing SDK, then `python3 scripts/test-desktop-ui.py /tmp/falatrace-ui-review`; it uses only a synthetic backend and refuses capture operations.
 
 [Landing page](https://caiolombello.github.io/falatrace/) · [Roadmap](docs/ROADMAP.md) · [Identity](branding/README.md)
+
+## Alpha.3: bounded evidence and processing admission
+
+See [experimental alpha.3 scope and limits](docs/ALPHA3.md). Scoped visual review uses local Ollama; existing provider/config choices are preserved. Call-light is opt-in and has no demonstrated call-performance benefit. `recording-cli`/`recording-studio` may remain compatibility aliases for `falatrace`/`falatrace-studio`.

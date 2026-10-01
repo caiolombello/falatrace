@@ -20,12 +20,12 @@ test('local AI chooses transcript-linked frames; ledger reuses responses, bounds
  expect(await cleanupExpiredVisualSessions(options.root,61000,false)).toEqual([first.key]);expect((await runVisualSession({...options,now:62000})).modelRequests).toBe(0);expect((await fs.stat(join(first.directory,'.visual-session.json'))).isFile()).toBe(true);expect(await fs.readFile(join(options.root,'unknown','keep'),'utf8')).toBe('keep');expect(await hashFile(source)).toBe(mediaHash);
  }finally{await fs.rm(root,{recursive:true,force:true});}
 });
-test('sufficient transcript makes zero model requests; invalid requests and failed selectors consume persisted call budget',async()=>{
+test('sufficient transcript selector abstains with zero images; invalid requests and failed selectors consume persisted call budget',async()=>{
  const root=await fs.mkdtemp(join(tmpdir(),'visual-select-bounds-'));let calls=0;
- const adapter:LocalVisualAdapter={identity:'fixture-local',localOnly:true,select:async()=>{calls++;return [{timestampSeconds:15,reason:'visual-reference',question:'Observe.',segmentIds:['s000000']}];},inspect:async()=>{calls++;return [];}};
+ const adapter:LocalVisualAdapter={identity:'fixture-local',localOnly:true,select:async input=>{calls++;if(input.segments[0]?.text==='Revisar proposta.')return [];return [{timestampSeconds:15,reason:'visual-reference',question:'Observe.',segmentIds:['s000000']}];},inspect:async()=>{calls++;return [];}};
  try{
  const options={mediaHash:'a'.repeat(64),transcript:{...transcript,text:'Revisar proposta.',segments:[{start:0,end:1,text:'Revisar proposta.'}]},durationSeconds:20,sourcePath:join(root,'must-not-read'),root:join(root,'sessions'),adapter};
- expect((await runVisualSession(options)).frames).toEqual([]);expect(calls).toBe(0);
+ expect((await runVisualSession(options)).frames).toEqual([]);expect(calls).toBe(1);calls=0;
  for(let i=0;i<4;i++)await expect(runVisualSession({...options,transcript})).rejects.toThrow('matching transcript window');
  await expect(runVisualSession({...options,transcript})).rejects.toThrow('request budget');expect(calls).toBe(4);
  await expect(runVisualSession({...options,adapter:{...adapter,localOnly:false} as unknown as LocalVisualAdapter})).rejects.toThrow('local');

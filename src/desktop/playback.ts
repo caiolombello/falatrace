@@ -1,3 +1,4 @@
+import { withHeavyAdmission, cliAdmissionWait } from '../runtime/heavy-admission';
 /** Asynchronous playback worker for the desktop application. */
 import { promises as fs } from "node:fs";
 import { basename, join, resolve } from "node:path";
@@ -103,7 +104,7 @@ export const runPlaybackWorker = async (id: string, key: string): Promise<void> 
   try {
     const source = validateKey(key);
     const { config, entry } = await lookup(source);
-    const result = await playLibraryEntry(config, entry, undefined, { launch: async () => undefined });
+    const result = await withHeavyAdmission('playback', id, () => playLibraryEntry(config, entry, undefined, { launch: async () => undefined }), { onWait: cliAdmissionWait });
     await writeState({ state: "completed", operationId: id, key: source, path: result.path, location: result.location });
   } catch (error) {
     await writeState({ state: "failed", operationId: id, key, message: safeMessage(error instanceof Error ? error.message : String(error)) });

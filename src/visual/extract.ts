@@ -1,3 +1,4 @@
+import { withHeavyAdmission, cliAdmissionWait } from '../runtime/heavy-admission';
 import { randomUUID, createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { join } from "node:path";
@@ -44,7 +45,7 @@ export const readCache = async (directory: string, plan: VisualPlan): Promise<Vi
   }
 };
 
-export const extractVisualEvidence = async (
+const extractVisualEvidenceOwned = async (
   plan: VisualPlan, sourcePath: string, outputRoot: string,
   options: { signal?: AbortSignal; run?: typeof runCommand; byteBudget?: number } = {}
 ): Promise<VisualResult> => {
@@ -63,7 +64,7 @@ export const extractVisualEvidence = async (
     await fs.mkdir(staging,{mode:0o700}); const frames: VisualResult["frames"] = []; let totalBytes = 0;
     for (const [index,request] of plan.requests.entries()) {
       options.signal?.throwIfAborted(); const file = `frame-${index}.jpg`; const path = join(staging,file);
-      await (options.run || runCommand)("ffmpeg",["-nostdin","-v","error","-i",sourcePath,"-ss",String(request.timestampSeconds),"-frames:v","1","-vf","scale=w='min(1280,iw)':h='min(1280,ih)':force_original_aspect_ratio=decrease","-q:v","3","-y",path],{timeoutMs:30000,signal:options.signal});
+      await (options.run || runCommand)("ffmpeg",["-nostdin","-v","error","-ss",String(request.timestampSeconds),"-accurate_seek","-i",sourcePath,"-frames:v","1","-vf","scale=w='min(1280,iw)':h='min(1280,ih)':force_original_aspect_ratio=decrease","-q:v","3","-y",path],{timeoutMs:30000,signal:options.signal});
       const stat = await fs.lstat(path);
       if (!stat.isFile() || stat.isSymbolicLink() || stat.size <= 0 || stat.size > plan.maxBytesPerFrame || totalBytes + stat.size > byteBudget) throw new Error("Extracted frame exceeds its byte budget or is invalid");
       await fs.chmod(path,0o600); totalBytes += stat.size;
@@ -75,4 +76,10 @@ export const extractVisualEvidence = async (
     await fs.writeFile(join(staging,"frames.json"),JSON.stringify(result,null,2),{mode:0o600,flag:"wx"});
     options.signal?.throwIfAborted(); await fs.rename(staging,final); return result;
   } finally { await fs.rm(staging,{recursive:true,force:true}); await lease.release(); }
+};
+
+// Admit before the per-plan lease: consistent lock order for standalone callers too.
+export const extractVisualEvidence = (...args: Parameters<typeof extractVisualEvidenceOwned>): Promise<VisualResult> => {
+  assertPlan(args[0]);
+  return withHeavyAdmission('command', args[0].mediaSha256, () => extractVisualEvidenceOwned(...args), { signal: args[3]?.signal, onWait: cliAdmissionWait });
 };

@@ -1,7 +1,7 @@
-import { existsSync, promises as fs } from "node:fs";
+import { existsSync, lstatSync, promises as fs } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join,dirname,resolve } from "node:path";
 import {
   DEFAULT_CONFIG,
   TRANSCRIPTION_PROMPT_MAX_LENGTH,
@@ -12,17 +12,17 @@ const legacyDir = join(homedir(), ".config", "recording-cli");
 const requestedDir = process.env.XDG_CONFIG_HOME?.startsWith("/") ? join(process.env.XDG_CONFIG_HOME,"recording-cli") : legacyDir;
 // Existing legacy choices win when no config exists at the explicit XDG destination.
 // Migration requires an explicit user action; init never creates competing defaults.
-const CONFIG_DIR = requestedDir !== legacyDir && !existsSync(join(requestedDir,"config.json")) && existsSync(join(legacyDir,"config.json")) ? legacyDir : requestedDir;
-const CONFIG_PATH = join(CONFIG_DIR, "config.json");
-
 export type LoadedConfig = {
   path: string;
   config: AppConfig;
 };
 
-export const getConfigPath = (): string => CONFIG_PATH;
+const pathPresent=(p:string)=>{try{lstatSync(p);return true;}catch(e){if((e as NodeJS.ErrnoException).code==='ENOENT')return false;throw e;}};
+export const getRequestedConfigDir=():string=>resolve(requestedDir);
+export const getConfigPath = (): string => join(requestedDir !== legacyDir && !pathPresent(join(requestedDir,'config.json')) && existsSync(join(legacyDir,'config.json')) ? legacyDir : requestedDir,'config.json');
 
 export const ensureConfigDir = async (): Promise<void> => {
+  const CONFIG_DIR=dirname(getConfigPath());
   await fs.mkdir(CONFIG_DIR, { recursive: true, mode: 0o700 });
   const stat = await fs.lstat(CONFIG_DIR);
   if (!stat.isDirectory() || stat.isSymbolicLink()) {
@@ -74,25 +74,16 @@ type PartialConfig = Omit<
   aiContext?: Partial<AppConfig["aiContext"]>;
 };
 
+export const loadConfigSnapshot=async(currentPath=getConfigPath())=>{
+ const stat=await fs.lstat(currentPath);if(!stat.isFile()||stat.isSymbolicLink())throw Error('Config must be a regular file; preserved');const raw=await fs.readFile(currentPath,'utf8');const data=JSON.parse(raw) as PartialConfig;const config=mergeConfig(DEFAULT_CONFIG,data);validateConfig(config);return {path:currentPath,config,exists:true,visualPolicyDeclared:!!data.visualReview};
+};
 export const loadConfig = async (): Promise<LoadedConfig> => {
-  try {
-    const stat = await fs.lstat(CONFIG_PATH);
-    if (!stat.isFile() || stat.isSymbolicLink()) throw new Error("Config must be a regular file; preserved");
-    const raw = await fs.readFile(CONFIG_PATH, "utf-8");
-    const data = JSON.parse(raw) as PartialConfig;
-    const config = mergeConfig(DEFAULT_CONFIG, data);
-    validateConfig(config);
-    return { path: CONFIG_PATH, config };
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-      return { path: CONFIG_PATH, config: DEFAULT_CONFIG };
-    }
-    throw new Error(`Invalid config at ${CONFIG_PATH}: ${err instanceof Error ? err.message : String(err)}`);
-  }
+ const currentPath=getConfigPath();try{const loaded=await loadConfigSnapshot(currentPath);return {path:loaded.path,config:loaded.config};}catch(err){if((err as NodeJS.ErrnoException).code==='ENOENT')return {path:currentPath,config:DEFAULT_CONFIG};throw Error(`Invalid config at ${currentPath}: ${err instanceof Error?err.message:String(err)}`);}
 };
 
 export const writeDefaultConfig = async (): Promise<LoadedConfig & { created: boolean }> => {
-  await ensureConfigDir();
+  const CONFIG_PATH=getConfigPath(),CONFIG_DIR=dirname(CONFIG_PATH);
+  await fs.mkdir(CONFIG_DIR,{recursive:true,mode:0o700});const directory=await fs.lstat(CONFIG_DIR);if(!directory.isDirectory()||directory.isSymbolicLink())throw Error("Config directory must be a regular directory");await fs.chmod(CONFIG_DIR,0o700);
   const temporaryPath = join(CONFIG_DIR, `.config-${process.pid}-${randomUUID()}.tmp`);
   try {
     await fs.writeFile(temporaryPath, JSON.stringify(DEFAULT_CONFIG, null, 2), { flag: "wx", mode: 0o600 });
@@ -160,6 +151,8 @@ export const validateConfig = (config: AppConfig): void => {
       throw new Error(`capture.${field} must be a single audio device name`);
     }
   }
+  if(config.visualReview && (config.visualReview.period!=="lifetime" || !Number.isSafeInteger(config.visualReview.maxInferences) || config.visualReview.maxInferences<1 || config.visualReview.maxInferences>1000 || !Number.isSafeInteger(config.visualReview.maxPreviews) || config.visualReview.maxPreviews<1 || config.visualReview.maxPreviews>1000)) throw new Error("visualReview requires explicit lifetime limits between 1 and 1000; no reset or financial provider cap");
+  if (config.capture.profile !== undefined && !["standard", "call-light"].includes(config.capture.profile)) throw new Error("capture.profile must be standard or call-light");
   if (!["gpu", "cpu"].includes(config.capture.encoder)) throw new Error("capture.encoder must be gpu or cpu");
   for (const [field, minimum, maximum] of [["framerate", 1, 60], ["startupTimeoutSeconds", 5, 300]] as const) {
     if (!Number.isInteger(config.capture[field]) || config.capture[field] < minimum || config.capture[field] > maximum) {
