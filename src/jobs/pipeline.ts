@@ -1,12 +1,13 @@
 import { promises as fs } from "node:fs";
 import { createHash } from "node:crypto";
-import { hashFile } from "./store";
+import { getDefaultJobStateDir, hashFile } from "./store";
 import { writePrivateArtifact } from "./artifacts";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 import type { AppConfig } from "../config/defaults";
 import { summarizeWithOllama } from "../summary/ollama";
 import { summarizeWithOpenAI } from "../summary/openai";
-import { runVisualSession, type LocalVisualAdapter } from "../visual/session";
+import { runVisualSession, type LocalVisualAdapter, type ManualVisualConsent } from "../visual/session";
+import {VisualAppBudget} from "../visual/app-budget";
 import { summarizeInChunks } from "../summary/chunks";
 import { transcribeWithOpenAI } from "../transcription/openai";
 import { transcribeWithGemini } from "../transcription/gemini";
@@ -55,7 +56,7 @@ export const processJob = async (
   manifest: JobManifest,
   sourcePath: string,
   outputDir: string,
-  options: { signal?: AbortSignal; visual?: { root: string; adapter: LocalVisualAdapter; ttlSeconds?: number } } = {}
+  options: { signal?: AbortSignal; visual?: { root: string; adapter: LocalVisualAdapter; ttlSeconds?: number; manual?: ManualVisualConsent } } = {}
 ): Promise<void> => {
   options.signal?.throwIfAborted();
   await fs.mkdir(outputDir, { recursive: true, mode: 0o700 });
@@ -108,9 +109,15 @@ export const processJob = async (
     }
     await writePrivateArtifact(join(outputDir, "transcript.md"), formatTranscriptMarkdown(transcript));
 
+    const appBudget=options.visual?new VisualAppBudget(join(dirname(getDefaultJobStateDir()),'visual-review')):undefined;
+    const budgetIdentity=digest(JSON.stringify({media:manifest.source.sha256,transcript,visualAdapter:options.visual?.adapter.identity,summaryProvider:manifest.summary.provider,summaryModel:manifest.summary.model}));
+    const visualAdapter=options.visual?{...options.visual.adapter,
+      select:async(input:Parameters<LocalVisualAdapter['select']>[0],signal?:AbortSignal)=>{await appBudget!.reserve('inference',manifest.id,budgetIdentity);signal?.throwIfAborted();return options.visual!.adapter.select(input,signal);},
+      inspect:async(input:Parameters<LocalVisualAdapter['inspect']>[0],signal?:AbortSignal)=>{await appBudget!.reserve('inference',manifest.id,budgetIdentity);signal?.throwIfAborted();return options.visual!.adapter.inspect(input,signal);}
+    }:undefined;
     const visual = options.visual ? await runVisualSession({
       mediaHash: manifest.source.sha256, transcript, durationSeconds: await probeMedia(sourcePath, options.signal), sourcePath,
-      root: options.visual.root, adapter: options.visual.adapter, ttlSeconds: options.visual.ttlSeconds, signal: options.signal
+      root: options.visual.root, adapter: visualAdapter!, ttlSeconds: options.visual.ttlSeconds, manual: options.visual.manual, signal: options.signal
     }) : undefined;
     const visualEvidence = visual?.observations.length ? {
       adapterIdentity: options.visual!.adapter.identity, expiresAt: visual.expiresAt,
@@ -120,9 +127,12 @@ export const processJob = async (
       transcript, mediaHash: manifest.source.sha256, context: manifest.summary.context, visual: visualEvidence,
       maxCharacters: config.summary.maxInputCharacters, provider: manifest.summary.provider,
       model: manifest.summary.model, adapterIdentity: manifest.summary.provider === "ollama" ? config.summary.ollamaUrl : "openai-chat", cacheDir: join(outputDir, ".summary-chunks"), signal: options.signal,
-      adapter: (part, signal) => manifest.summary.provider === "openai"
+      adapter: async(part, signal) => {
+        if(appBudget)await appBudget.reserve('inference',manifest.id,budgetIdentity);
+        signal?.throwIfAborted();return manifest.summary.provider === "openai"
         ? summarizeWithOpenAI(config, part.text, manifest.summary.model, manifest.summary.context, part.evidence, signal)
-        : summarizeWithOllama(config, part.text, manifest.summary.model, manifest.summary.context, part.evidence, signal)
+        : summarizeWithOllama(config, part.text, manifest.summary.model, manifest.summary.context, part.evidence, signal);
+      }
     });
     if (visualEvidence) {
       summary.support!.reviewRequired = true;

@@ -1,3 +1,7 @@
+## 0.2.0-alpha.2 — experimental source alpha
+
+Production Studio visual consent/adapter/summary path with persistent root guard; Opus-reviewed findings fixed and offline/synthetic validation documented. No installed-model/capture quality certification, or redistributed binaries.
+
 # 0.2.0-alpha.1 — experimental source alpha
 
 - Add source-margin identity, dark/light Studio themes, compact layout, deliberate capture/resume confirmation and stale-response/focus guards.

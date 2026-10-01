@@ -2,6 +2,14 @@ import { promises as fs } from "node:fs";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 import type { LocalVisualAdapter, VisualObservation } from "./session";
+export const verifyLocalOllamaModel=async(endpoint:string,model:string,vision:boolean,signal?:AbortSignal)=>{
+ const url=new URL(endpoint);
+ if(!['127.0.0.1','localhost','[::1]'].includes(url.hostname)||!['http:','https:'].includes(url.protocol)||url.username||url.password||url.search||url.hash||!model.trim()||model.length>200||/[\x00-\x1f]/.test(model)||/(?:[:\-]cloud)(?:$|[:\-])/i.test(model))throw Error('Explicit local model required');
+ const response=await fetch(new URL('/api/show',url),{method:'POST',headers:{'content-type':'application/json'},redirect:'error',signal:signal?AbortSignal.any([signal,AbortSignal.timeout(30000)]):AbortSignal.timeout(30000),body:JSON.stringify({model})});
+ if(!response.ok)throw Error('Model unavailable');const details=await response.json() as Record<string,unknown>;
+ if(details.remote_host||details.remote_model||!details.model_info||typeof details.model_info!=='object'||!Object.keys(details.model_info).length||!Array.isArray(details.capabilities)||!details.capabilities.includes(vision?'vision':'completion'))throw Error('Local model capability unknown or unsupported');
+ return createHash('sha256').update(JSON.stringify(details)).digest('hex');
+};
 export const createLocalOllamaVisualAdapter=(endpoint:string,selectorModel:string,visionModel:string):LocalVisualAdapter=>{
  const url=new URL(endpoint);
  if(!['127.0.0.1','localhost','[::1]'].includes(url.hostname)||!['http:','https:'].includes(url.protocol)||url.username||url.password)throw new Error('Visual Ollama must use an explicit credential-free loopback endpoint');

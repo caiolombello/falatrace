@@ -5,11 +5,11 @@
 
 # FalaTrace — experimental Linux source alpha
 
-Linux tools for authorized recording, meeting search and notes linked to source timestamps. FalaTrace 0.2.0-alpha.1 is an experimental source alpha. Native capture, desktop compatibility, model quality and redistributed binaries have not been certified.
+Linux tools for authorized recording, meeting search and notes linked to source timestamps. FalaTrace 0.2.0-alpha.2 is an experimental source alpha. Native capture, desktop compatibility, model quality and redistributed binaries have not been certified.
 
 ## Current verification
 
-The candidate passed 347 offline tests (0 failures, 1,402 assertions across 57 files). CLI and desktop TypeScript checks and CLI build passed. Capture backends were inspected and exercised through synthetic fixtures; real desktop capture and semantic model quality have not been certified.
+This source alpha passed 362 offline tests (0 failures, 1,657 assertions across 61 files), plus the final coordinator subset and 18 Qt synthetic renders / 43 checks. CLI and desktop TypeScript checks and CLI build passed. Capture backends were inspected and exercised through synthetic fixtures; real desktop capture and semantic model quality have not been certified.
 
 ## Install deliberately
 
@@ -41,7 +41,7 @@ Transcript text falls back to valid segment text when the aggregate text is empt
 
 `context search`, `context meeting`, and per-client context export provide bounded interfaces to your assistants. Meeting content is untrusted historical data. Before deleting a recording, invalidation must succeed or deletion is cancelled. Deletion invalidates derived context for application consumers until a full rebuild. Previously exported files or copies already held by other apps remain outside this guarantee.
 
-Selective visual evidence has an opt-in internal pipeline API, tested with synthetic video and provider stubs, not a CLI toggle or certified model feature. The selector receives bounded transcript windows; requested frames must reference supplied segments and nearby timestamps. A persistent ledger enforces two rounds, eight frames, four selection/inspection inference requests (failed calls count), 2 MiB per frame and 8 MiB total. Local metadata preflight calls are separate from inference counts. The Ollama visual adapter accepts only credential-free loopback and verified local model metadata; cloud or unknown models are refused before chat. No model is downloaded or contacted automatically.
+Studio visual requests now use the production local adapter and summary path after explicit model capability checks and bound consent. Verification used synthetic video and completely stubbed HTTP transport; no installed-model quality is certified. See docs/ALPHA2-LOCAL-REVIEW.md for data disclosure, fixed-root 24-inference/16-preview guard, persistence and limits. There is no new CLI toggle. The selector receives bounded transcript windows; requested frames must reference supplied segments and nearby timestamps. A persistent ledger enforces two rounds, eight frames, four selection/inspection inference requests (failed calls count), 2 MiB per frame and 8 MiB total. Local metadata preflight calls are separate from inference counts. The Ollama visual adapter accepts only credential-free loopback and verified local model metadata; cloud or unknown models are refused before chat. No model is downloaded or contacted automatically.
 
 Frames have a configurable 60-second to 24-hour TTL (default one hour). Expired evidence falls back to transcript-only with review warnings and zero visual inference. Explicit cleanup deletes only verified derived frames and retains the budget ledger and observation metadata; it is not a scheduled service and does not erase original media. A sidecar is associated with summary.json only when its summarySha256 matches. Publication is atomic per file, not a multi-file transaction.
 

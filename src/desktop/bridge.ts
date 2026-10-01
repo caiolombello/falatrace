@@ -1,13 +1,13 @@
 /** JSONL bridge for the desktop application. */
 import { promises as fs } from "node:fs";
-import { basename, resolve } from "node:path";
+import { basename, resolve, join, dirname } from "node:path";
 import { loadConfig } from "../../src/config/load";
 import { configureDefaultAudio } from "../../src/config/audio";
 import { acquireSingleton } from "../../src/runtime/singleton";
 import { readCaptureStatus, startCapture, stopCapture } from "../../src/recording/application";
 import { queueSelectedJob } from "../../src/jobs/queue";
 import { readMeetingContext } from "../../src/knowledge/meetings";
-import { JobStore } from "../../src/jobs/store";
+import { getDefaultJobStateDir, JobStore } from "../../src/jobs/store";
 import type { JobRecord, Transcript } from "../../src/jobs/types";
 import { runCommand } from "../../src/jobs/command";
 import { buildLibrary, readArtifact, assertExistingJobArtifactPath, assertExistingManagedPath, type LibraryEntry } from "../../src/tui/library";
@@ -21,10 +21,25 @@ import { ArchiveStore } from "../../src/archive/store";
 import { DiarizationStore } from "../../src/diarization/store";
 import { nameDiarizationSpeaker, queueDiarization, readCanonicalTranscript, readDiarizationStatus, resultStatus } from "../../src/diarization/service";
 
+import { readOnboarding, saveLocalOnboarding } from "../config/onboarding";
+import { prepareMockFramePreview } from "../visual/mock-preview";
+import { MockFrameReview } from "../visual/review-flow";
+const frameReview = new MockFrameReview();
+import {StudioVisualFlow,type StudioSource} from '../visual/studio-flow';
+const studioFrames=new StudioVisualFlow(join(dirname(getDefaultJobStateDir()),'visual-review'));
+export const handleRealFrameOperation=async(flow:StudioVisualFlow,request:Request,source:StudioSource)=>{
+ const p=request.payload||{};
+ if(request.op==='frames-check-models')return flow.check(source.config,p.visionModel||'',p.summaryModel||'');
+ if(request.op==='frames-cancel')return flow.cancel(source.key,p.previewId||'');
+ if(request.op==='frames-confirm')return flow.confirm(source,p.previewId||'',p.consent===true,p.consentKey||'');
+ if(request.op==='frames-preview')return flow.preview(source,p.capabilityId||'',p.question||'',p.seconds??NaN);
+ throw Error('Unknown visual operation');
+};
+
 import { setAutomationPaused } from "../calls/control";
 
-const OPERATIONS = ["list", "detail", "resolve", "playback-status", "subtitles", "diarization", "automation-pause", "automation-resume", "capture-status", "capture-start", "capture-stop", "capture-recover", "audio-defaults", "jobs-list", "job-process", "job-retry", "diarization-name", "context-meeting"] as const;
-type Request = { id: number; op: typeof OPERATIONS[number]; key?: string; payload?: { title?: string; speakerId?: string; label?: string; maxCharacters?: number; query?: string; offset?: number } };
+const OPERATIONS = ["ux-capabilities", "onboarding-read", "onboarding-save-local", "frames-check-models", "frames-preview", "frames-confirm", "frames-cancel", "list", "detail", "resolve", "playback-status", "subtitles", "diarization", "automation-pause", "automation-resume", "capture-status", "capture-start", "capture-stop", "capture-recover", "audio-defaults", "jobs-list", "job-process", "job-retry", "diarization-name", "context-meeting"] as const;
+type Request = { id: number; op: typeof OPERATIONS[number]; key?: string; payload?: { title?: string; speakerId?: string; label?: string; maxCharacters?: number; query?: string; offset?: number; question?: string; seconds?: number; previewId?: string; consent?: boolean; revision?: string; visionModel?: string; summaryModel?: string; capabilityId?: string; consentKey?: string } };
 type Response = { id: number; ok: true; result: unknown } | { id: number; ok: false; error: string };
 const MAX_LINE = 1024 * 1024;
 const UUID = /^[a-f0-9-]{36}$/i;
@@ -50,6 +65,8 @@ const safeError = (op: string, error: unknown): string => {
     "A gravação ainda não possui contexto disponível.", "Muitas operações pendentes; tente novamente."
   ];
   if (known.includes(text)) return text;
+  if (op.startsWith("frames-")) return "Pedido visual recusado/cancelado. Confira horário, preview, consentimento e budget; verifique modelos locais/capabilities, identidade da origem, consentimento e limite persistente. Dados preservados.";
+  if (op.startsWith("onboarding-")) return "Configuração inválida, insegura ou alterada. Dados preservados; reabra antes de salvar.";
   if (op.startsWith("capture-") || op === "audio-defaults") return "Falha na operação de captura; verifique o estado e a configuração de áudio.";
   if (op.startsWith("job")) return "Falha na operação do job selecionado.";
   if (op === "context-meeting") return "Não foi possível carregar o contexto desta reunião.";
@@ -129,6 +146,7 @@ const detail = async (key: string): Promise<unknown> => {
   const job = completedJob(entry);
   const subtitleId = entry.archive?.vaio.state === "completed" ? entry.archive.id : entry.jobs.find((item) => item.target === "remote" && item.state === "completed")?.id;
   const [{ transcript: originalTranscript }, summary, timesheet, canonical] = await Promise.all([transcriptFor(entry, job), job ? readPlainArtifact(job, "summary") : Promise.resolve(""), timesheetText(entry.sourcePath), job ? readCanonicalTranscript(job).catch(() => undefined) : Promise.resolve(undefined)]);
+  const visualReview=job&&canonical?await studioFrames.readResult(job.id,job.source.sha256,canonical).catch(()=>undefined):undefined;
   const diarizationResult = job && canonical ? await new DiarizationStore().read(job.id, job.source.sha256, canonical.text) : undefined;
   // Speaker timing comes from its own acoustic timeline. A lexical match inside
   // a 10-minute transcript block is not enough evidence to invent word timing.
@@ -141,7 +159,7 @@ const detail = async (key: string): Promise<unknown> => {
     if (/ActiveState=(active|activating)/.test(status.stdout)) subtitleState = "running";
     else if (/ActiveState=failed/.test(status.stdout)) subtitleState = "failed";
   }
-  return { key: entry.sourcePath, title: titleOf(entry), status: entry.jobs[0]?.state || statusOf(entry), backup: backupOf(entry), ...boundary, summary, summaryInfo: job ? `${job.summary.provider}/${job.summary.model} · ${job.summary.provider === "openai" ? "provedor externo" : "Ollama: endpoint configurado"}` : "", timesheet, subtitleState,
+  return { key: entry.sourcePath, title: titleOf(entry), status: entry.jobs[0]?.state || statusOf(entry), backup: backupOf(entry), ...boundary, summary: visualReview?.summaryMarkdown || summary, visualReview, summaryInfo: visualReview ? `Resumo visual solicitado: ${visualReview.visionModel}/${visualReview.summaryModel} · revisar origem` : job ? `${job.summary.provider}/${job.summary.model} · ${job.summary.provider === "openai" ? "provedor externo" : "Ollama: endpoint configurado"}` : "", timesheet, subtitleState,
     ...(job && canonical ? { diarizationId: job.id, jobId: job.id } : {}), ...(subtitleId ? { subtitleId } : {}) };
 };
 const resolvePlayback = async (key: string): Promise<unknown> => {
@@ -170,16 +188,39 @@ export const parseRequest = (value: unknown): Request => {
   if (request.key !== undefined && (typeof request.key !== "string" || request.key.length > 4096 || /[\x00-\x1f]/.test(request.key))) throw new Error("key inválido");
   if (request.payload !== undefined && (!request.payload || typeof request.payload !== "object" || Array.isArray(request.payload))) throw new Error("payload inválido");
   const payload = (request.payload || {}) as Record<string, unknown>;
-  const allowed = request.op === "capture-start" ? ["title"] : request.op === "diarization-name" ? ["speakerId", "label"] : request.op === "context-meeting" ? ["maxCharacters", "query", "offset"] : [];
+  const allowed = request.op === "frames-check-models" ? ["visionModel", "summaryModel"] : request.op === "frames-preview" ? ["question", "seconds", "capabilityId"] : request.op === "frames-confirm" ? ["previewId", "consent", "consentKey"] : request.op === "frames-cancel" ? ["previewId"] : request.op === "onboarding-save-local" ? ["revision"] : request.op === "capture-start" ? ["title"] : request.op === "diarization-name" ? ["speakerId", "label"] : request.op === "context-meeting" ? ["maxCharacters", "query", "offset"] : [];
   if (Object.keys(payload).some((key) => !allowed.includes(key))) throw new Error("payload inválido");
-  for (const [key, max] of [["title", 200], ["speakerId", 8], ["label", 80], ["query", 1000]] as const) {
+  for (const [key, max] of [["title", 200], ["speakerId", 8], ["label", 80], ["query", 1000], ["question", 1000], ["previewId", 36], ["revision", 64], ["visionModel", 200], ["summaryModel", 200], ["capabilityId", 36], ["consentKey", 64]] as const) {
     if (payload[key] !== undefined && (typeof payload[key] !== "string" || (payload[key] as string).length > max || /[\x00-\x1f\x7f]/.test(payload[key] as string))) throw new Error("payload inválido");
   }
   if (payload.maxCharacters !== undefined && (!Number.isSafeInteger(payload.maxCharacters) || (payload.maxCharacters as number) < 4096 || (payload.maxCharacters as number) > 24000)) throw new Error("payload inválido");
   if (payload.offset !== undefined && (!Number.isSafeInteger(payload.offset) || (payload.offset as number) < 0)) throw new Error("payload inválido");
+  if (payload.seconds !== undefined && (typeof payload.seconds !== "number" || !Number.isFinite(payload.seconds) || payload.seconds < 0)) throw new Error("payload inválido");
+  if (payload.consent !== undefined && typeof payload.consent !== "boolean") throw new Error("payload inválido");
   return { id: request.id as number, op: request.op as Request["op"], ...(request.key === undefined ? {} : { key: request.key as string }), payload };
 };
 const handle = async (request: Request): Promise<unknown> => {
+  if (request.op === "ux-capabilities") return {mockFrames: process.env.FALATRACE_UX_MOCK_ONLY === "1",realFrames:true};
+  if (request.op === "onboarding-read") return readOnboarding();
+  if (request.op === "onboarding-save-local") { const result=await saveLocalOnboarding(request.payload?.revision || ""); libraryCache=undefined; return result; }
+  if (request.op.startsWith("frames-")) {
+    const key=request.key || "";
+    if(process.env.FALATRACE_UX_MOCK_ONLY !== "1"){
+      if(request.op==='frames-cancel')return studioFrames.cancel(key,request.payload?.previewId||'');
+      const {entry}=await findEntry(key);const {config}=await loadConfig();const job=completedJob(entry);
+      if(!job)throw Error('A completed transcript is required');
+      await assertExistingManagedPath(config,entry.sourcePath);
+      const transcript=await readCanonicalTranscript(job);if(!transcript)throw Error('Transcript unavailable');
+      return handleRealFrameOperation(studioFrames,request,{key,jobId:job.id,path:entry.sourcePath,mediaHash:job.source.sha256,transcript,config});
+    }
+    if(request.op === "frames-confirm") return frameReview.confirm(key,request.payload?.previewId || "",request.payload?.consent === true);
+    if(request.op === "frames-cancel") return frameReview.cancel(key,request.payload?.previewId || "");
+    const {entry}=await findEntry(key);const job=completedJob(entry);
+    if(!job) throw new Error("Uma transcrição concluída é necessária para o preview.");
+    const transcript=await readCanonicalTranscript(job);if(!transcript)throw new Error("Transcrição indisponível.");
+    await assertExistingManagedPath((await loadConfig()).config,entry.sourcePath);
+    return prepareMockFramePreview(frameReview,key,entry.sourcePath,job.source.sha256,transcript,request.payload?.question || "",request.payload?.seconds ?? NaN);
+  }
   if (request.op === "list") return list();
   if (request.op === "automation-pause" || request.op === "automation-resume") {
     await setAutomationPaused(request.op === "automation-pause");
