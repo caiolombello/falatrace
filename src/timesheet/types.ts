@@ -1,14 +1,7 @@
 export const TIME_ENTRY_VERSION = 1 as const;
 
-export const DEFAULT_TASK_TYPES = [
-  { id: 1, name: "Capacitação técnica", slug: "capacitacao" },
-  { id: 2, name: "Entregas técnicas e documentação", slug: "entregas" },
-  { id: 3, name: "Comunicação com o cliente", slug: "comunicacao-cliente" },
-  { id: 4, name: "Comunicação interna Example Team", slug: "comunicacao-interna" },
-  { id: 11, name: "TroubleOps e resposta a incidentes", slug: "troubleops" },
-  { id: 12, name: "Vendas e Pré-vendas", slug: "vendas" },
-  { id: 13, name: "NOC", slug: "noc" }
-] as const;
+// New installations supply their own catalog; existing persisted numeric IDs remain unchanged.
+export const DEFAULT_TASK_TYPES: readonly TimesheetTaskType[] = [];
 
 export type TimeEntryStatus = "capturing" | "draft" | "ready" | "synced";
 export type TimeEntryClassificationStatus =
@@ -306,9 +299,11 @@ export const validateActivityDate = (value: string): string => {
 };
 
 export const validateCardId = (value: string): string => {
-  const normalized = value.trim().toUpperCase();
-  if (!/^[A-Z]+-\d+$/.test(normalized)) {
-    throw new Error("cardId must use the format DEV-123");
+  const trimmed = value.trim();
+  // Preserve normalization for legacy issue references, without imposing that syntax on new IDs.
+  const normalized = /^[A-Za-z]+-\d+$/.test(trimmed) ? trimmed.toUpperCase() : trimmed;
+  if (!/^[A-Za-z0-9][A-Za-z0-9._:#\/-]{0,99}$/.test(normalized)) {
+    throw new Error("cardId must be a bounded task reference without whitespace or control characters");
   }
   return normalized;
 };
@@ -493,7 +488,7 @@ export const validateTimesheetContext = (value: unknown): TimesheetContext => {
   const clients = value.clients.map((item, index): TimesheetClient => {
     if (!isObject(item)) throw new Error(`clients[${index}] is invalid`);
     const code = shortString(item.code, `clients[${index}].code`, 20)!;
-    if (!/^CL\d{3,}$/.test(code)) {
+    if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,19}$/.test(code)) {
       throw new Error(`clients[${index}].code is invalid`);
     }
     return {

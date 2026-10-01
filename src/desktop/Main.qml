@@ -8,7 +8,7 @@ ApplicationWindow {
     width: 1320; height: 820
     minimumWidth: 900; minimumHeight: 640
     visible: true
-    title: "FalaTrace Studio"
+    title: "FalaTrace Studio · " + Qt.application.version
     font.pixelSize: 14
     color: canvas
     property real position: 0
@@ -124,7 +124,8 @@ ApplicationWindow {
     function changeAgentGrant() { cancelProvider(); providerRequestUUID=""; if(frameGrantPending && hasPending("agent-frames")){send("agent-cancel",selected.key,{grantId:frameGrantPending});}agentGeneration+=1;frameGrantPending="";agentResult=({});agentError="";if(agentDialog.visible)send("agent-status",selected.key) }
     function openAgentAccess() { agentDialog.open() }
     function closeAgentAccess() { cancelProvider(); if (activeGrant.id && hasPending("agent-frames")) send("agent-cancel", selected.key, {grantId:activeGrant.id}); agentDialog.close() }
-    property bool uxModal: captureConsent.visible || framesDialog.visible || onboardingDialog.visible || agentDialog.visible || recordingTools.visible
+    property string cliVersion: ""
+    property bool uxModal: aboutDialog.visible || captureConsent.visible || framesDialog.visible || onboardingDialog.visible || agentDialog.visible || recordingTools.visible
     function cancelFramePreview() {
         if (framePlan.id || framePreview.id || hasPending("frames-preview") || hasPending("frames-plan") || hasPending("frames-preview-plan") || hasPending("frames-scope")) send("frames-cancel", selected.key, {previewId: framePreview.id || ""})
         frameGeneration += 1; framePlan = ({}); framePreview = ({}); frameResult = ({})
@@ -508,6 +509,21 @@ ApplicationWindow {
     Shortcut { sequence: "Right"; enabled: mediaReady && !textHasFocus && !uxModal; onActivated: seek(position + 5) }
     Shortcut { sequence: "Left"; enabled: mediaReady && !textHasFocus && !uxModal; onActivated: seek(position - 5) }
     Dialog {
+        id: aboutDialog; objectName: "aboutDialog"; title: "Sobre o FalaTrace"
+        anchors.centerIn: parent; width: Math.min(520, window.width - 32); modal: true
+        closePolicy: Popup.CloseOnEscape
+        onOpened: aboutClose.forceActiveFocus(Qt.TabFocusReason)
+        onClosed: aboutButton.forceActiveFocus(Qt.TabFocusReason)
+        contentItem: ColumnLayout { spacing: 14
+            Label { objectName:"aboutVersion"; text: "Studio em execução: " + Qt.application.version; color: ink; Layout.fillWidth:true; wrapMode:Text.WordWrap }
+            Label { text: "Build local: " + studioBuildId; color: muted; Layout.fillWidth:true; wrapMode:Text.WordWrap }
+            Label { text: "CLI conectado: " + (backend.available && cliVersion ? cliVersion : "indisponível"); color: muted; Layout.fillWidth:true; wrapMode:Text.WordWrap }
+            Label { text: cliVersion && cliVersion !== Qt.application.version ? "Studio e CLI têm versões diferentes. Feche e reabra o Studio após atualizar." : "Versão publicada: não consultada. Esta tela não verifica atualizações pela rede."; color: muted; Layout.fillWidth:true; wrapMode:Text.WordWrap }
+            Label { text: "No terminal: falatrace --version"; color: ink; Layout.fillWidth:true; wrapMode:Text.WordWrap }
+            Button { id:aboutClose; text:"Fechar"; Layout.alignment:Qt.AlignRight; onClicked:aboutDialog.close() }
+        }
+    }
+    Dialog {
         id: captureConsent
         property string intent: "capture"
         objectName: "captureConsent"
@@ -569,7 +585,7 @@ ApplicationWindow {
             } else if(request.op === "agent-frames") { frameGrantPending="";agentResult=result; send("agent-status",selected.key)
             } else if(["agent-authorize","agent-pause","agent-resume","agent-revoke"].includes(request.op)) { if(request.op==="agent-authorize"){showAgentSetup=false;preferredGrantId=result.id;changeAgentGrant()}else send("agent-status",selected.key);agentConsent.checked=false; agentResult=({});
             } else if(request.op === "agent-cancel") { agentError="Consulta cancelada; autorização preservada."
-            } else if (request.op === "ux-capabilities") { mockFramesEnabled = !!result.mockFrames; realFramesEnabled = !!result.realFrames
+            } else if (request.op === "ux-capabilities") { cliVersion = result.productVersion || ""; mockFramesEnabled = !!result.mockFrames; realFramesEnabled = !!result.realFrames
             } else if (request.op === "processing-status") { processingWait = result.waiting.length ? result.waiting[0].message : ""
             } else if (request.op === "frames-cancel") { send("processing-status", "")
             } else if (request.op === "frames-check-models") { frameCapability = result
@@ -670,7 +686,7 @@ ApplicationWindow {
                 ColumnLayout {
                     spacing: 2
                     Label { text: "FalaTrace Studio"; color: ink; font.pixelSize: 20; font.weight: Font.DemiBold }
-                    Label { text: window.width < 1100 ? "Alpha.5 · experimental" : "Alpha.5 · experimental · notas ligadas à origem"; color: muted; font.pixelSize: 12 }
+                    Label { text: Qt.application.version + " · experimental"; color: muted; font.pixelSize: 12 }
                 }
                 Item { Layout.fillWidth: true }
                 ColumnLayout {
@@ -714,6 +730,7 @@ ApplicationWindow {
                             onClicked: selectRecording(modelData)
                         }
                     }
+                    Button { id:aboutButton; objectName:"aboutButton"; text:"Sobre / versão…"; Layout.fillWidth:true; onClicked:aboutDialog.open() }
                     Button { objectName:"recordingControlsButton"; text:"Gravação e tarefas…"; Layout.fillWidth:true; onClicked:recordingTools.open() }
                     Button { id:agentAccessButton; objectName:"agentAccessButton"; text:"Acesso para IA…"; Layout.fillWidth:true; enabled:backend.available && !!selected.recordingId; onClicked:openAgentAccess() }
                     Button { id:onboardingButton; objectName:"onboardingButton"; text: "Configuração e privacidade…"; Layout.fillWidth: true; enabled: backend.available; onClicked: onboardingDialog.open() }

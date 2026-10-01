@@ -1,0 +1,32 @@
+# Alpha.6 — four blocker fixes and local version visibility
+
+Experimental Linux source release. The four blocker fixes below apply to the reviewed candidate. It also includes the existing local time-entry catalog changes and Studio About/version display described here. Own code remains MIT; third-party notices and the dependency lock are unchanged. Dependencies, native runtimes, model weights and binaries are not bundled, and no extra dependency is added.
+
+## Four blocker fixes
+
+1. **Missing consent flags stay off.** Omitted `timesheet.aiClassification` and `timesheet.automaticFromCalls` default independently to `false`, even when an existing profile has `timesheet.enabled: true`. Explicit `true` or `false` remains in effect. Loading does not rewrite configuration bytes or opt the operator into external AI or automatic entries.
+2. **Failed or interrupted native builds require a retry.** The development runner writes `dist/desktop/build-pending` before changing build metadata. The marker survives failure or interruption, including SIGKILL, and forces compilation on the next run. The old output is removed before compilation; the marker is cleared only after a new regular executable file exists. Failure does not launch the stale binary. This invariant is verified for one serial runner; concurrent external builds are not coordinated by this marker.
+3. **Exact client identities win.** Client selection first matches the exact code, before names, aliases or normalized codes. Codes such as `A.B` and `a-b` retain their distinct identities regardless of catalog order. A normalized selector is accepted only when it identifies one client; ambiguous or empty normalized selectors return no selection. Unique legacy code and Unicode alias lookup remains available.
+4. **Cleanup requires generated-file evidence.** A managed-looking filename alone does not authorize deletion. Stale client context must be a regular file with the complete existing generation marker; file identity is checked before removal and symbolic links are not followed. Unmarked or unreadable unknown files, directories, symbolic links and partial markers are preserved. Both legacy and hash-derived filename schemes are covered. Files carrying the complete generation marker remain managed output and may be replaced or removed, including manual edits inside such files. The local check before unlink does not provide a transaction against an external filesystem writer.
+
+## Local time entries and About
+
+The optional local time-entry module remains disabled by default. Fresh catalogs contain no predefined organization, colleagues, clients or task types. User-supplied client codes and positive numeric task type IDs are supported; existing catalog identities and entries are not renumbered. Legacy `CL###` derived filenames remain compatible; other client codes use hash-derived filenames within the managed directory. See [local time-entry limits](TIMESHEETS.md). A stored `synced` status does not prove delivery to an employer or issue tracker; no corporate submission adapter is included.
+
+Studio's About dialog shows the version compiled into the running binary, its local build ID and the connected CLI version when available. It reports a version mismatch and recommends reopening Studio after an update. CLI, bridge and MCP version metadata derive from the package version. About does not query the published release or validate an update over the network. Existing `recording-cli` configuration/state identifiers and the `recording-studio` launcher name remain in place.
+
+## Authorization and provider boundaries
+
+Installation and upgrade do not create recording grants, connect assistants, enable visual APIs or authorize future recordings. An existing explicit grant remains usable only within its recipient, recording/data scope and limits. Local agent retrieval and separate OpenAI/Google analysis approvals remain distinct; permission to retrieve frames does not permit provider dispatch. Visual API dispatch remains disabled by default. Explicit timesheet AI classification is a separate opt-in and can send its configured catalog and bounded meeting content to OpenAI; a configured key or chat subscription does not establish included API access.
+
+Pause, revoke, operator exclusions, source validation and lifetime budgets retain the [alpha.5 contract](ALPHA5.md). No live provider/model access, billing behavior or assistant image interpretation is certified here. Delivered copies cannot be recalled, and secret exclusion remains an operator obligation. No capture, private-media inspection or paid inference is authorized by these release notes.
+
+## Verification
+
+The reviewed code candidate passed **486 offline tests, 0 failures, 3,835 assertions across 81 files in 108.98 seconds**. The targeted blocker suite passed **34 tests, 0 failures and 157 assertions**. TypeScript, desktop checks, CLI bundle and a serial native build also completed successfully on the reviewed candidate. These are candidate validation receipts; final source-manifest, sanitized-artifact and build/version checks are separate release gates.
+
+Fixtures cover missing/independent consent flags with unchanged configuration bytes; native compiler failure, partial output, absent or symbolic output, retry and SIGKILL; exact and ambiguous client lookup; and generated versus unknown context cleanup, including an unreadable file under an unprivileged test user. Compiler fault tests use synthetic SDK/compiler fixtures; a separate native build check does not establish broad desktop/runtime compatibility.
+
+Tests use isolated synthetic HOME/XDG state, generated fixtures and stub provider transports. No product provider inference, microphone/screen capture or private recording is used. Native capture, playback, real calls, actual assistant vision, model quality, billing, accessibility and a cold network installation remain unvalidated. Existing alpha.5 screenshots remain historical synthetic UI evidence, with their original labels. Speaker corrections, new subtitle exports and memory adapters remain roadmap items, not alpha.6 features.
+
+Source-only distribution retains [LICENSE](../LICENSE), [third-party notices](../THIRD-PARTY-NOTICES.md) and the [skill installation guidance](../skills/README.md). Locally compiling a standalone executable does not approve its redistribution; embedded-runtime and native component obligations require a separate review before any binary publication.

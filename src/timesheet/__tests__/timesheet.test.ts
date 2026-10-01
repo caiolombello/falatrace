@@ -139,7 +139,7 @@ describe("timesheet config and context", () => {
       timesheet: { enabled: true, readyConfidence: 0.9 }
     });
     expect(config.timesheet.enabled).toBe(true);
-    expect(config.timesheet.automaticFromCalls).toBe(true);
+    expect(config.timesheet.automaticFromCalls).toBe(false);
     expect(config.timesheet.readyConfidence).toBe(0.9);
     expect(() => validateConfig(config)).not.toThrow();
   });

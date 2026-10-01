@@ -14,7 +14,7 @@
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
-<div class="review-banner"><span class="wrap">Experimental alpha.5 · AI access requires authorization; API dispatch is disabled by default.</span></div>
+<div class="review-banner"><span class="wrap">Experimental alpha.6 · AI access requires authorization; API dispatch is disabled by default.</span></div>
 <header class="wrap">
  <a class="brand" href="#" aria-label="FalaTrace home"><img src="../assets/falatrace-mark-light.svg" width="36" height="36" alt=""><span>FalaTrace</span></a>
  <nav aria-label="Main navigation"><a href="#workflow">How it works</a><a href="#studio">Studio</a><a href="#status">Limits</a><a class="github" href="https://github.com/caiolombello/falatrace">GitHub <span aria-hidden="true">↗</span></a></nav>
@@ -26,7 +26,7 @@
    <p class="eyebrow"><span class="status-dot" aria-hidden="true"></span> Linux · open source · experimental alpha</p>
    <h1>Your recordings.<br>Context with a <em>source.</em></h1>
    <p class="lead">Set up automatic recordings with permission. Revisit the conversation and bring your AI tools the context they need — with a source to review.</p>
-   <div class="actions"><a class="button" href="https://github.com/caiolombello/falatrace/releases/tag/v0.2.0-alpha.5">Explore alpha.5 <span aria-hidden="true">↗</span></a><a class="secondary" href="#studio">Meet the Studio <span aria-hidden="true">↓</span></a></div>
+   <div class="actions"><a class="button" href="https://github.com/caiolombello/falatrace/releases/tag/v0.2.0-alpha.6">Explore alpha.6 <span aria-hidden="true">↗</span></a><a class="secondary" href="#studio">Meet the Studio <span aria-hidden="true">↓</span></a></div>
    <p class="small">Source code for Linux. You configure the installation and models. Real capture and AI quality still need validation.</p>
   </div>
   <aside class="source-note" aria-label="Three parts of the workflow">
@@ -37,14 +37,14 @@
  </section>
 
  <section id="studio" class="wrap section studio-section">
-  <div class="section-heading"><div><p class="eyebrow">Available in the public source · v0.2.0-alpha.5</p><h2>From the library<br>back to the conversation.</h2></div><p>Video, transcript, summary and context in one Studio. Open the source and review the notes before relying on an AI conclusion.</p></div>
+  <div class="section-heading"><div><p class="eyebrow">Available in the public source · v0.2.0-alpha.6</p><h2>From the library<br>back to the conversation.</h2></div><p>Video, transcript, summary and context in one Studio. Open the source and review the notes before relying on an AI conclusion.</p></div>
   <figure class="product-figure"><a class="image-link" href="../assets/studio-alpha5.png" aria-label="Enlarge the actual alpha.5 Studio screen with synthetic data"><img src="../assets/studio-alpha5.png" width="1320" height="820" alt="Studio alpha.5 in Portuguese, light theme: library on the left, video area in the center and transcript on the right. Synthetic content."></a><figcaption><span class="tag">Actual UI · alpha.5</span> Qt render with synthetic data and a test backend. No person was recorded. Open the image to enlarge it.</figcaption></figure>
   <div class="feature-row"><article><span class="number">LIBRARY</span><h3>An entry for each recording.</h3><p>Search by title and check processing and source status.</p></article><article><span class="number">SOURCE</span><h3>Notes that invite review.</h3><p>Approximate timestamps are labeled. Transcripts and summaries may contain errors.</p></article><article><span class="number">CONTEXT</span><h3>Retrieve only what you need.</h3><p>The CLI and skill let you search recordings and retrieve bounded context for your AI tools.</p></article></div>
  </section>
 
  <section id="workflow" class="workflow-band section">
   <div class="wrap"><div class="section-heading"><div><p class="eyebrow">Automation you choose</p><h2>Less searching.<br>More context to review.</h2></div><p>Automatic recording requires rules, configuration and consent. Installing the project does not start it.</p></div>
-  <div class="steps"><article><span class="number">01 / CONFIGURE</span><h3>Decide when to record.</h3><p>Choose detection rules and the audio source. Pause new recordings when needed; stopping an ongoing capture is a separate action.</p></article><article><span class="number">02 / REVIEW</span><h3>Start with the transcript.</h3><p>Read the text and notes. In alpha.5's local visual workflow, you select an interval, check the preview and authorize analysis and a partial summary.</p></article><article><span class="number">03 / RETRIEVE</span><h3>Use it with your AI tools.</h3><p>The skill guides retrieval with sources and limits. Models and destinations depend on your configuration; a chat subscription does not automatically include API usage.</p></article></div>
+  <div class="steps"><article><span class="number">01 / CONFIGURE</span><h3>Decide when to record.</h3><p>Choose detection rules and the audio source. Pause new recordings when needed; stopping an ongoing capture is a separate action.</p></article><article><span class="number">02 / REVIEW</span><h3>Start with the transcript.</h3><p>Read the text and notes. In alpha.6's local visual workflow, you select an interval, check the preview and authorize analysis and a partial summary.</p></article><article><span class="number">03 / RETRIEVE</span><h3>Use it with your AI tools.</h3><p>The skill guides retrieval with sources and limits. Models and destinations depend on your configuration; a chat subscription does not automatically include API usage.</p></article></div>
   <p class="small band-note">The visual workflow was exercised offline with synthetic video and stubbed model transport. Real-model quality and its decision to request images have not been validated.</p>
   </div>
  </section>
@@ -57,7 +57,7 @@
  <section id="status" class="wrap section">
   <div class="section-heading"><div><p class="eyebrow">What to expect today</p><h2>An alpha to test<br>with care and context.</h2></div><p>Offline checks show how the code behaves with fixtures. They do not establish AI quality, capture stability on your desktop or actual cost.</p></div>
   <div class="status-grid"><article class="status-card"><p class="eyebrow">Verified offline</p><h3>Contracts and synthetic data.</h3><ul><li>Locked dependencies, configuration without overwriting and uninstall that preserves data.</li><li>Qt UI, synthetic preview, consent, cancellation and stale-response rejection.</li><li>Production adapters with test transport and source references.</li></ul></article><article class="status-card limitations"><p class="eyebrow">Not yet validated live</p><h3>Real desktops and models.</h3><ul><li>Capture, playback and automation across Linux environments.</li><li>Semantic quality, model access and provider billing.</li><li>Screen readers, display scaling, binaries and other platforms.</li></ul></article></div>
-  <p><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.5/docs/ALPHA5.md">Alpha.5 scope <span aria-hidden="true">↗</span></a> <span class="link-divider">·</span> <a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.5/docs/ALPHA5.md#verification">Journeys and limitations <span aria-hidden="true">↗</span></a></p>
+  <p><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.6/docs/ALPHA6.md">Alpha.6 scope <span aria-hidden="true">↗</span></a> <span class="link-divider">·</span> <a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.6/docs/ALPHA6.md#verification">Journeys and limitations <span aria-hidden="true">↗</span></a></p>
  </section>
 
  <section id="candidate" class="wrap section candidate-section">
@@ -69,7 +69,7 @@
   </details>
  </section>
 
- <section class="download-section section"><div class="wrap download-inner"><div><p class="eyebrow">Own code under MIT</p><h2>Start with the source.</h2><p>Read the requirements, configure deliberately and validate your environment before recording. The current distribution is source code for Linux.</p></div><div class="download-actions"><a class="button" href="https://github.com/caiolombello/falatrace/releases/tag/v0.2.0-alpha.5">View alpha.5 release <span aria-hidden="true">↗</span></a><a href="https://github.com/caiolombello/falatrace/releases/download/v0.2.0-alpha.5/falatrace-0.2.0-alpha.5-source.tar.gz">Download source code (.tar.gz)</a><a href="https://github.com/caiolombello/falatrace/releases/download/v0.2.0-alpha.5/falatrace-0.2.0-alpha.5-source.sha256">Check SHA-256</a><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.5/skills/README.md">Install the skill in your tools</a></div></div></section>
+ <section class="download-section section"><div class="wrap download-inner"><div><p class="eyebrow">Own code under MIT</p><h2>Start with the source.</h2><p>Read the requirements, configure deliberately and validate your environment before recording. The current distribution is source code for Linux.</p></div><div class="download-actions"><a class="button" href="https://github.com/caiolombello/falatrace/releases/tag/v0.2.0-alpha.6">View alpha.6 release <span aria-hidden="true">↗</span></a><a href="https://github.com/caiolombello/falatrace/releases/download/v0.2.0-alpha.6/falatrace-0.2.0-alpha.6-source.tar.gz">Download source code (.tar.gz)</a><a href="https://github.com/caiolombello/falatrace/releases/download/v0.2.0-alpha.6/falatrace-0.2.0-alpha.6-source.sha256">Check SHA-256</a><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.6/skills/README.md">Install the skill in your tools</a></div></div></section>
 </main>
 <footer class="wrap"><a class="brand" href="#"><img src="../assets/falatrace-mark-light.svg" width="32" height="32" alt=""><span>FalaTrace</span></a><p>By Caio Barbieri · own code under MIT.<br>No analytics, external fonts or private media.</p><a href="https://github.com/caiolombello/falatrace">Code and documentation <span aria-hidden="true">↗</span></a></footer>
 </body></html>

@@ -66,12 +66,16 @@ export const findClient = (
   context: TimesheetContext,
   value: string
 ): TimesheetClient | undefined => {
+  const exact = context.clients.find((client) => client.code === value);
+  if (exact) return exact;
   const target = normalized(value);
-  return context.clients.find((client) =>
+  if (!target) return undefined;
+  const matches = context.clients.filter((client) =>
     [client.code, client.name, ...client.aliases].some(
       (candidate) => normalized(candidate) === target
     )
   );
+  return matches.length === 1 ? matches[0] : undefined;
 };
 
 export const findTaskType = (

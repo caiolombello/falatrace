@@ -271,8 +271,8 @@ export const DEFAULT_CONFIG: AppConfig = {
   },
   timesheet: {
     enabled: false,
-    automaticFromCalls: true,
-    aiClassification: true,
+    automaticFromCalls: false,
+    aiClassification: false,
     aiModel: "gpt-4o-mini",
     readyConfidence: 0.8,
     contextPath: join(homedir(), ".config", "recording-cli", "timesheet-context.json")

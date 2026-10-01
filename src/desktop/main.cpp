@@ -1,5 +1,6 @@
 // Qt/QML desktop shell.
 #include <QGuiApplication>
+#include "build-info.h"
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQuickWindow>
@@ -148,6 +149,7 @@ int main(int argc, char **argv) {
   QGuiApplication app(argc, argv);
   QQuickStyle::setStyle("Basic");
   app.setApplicationName("FalaTrace Studio");
+  app.setApplicationVersion(FALATRACE_VERSION);
   app.setOrganizationName("recording-cli");
   app.setDesktopFileName("recording-studio");
   const auto args = app.arguments();
@@ -158,6 +160,7 @@ int main(int argc, char **argv) {
   qmlRegisterType<MpvAbstractItem>("Recording", 1, 0, "RecordingVideo");
   QQmlApplicationEngine engine;
   engine.rootContext()->setContextProperty("backend", &bridge);
+  engine.rootContext()->setContextProperty("studioBuildId", QString(FALATRACE_BUILD_ID));
   engine.rootContext()->setContextProperty("smokeKey", qEnvironmentVariable("RECORDING_DESKTOP_SMOKE_KEY"));
   engine.rootContext()->setContextProperty("smokeSoftware", qEnvironmentVariableIsSet("RECORDING_DESKTOP_SOFTWARE_SMOKE"));
   engine.rootContext()->setContextProperty("smokeDiarization", qEnvironmentVariableIsSet("RECORDING_DESKTOP_DIARIZATION_SMOKE"));

@@ -83,9 +83,9 @@ export const TIME_ENTRY_JSON_SCHEMA = {
 export const TIME_ENTRY_SYSTEM_PROMPT = `Classifique uma gravação de trabalho para um apontamento de horas.
 Use somente clientes e tipos fornecidos no catálogo. Retorne clientCode vazio ou taskTypeId 0
 quando não houver evidência suficiente. Pessoas internas, isoladamente, não provam que o cliente
-é Example Team; uma conversa interna pode tratar de outro cliente. Responsáveis por cliente são apenas
+é a própria organização; uma conversa interna pode tratar de outro cliente. Responsáveis por cliente são apenas
 pistas fracas. O card é opcional e só pode ser retornado quando aparecer explicitamente no conteúdo,
-no formato LETRAS-NÚMEROS. Gere uma descrição objetiva do trabalho realizado, em português,
+usando a referência original informada (sem espaços, até 100 caracteres). Gere uma descrição objetiva do trabalho realizado, em português,
 sem inventar decisões, resultados, responsáveis ou prazos. Não escreva uma ata completa.
 As evidências devem explicar brevemente a classificação e nunca incluir e-mails.
 

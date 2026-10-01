@@ -1,3 +1,13 @@
+## 0.2.0-alpha.6 — experimental source alpha
+
+- Default omitted timesheet automation and AI classification flags to false, including existing enabled profiles; preserve explicit choices and configuration bytes.
+- Keep a pending native-build marker through failure or interruption; retry compilation before execution and clear the marker only after a new regular output exists. Verification covers one serial build runner.
+- Resolve exact client codes before aliases; preserve punctuation-distinct codes and refuse ambiguous normalized matches.
+- Remove stale client context only after checking a regular file's complete generation marker and identity; preserve unmarked, unreadable unknown and symbolic-link files.
+- Document the existing optional local time-entry catalog with custom client/task identities, empty initial catalogs and preserved legacy identifiers. No corporate submission adapter is added.
+- Show the running Studio version and local build ID in About, with the connected CLI version and a mismatch notice; align MCP version metadata with the package. Published-version status is not checked over the network.
+- Reviewed candidate: 486 offline tests passed, 0 failed, 3,835 assertions across 81 files in 108.98 seconds. See [alpha.6 scope and validation limits](docs/ALPHA6.md). Source-only Linux release; no extra dependencies, bundled models/native runtimes or public binaries.
+
 ## 0.2.0-alpha.5 — experimental source alpha
 
 - Persistent, explicit grants for named agents and selected recordings; separate frames-only installation opt-in for current/future registered media, with pause, revocation and operator exclusions.

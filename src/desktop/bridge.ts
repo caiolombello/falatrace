@@ -1,3 +1,4 @@
+import { version as productVersion } from "../../package.json";
 import { readHeavyStatus } from '../runtime/heavy-admission';
 /** JSONL bridge for the desktop application. */
 import { promises as fs } from "node:fs";
@@ -241,7 +242,7 @@ const handle = async (request: Request): Promise<unknown> => {
    return agentStudio.change(recordingId,p.grantId||'',request.op.slice(6) as 'pause'|'resume'|'revoke');
   }
   if(request.op === "processing-status") return readHeavyStatus();
-  if (request.op === "ux-capabilities") return {mockFrames: process.env.FALATRACE_UX_MOCK_ONLY === "1",realFrames:true};
+  if (request.op === "ux-capabilities") return {mockFrames: process.env.FALATRACE_UX_MOCK_ONLY === "1",realFrames:true,productVersion};
   if (request.op === "onboarding-read") return readOnboarding();
   if (request.op === "onboarding-save-local") { const result=await saveLocalOnboarding(request.payload?.revision || ""); libraryCache=undefined; return result; }
   if (request.op.startsWith("frames-")) {
