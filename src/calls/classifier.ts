@@ -20,7 +20,11 @@ export const parsePipeWireNode = (value: unknown): PipeWireNodeRecord | null => 
     id: Number(value.id),
     type: "PipeWire:Interface:Node",
     info: {
-      state: optionalString(value.info.state) || undefined,
+      // Monitor deltas may omit state. Explicit unknown values must still
+      // clear a prior running state instead of inheriting it during merge.
+      state: Object.prototype.hasOwnProperty.call(value.info, "state")
+        ? optionalString(value.info.state) || "unknown"
+        : undefined,
       props
     }
   };
@@ -35,6 +39,7 @@ export const mergePipeWireNode = (
   info: {
     ...previous?.info,
     ...current.info,
+    state: current.info.state ?? previous?.info.state,
     props: {
       ...previous?.info.props,
       ...current.info.props

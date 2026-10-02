@@ -127,4 +127,26 @@ describe("actual QML simultaneous captions", () => {
       expect(captionTextAt({ timing, segments }, 2.5)).toBe("");
     }
   });
+  test("preserves complete long overlapping text and leaves HTML-looking content literal", () => {
+    const long = "Texto sintético <tag> & sem HTML. ".repeat(220);
+    const complete = { timing: "segment", segments: [
+      { start: 1, end: 3, speaker: "S01", text: long },
+      { start: 2, end: 4, speaker: "S02", text: "Outra fala simultânea" }
+    ] };
+    expect(captionTextAt(complete, 2.5)).toBe(`S01: ${long}\nS02: Outra fala simultânea`);
+    expect(captionTextAt(complete, 3)).toBe("S02: Outra fala simultânea");
+    for (const invalidPosition of [NaN, Infinity, -1]) expect(captionTextAt(complete, invalidPosition)).toBe("");
+  });
+});
+
+const focusBody = qml.match(/function captionHasFocus\(\)\s*\{([\s\S]*?)\n    \}/)?.[1];
+if (!focusBody) throw new Error("Actual QML caption focus function absent");
+const captionHasFocus = new Function("activeFocusItem", "captionViewport", "captionOverlay", focusBody) as (focus: unknown, viewport: unknown, overlay: { visible: boolean }) => boolean;
+test("caption keyboard scrolling owns playback keys only while its visible viewport has focus", () => {
+  const viewport = { parent: null }, child = { parent: viewport };
+  expect(captionHasFocus(viewport, viewport, { visible: true })).toBe(true);
+  expect(captionHasFocus(child, viewport, { visible: true })).toBe(true);
+  expect(captionHasFocus(child, viewport, { visible: false })).toBe(false);
+  expect(captionHasFocus({ parent: null }, viewport, { visible: true })).toBe(false);
+  expect(captionHasFocus(null, viewport, { visible: true })).toBe(false);
 });

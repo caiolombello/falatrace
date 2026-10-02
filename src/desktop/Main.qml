@@ -192,8 +192,8 @@ ApplicationWindow {
             Label { objectName: "processingWaitLabel"; visible: !!processingWait; text: "Fila global · " + processingWait; textFormat: Text.PlainText; wrapMode: Text.WordWrap; color: warningColor; Layout.fillWidth: true }
             Label { text: mockFramesEnabled ? "Preview: extração local limitada · provider mock-local, nenhuma IA real. Preview baseado no transcript, tempo aproximado. Budget: 8 previews/4 inferências mock por sessão. Abrir esta tela não chama o mock." : "Ollama loopback apenas. Verificar modelos consulta metadados; preview extrai localmente. Só Confirmar envia o frame/pergunta à visão e transcrição/observações ao resumo. Budget comum da instalação: limites e período abaixo após verificar modelos. 24/16 são defaults temporários alpha, configuráveis explicitamente; não são orçamento financeiro. Falhas consomem; sem reset por sessão. Nenhuma assinatura/API externa é usada."; textFormat: Text.PlainText; wrapMode: Text.WordWrap; color: muted; Layout.fillWidth: true }
             Label { visible: !mockFramesEnabled; text: "Provider: Ollama local · modelos explícitos (não salva configuração)"; wrapMode: Text.WordWrap; color: ink; Layout.fillWidth: true }
-            TextField { id: frameVisionModel; objectName: "frameVisionModel"; visible: !mockFramesEnabled; placeholderText: "Modelo instalado com capability vision"; Layout.fillWidth: true; maximumLength: 200; onTextEdited: { cancelFramePreview(); frameCapability=({}) } }
-            TextField { id: frameSummaryModel; objectName: "frameSummaryModel"; visible: !mockFramesEnabled; placeholderText: "Modelo instalado com capability completion"; Layout.fillWidth: true; maximumLength: 200; onTextEdited: { cancelFramePreview(); frameCapability=({}) } }
+            TextField { id: frameVisionModel; objectName: "frameVisionModel"; visible: !mockFramesEnabled; placeholderText: "Modelo instalado com capability vision"; Accessible.name: "Modelo local de visão"; Layout.fillWidth: true; maximumLength: 200; onTextEdited: { cancelFramePreview(); frameCapability=({}) } }
+            TextField { id: frameSummaryModel; objectName: "frameSummaryModel"; visible: !mockFramesEnabled; placeholderText: "Modelo instalado com capability completion"; Accessible.name: "Modelo local para resumo"; Layout.fillWidth: true; maximumLength: 200; onTextEdited: { cancelFramePreview(); frameCapability=({}) } }
             Button { visible: !mockFramesEnabled; text: hasPending("frames-check-models") ? "Verificando…" : "Verificar modelos locais"; enabled: !!selected.key && !!frameVisionModel.text && !!frameSummaryModel.text && !hasPending("frames-check-models") && !hasPending("frames-confirm"); onClicked: { cancelFramePreview(); frameCapability=({}); send("frames-check-models",selected.key,{visionModel:frameVisionModel.text,summaryModel:frameSummaryModel.text}) } }
             Label { visible: !mockFramesEnabled && !!frameCapability.id; text: "Capabilities observadas: vision / completion · " + (frameCapability.endpoint || "") + " · " + frameCapability.visionModel + " / " + frameCapability.summaryModel + " · verificação expira em 5 min"; wrapMode: Text.WordWrap; textFormat: Text.PlainText; color: accent; Layout.fillWidth: true }
             Label { visible: !mockFramesEnabled && !!frameCapability.id; text: "Budget · usuário/instalação · período lifetime (sem renovação): " + (frameCapability.budgetLimits ? frameCapability.budgetLimits.maxInferences + " inferências / " + frameCapability.budgetLimits.maxPreviews + " previews" : "indisponível") + (frameCapability.temporaryAlphaDefaults ? " · defaults temporários alpha" : " · configuração explícita, mudanças auditadas") + ". Modelo local usa recursos da máquina; nenhum preço monetário estimado."; textFormat: Text.PlainText; wrapMode: Text.WordWrap; color: muted; Layout.fillWidth: true }
@@ -457,6 +457,13 @@ ApplicationWindow {
             .map(segment => (segment.speaker ? segment.speaker + ": " : "") + segment.text)
             .join("\n")
     }
+    function captionHasFocus() {
+        if (!captionOverlay.visible) return false
+        for (let item = activeFocusItem; item; item = item.parent) {
+            if (item === captionViewport) return true
+        }
+        return false
+    }
     function audioSummary() {
         const configured = captureStatus.audio && captureStatus.audio.configured
         if (!configured) return "Áudio ainda não validado"
@@ -525,9 +532,9 @@ ApplicationWindow {
         contextLoading = true; contextText = ""; contextCopyText = ""; tabs.currentIndex = 3
         if (send("context-meeting", id, {maxCharacters: 10000}) < 0) contextLoading = false
     }
-    Shortcut { sequence: "Space"; enabled: mediaReady && !textHasFocus && !uxModal && !captionToggle.activeFocus; onActivated: togglePlay() }
-    Shortcut { sequence: "Right"; enabled: mediaReady && !textHasFocus && !uxModal; onActivated: seek(position + 5) }
-    Shortcut { sequence: "Left"; enabled: mediaReady && !textHasFocus && !uxModal; onActivated: seek(position - 5) }
+    Shortcut { sequence: "Space"; enabled: mediaReady && !textHasFocus && !uxModal && !captionToggle.activeFocus && !captionHasFocus(); onActivated: togglePlay() }
+    Shortcut { sequence: "Right"; enabled: mediaReady && !textHasFocus && !uxModal && !captionHasFocus(); onActivated: seek(position + 5) }
+    Shortcut { sequence: "Left"; enabled: mediaReady && !textHasFocus && !uxModal && !captionHasFocus(); onActivated: seek(position - 5) }
     Dialog {
         id: aboutDialog; objectName: "aboutDialog"; title: "Sobre o FalaTrace"
         anchors.centerIn: parent; width: Math.min(520, window.width - 32); modal: true
@@ -758,7 +765,7 @@ ApplicationWindow {
                 }
             }
             ColumnLayout {
-                Layout.fillWidth: true; Layout.fillHeight: true; Layout.margins: 22; spacing: 14
+                Layout.fillWidth: true; Layout.fillHeight: true; Layout.margins: window.height < 720 ? 14 : 22; spacing: window.height < 720 ? 8 : 14
                 Button { opacity: enabled ? 1 : 0.5; visible: !!selected.key; text: "← Biblioteca"; onClicked: backToLibrary(); Accessible.name: "Voltar à biblioteca" }
                 Label { text: selected.title || "Sua biblioteca de gravações"; color: ink; font.pixelSize: 21; font.weight: Font.DemiBold; Layout.fillWidth: true; elide: Text.ElideRight; textFormat: Text.PlainText }
                 Label { text: selected.key ? (mediaReady && location ? "Reproduzindo de " + origin(location) : "Origem: " + origin(selected.location)) + (selected.backup && selected.backup !== "none" ? "  ·  Cópias: " + selected.backup.replace("+", " + ").toUpperCase() : "") : "Selecione uma gravação para acessar o vídeo e o conteúdo."; color: muted; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight }
@@ -775,21 +782,42 @@ ApplicationWindow {
                             ColumnLayout {
                                 anchors.centerIn: parent; width: parent.width - 48; visible: !mediaReady
                                 BusyIndicator { Layout.alignment: Qt.AlignHCenter; running: resolving; visible: resolving }
-                                Label { Layout.fillWidth: true; text: resolving ? "Preparando a gravação…" : selected.key ? "Vídeo pronto para abrir" : "Escolha uma gravação"; color: "#F4F1E9"; font.pixelSize: 18; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap }
+                                Label { Layout.fillWidth: true; text: resolving ? "Preparando a gravação…" : selected.key ? (selected.location === "missing" ? "Mídia indisponível" : "Gravação pronta para abrir") : "Escolha uma gravação"; color: "#F4F1E9"; font.pixelSize: 18; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap }
                                 Button { opacity: enabled ? 1 : 0.5; Layout.alignment: Qt.AlignHCenter; visible: !!selected.key && !resolving; enabled: backend.available && selected.location !== "missing"; text: "Abrir gravação"; onClicked: openRecording() }
                             }
                             Rectangle {
                                 anchors.top: parent.top; anchors.left: parent.left; anchors.margins: 12
-                                width: currentVoices.implicitWidth + 20; height: currentVoices.implicitHeight + 12; radius: 5; color: "#d910141a"
+                                width: Math.min(parent.width - 24, currentVoices.implicitWidth + 20); height: currentVoices.implicitHeight + 12; radius: 5; color: "#d910141a"
                                 visible: mediaReady && !!activeSpeakerLabels(position)
-                                Label { id: currentVoices; anchors.centerIn: parent; text: activeSpeakerLabels(position) + " · automático"; textFormat: Text.PlainText; color: accent; font.pixelSize: 12 }
+                                Label { id: currentVoices; anchors.centerIn: parent; width: parent.width - 20; text: activeSpeakerLabels(position) + " · automático"; textFormat: Text.PlainText; color: "#57D5B0"; font.pixelSize: 12; wrapMode: Text.WordWrap; maximumLineCount: 2; elide: Text.ElideRight }
                             }
                             Rectangle {
                                 id: captionOverlay; objectName: "captionOverlay"
                                 anchors.bottom: parent.bottom; anchors.bottomMargin: 24; anchors.horizontalCenter: parent.horizontalCenter
-                                width: Math.min(parent.width - 36, caption.implicitWidth + 28); height: caption.implicitHeight + 16; radius: 5; color: "#d910141a"
+                                width: Math.min(parent.width - 36, caption.implicitWidth + 28); height: Math.min(caption.implicitHeight + 16, parent.height * 0.5); radius: 5; color: "#d910141a"
                                 visible: captions && mediaReady && captionAvailable && activeCaptionText.length > 0
-                                Label { id: caption; anchors.centerIn: parent; width: parent.width - 28; text: activeCaptionText; textFormat: Text.PlainText; color: "white"; wrapMode: Text.WordWrap; horizontalAlignment: Text.AlignHCenter; font.pixelSize: 16 }
+                                border.width: captionViewport.activeFocus ? 2 : 0; border.color: "#57D5B0"
+                                Flickable {
+                                    id: captionViewport; objectName: "captionViewport"
+                                    anchors.fill: parent; anchors.margins: 8; clip: true
+                                    contentWidth: width; contentHeight: caption.implicitHeight
+                                    activeFocusOnTab: captionOverlay.visible && contentHeight > height
+                                    Accessible.role: Accessible.Pane
+                                    Accessible.name: "Legenda completa"
+                                    Accessible.description: "Quando a legenda for longa, use as setas, Page Up, Page Down ou Espaço para percorrer o texto."
+                                    ScrollBar.vertical: ScrollBar { policy: captionViewport.contentHeight > captionViewport.height ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff }
+                                    Keys.onPressed: event => {
+                                        let step = 0
+                                        if (event.key === Qt.Key_Down) step = 22
+                                        else if (event.key === Qt.Key_Up) step = -22
+                                        else if (event.key === Qt.Key_PageDown || event.key === Qt.Key_Space) step = height * 0.8
+                                        else if (event.key === Qt.Key_PageUp) step = -height * 0.8
+                                        else return
+                                        contentY = Math.max(0, Math.min(Math.max(0, contentHeight - height), contentY + step))
+                                        event.accepted = true
+                                    }
+                                    Label { id: caption; width: captionViewport.width - 12; text: activeCaptionText; textFormat: Text.PlainText; color: "white"; wrapMode: Text.WordWrap; horizontalAlignment: Text.AlignHCenter; font.pixelSize: 16; onTextChanged: captionViewport.contentY = 0 }
+                                }
                             }
                         }
                         Slider { id: timeline; Layout.fillWidth: true; from: 0; to: window.duration || 1; value: window.position; enabled: mediaReady; Accessible.name: "Posição do vídeo"; onMoved: window.seek(value) }
@@ -864,7 +892,7 @@ ApplicationWindow {
                                     delegate: ItemDelegate {
                                         required property var modelData
                                         width: ListView.view.width; height: turnContent.implicitHeight + 18; enabled: mediaReady
-                                        Accessible.name: (modelData.label || modelData.speaker || "Falante incerto") + ", " + preciseClock(modelData.start) + " a " + preciseClock(modelData.end)
+                                        Accessible.name: (modelData.label || modelData.speaker || "Falante incerto") + ", " + preciseClock(modelData.start) + " a " + preciseClock(modelData.end) + ". " + (modelData.text !== undefined ? modelData.text : "Texto não disponível nesta prévia.")
                                         contentItem: ColumnLayout {
                                             id: turnContent; spacing: 5
                                             RowLayout { spacing: 6; Label { text: preciseClock(modelData.start) + "–" + preciseClock(modelData.end); color: accent; font.family: "monospace"; font.pixelSize: 10; Layout.preferredWidth: 128 } Label { text: modelData.label || modelData.speaker || "Falante incerto"; textFormat: Text.PlainText; color: accent; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight } }
@@ -893,7 +921,7 @@ ApplicationWindow {
                         }
                     }
                 }
-                Label { textFormat: Text.PlainText; text: (errorText ? "⚠ " + errorText : "") || notice || "Espaço: reproduzir/pausar · Setas: ±5 s · Esc: biblioteca · Trechos: navegar à origem"; color: errorText ? errorColor : muted; font.pixelSize: 11; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                Label { objectName: "keyboardHelp"; textFormat: Text.PlainText; text: (errorText ? "⚠ " + errorText : "") || notice || (captionHasFocus() ? "Legendas: setas, Page Up/Down ou Espaço percorrem o texto · Tab sai" : "Espaço: reproduzir/pausar · Setas: ±5 s · Esc: biblioteca · Trechos: navegar à origem"); color: errorText ? errorColor : muted; font.pixelSize: 11; wrapMode: Text.WordWrap; Layout.fillWidth: true }
             }
         }
         Label { Layout.fillWidth: true; leftPadding: 22; bottomPadding: 12; topPadding: 10; text: "Captura, processamento e backups continuam nos serviços ao fechar esta janela."; color: muted; font.pixelSize: 11 }

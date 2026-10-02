@@ -41,8 +41,9 @@ export const readCallStatus = async (): Promise<CallMonitorStatus | null> => {
     if (
       typeof parsed !== "object" || parsed === null ||
       (parsed as CallMonitorStatus).version !== 1 ||
+      typeof (parsed as CallMonitorStatus).state !== "string" ||
       !["IDLE", "CANDIDATE", "IN_CALL", "ENDING"].includes(
-        String((parsed as CallMonitorStatus).state)
+        (parsed as CallMonitorStatus).state
       )
     ) {
       throw new Error("Invalid call monitor status");

@@ -1,3 +1,12 @@
+## 0.2.0-alpha.9 — experimental detector and Studio reading fixes
+
+- Preserve a known PipeWire node state when a delta omits it; explicitly invalid or unknown state still fails closed. Persisted monitor state must be a string.
+- Decode streamed UTF-8 across byte boundaries and enforce the existing 16 MiB parser limit in bytes.
+- Keep long captions readable in a bounded scrollable area; improve keyboard focus, two accessible field names, contrast and the footer in short windows.
+- Distinguish missing or unresolved media from recording availability; no automatic capture, provider dispatch, retry or driver changes.
+- Add synthetic detector, parser and missing-source regressions. The consolidated candidate passed 562 offline tests; these are the frozen candidate results, separate from release checks and CI.
+- A deliberately paused synthetic H264 frame was visually confirmed on one AMD/Wayland setup. Forced llvmpipe remained unreliable; broader playback, native capture, physical audio/AVsync, assistive technology and real model quality remain unqualified. See [alpha.9 scope](docs/ALPHA9.md).
+
 ## 0.2.0-alpha.8 — experimental caption UI fix
 
 - Keep the caption preference operable during missing-track/loading states; focused Space toggles captions instead of playback.

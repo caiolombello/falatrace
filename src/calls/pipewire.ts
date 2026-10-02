@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { StringDecoder } from "node:string_decoder";
 import { mergePipeWireNode, parsePipeWireNode } from "./classifier";
 import type { PipeWireNodeRecord } from "./types";
 
@@ -6,6 +7,8 @@ const MAX_JSON_VALUE_BYTES = 16 * 1024 * 1024;
 
 export class JsonValueStreamParser {
   private buffer = "";
+  private bufferBytes = 0;
+  private previousHighSurrogate = false;
   private depth = 0;
   private inString = false;
   private escaped = false;
@@ -18,7 +21,14 @@ export class JsonValueStreamParser {
         throw new Error("pw-dump emitted an unexpected JSON value");
       }
       this.buffer += character;
-      if (this.buffer.length > MAX_JSON_VALUE_BYTES) {
+      const codeUnit = character.charCodeAt(0);
+      const completesSurrogatePair = this.previousHighSurrogate &&
+        character.length === 1 && codeUnit >= 0xdc00 && codeUnit <= 0xdfff;
+      // A high surrogate counted as 3 bytes becomes a 4-byte pair across pushes.
+      this.bufferBytes += completesSurrogatePair ? 1 : Buffer.byteLength(character, "utf8");
+      this.previousHighSurrogate = character.length === 1 &&
+        codeUnit >= 0xd800 && codeUnit <= 0xdbff;
+      if (this.bufferBytes > MAX_JSON_VALUE_BYTES) {
         throw new Error("pw-dump JSON value exceeded the size limit");
       }
       if (this.inString) {
@@ -41,6 +51,8 @@ export class JsonValueStreamParser {
         if (this.depth === 0) {
           values.push(JSON.parse(this.buffer));
           this.buffer = "";
+          this.bufferBytes = 0;
+          this.previousHighSurrogate = false;
         }
       }
     }
@@ -131,6 +143,7 @@ export const monitorPipeWire = (
       stdio: ["ignore", "pipe", "pipe"]
     });
     const parser = new JsonValueStreamParser();
+    const decoder = new StringDecoder("utf8");
     const graph = new PipeWireGraph();
     let stderr = "";
     let settled = false;
@@ -150,7 +163,7 @@ export const monitorPipeWire = (
 
     child.stdout.on("data", (chunk: Buffer) => {
       try {
-        for (const value of parser.push(chunk.toString())) {
+        for (const value of parser.push(decoder.write(chunk))) {
           if (graph.apply(value)) onNodesChanged(graph.values());
         }
       } catch (err) {

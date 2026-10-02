@@ -1,6 +1,6 @@
 {
   "scope": "sanitized experimental source alpha, no private history/config/media/dependencies/binaries",
-  "version": "0.2.0-alpha.8",
+  "version": "0.2.0-alpha.9",
   "selfExcluded": "SOURCE-MANIFEST.json; external release manifest includes this file",
   "files": [
     {
@@ -20,8 +20,8 @@
     },
     {
       "path": "CHANGELOG.md",
-      "sha256": "ce7f07d1cf08d0b8c723da8f2e0083dc5db572bfbf6c5d93a91b73d466afb2ab",
-      "bytes": 5113
+      "sha256": "b0aa6c089cd4df2b0a1ea903908f7fe0ed8973dcf2f1e2a2076c86aae7e72308",
+      "bytes": 6220
     },
     {
       "path": "LICENSE",
@@ -35,8 +35,8 @@
     },
     {
       "path": "README.md",
-      "sha256": "2bb645f5147c51a8a443a817df24f4bdff294c616fd5dc8044c8cc2fde8abcda",
-      "bytes": 14660
+      "sha256": "bf092ceba02b3c3deb0cbd8eb5532076a70804a961256d46cf89ce2e5d508e3e",
+      "bytes": 14679
     },
     {
       "path": "SECURITY.md",
@@ -157,6 +157,11 @@
       "path": "docs/ALPHA8.md",
       "sha256": "c8db97aa164bbe9ae310a70c3f817b3060b024a54ae788bfbaf3672c462572ed",
       "bytes": 2969
+    },
+    {
+      "path": "docs/ALPHA9.md",
+      "sha256": "519f39d6b7647265b1da087ba89c3b03fe4175fd6b8b43b308409dca8b952834",
+      "bytes": 4091
     },
     {
       "path": "docs/CAPTURE-CALL-LIGHT.md",
@@ -325,12 +330,12 @@
     },
     {
       "path": "docs/en/index.html",
-      "sha256": "bb60917ce47f44b72a8c4076f04526daab839a0c44a665e55589f057152afd0a",
+      "sha256": "94d1a323bee9a344dbfd87fb6301bbfdee7590079f639ac718a789347194c464",
       "bytes": 13158
     },
     {
       "path": "docs/index.html",
-      "sha256": "5e5b63b925ed1786b76616240a5b098958d2e55dcc86883ba64fcdaf60fe1881",
+      "sha256": "4ef9ee6bba600096339a66d1df0d2d3417554860ec564fb2666fd4d5db869746",
       "bytes": 13474
     },
     {
@@ -340,7 +345,7 @@
     },
     {
       "path": "package.json",
-      "sha256": "a8d6d3e1c7809ba7ec1bd237d2ac6ce87ab86d92609fa19a87d594bf48965cfa",
+      "sha256": "d9c88144b30b263a8b9944aea87bca63800f7d63f9b536724bc84f2dbffe485b",
       "bytes": 1338
     },
     {
@@ -400,7 +405,7 @@
     },
     {
       "path": "skills/README.md",
-      "sha256": "2cfae0d2d5ab89786b9c6d99867dbb049820e0d3539a7f3d8dffd9b2a06754ee",
+      "sha256": "36d5d33f1e10ea0a18c7cb24ab4002eaa84b605f39b02e14ecf7f8e6495d4b03",
       "bytes": 2145
     },
     {
@@ -410,7 +415,7 @@
     },
     {
       "path": "skills/falatrace/SKILL.md",
-      "sha256": "b17dfc4ed25d9aff396e2a57a5668cd019e343abaf90c65da2b91835e0f5ac78",
+      "sha256": "17bb9d3923d1dde8f5945cc2bba0d2418d7bf0fd9e1938395f9d1d76970a041d",
       "bytes": 7778
     },
     {
@@ -487,6 +492,11 @@
       "path": "src/archive/__tests__/import.test.ts",
       "sha256": "abdcadc5c4ea2e72195e683e84707dfff02c3c888da567d134669269bd64fe26",
       "bytes": 9123
+    },
+    {
+      "path": "src/archive/__tests__/missing-source.test.ts",
+      "sha256": "bbb87938bacb17a22879659fc2a2b8ff68061cb79171ae1b7cd798bb19feef7c",
+      "bytes": 3968
     },
     {
       "path": "src/archive/__tests__/proton.test.ts",
@@ -574,6 +584,21 @@
       "bytes": 1105
     },
     {
+      "path": "src/calls/__tests__/detector-adversarial.test.ts",
+      "sha256": "b8dd7d9794eae9fd766d50d20c24dfcb90d096a3d7d8959254f30703b6dd086f",
+      "bytes": 8374
+    },
+    {
+      "path": "src/calls/__tests__/detector-coverage.test.ts",
+      "sha256": "59ae1c3ff2a84bbe7186c085d918887561077636b36481baf68ca16a8b2b56bf",
+      "bytes": 9729
+    },
+    {
+      "path": "src/calls/__tests__/pipewire-parser.test.ts",
+      "sha256": "bc6045422b4e198d1113453e176e761adc8b8cd96fe9de41c642aa7903d7bdf2",
+      "bytes": 2579
+    },
+    {
       "path": "src/calls/__tests__/recording-runtime.test.ts",
       "sha256": "b74456486404bb1ed9d453497a4022b2fbbebbda7ef6bf4a8ba8e6a6abf9f3f9",
       "bytes": 4456
@@ -585,8 +610,8 @@
     },
     {
       "path": "src/calls/classifier.ts",
-      "sha256": "109ac4f756dcaaf327ab80c6ae0facdcc700aeca8ce3ea706cf697991e400d6e",
-      "bytes": 5262
+      "sha256": "671b51cc186e9db0eb8e07d0ca98ae19a285342abcd05442b38c159142789a1e",
+      "bytes": 5556
     },
     {
       "path": "src/calls/control.ts",
@@ -620,8 +645,8 @@
     },
     {
       "path": "src/calls/pipewire.ts",
-      "sha256": "82394038b4c11bcbd30d42b1f9b23a80185f806c725955c4e8a1255a1084cd8f",
-      "bytes": 5665
+      "sha256": "269b3f4c6b3f832c34dc71fd4718d9688418049819a9d9682ee4e1bcd9f0b619",
+      "bytes": 6390
     },
     {
       "path": "src/calls/runtime.ts",
@@ -640,8 +665,8 @@
     },
     {
       "path": "src/calls/status.ts",
-      "sha256": "82ac22c717d8b797e2b02b4cc8a3f064cf212146823cf6f41395f07bcf647d78",
-      "bytes": 2410
+      "sha256": "7616d4f802611f33cfb14ef188d7bc8f46b84424c1d3563dee7ff942b765f3bd",
+      "bytes": 2467
     },
     {
       "path": "src/calls/types.ts",
@@ -705,8 +730,8 @@
     },
     {
       "path": "src/desktop/Main.qml",
-      "sha256": "4695bc4b68a87fc98f04a2d0c4dd30529443e051c2a85a1597aaf75c61b459da",
-      "bytes": 105328
+      "sha256": "9af85ca825dcf4d17d3f4ff3a252aba7713d2653d5da11a24e88c7aa6df76255",
+      "bytes": 108081
     },
     {
       "path": "src/desktop/__tests__/alpha6-build.test.ts",
@@ -725,8 +750,8 @@
     },
     {
       "path": "src/desktop/diarization-view.test.ts",
-      "sha256": "8344358d79ac0624b5df76a967d9115c067566b6cc26d298643bd744ec774359",
-      "bytes": 8052
+      "sha256": "b27f117c7fbabe8d42947f00a9d554d07104bb1090bc62676d36518598b6e9f9",
+      "bytes": 9616
     },
     {
       "path": "src/desktop/main.cpp",
