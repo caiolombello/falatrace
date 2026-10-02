@@ -54,7 +54,20 @@ ApplicationWindow {
     property int transcriptSegments: (detail.transcript.segments || []).length
     property int activeSegment: -1
     property var captionTrack: detail.captionTranscript || detail.transcript
+    property bool captionAvailable: captionTrack.timing === "segment" && (captionTrack.segments || []).length > 0
     property string activeCaptionText: captionTextAt(position)
+    property string captionStatusText: {
+        if (detailLoading) return "Carregando a faixa de legendas…"
+        if (captionAvailable) {
+            const source = detail.captionSource === "diarization"
+                ? "Falas automáticas · revise texto e horários" + (detail.captionPartial ? " · faixa parcial" : "")
+                : "Faixa de legendas por segmento"
+            return captions ? source : "Legendas desativadas · " + source
+        }
+        if (detail.subtitleState === "running") return "Legendas em preparação; ainda não há faixa disponível."
+        return (captions ? "Preferência de legendas ativada. " : "Legendas desativadas. ")
+            + (detail.subtitleMessage || "Sem faixa temporizada disponível; a transcrição original continua na aba Transcrição.")
+    }
     property int diarizationTurns: (detail.diarization.turns || []).length
     property bool diarizationTab: tabs.currentIndex === 2
     property var captureStatus: ({active: false, session: null, audio: {configured: false}})
@@ -438,6 +451,7 @@ ApplicationWindow {
     function statusText(value) { return ({completed: "Processada", archived: "Backup concluído", failed: "Processamento falhou", queued: "Na fila", processing: "Processando", "archive-pending": "Backup pendente", unprocessed: "Sem processamento"})[value] || value }
     function speakerLabel(segment) { return segment.speaker || "Falante incerto" }
     function captionTextAt(seconds) {
+        if (captionTrack.timing !== "segment") return ""
         return (captionTrack.segments || [])
             .filter(segment => segment.start <= seconds && seconds < segment.end)
             .map(segment => (segment.speaker ? segment.speaker + ": " : "") + segment.text)
@@ -511,7 +525,7 @@ ApplicationWindow {
         contextLoading = true; contextText = ""; contextCopyText = ""; tabs.currentIndex = 3
         if (send("context-meeting", id, {maxCharacters: 10000}) < 0) contextLoading = false
     }
-    Shortcut { sequence: "Space"; enabled: mediaReady && !textHasFocus && !uxModal; onActivated: togglePlay() }
+    Shortcut { sequence: "Space"; enabled: mediaReady && !textHasFocus && !uxModal && !captionToggle.activeFocus; onActivated: togglePlay() }
     Shortcut { sequence: "Right"; enabled: mediaReady && !textHasFocus && !uxModal; onActivated: seek(position + 5) }
     Shortcut { sequence: "Left"; enabled: mediaReady && !textHasFocus && !uxModal; onActivated: seek(position - 5) }
     Dialog {
@@ -771,9 +785,10 @@ ApplicationWindow {
                                 Label { id: currentVoices; anchors.centerIn: parent; text: activeSpeakerLabels(position) + " · automático"; textFormat: Text.PlainText; color: accent; font.pixelSize: 12 }
                             }
                             Rectangle {
+                                id: captionOverlay; objectName: "captionOverlay"
                                 anchors.bottom: parent.bottom; anchors.bottomMargin: 24; anchors.horizontalCenter: parent.horizontalCenter
                                 width: Math.min(parent.width - 36, caption.implicitWidth + 28); height: caption.implicitHeight + 16; radius: 5; color: "#d910141a"
-                                visible: captions && mediaReady && captionTrack.timing === "segment" && activeCaptionText.length > 0
+                                visible: captions && mediaReady && captionAvailable && activeCaptionText.length > 0
                                 Label { id: caption; anchors.centerIn: parent; width: parent.width - 28; text: activeCaptionText; textFormat: Text.PlainText; color: "white"; wrapMode: Text.WordWrap; horizontalAlignment: Text.AlignHCenter; font.pixelSize: 16 }
                             }
                         }
@@ -783,8 +798,9 @@ ApplicationWindow {
                             Button { Layout.minimumWidth: 54; Layout.preferredWidth: window.width < 1100 ? 54 : 100; Accessible.name: "Voltar dez segundos"; opacity: enabled ? 1 : 0.5; text: "−10 s"; enabled: mediaReady; onClicked: seek(position - 10) }
                             Label { text: clock(position) + " / " + clock(duration); color: muted; font.family: "monospace"; font.pixelSize: 12 }
                             Item { Layout.fillWidth: true }
-                            CheckBox { text: window.width < 1100 ? "CC" : "Legendas"; Accessible.name: "Legendas"; checked: captions; enabled: captionTrack.timing === "segment"; onToggled: captions = checked }
+                            CheckBox { id: captionToggle; objectName: "captionToggle"; text: window.width < 1100 ? "CC" : "Legendas"; Accessible.name: "Exibir legendas quando houver uma faixa disponível"; checked: captions; enabled: !!selected.key; onToggled: captions = checked }
                         }
+                        Label { objectName: "captionStatus"; visible: !!selected.key; text: captionStatusText; textFormat: Text.PlainText; color: captionAvailable ? muted : warningColor; font.pixelSize: 12; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                     }
                     Rectangle {
                         Layout.preferredWidth: Math.max(290, Math.min(390, window.width * 0.28)); Layout.fillHeight: true; color: surface; radius: 8

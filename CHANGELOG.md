@@ -1,3 +1,10 @@
+## 0.2.0-alpha.8 — experimental caption UI fix
+
+- Keep the caption preference operable during missing-track/loading states; focused Space toggles captions instead of playback.
+- Prefer existing segment captions, with a reviewed, explicitly automatic/partial fallback from existing timed diarizer utterances.
+- Preserve canonical transcript and speaker artifacts; approximate block text never becomes caption text.
+- No automatic provider dispatch, generation, capture, remote-worker repair or acoustic quality certification.
+
 ## 0.2.0-alpha.6 — experimental source alpha
 
 - Default omitted timesheet automation and AI classification flags to false, including existing enabled profiles; preserve explicit choices and configuration bytes.

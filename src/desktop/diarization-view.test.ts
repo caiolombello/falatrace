@@ -21,6 +21,53 @@ const result = (turns = [
 });
 
 describe("diarized dialogue presentation", () => {
+  test("uses existing timed diarizer text for captions without replacing or aligning canonical blocks", () => {
+    const canonical: Transcript = { version: 1, provider: "openai", model: "gpt-transcribe", language: "pt",
+      text: "Texto canônico diferente.", segments: [{ start: 0, end: 600, text: "Texto canônico diferente." }] };
+    const sidecar = validateDiarizationResult(result());
+    const view = buildDiarizationView(sidecar);
+    const before = JSON.stringify({ canonical, sidecar, view });
+    const boundary = buildTranscriptBoundary(canonical, parsePlayerTranscript(canonical), view);
+    expect(boundary.transcript.text).toBe(canonical.text);
+    expect(boundary.transcript.timing).toBe("block");
+    expect(boundary.captionSource).toBe("diarization");
+    expect(boundary.captionPartial).toBe(false);
+    expect(boundary.captionTranscript.reviewRequired).toBe(true);
+    expect(boundary.captionTranscript.segments).toEqual([
+      { start: 1, end: 3, speaker: "Pessoa A", text: "Primeira fala sintética." },
+      { start: 2, end: 4, speaker: "Pessoa B", text: "Resposta sintética simultânea." }
+    ]);
+    expect(JSON.stringify({ canonical, sidecar, view })).toBe(before);
+  });
+
+  test("keeps usable existing captions ahead of diarization and never promotes block text alone", () => {
+    const block = parsePlayerTranscript({ model: "gpt-transcribe", text: "Bloco aproximado", segments: [{ start: 0, end: 600, text: "Bloco aproximado" }] });
+    const aligned = parsePlayerTranscript({ model: "whisper", segments: [{ start: 1, end: 2, text: "Cue existente" }] });
+    const view = buildDiarizationView(validateDiarizationResult(result()));
+    expect(buildTranscriptBoundary(undefined, aligned, view).captionTranscript).toEqual(aligned);
+    expect(buildTranscriptBoundary(undefined, aligned, view).captionSource).toBe("transcript");
+    const absent = buildTranscriptBoundary(undefined, block, { state: "idle", turns: [] });
+    expect(absent.captionSource).toBe("none");
+    expect(absent.captionTranscript.timing).toBe("block");
+    for (const state of ["idle", "running", "failed"] as const) {
+      expect(buildTranscriptBoundary(undefined, block, { ...view, state }).captionSource).toBe("none");
+    }
+  });
+
+  test("discloses partial timed text and refuses missing text or invalid cue intervals", () => {
+    const view = { state: "review" as const, turns: [
+      { start: 1, end: 2, speaker: "S01", text: "Fala utilizável" },
+      { start: 2, end: 3, speaker: "S02" },
+      { start: 4, end: 4, text: "Sem duração" },
+      { start: NaN, end: 6, text: "Horário inválido" }
+    ] };
+    const boundary = buildTranscriptBoundary(undefined, parsePlayerTranscript(null), view);
+    expect(boundary.captionSource).toBe("diarization");
+    expect(boundary.captionPartial).toBe(true);
+    expect(boundary.captionTranscript.segments).toEqual([{ start: 1, end: 2, speaker: "S01", text: "Fala utilizável" }]);
+    expect(buildTranscriptBoundary(undefined, parsePlayerTranscript(null), { state: "review", turns: view.turns.slice(1) }).captionSource).toBe("none");
+  });
+
   test("keeps each diarizer utterance with its own speaker and timestamp; never replaces canonical text", () => {
     const sidecar = validateDiarizationResult(result()); const before = JSON.stringify(sidecar);
     const view = buildDiarizationView(sidecar);
@@ -55,7 +102,7 @@ const body = qml.match(/function captionTextAt\(seconds\)\s*\{([\s\S]*?)\n    \}
 if (!body) throw new Error("Actual QML caption function absent");
 const captionTextAt = new Function("captionTrack", "seconds", body) as (track: unknown, seconds: number) => string;
 describe("actual QML simultaneous captions", () => {
-  const track = { segments: [
+  const track = { timing: "segment", segments: [
     { start: 1, end: 3, text: "Sintético A", speaker: "S01" },
     { start: 2, end: 4, text: "Sintético B", speaker: "S02" }
   ] };
@@ -70,8 +117,14 @@ describe("actual QML simultaneous captions", () => {
     expect(captionTextAt({}, 2)).toBe("");
   });
   test("switching track at the same playhead position does not reuse old utterances", () => {
-    const other = { segments: [{ start: 2, end: 4, text: "Outra gravação sintética" }] };
+    const other = { timing: "segment", segments: [{ start: 2, end: 4, text: "Outra gravação sintética" }] };
     expect(captionTextAt(other, 2.5)).toBe("Outra gravação sintética");
     expect(captionTextAt({}, 2.5)).toBe("");
+  });
+  test("does not turn approximate blocks or unclassified intervals into caption text", () => {
+    const segments = [{ start: 0, end: 600, text: "Bloco sem alinhamento acústico" }];
+    for (const timing of ["block", "none", undefined]) {
+      expect(captionTextAt({ timing, segments }, 2.5)).toBe("");
+    }
   });
 });

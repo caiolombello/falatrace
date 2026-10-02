@@ -131,11 +131,28 @@ export const buildDiarizationView = (result: DiarizationResult): DiarizationView
   return { ...resultStatus(result), turns,
     textCoverage: { shownTurns, totalTurns: turns.length, maxBytes: DIARIZATION_VIEW_TEXT_BYTES } };
 };
-export const buildTranscriptBoundary = (canonical: Transcript | undefined, captionTranscript: PlayerTranscript, diarization: DiarizationView): { transcript: PlayerTranscript; captionTranscript: PlayerTranscript; diarization: DiarizationView } => ({
-  transcript: canonical ? { ...parsePlayerTranscript(canonical), text: canonical.text } : captionTranscript,
-  captionTranscript,
-  diarization
-});
+export const buildTranscriptBoundary = (canonical: Transcript | undefined, captionTranscript: PlayerTranscript, diarization: DiarizationView): { transcript: PlayerTranscript; captionTranscript: PlayerTranscript; captionSource: "transcript" | "diarization" | "none"; captionPartial: boolean; diarization: DiarizationView } => {
+  // Existing segment captions take precedence. The fallback uses only the
+  // diarizer's own timed utterances; it never aligns canonical block text.
+  let captions = captionTranscript;
+  let captionSource: "transcript" | "diarization" | "none" = captions.timing === "segment" && captions.segments.length ? "transcript" : "none";
+  let captionPartial = false;
+  if (captionSource === "none" && ["ready", "review"].includes(diarization.state)) {
+    const turns = diarization.turns || [];
+    const timed = parsePlayerTranscript({ model: "diarization", segments: turns.map(turn => ({
+      start: turn.start, end: turn.end, text: turn.text, speaker: turn.label || turn.speaker
+    })) });
+    if (timed.segments.length) {
+      captions = { ...timed, reviewRequired: true };
+      captionSource = "diarization";
+      captionPartial = timed.segments.length < turns.length;
+    }
+  }
+  return {
+    transcript: canonical ? { ...parsePlayerTranscript(canonical), text: canonical.text } : captionTranscript,
+    captionTranscript: captions, captionSource, captionPartial, diarization
+  };
+};
 const transcriptFor = async (entry: LibraryEntry, job?: JobRecord): Promise<{ transcript: PlayerTranscript; subtitleId?: string }> => {
   const hash = entry.archive?.source.sha256 || job?.source.sha256;
   if (hash) {

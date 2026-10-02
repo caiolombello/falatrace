@@ -1,6 +1,6 @@
 {
   "scope": "sanitized experimental source alpha, no private history/config/media/dependencies/binaries",
-  "version": "0.2.0-alpha.7",
+  "version": "0.2.0-alpha.8",
   "selfExcluded": "SOURCE-MANIFEST.json; external release manifest includes this file",
   "files": [
     {
@@ -20,8 +20,8 @@
     },
     {
       "path": "CHANGELOG.md",
-      "sha256": "58af1ab3d6428b36e2e76f242f2f1aa642df157eb52c5586f0615f7826b4d0d8",
-      "bytes": 4585
+      "sha256": "ce7f07d1cf08d0b8c723da8f2e0083dc5db572bfbf6c5d93a91b73d466afb2ab",
+      "bytes": 5113
     },
     {
       "path": "LICENSE",
@@ -35,8 +35,8 @@
     },
     {
       "path": "README.md",
-      "sha256": "2494f200b74c5b9bb774bd367711201260c06fc10ac8f9234cf42a33739b0390",
-      "bytes": 14598
+      "sha256": "2bb645f5147c51a8a443a817df24f4bdff294c616fd5dc8044c8cc2fde8abcda",
+      "bytes": 14660
     },
     {
       "path": "SECURITY.md",
@@ -154,9 +154,19 @@
       "bytes": 4533
     },
     {
+      "path": "docs/ALPHA8.md",
+      "sha256": "c8db97aa164bbe9ae310a70c3f817b3060b024a54ae788bfbaf3672c462572ed",
+      "bytes": 2969
+    },
+    {
       "path": "docs/CAPTURE-CALL-LIGHT.md",
       "sha256": "f87543872470792d18bde3621530c2c17509af8df789d564d403691c529df484",
       "bytes": 2404
+    },
+    {
+      "path": "docs/COMPATIBILITY.md",
+      "sha256": "c8c8d4a6680e87f37720b3cfc73426a34a8eb2cec742a36d8cc6ee00e23c9662",
+      "bytes": 11100
     },
     {
       "path": "docs/LOCAL-AGENT-RETRIEVAL-CONTRACT.md",
@@ -175,8 +185,8 @@
     },
     {
       "path": "docs/ROADMAP.md",
-      "sha256": "14c3c11bd0a4fa2d4d5c99646967bb5723039dba39bc9a44a687ed4c6ad1a10c",
-      "bytes": 6917
+      "sha256": "921d35fd4c8444627fda406db124ee3fa4b70b0d0ad3699e0f55302b7abaffa0",
+      "bytes": 13353
     },
     {
       "path": "docs/TIMESHEETS.md",
@@ -315,22 +325,22 @@
     },
     {
       "path": "docs/en/index.html",
-      "sha256": "9c68f22fb7b0026db241aa98086202f745070a32522f63ab120f48241783fccf",
-      "bytes": 11804
+      "sha256": "bb60917ce47f44b72a8c4076f04526daab839a0c44a665e55589f057152afd0a",
+      "bytes": 13158
     },
     {
       "path": "docs/index.html",
-      "sha256": "6a75474af44db48d85179664056c9a68c3c363a116ba599fe41f82aa96cd99ff",
-      "bytes": 12116
+      "sha256": "5e5b63b925ed1786b76616240a5b098958d2e55dcc86883ba64fcdaf60fe1881",
+      "bytes": 13474
     },
     {
       "path": "docs/style.css",
-      "sha256": "ad3f3d0e8dceb139ab5f4ac734cf4a66d1193a6318b4c2cd7dfe7a958270ae42",
-      "bytes": 9255
+      "sha256": "136726727bf35dc71b6583bf411fe32a76a7307d08b328b1971ef11ab0c39574",
+      "bytes": 9699
     },
     {
       "path": "package.json",
-      "sha256": "36d71a2f01d7e7b8877cd54e910e66d62030843b8f0d2e5f694c4a5ed2cab442",
+      "sha256": "a8d6d3e1c7809ba7ec1bd237d2ac6ce87ab86d92609fa19a87d594bf48965cfa",
       "bytes": 1338
     },
     {
@@ -390,7 +400,7 @@
     },
     {
       "path": "skills/README.md",
-      "sha256": "8d1f8a3ff2d7e6e4772e248d72d6e23b90f9ba9e110db80ce2f2f0054c4fdee7",
+      "sha256": "2cfae0d2d5ab89786b9c6d99867dbb049820e0d3539a7f3d8dffd9b2a06754ee",
       "bytes": 2145
     },
     {
@@ -400,7 +410,7 @@
     },
     {
       "path": "skills/falatrace/SKILL.md",
-      "sha256": "2a00e639932e79e15b7a49483bbf7ba9420eaf3fc2adacea50de296a5359b77b",
+      "sha256": "b17dfc4ed25d9aff396e2a57a5668cd019e343abaf90c65da2b91835e0f5ac78",
       "bytes": 7778
     },
     {
@@ -695,8 +705,8 @@
     },
     {
       "path": "src/desktop/Main.qml",
-      "sha256": "92550284790ef79cb7f444908989a00eda7d1525743135a8f15c38459654c14c",
-      "bytes": 103919
+      "sha256": "4695bc4b68a87fc98f04a2d0c4dd30529443e051c2a85a1597aaf75c61b459da",
+      "bytes": 105328
     },
     {
       "path": "src/desktop/__tests__/alpha6-build.test.ts",
@@ -710,13 +720,13 @@
     },
     {
       "path": "src/desktop/bridge.ts",
-      "sha256": "062abf018629643d73f2eb201c232070c03da13f562b1c9e5da0e4bdc948d879",
-      "bytes": 32941
+      "sha256": "04fda69fdca69d29a560c616b261806de56bdb046ed0b3f689e127779622f7b9",
+      "bytes": 33960
     },
     {
       "path": "src/desktop/diarization-view.test.ts",
-      "sha256": "9c075865d04e8a41aa193f78c53ff056c5b8a7c15b0d1e930c8aa21609469a22",
-      "bytes": 4593
+      "sha256": "8344358d79ac0624b5df76a967d9115c067566b6cc26d298643bd744ec774359",
+      "bytes": 8052
     },
     {
       "path": "src/desktop/main.cpp",
