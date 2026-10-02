@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>FalaTrace — recordings and context with a source</title>
-<meta name="description" content="Set up authorized recordings, revisit conversations and bring bounded context to your AI tools. FalaTrace: an experimental open-source Linux alpha.">
-<meta name="theme-color" content="#102B2A"><meta property="og:title" content="FalaTrace — your recordings, context with a source"><meta property="og:description" content="Authorized recordings and notes linked to the moment. Experimental Linux alpha."><meta property="og:image" content="https://caiolombello.github.io/falatrace/assets/falatrace-social-card.jpg"><meta property="og:image:alt" content="FalaTrace, experimental Linux alpha. Notes linked to the moment.">
+<meta name="description" content="Configurable automatic recordings, context recovery and sources for your AI tools. Created and used continuously by Caio Barbieri. An open-source Linux alpha.">
+<meta name="theme-color" content="#102B2A"><meta property="og:title" content="FalaTrace — your recordings, context with a source"><meta property="og:description" content="Automatic recordings and context to revisit. Created and used by its author; alpha distribution for Linux."><meta property="og:image" content="https://caiolombello.github.io/falatrace/assets/falatrace-social-card.jpg"><meta property="og:image:alt" content="FalaTrace, experimental Linux alpha. Notes linked to the moment.">
 <link rel="canonical" href="https://caiolombello.github.io/falatrace/en/">
 <link rel="alternate" hreflang="pt-BR" href="https://caiolombello.github.io/falatrace/">
 <link rel="alternate" hreflang="en" href="https://caiolombello.github.io/falatrace/en/">
@@ -14,7 +14,7 @@
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
-<div class="review-banner"><span class="wrap">Experimental alpha.7 · AI access requires authorization; API dispatch is disabled by default.</span></div>
+<div class="review-banner"><span class="wrap">Linux alpha.7 · configurable automation, context with a source and AI access controls.</span></div>
 <header class="wrap">
  <a class="brand" href="#" aria-label="FalaTrace home"><img src="../assets/falatrace-mark-light.svg" width="36" height="36" alt=""><span>FalaTrace</span></a>
  <nav aria-label="Main navigation"><a href="#workflow">How it works</a><a href="#studio">Studio</a><a href="#status">Limits</a><a class="github" href="https://github.com/caiolombello/falatrace">GitHub <span aria-hidden="true">↗</span></a></nav>
@@ -24,14 +24,15 @@
  <section class="hero wrap">
   <div class="hero-copy">
    <p class="eyebrow"><span class="status-dot" aria-hidden="true"></span> Linux · open source · experimental alpha</p>
-   <h1>Your recordings.<br>Context with a <em>source.</em></h1>
-   <p class="lead">Set up automatic recordings with permission. Revisit the conversation and bring your AI tools the context they need — with a source to review.</p>
+   <h1>Keep the conversation.<br>Carry the <em>context.</em></h1>
+   <p class="lead">Automatically record the calls you configure. Revisit decisions, return to the moment in the conversation and bring context to your AI tools, with a source to check.</p>
+   <p class="author-use"><strong>Created and used continuously by Caio Barbieri.</strong> In the author’s routine, automatic recording removes the need to remember to start capture; revisiting recordings helps recover information.</p>
    <div class="actions"><a class="button" href="https://github.com/caiolombello/falatrace/releases/tag/v0.2.0-alpha.7">Explore alpha.7 <span aria-hidden="true">↗</span></a><a class="secondary" href="#studio">Meet the Studio <span aria-hidden="true">↓</span></a></div>
-   <p class="small">Source code for Linux. You configure the installation and models. Real capture and AI quality still need validation.</p>
+   <p class="small">Experimental source distribution for Linux. You configure installation, recording rules and models; coverage depends on the app, browser and desktop.</p>
   </div>
   <aside class="source-note" aria-label="Three parts of the workflow">
    <p class="eyebrow">One conversation, a source to revisit</p>
-   <ol><li><span class="step-number">01</span><div><h2>Record with control.</h2><p>Explicit rules and an automation pause.</p></div></li><li><span class="step-number">02</span><div><h2>Find the moment.</h2><p>A library, transcripts and notes to check.</p></div></li><li><span class="step-number">03</span><div><h2>Bring context to AI.</h2><p>Bounded retrieval, linked to the recording.</p></div></li></ol>
+   <ol><li><span class="step-number">01</span><div><h2>Record with control.</h2><p>Configured automation, explicit rules and a pause.</p></div></li><li><span class="step-number">02</span><div><h2>Find the moment.</h2><p>A library, transcripts and notes to check.</p></div></li><li><span class="step-number">03</span><div><h2>Bring context to AI.</h2><p>Bounded retrieval, linked to the recording.</p></div></li></ol>
    <p class="source-signature">Your recordings.<br>A trace you can follow.</p>
   </aside>
  </section>
@@ -39,31 +40,33 @@
  <section id="studio" class="wrap section studio-section">
   <div class="section-heading"><div><p class="eyebrow">Available in the public source · v0.2.0-alpha.7</p><h2>From the library<br>back to the conversation.</h2></div><p>Video, transcript, summary and context in one Studio. Open the source and review the notes before relying on an AI conclusion.</p></div>
   <figure class="product-figure"><a class="image-link" href="../assets/studio-alpha5.png" aria-label="Enlarge the actual alpha.5 Studio screen with synthetic data"><img src="../assets/studio-alpha5.png" width="1320" height="820" alt="Studio alpha.5 in Portuguese, light theme: library on the left, video area in the center and transcript on the right. Synthetic content."></a><figcaption><span class="tag">Actual UI · alpha.5</span> Qt render with synthetic data and a test backend. No person was recorded. Open the image to enlarge it.</figcaption></figure>
-  <div class="feature-row"><article><span class="number">LIBRARY</span><h3>An entry for each recording.</h3><p>Search by title and check processing and source status.</p></article><article><span class="number">SOURCE</span><h3>Notes that invite review.</h3><p>Approximate timestamps are labeled. Transcripts and summaries may contain errors.</p></article><article><span class="number">CONTEXT</span><h3>Retrieve only what you need.</h3><p>The CLI and skill let you search recordings and retrieve bounded context for your AI tools.</p></article></div>
+  <div class="feature-row"><article><span class="number">LIBRARY</span><h3>An entry for each recording.</h3><p>Search by title and check processing and source status.</p></article><article><span class="number">SOURCE</span><h3>Return to the information at its source.</h3><p>Reopen the moment in the conversation to check the notes. Approximate timestamps are labeled; transcripts and summaries may contain errors.</p></article><article><span class="number">CONTEXT</span><h3>Retrieve only what you need.</h3><p>The CLI and skill let you search recordings and retrieve bounded context for your AI tools.</p></article></div>
  </section>
 
  <section id="workflow" class="workflow-band section">
   <div class="wrap"><div class="section-heading"><div><p class="eyebrow">Automation you choose</p><h2>Less searching.<br>More context to review.</h2></div><p>Automatic recording requires rules, configuration and consent. Installing the project does not start it.</p></div>
   <div class="steps"><article><span class="number">01 / CONFIGURE</span><h3>Decide when to record.</h3><p>Choose detection rules and the audio source. Pause new recordings when needed; stopping an ongoing capture is a separate action.</p></article><article><span class="number">02 / REVIEW</span><h3>Start with the transcript.</h3><p>Read the text and notes. In alpha.7's local visual workflow, you select an interval, check the preview and authorize analysis and a partial summary.</p></article><article><span class="number">03 / RETRIEVE</span><h3>Use it with your AI tools.</h3><p>The skill guides retrieval with sources and limits. Models and destinations depend on your configuration; a chat subscription does not automatically include API usage.</p></article></div>
+  <p class="small compatibility-note"><strong>Current automatic detection coverage:</strong> Slack, Zen and Helium, using local microphone or video-use signals. This signal does not identify the calling service. Other browsers and apps still need integration and tests; manual recording uses the configured backend.</p>
   <p class="small band-note">The visual workflow was exercised offline with synthetic video and stubbed model transport. Real-model quality and its decision to request images have not been validated.</p>
   </div>
  </section>
 
  <section class="wrap section privacy-section">
   <p class="eyebrow">Data controls</p><h2>Know what stays.<br>And where it goes.</h2>
-  <div class="feature-row"><article><h3>A local starting point.</h3><p>A new configuration selects local processing and disables automatic processing. Whisper.cpp, Ollama and models are installed separately.</p></article><article><h3>Sending data is a choice.</h3><p>External providers, workers and backups can transmit content when configured. Check the destination before processing. Existing configurations are preserved.</p></article><article><h3>Deletion has a scope.</h3><p>Local removal does not erase remote copies or data already accepted by a provider. Local deletion invalidates derived memory before changing artifacts.</p></article></div>
+  <div class="feature-row"><article><h3>A local starting point.</h3><p>A new configuration selects local processing and disables automatic processing. Whisper.cpp, Ollama and models are installed separately.</p></article><article><h3>Sending data is a choice.</h3><p>Transcription can use Whisper.cpp, OpenAI or Gemini; summaries can use Ollama or OpenAI. External providers, workers and backups can transmit content. Check the destination and costs before processing. Existing configurations are preserved.</p></article><article><h3>Deletion has a scope.</h3><p>Local removal does not erase remote copies or data already accepted by a provider. Local deletion invalidates derived memory before changing artifacts.</p></article></div>
  </section>
 
  <section id="status" class="wrap section">
-  <div class="section-heading"><div><p class="eyebrow">What to expect today</p><h2>An alpha to test<br>with care and context.</h2></div><p>Offline checks show how the code behaves with fixtures. They do not establish AI quality, capture stability on your desktop or actual cost.</p></div>
-  <div class="status-grid"><article class="status-card"><p class="eyebrow">Verified offline</p><h3>Contracts and synthetic data.</h3><ul><li>Locked dependencies, configuration without overwriting and uninstall that preserves data.</li><li>Qt UI, synthetic preview, consent, cancellation and stale-response rejection.</li><li>Production adapters with test transport and source references.</li></ul></article><article class="status-card limitations"><p class="eyebrow">Not yet validated live</p><h3>Real desktops and models.</h3><ul><li>Capture, playback and automation across Linux environments.</li><li>Semantic quality, model access and provider billing.</li><li>Screen readers, display scaling, binaries and other platforms.</li></ul></article></div>
+  <div class="section-heading"><div><p class="eyebrow">What to expect today</p><h2>Used in daily work.<br>Coverage is growing.</h2></div><p>The author continuously uses the recording and context-recovery core. That usage report and offline tests are different kinds of evidence: neither guarantees every app, browser, desktop or model combination.</p></div>
+  <p class="author-evidence"><strong>The author’s experience:</strong> Caio reports that the project works well in his routine and that he can retrieve information from his recordings. This release has no published failure-rate measurement or universal compatibility study.</p>
+  <div class="status-grid"><article class="status-card"><p class="eyebrow">Verified offline</p><h3>Contracts and synthetic data.</h3><ul><li>Locked dependencies, configuration without overwriting and uninstall that preserves data.</li><li>Qt UI, synthetic preview, consent, cancellation and stale-response rejection.</li><li>Production adapters with test transport and source references.</li></ul></article><article class="status-card limitations"><p class="eyebrow">Coverage not yet demonstrated</p><h3>Other environments and new AI workflows.</h3><ul><li>Detection and capture in other browsers, apps and Linux environments; playback across codec and desktop combinations.</li><li>Quality of new visual analysis and summaries, model access and provider billing.</li><li>Screen readers, display scaling, binaries and other platforms.</li></ul></article></div>
   <p><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.7/docs/ALPHA7.md">Alpha.7 scope <span aria-hidden="true">↗</span></a> <span class="link-divider">·</span> <a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.7/docs/ALPHA7.md#verification">Journeys and limitations <span aria-hidden="true">↗</span></a></p>
  </section>
 
  <section id="candidate" class="wrap section candidate-section">
   <p class="eyebrow">AI access · included in alpha.5</p>
   <details><summary><span>Authorize your AI, with visible limits</span><span class="details-hint" data-close="Close −" aria-hidden="true">Open +</span></summary>
-   <div class="candidate-content"><p class="lead">Persistent access for your AI, with visible limits.</p><p>Alpha.5 includes persistent authorization per recording and recipient, pause, revocation and an optional preview. A separate opt-in can include current and future recordings on this installation for Codex/OpenAI, Claude/Anthropic or Gemini/Google. Each client connection is configured separately; there is no guaranteed secret filter. Retrieving local frames does not run a model. OpenAI/Google analysis adapters are implemented, with dispatch disabled by default and no live validation.</p>
+   <div class="candidate-content"><p class="lead">Persistent access for your AI, with visible limits.</p><p>Alpha.5 includes persistent authorization per recording and recipient, pause, revocation and an optional preview. A separate opt-in permits frames-only access to current and future recordings on this installation for Codex/OpenAI, Claude/Anthropic or Gemini/Google; it does not authorize API analysis or transcript/summary retrieval. Each client connection is configured separately; there is no guaranteed secret filter. Retrieving local frames does not run a model. OpenAI/Google analysis adapters are implemented, with dispatch disabled by default and no live validation.</p>
    <figure class="product-figure"><a class="image-link" href="../assets/agent-access-alpha5.png" aria-label="Enlarge the actual AI access screen with synthetic data"><img src="../assets/agent-access-alpha5.png" width="1320" height="820" alt="Studio alpha.5: explicit authorization for an agent and a synthetic frame preview. The Studio interface is in Portuguese." loading="eager"></a><figcaption><span class="tag">Actual UI · alpha.5</span> Synthetic data; offscreen render. No real inference was performed.</figcaption></figure>
    <p class="small">Visual observations are partial. Durable visual memory remains a proposal, with no storage activated. No recipient or recording is authorized automatically.</p></div>
   </details>
