@@ -1,3 +1,5 @@
+import { readTranscriptArtifact, readArtifactStates, type TranscriptArtifact } from "../jobs/transcript-access";
+import { recordingPresentation } from "./recording-presentation";
 import { version as productVersion } from "../../package.json";
 import { readHeavyStatus } from '../runtime/heavy-admission';
 /** JSONL bridge for the desktop application. */
@@ -85,9 +87,16 @@ const safeError = (op: string, error: unknown): string => {
   if (op === "diarization-name") return "Não foi possível salvar o nome do falante.";
   return op === "list" ? "Falha ao carregar a biblioteca" : op === "detail" ? "Falha ao carregar os detalhes" : op === "resolve" ? "Falha ao resolver a reprodução" : op === "subtitles" ? "Falha ao enfileirar as legendas" : op === "diarization" ? "Falha ao iniciar a identificação de falantes" : "Request inválido";
 };
-const titleOf = (entry: LibraryEntry): string => entry.meetingTitle || basename(entry.sourcePath);
 const completedJob = (entry: LibraryEntry): JobRecord | undefined =>
   entry.jobs.find((job) => job.state === "completed");
+export const readableTranscriptJob = async (entry: LibraryEntry): Promise<{ job: JobRecord; artifact: TranscriptArtifact } | undefined> => {
+  const ordered = [...entry.jobs.filter(job => job.state === "completed"), ...entry.jobs.filter(job => job.state !== "completed" && job.target === "local")];
+  for (const job of ordered) {
+    const artifact = await readTranscriptArtifact(job).catch(() => undefined);
+    if (artifact) return { job, artifact };
+  }
+  return undefined;
+};
 const locationOf = (entry: LibraryEntry): "local" | "vaio" | "proton" | "missing" => {
   if (entry.sourceExists) return "local";
   if (entry.archive?.vaio.state === "completed" || entry.jobs.some((j) => j.target === "remote" && j.state === "completed")) return "vaio";
@@ -180,23 +189,25 @@ const timesheetText = async (key: string): Promise<string> => {
 export const registeredAgentRecordingId=(entry:LibraryEntry)=>completedJob(entry)?.id||entry.jobs[0]?.id||(entry.archive?.source.sha256?entry.archive.id:undefined);
 const list = async (): Promise<unknown> => {
   const { entries: items } = await loadLibrary(true);
-  return { items: items.map((entry) => ({ key: entry.sourcePath, recordingId:registeredAgentRecordingId(entry), title: titleOf(entry), fileName: basename(entry.sourcePath), modifiedAt: entry.modifiedAt, sourceExists: entry.sourceExists, location: locationOf(entry), status: statusOf(entry), backup: backupOf(entry) })) };
+  return { items: await Promise.all(items.map(async (entry) => ({ key: entry.sourcePath, recordingId:registeredAgentRecordingId(entry), ...recordingPresentation(entry, entry.jobs[0] ? await readArtifactStates(entry.jobs[0]) : undefined), fileName: basename(entry.sourcePath), modifiedAt: entry.modifiedAt, sourceExists: entry.sourceExists, location: locationOf(entry), status: statusOf(entry), backup: backupOf(entry) }))) };
 };
 const detail = async (key: string): Promise<unknown> => {
   const { entry } = await findEntry(key);
   const jobStore = new JobStore();
   entry.jobs = await Promise.all(entry.jobs.map(job => jobStore.get(job.id).catch(() => job)));
   if (entry.archive) entry.archive = (await new ArchiveStore().get(entry.archive.id).catch(() => entry.archive)) || undefined;
-  const job = completedJob(entry);
+  const readable = await readableTranscriptJob(entry);
+  const job = readable?.job || completedJob(entry);
   const subtitleId = entry.archive?.vaio.state === "completed" ? entry.archive.id : entry.jobs.find((item) => item.target === "remote" && item.state === "completed")?.id;
-  const [{ transcript: originalTranscript }, summary, timesheet, canonical] = await Promise.all([transcriptFor(entry, job), job ? readPlainArtifact(job, "summary") : Promise.resolve(""), timesheetText(entry.sourcePath), job ? readCanonicalTranscript(job).catch(() => undefined) : Promise.resolve(undefined)]);
+  const [{ transcript: originalTranscript }, summary, timesheet, canonical] = await Promise.all([transcriptFor(entry, job), job?.state === "completed" ? readPlainArtifact(job, "summary") : Promise.resolve(""), timesheetText(entry.sourcePath), Promise.resolve(readable?.artifact.transcript)]);
   const visualReview=job&&canonical?await studioFrames.readResult(job.id,job.source.sha256,canonical).catch(()=>undefined):undefined;
   const diarizationResult = job && canonical ? await new DiarizationStore().read(job.id, job.source.sha256, canonical.text) : undefined;
   // Speaker timing comes from its own acoustic timeline. A lexical match inside
   // a 10-minute transcript block is not enough evidence to invent word timing.
   const diarization: DiarizationView = diarizationResult ? buildDiarizationView(diarizationResult)
     : job && canonical ? await readDiarizationStatus(job, canonical) : { state: "idle" };
-  const boundary = buildTranscriptBoundary(canonical, originalTranscript, diarization);
+  const captions = canonical && job?.state !== "completed" ? parsePlayerTranscript(canonical) : originalTranscript;
+  const boundary = buildTranscriptBoundary(canonical, captions, diarization);
   let subtitleState = originalTranscript.timing === "segment" ? "ready" : "idle";
   let subtitleMessage: string | undefined;
   if (subtitleId && subtitleState !== "ready") {
@@ -205,8 +216,11 @@ const detail = async (key: string): Promise<unknown> => {
     subtitleState = operation.state;
     subtitleMessage = operation.message;
   }
-  return { key: entry.sourcePath, recordingId:registeredAgentRecordingId(entry), title: titleOf(entry), status: entry.jobs[0]?.state || statusOf(entry), backup: backupOf(entry), ...boundary, summary: summary, visualReview, summaryInfo: job ? `${job.summary.provider}/${job.summary.model} · ${job.summary.provider === "openai" ? "provedor externo" : "Ollama: endpoint configurado"}` : "", timesheet, subtitleState, subtitleMessage,
-    ...(job && canonical ? { diarizationId: job.id, jobId: job.id } : {}), ...(subtitleId ? { subtitleId } : {}) };
+  const artifacts = job ? await readArtifactStates(job) : undefined;
+  const presentation = recordingPresentation(entry, artifacts);
+  if (job && entry.jobs[0] && entry.jobs[0].id !== job.id) presentation.artifactStatus += " · conteúdo de tarefa anterior";
+  return { key: entry.sourcePath, recordingId:registeredAgentRecordingId(entry), ...presentation, status: entry.jobs[0]?.state || statusOf(entry), backup: backupOf(entry), artifacts, transcriptProvenance: readable?.artifact.provenance, artifactMessage: readable && job?.state !== "completed" ? "Transcrição pronta e verificada. O processamento posterior não foi concluído; o resumo está indisponível. Não é necessário repetir a transcrição." : "", ...boundary, summary: summary, visualReview, summaryInfo: job ? `${job.summary.provider}/${job.summary.model} · ${job.summary.provider === "openai" ? "provedor externo" : "Ollama: endpoint configurado"}` : "", timesheet, subtitleState, subtitleMessage,
+    ...(job && canonical ? { jobId: job.id, ...(job.state === "completed" ? { diarizationId: job.id } : {}) } : {}), ...(subtitleId ? { subtitleId } : {}) };
 };
 const resolvePlayback = async (key: string): Promise<unknown> => {
   const { config, entry } = await findEntry(key);
@@ -329,14 +343,19 @@ const handle = async (request: Request): Promise<unknown> => {
   }
   if (request.op === "jobs-list") {
     const { entries } = await loadLibrary();
-    const titles = new Map(entries.flatMap((entry) => entry.jobs.map((job) => [job.id, titleOf(entry)] as const)));
+    const byJob = new Map(entries.flatMap((entry) => entry.jobs.map((job) => [job.id, entry] as const)));
     const jobs = (await new JobStore().list()).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-    return { items: jobs.slice(0, 200).map((job) => ({ id: job.id, title: titles.get(job.id) || basename(job.sourcePath), state: job.state, target: job.target, createdAt: job.createdAt })), total: jobs.length };
+    return { items: await Promise.all(jobs.slice(0, 200).map(async (job) => {
+      const artifacts = await readArtifactStates(job);
+      const entry = byJob.get(job.id) || { sourcePath: job.sourcePath, relativePath: basename(job.sourcePath), sourceExists: false, size: job.source.size, modifiedAt: Date.parse(job.createdAt), jobs: [job] };
+      return { artifacts, ...recordingPresentation(entry, artifacts), id: job.id, state: job.state, target: job.target, createdAt: job.createdAt };
+    })), total: jobs.length };
   }
   if (!request.key) throw new Error("key é obrigatório para esta operação");
   if (request.op === "job-process" || request.op === "job-retry") return queueSelectedJob(request.key, { retry: request.op === "job-retry" });
   if (request.op === "diarization-name" || request.op === "context-meeting") {
-    const id = UUID.test(request.key) ? request.key : completedJob((await findEntry(request.key)).entry)?.id;
+    const entry = UUID.test(request.key) ? undefined : (await findEntry(request.key)).entry;
+    const id = UUID.test(request.key) ? request.key : request.op === "context-meeting" ? (await readableTranscriptJob(entry!))?.job.id : completedJob(entry!)?.id;
     if (!id) throw new Error("A gravação ainda não possui contexto disponível.");
     if (request.op === "diarization-name") {
       await nameDiarizationSpeaker(id, request.payload?.speakerId || "", request.payload?.label || "");

@@ -1,3 +1,12 @@
+## 0.2.0-alpha.10 — experimental transcript, audio and title fixes
+
+- Keep verified local transcripts available after later summary failure, with explicit artifact readiness and provenance; never implicitly reprocess on retrieval.
+- Refuse paid transcription dispatch for complete digital silence or unknown measurement, preserving the original media; retain short/quiet/late signal eligibility.
+- Recover eligible cancelled startup without overlapping captures; surface selected/default audio warnings without automatic retargeting.
+- Flush the audio-only FFmpeg output to avoid startup buffering; synthetic PCM/duration/track metadata remain equal to control.
+- Preserve existing Studio titles or show date/time/timezone fallback, update headers safely and distinguish older displayed content from current processing.
+- Frozen behavior candidate: 607 offline tests passed in one aggregated suite. See [alpha.10 scope and verification limits](docs/ALPHA10.md). Source-only Linux; follow-default/headsets and full native downstream remain unqualified.
+
 ## 0.2.0-alpha.9 — experimental detector and Studio reading fixes
 
 - Preserve a known PipeWire node state when a delta omits it; explicitly invalid or unknown state still fails closed. Persisted monitor state must be a string.

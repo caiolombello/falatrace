@@ -216,7 +216,7 @@ const assertJobArtifactPath = (job: JobRecord, path: string): void => {
   if (
     resolve(job.artifactDir) !== resolve(expectedArtifactDir) ||
     dirname(resolve(path)) !== resolve(job.artifactDir) ||
-    !["transcript.md", "transcript.json", "summary.md", "summary.json"].includes(basename(path))
+    !["transcript.md", "transcript.json", "transcript-receipt.json", "summary.md", "summary.json"].includes(basename(path))
   ) {
     throw new Error("Job artifact path does not match its recording");
   }
@@ -263,6 +263,11 @@ export const readArtifact = async (
   job: JobRecord,
   kind: ArtifactKind
 ): Promise<string> => {
+  if (job.state !== "completed") {
+    if (kind === "summary") return "Resumo ainda não disponível.";
+    const artifact = await import("../jobs/transcript-access").then(module => module.readTranscriptArtifact(job)).catch(() => undefined);
+    return artifact ? artifact.transcript.text : "Transcrição ainda não disponível.";
+  }
   const path = getArtifactPath(job, kind);
   try {
     const stat = await assertExistingJobArtifactPath(job, path);
@@ -275,6 +280,10 @@ export const readArtifact = async (
     return await fs.readFile(path, "utf-8");
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+      if (kind === "transcript") {
+        const artifact = await import("../jobs/transcript-access").then(module => module.readTranscriptArtifact(job)).catch(() => undefined);
+        if (artifact) return artifact.transcript.text;
+      }
       return kind === "transcript" ? "Transcrição ainda não disponível." : "Resumo ainda não disponível.";
     }
     throw err;
@@ -284,6 +293,9 @@ export const readArtifact = async (
 export const getArtifactAvailability = async (
   job: JobRecord
 ): Promise<ArtifactAvailability> => {
+  if (job.state !== "completed") {
+    return { transcript: await import("../jobs/transcript-access").then(module => module.readTranscriptArtifact(job)).then(() => true).catch(() => false), summary: false };
+  }
   const availability: ArtifactAvailability = {
     transcript: false,
     summary: false
@@ -302,6 +314,9 @@ export const getArtifactAvailability = async (
       }
     })
   );
+  if (!availability.transcript) {
+    availability.transcript = await import("../jobs/transcript-access").then(module => module.readTranscriptArtifact(job)).then(() => true).catch(() => false);
+  }
   return availability;
 };
 

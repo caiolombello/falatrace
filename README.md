@@ -5,11 +5,11 @@
 
 # FalaTrace — experimental Linux source alpha
 
-Linux tools for authorized recording, meeting search and notes linked to source timestamps. FalaTrace 0.2.0-alpha.9 is an experimental source alpha. General native capture, desktop compatibility, model quality and redistributed binaries remain unqualified; specific synthetic checks are listed in the release notes.
+Linux tools for authorized recording, meeting search and notes linked to source timestamps. FalaTrace 0.2.0-alpha.10 is an experimental source alpha. General native capture, desktop compatibility, model quality and redistributed binaries remain unqualified; specific synthetic checks are listed in the release notes.
 
 ## Current verification
 
-Alpha.9 preserves valid detector state across partial PipeWire updates, handles streamed UTF-8 safely, and improves long-caption reading, focus, contrast and missing-media messages in the Studio. Existing caption origin and canonical transcript separation are preserved. No automatic provider dispatch, capture or renderer override is added. See [alpha.9 notes](docs/ALPHA9.md).
+Alpha.10 keeps verified local transcripts readable when later summary work fails, protects paid transcription dispatch from digital silence, recovers eligible cancelled startup, adds source/default warnings and improves Studio titles and artifact status. The audio-only startup fix preserves PCM in synthetic regression fixtures. Source selection stays fixed at startup; headset/default-follow is not implemented. See [alpha.10 notes](docs/ALPHA10.md).
 
 Landing: [Português](https://caiolombello.github.io/falatrace/) · [English](https://caiolombello.github.io/falatrace/en/). The Studio interface is currently Portuguese.
 

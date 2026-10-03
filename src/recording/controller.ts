@@ -10,7 +10,8 @@ import { acquireSingleton } from "../runtime/singleton";
 import { buildCaptureCommand, inspectAudioSources, resolveGpuRecorder } from "./capture";
 import { ManualObsController, ObsStartUncertain, RecordingStartCancelled } from "./obs-recording";
 import { formatName } from "./naming";
-import { RecordingSessionStore, type RecordingSession } from "./session";
+import { capturedAudioConfig, RecordingSessionStore, type RecordingSession, type AudioSelection } from "./session";
+import type { AudioSources } from "./capture";
 import { readState } from "./state";
 import { captureProcessMatches, findFlatpakCapture } from "./flatpak-capture";
 import { ArchiveStore } from "../archive/store";
@@ -28,6 +29,16 @@ const wait = (ms: number): Promise<void> => new Promise((done) => setTimeout(don
 const unitName = (id: string): string => `recording-cli-capture-${validateJobId(id)}.service`;
 const hasMedia = async (path: string): Promise<boolean> =>
   fs.stat(path).then((stat) => stat.isFile() && stat.size > 0).catch(() => false);
+const hasVolumeControl = (value: unknown): boolean => {
+  if (typeof value === "number") return Number.isFinite(value);
+  if (typeof value === "string") return /^\s*\d+(?:\.\d+)?\s*%?\s*$/.test(value);
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  if ("value" in record) return hasVolumeControl(record.value);
+  if ("value_percent" in record) return hasVolumeControl(record.value_percent);
+  const values = Object.values(record);
+  return values.length > 0 && values.every(hasVolumeControl);
+};
 
 /** Shared capture lifecycle for manual CLI commands and the call monitor. */
 export class RecordingController {
@@ -57,20 +68,69 @@ export class RecordingController {
     const { session, active } = await this.inspect();
     if (!session) return { active: false };
     if (!active) return { active: false, warning: "A captura terminou; a gravação precisa ser finalizada." };
+    const warnings: string[] = [];
     if (session.backend !== "obs") {
+      if (!session.audio) warnings.push("As origens capturadas desta sessão estão indisponíveis; os defaults atuais não validam esta captura.");
       const stat = await fs.stat(session.outputPath).catch(() => null);
       if (!stat || Date.now() - stat.mtimeMs > 30_000) {
-        return { active, warning: "O arquivo de gravação está sem novos dados há mais de 30 segundos." };
+        warnings.push("O arquivo de gravação está sem novos dados há mais de 30 segundos.");
       }
       if (Object.keys(session.audio || {}).length) {
-        const { stdout } = await this.run("pactl", ["list", "short", "sources"], { timeoutMs: 5_000 });
-        const available = stdout.split("\n").map((line) => line.split("\t")[1]);
-        if (Object.values(session.audio!).some((device) => !available.includes(device))) {
-          return { active, warning: "Um dispositivo de áudio da gravação foi desconectado." };
+        const defaults: AudioSources = {};
+        let available: string[] | undefined;
+        let sourceMetadata: Record<string, unknown>[] = [];
+        const inspectRun: typeof runCommand = async (command, args, options) => {
+          const result = await this.run(command, args, options);
+          const value = result.stdout.trim();
+          if (args[0] === "get-default-source" && value && !/[\r\n\0]/.test(value)) defaults.microphone = value;
+          if (args[0] === "get-default-sink" && value && !/[\r\n\0]/.test(value)) defaults.desktop = `${value}.monitor`;
+          if (args[0] === "--format=json") {
+            try {
+              const parsed: unknown = JSON.parse(result.stdout);
+              if (Array.isArray(parsed)) {
+                sourceMetadata = parsed.filter((source): source is Record<string, unknown> =>
+                  source !== null && typeof source === "object" && !Array.isArray(source));
+                available = sourceMetadata.flatMap((source) => typeof source.name === "string" ? [source.name] : []);
+              }
+            } catch { /* Invalid metadata is reported by the inspector below. */ }
+          }
+          return result;
+        };
+        try {
+          const inspection = await inspectAudioSources(capturedAudioConfig(this.config.capture, session.audio!), inspectRun);
+          warnings.push(...(inspection.warnings || []));
+          for (const [kind, captured] of Object.entries(session.audio!)) {
+            const metadata = sourceMetadata.find((source) => source.name === captured);
+            if (typeof metadata?.mute !== "boolean" || !hasVolumeControl(metadata.volume)) {
+              warnings.push(`Os metadados de mute/volume da origem ${kind} capturada estão indisponíveis; o sinal de áudio não foi confirmado.`);
+            }
+          }
+        } catch (error) {
+          if (available && Object.values(session.audio!).some((device) => !available!.includes(device))) {
+            warnings.push("Um dispositivo de áudio da gravação foi desconectado.");
+          } else if (error instanceof Error && error.message.startsWith("Todas as fontes de áudio selecionadas")) {
+            warnings.push(error.message);
+          } else {
+            warnings.push("Não foi possível verificar os metadados das fontes capturadas; o sinal de áudio não foi confirmado.");
+          }
+          warnings.push(...(session.audioWarnings || []).map((warning) => `Na verificação inicial: ${warning}`));
+        }
+        for (const [kind, captured] of Object.entries(session.audio!) as [keyof AudioSources, string][]) {
+          const current = defaults[kind];
+          const selection = session.audioSelection?.[kind];
+          if (!current || !available?.includes(current)) {
+            warnings.push(`Não foi possível confirmar a origem padrão atual de ${kind}; a seleção da captura foi preservada.`);
+          } else if (current !== captured) {
+            const context = selection === "default" ? "selecionada pelo padrão no início" : selection === "explicit"
+              ? "configurada explicitamente (fixada)" : "com modo de seleção inicial desconhecido";
+            warnings.push(`A origem ${kind} da captura (${captured}, ${context}) difere do padrão atual (${current}). A rota efetiva do playback não foi verificada.`);
+          } else if (!selection) {
+            warnings.push(`O modo de seleção inicial de ${kind} está indisponível; não foi confirmado se a origem foi fixada ou escolhida pelo padrão.`);
+          }
         }
       }
     }
-    return { active };
+    return { active, ...(warnings.length ? { warning: [...new Set(warnings)].join(" ") } : {}) };
   }
 
   private async isActive(session: RecordingSession): Promise<boolean> {
@@ -140,14 +200,20 @@ export class RecordingController {
       const outputPath = join(folder, `recording.${backend === "audio" ? "mka" : "mkv"}`);
       const captureConfig = { ...this.config.capture, audioSource: options.audioSource || this.config.capture.audioSource };
       const profile = assertCaptureProfile(backend,captureConfig);
-      const audio = backend === "obs" || captureConfig.audioSource === "none"
-        ? {} : (await inspectAudioSources(captureConfig, this.run)).selected;
+      const audioInspection = backend === "obs" || captureConfig.audioSource === "none"
+        ? { selected: {}, warnings: [] } : await inspectAudioSources(captureConfig, this.run);
+      const audio = audioInspection.selected;
+      const audioSelection: AudioSelection = {};
+      for (const kind of Object.keys(audio) as (keyof AudioSources)[]) {
+        audioSelection[kind] = captureConfig[kind] === "default" ? "default" : "explicit";
+      }
       const gpu = backend === "gpu-screen-recorder" ? await resolveGpuRecorder() : null;
       if (backend === "gpu-screen-recorder" && !gpu) throw new Error("GPU Screen Recorder is not installed (native or Flatpak)");
       if(profile === "call-light") { await verifyCallLightSupport(gpu!,this.run); console.error(captureProfileNotice(captureConfig)); }
       await fs.mkdir(folder, { recursive: true, mode: 0o700 });
       const session: RecordingSession = { version: 1, id, owner: this.owner, backend,
-        phase: "starting", captureProfile: profile, outputPath, startedAt: new Date().toISOString(), audio, app: options.app,
+        phase: "starting", captureProfile: profile, outputPath, startedAt: new Date().toISOString(), audio, audioSelection,
+        audioWarnings: audioInspection.warnings || [], app: options.app,
         ...(gpu?.args.includes("run") ? { flatpak: true } : {}) };
       await this.store.write(session);
       this.session = session;

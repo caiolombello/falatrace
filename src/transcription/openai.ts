@@ -1,3 +1,4 @@
+import { assertPaidAudioSignal } from "./audio-preflight";
 import fs from "node:fs";
 import OpenAI from "openai";
 import {
@@ -214,6 +215,7 @@ export const transcribeWithOpenAI = async (
   }
   const client = new OpenAI({ apiKey, maxRetries: 0 });
   const audioPath = await extractAudioMp3(sourcePath, workDir, signal);
+  await assertPaidAudioSignal(audioPath, signal);
   const duration = await probeMedia(audioPath, signal);
   const segments: TranscriptSegment[] = [];
   const diarized = isDiarizedOpenAIModel(model);

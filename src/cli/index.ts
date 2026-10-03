@@ -1,3 +1,4 @@
+import { readArtifactStates } from "../jobs/transcript-access";
 import { version as productVersion } from '../../package.json';
 import { readHeavyStatus } from '../runtime/heavy-admission';
 import { loadConfig, validateConfig, writeDefaultConfig } from "../config/load";
@@ -927,7 +928,8 @@ const main = async (): Promise<void> => {
         if (subcommand === "status") {
           const id = args[2];
           if (!id) throw new Error("Please provide a job id");
-          console.log(JSON.stringify(await store.get(id), null, 2));
+          const job = await store.get(id);
+          console.log(JSON.stringify({ ...job, artifacts: await readArtifactStates(job, store) }, null, 2));
           break;
         }
         if (subcommand === "process") {

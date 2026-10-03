@@ -139,6 +139,6 @@ export const buildCaptureCommand = (
   } else {
     args.push("-map", "0:a", "-metadata:s:a:0", `title=${entries[0][0]}`);
   }
-  args.push("-c:a", "flac", "-ar", "48000", "-f", "matroska", outputPath);
+  args.push("-c:a", "flac", "-ar", "48000", "-f", "matroska", "-flush_packets", "1", outputPath);
   return { command: "ffmpeg", args };
 };

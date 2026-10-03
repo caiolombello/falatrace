@@ -45,6 +45,7 @@ type CallMonitorServices = {
   monitor?: typeof monitorPipeWire;
   run?: typeof runCommand;
   notifications?: typeof defaultNotifications;
+  network?: typeof collectNetworkTelemetry;
 };
 
 const waitForRetry = (milliseconds: number, signal: AbortSignal): Promise<void> =>
@@ -76,6 +77,8 @@ export class CallMonitorRuntime {
   private recordingStopTimer?: ReturnType<typeof setTimeout>;
   private captureHealthTimer?: ReturnType<typeof setInterval>;
   private recordingWarning?: string;
+  // Only a cancelled startup can authorize recovery inside the same inferred call.
+  private cancelledStartRecovery = false;
   private networkRunning = false;
   private stopped = false;
   private sessionId: string | null = null;
@@ -194,6 +197,7 @@ export class CallMonitorRuntime {
     if (!this.dryRun) await this.recorder.recover();
     const transition = this.machine.update(this.observation, now);
     if (transition) await this.handleTransition(transition);
+    await this.recoverCancelledStart();
     if (this.machine.getSnapshot().state === "IDLE" && !this.observation.active && this.recorder.ownsRecording()) {
       await this.stopOwnedRecording(this.recorder.getSession()?.app);
     }
@@ -279,33 +283,8 @@ export class CallMonitorRuntime {
           logCallEvent("recording.retained", { reason: "pending-stop-from-previous-call" });
           return;
         }
-        try {
-          const result = await this.recorder.start({
-            sessionId: this.sessionId,
-            app: transition.app,
-            signal: this.runSignal,
-            shouldContinue: async () => {
-              await this.refreshAutomation();
-              return !this.stopped && !this.automationPaused && this.observation.active &&
-                this.machine.getSnapshot().state === "IN_CALL";
-            }
-          });
-          if (result === "cancelled") {
-            logCallEvent("recording.start-cancelled", { reason: "call-ended-automation-paused-or-monitor-stopped" });
-            return;
-          }
-          logCallEvent(result === "started" ? "recording.started" : "recording.already-recording");
-          if (result === "started") {
-            await (this.services.notifications || defaultNotifications).recordingStarted(transition.app).catch((err) =>
-              logCallEvent("notification.error", { error: sanitizeError(err) })
-            );
-          }
-        } catch (err) {
-          logCallEvent("recording.unavailable", { error: sanitizeError(err) });
-          await (this.services.notifications || defaultNotifications).unavailable().catch((notifyError) =>
-            logCallEvent("notification.error", { error: sanitizeError(notifyError) })
-          );
-        }
+        this.cancelledStartRecovery = false;
+        await this.startOwnedRecording(transition.app);
       }
     }
 
@@ -372,7 +351,7 @@ export class CallMonitorRuntime {
     if (this.stopped || this.networkRunning) return;
     this.networkRunning = true;
     try {
-      this.latestNetwork = await collectNetworkTelemetry();
+      this.latestNetwork = await (this.services.network || collectNetworkTelemetry)();
       logCallEvent("call.network", { processes: this.latestNetwork });
       await this.persistStatus();
     } catch (err) {
@@ -389,6 +368,77 @@ export class CallMonitorRuntime {
         }
       }
     }
+  }
+
+  private async startOwnedRecording(app?: CallApplication): Promise<void> {
+    let inactiveDuringStart = false;
+    try {
+      const result = await this.recorder.start({
+        sessionId: this.sessionId || undefined,
+        app: app,
+        signal: this.runSignal,
+        shouldContinue: async () => {
+          await this.refreshAutomation();
+          if (!this.observation.active) inactiveDuringStart = true;
+          return !this.stopped && !this.automationPaused && this.observation.active &&
+            this.machine.getSnapshot().state === "IN_CALL";
+        }
+      });
+      if (result === "cancelled") {
+        this.cancelledStartRecovery = !this.stopped && !this.runSignal?.aborted && !this.automationPaused && inactiveDuringStart;
+        logCallEvent("recording.start-cancelled", { reason: "call-ended-automation-paused-or-monitor-stopped" });
+        return;
+      }
+      logCallEvent(result === "started" ? "recording.started" : "recording.already-recording");
+      if (result === "started") {
+        await (this.services.notifications || defaultNotifications).recordingStarted(app).catch((err) =>
+          logCallEvent("notification.error", { error: sanitizeError(err) })
+        );
+      }
+    } catch (err) {
+      logCallEvent("recording.unavailable", { error: sanitizeError(err) });
+      await (this.services.notifications || defaultNotifications).unavailable().catch((notifyError) =>
+        logCallEvent("notification.error", { error: sanitizeError(notifyError) })
+      );
+    }
+  }
+  private async recoverCancelledStart(): Promise<void> {
+    if (!this.cancelledStartRecovery || this.stopped || this.runSignal?.aborted || this.dryRun) return;
+    const snapshot = this.machine.getSnapshot();
+    if (snapshot.state === "IDLE") { this.cancelledStartRecovery = false; return; }
+    if (snapshot.state !== "IN_CALL" || !this.observation.active) return;
+    await this.refreshAutomation();
+    if (this.automationPaused || this.config.callDetection.mode === "notify-only") {
+      this.cancelledStartRecovery = false;
+      return;
+    }
+    // All callers run on evaluationQueue. Finish/acknowledge the cancelled
+    // fragment before assigning a new recording ID; never overlap two captures.
+    await this.recorder.recover();
+    if (this.recorder.ownsRecording()) {
+      if (this.recorder.getSession()?.phase !== "stopped") {
+        this.cancelledStartRecovery = false;
+        return;
+      }
+      await this.stopOwnedRecording(snapshot.app);
+      if (this.recorder.ownsRecording()) return; // stop/ack failed: preserve for next evaluation
+    }
+    this.cancelledStartRecovery = false; // failures/denied permission do not trigger automatic retries
+    // Cancelled startup may have produced no media and cleared the controller.
+    // Finish the previous call entry before rotating its recording identity.
+    if (this.sessionId && this.config.timesheet.enabled && this.config.timesheet.automaticFromCalls) {
+      await this.timeEntries.finishCall(this.sessionId, new Date().toISOString(), undefined, "disabled")
+        .catch(err => logCallEvent("timesheet.finish-error", { error: sanitizeError(err) }));
+    }
+    this.sessionId = randomUUID();
+    this.sessionStartedAt = new Date().toISOString();
+    this.sessionEndedAt = null;
+    if (this.config.timesheet.enabled && this.config.timesheet.automaticFromCalls) {
+      await this.timeEntries.startCall(this.sessionId, snapshot.app, this.sessionStartedAt)
+        .catch(err => logCallEvent("timesheet.start-error", { error: sanitizeError(err) }));
+    }
+    logCallEvent("recording.start-recovery", { reason: "call-returned-after-cancelled-start" });
+    await this.startOwnedRecording(snapshot.app);
   }
 
   private async stopOwnedRecording(
@@ -479,6 +529,7 @@ export class CallMonitorRuntime {
     if (this.recordingWarning && this.recordingWarning !== previousWarning) {
       await (this.services.notifications || defaultNotifications).warning(this.recordingWarning).catch(() => undefined);
     }
+    await this.recoverCancelledStart();
     await this.persistStatus().catch((err) => logCallEvent("recording.status-error", { error: sanitizeError(err) }));
   }
 

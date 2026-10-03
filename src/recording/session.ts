@@ -4,6 +4,17 @@ import { dirname, isAbsolute, join } from "node:path";
 import { writeJsonAtomic } from "../jobs/store";
 import { validateJobId } from "../jobs/types";
 import type { AudioSources, CaptureBackend } from "./capture";
+import type { AppConfig } from "../config/defaults";
+
+export type AudioSelection = Partial<Record<keyof AudioSources, "default" | "explicit">>;
+
+/** Inspect the sources requested by this session, even when configured defaults have changed. */
+export const capturedAudioConfig = (config: AppConfig["capture"], audio: AudioSources): AppConfig["capture"] => ({
+  ...config,
+  audioSource: audio.microphone && audio.desktop ? "both" : audio.microphone ? "microphone" : audio.desktop ? "desktop" : "none",
+  microphone: audio.microphone || "default",
+  desktop: audio.desktop || "default"
+});
 
 export type RecordingSession = {
   version: 1;
@@ -15,6 +26,9 @@ export type RecordingSession = {
   startedAt: string;
   endedAt?: string;
   audio?: AudioSources;
+  audioSelection?: AudioSelection;
+  /** Historical startup observations; current health checks refresh these observations. */
+  audioWarnings?: string[];
   app?: "slack" | "zen" | "helium";
   flatpak?: boolean;
   captureProfile?: "standard"|"call-light";
@@ -36,7 +50,12 @@ export class RecordingSessionStore {
         (session.captureProfile !== undefined && !["standard","call-light"].includes(session.captureProfile)) ||
         (session.flatpak !== undefined && typeof session.flatpak !== "boolean") ||
         typeof session.outputPath !== "string" || !isAbsolute(session.outputPath) || /[\r\n\0]/.test(session.outputPath) ||
-        !Number.isFinite(Date.parse(session.startedAt))) {
+        !Number.isFinite(Date.parse(session.startedAt)) ||
+        (session.audioSelection !== undefined && (!session.audioSelection || typeof session.audioSelection !== "object" ||
+          Array.isArray(session.audioSelection) || Object.entries(session.audioSelection).some(([kind, mode]) =>
+            !["microphone", "desktop"].includes(kind) || !["default", "explicit"].includes(mode)))) ||
+        (session.audioWarnings !== undefined && (!Array.isArray(session.audioWarnings) || session.audioWarnings.length > 4 ||
+          session.audioWarnings.some((warning) => typeof warning !== "string" || warning.length > 1_000)))) {
         throw new Error("Invalid recording session; state retained for recovery");
       }
       return session;

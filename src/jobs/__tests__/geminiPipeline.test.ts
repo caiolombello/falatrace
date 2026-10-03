@@ -55,7 +55,23 @@ test("processes a Gemini job with Ollama summary and removes temporary MP3", asy
   await writeExecutable(join(binDir, "ffprobe"), "#!/usr/bin/env bash\nprintf '2.5\\n'\n");
   await writeExecutable(
     join(binDir, "ffmpeg"),
-    "#!/usr/bin/env bash\noutput=\"${!#}\"\nprintf 'fake mp3' > \"$output\"\n"
+    `#!/usr/bin/python3
+import re,sys
+from pathlib import Path
+args=sys.argv[1:]
+output=args[-1]
+if output == '-':
+    # Emulate the observed native astats format for this fixture's full
+    # 2.5-second, 16 kHz decoded mono stream; never return container metadata.
+    filter_arg=args[args.index('-af')+1]
+    match=re.fullmatch(r'astats@(falatrace_paid_[a-f0-9]{24})=metadata=0:reset=0',filter_arg)
+    if not match: sys.exit('unexpected synthetic measurement filter')
+    prefix='[astats@'+match.group(1)+' @ 0x123] '
+    for metric in ['Overall','Peak level dB: -6.0','Number of samples: 40000']:
+        print(prefix+metric,file=sys.stderr)
+else:
+    Path(output).write_text('fake mp3')
+`
   );
 
   let geminiRequests = 0;

@@ -27,3 +27,25 @@ The following are available but require task-specific authorization, selected in
 - `jobs cleanup --dry-run` previews eligibility; cleanup without dry-run and other deletion/reset actions require exact scope. Do not imply deletion reaches originals/provider copies/remotes.
 
 Source-safe synthetic example: search `"synthetic chart"`, choose the returned fixture UUID, read its bounded context, then cite only supplied segment timing. Missing transcript/summary is a limitation, not permission to run a new model.
+
+
+## Partial transcript availability (local correction candidate)
+
+`jobs status` adds read-only `artifacts` states. A job can remain `failed` because
+its later summary did not finish while its transcript is already `ready`.
+`context search` and `context meeting` include verified local transcript
+checkpoints in that case. Their `summary`, `summaryPath` and summary hash can be
+`null`; check `artifactStates`, `jobState` and `transcriptProvenance` instead of
+assuming that a transcript requires a complete summary. Retrieval does not
+publish, migrate, retry, upload or regenerate anything. Checkpoint receipts bind
+the transcript bytes and transcription settings to the recorded media hash.
+Completed older publications without a receipt remain readable and explicitly
+report `legacy-unverified`; this does not establish full parameter provenance.
+A present invalid receipt is rejected rather than silently ignored.
+
+Paid OpenAI/Gemini pipeline dispatch locally checks the complete extracted audio
+before sending it. Complete digital silence or an unverifiable measurement is
+refused, with the original media preserved and a reason recorded in the job.
+There is no duration cutoff or voice detector: short/quiet valid speech is not
+automatically discarded. Signal does not prove useful speech or transcription
+accuracy. No provider request is needed to read an existing transcript.

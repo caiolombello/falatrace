@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { createServer, type Server } from "node:net";
 
 export type SingletonLease = {
@@ -6,6 +7,12 @@ export type SingletonLease = {
 
 const socketName = (name: string): string => {
   if (!/^[a-z0-9-]{1,64}$/.test(name)) throw new Error("Invalid singleton name");
+  // Only the guarded offline preload sets this in-process QA namespace.
+  // Ordinary installed processes retain their original socket names.
+  const qaNamespace = (globalThis as any)[Symbol.for("falatrace.qa.socket-namespace")];
+  if (typeof qaNamespace === "string" && /^[a-f0-9]{12}$/.test(qaNamespace)) {
+    name = `qa-${qaNamespace}-${createHash("sha256").update(name).digest("hex").slice(0, 32)}`;
+  }
   const userId = typeof process.getuid === "function" ? process.getuid() : "user";
   return `\0recording-cli-${userId}-${name}`;
 };

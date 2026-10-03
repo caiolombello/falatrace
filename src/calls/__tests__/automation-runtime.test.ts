@@ -64,6 +64,7 @@ test("pause suppresses future automatic captures and preserves a recording alrea
     await setAutomationPaused(true);
     const runtime = new CallMonitorRuntime(config, false, {
       run,
+      network: async () => Object.fromEntries(["slack", "zen", "helium"].map(app => [app, { tcpSockets: 0, udpSockets: 0, tcpBytesSent: 0, tcpBytesReceived: 0 }])) as any,
       monitor: async (onNodes, signal) => {
         emit = onNodes;
         emit(nodes);

@@ -367,12 +367,13 @@ ApplicationWindow {
 
                     Rectangle {
                         visible: jobs.length > 0
-                        Layout.fillWidth: true; Layout.preferredHeight: 145; color: panel; radius: 8
+                        Layout.fillWidth: true; Layout.preferredHeight: selectedJob.artifactStatus ? 175 : 145; color: panel; radius: 8
                         ColumnLayout {
                             anchors.fill: parent; anchors.margins: 10; spacing: 5
                             RowLayout { Label { text: "Processamento"; color: ink; font.bold: true; font.pixelSize: 12 } Item { Layout.fillWidth: true } Label { text: jobs.length; color: muted; font.pixelSize: 11 } }
                             ComboBox { id: jobPicker; Layout.fillWidth: true; model: jobs; textRole: "title"; currentIndex: jobs.findIndex(job => job.id === selectedJob.id); displayText: selectedJob.title || "Selecione uma tarefa"; enabled: backend.available; onActivated: selectedJob = jobs[index] || ({}) }
                             Label { textFormat: Text.PlainText; text: selectedJob.id ? (statusText(selectedJob.state) + (selectedJob.error ? " · " + selectedJob.error : "")) : "Selecione uma tarefa"; color: selectedJob.error ? errorColor : muted; font.pixelSize: 10; elide: Text.ElideRight; Layout.fillWidth: true }
+                            Label { visible: !!selectedJob.artifactStatus; text: selectedJob.artifactStatus || ""; textFormat: Text.PlainText; color: muted; font.pixelSize: 10; wrapMode: Text.Wrap; Layout.fillWidth: true }
                             RowLayout {
                                 Button { opacity: enabled ? 1 : 0.5; text: "Processar"; enabled: backend.available && !hasPending("job-process") && !hasPending("job-retry") && !!selectedJob.id && ["pending", "queued", "transferring"].includes(selectedJob.state); onClicked: send("job-process", selectedJob.id) }
                                 Button { opacity: enabled ? 1 : 0.5; text: "Repetir"; enabled: backend.available && !hasPending("job-process") && !hasPending("job-retry") && !!selectedJob.id && selectedJob.state === "failed"; onClicked: send("job-retry", selectedJob.id) }
@@ -651,7 +652,12 @@ ApplicationWindow {
                 contextCitations = result.citations || []
             } else if (request.op === "detail") {
                 if (!initialTranscriptTiming) initialTranscriptTiming = result.transcript.timing
-                selected = Object.assign({}, selected, {status: result.status, backup: result.backup})
+                selected = Object.assign({}, selected, {
+                    status: result.status, backup: result.backup,
+                    title: typeof result.title === "string" ? result.title : selected.title,
+                    hasMeetingTitle: typeof result.hasMeetingTitle === "boolean" ? result.hasMeetingTitle : selected.hasMeetingTitle,
+                    artifactStatus: typeof result.artifactStatus === "string" ? result.artifactStatus : selected.artifactStatus
+                })
                 if (JSON.stringify(detail) !== JSON.stringify(result)) detail = result
                 if (diarizationQueued && result.diarization.state === "review") notice = "Falantes identificados. Abra a aba Falantes para revisar."
                 else if (diarizationQueued && result.diarization.state === "failed") { notice = ""; errorText = result.diarization.message || "A identificação não foi concluída." }
@@ -743,7 +749,7 @@ ApplicationWindow {
                         ScrollBar.vertical: ScrollBar {}
                         delegate: ItemDelegate {
                             required property var modelData
-                            width: ListView.view.width; height: 102
+                            width: ListView.view.width; height: modelData.hasMeetingTitle === false ? 132 : 102
                             enabled: backend.available
                             Accessible.name: modelData.title + ", " + origin(modelData.location)
                             background: Rectangle { radius: 8; color: selected.key === modelData.key ? selectedSurface : parent.hovered ? hoverSurface : "transparent" }
@@ -752,6 +758,7 @@ ApplicationWindow {
                                 Label { text: modelData.title; color: ink; font.pixelSize: 13; font.weight: Font.Medium; wrapMode: Text.Wrap; maximumLineCount: 2; elide: Text.ElideRight; Layout.fillWidth: true; textFormat: Text.PlainText }
                                 Label { text: Qt.formatDateTime(new Date(modelData.modifiedAt), "dd MMM · hh:mm"); color: muted; font.pixelSize: 11 }
                                 Label { text: origin(modelData.location) + " · " + statusText(modelData.status); color: selected.key === modelData.key ? accent : muted; font.pixelSize: 10; elide: Text.ElideRight; Layout.fillWidth: true }
+                                Label { visible: modelData.hasMeetingTitle === false; text: modelData.artifactStatus || ""; textFormat: Text.PlainText; color: muted; font.pixelSize: 10; wrapMode: Text.Wrap; Layout.fillWidth: true }
                             }
                             onClicked: selectRecording(modelData)
                         }
@@ -768,6 +775,7 @@ ApplicationWindow {
                 Layout.fillWidth: true; Layout.fillHeight: true; Layout.margins: window.height < 720 ? 14 : 22; spacing: window.height < 720 ? 8 : 14
                 Button { opacity: enabled ? 1 : 0.5; visible: !!selected.key; text: "← Biblioteca"; onClicked: backToLibrary(); Accessible.name: "Voltar à biblioteca" }
                 Label { text: selected.title || "Sua biblioteca de gravações"; color: ink; font.pixelSize: 21; font.weight: Font.DemiBold; Layout.fillWidth: true; elide: Text.ElideRight; textFormat: Text.PlainText }
+                Label { visible: !!selected.key && detail.hasMeetingTitle === false; text: detail.artifactStatus || ""; textFormat: Text.PlainText; color: muted; font.pixelSize: 12; wrapMode: Text.Wrap; Layout.fillWidth: true }
                 Label { text: selected.key ? (mediaReady && location ? "Reproduzindo de " + origin(location) : "Origem: " + origin(selected.location)) + (selected.backup && selected.backup !== "none" ? "  ·  Cópias: " + selected.backup.replace("+", " + ").toUpperCase() : "") : "Selecione uma gravação para acessar o vídeo e o conteúdo."; color: muted; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight }
                 RowLayout {
                     Layout.fillWidth: true; Layout.fillHeight: true; spacing: 18
@@ -848,6 +856,7 @@ ApplicationWindow {
                             }
                             Button { id: visualSummaryButton; objectName: "visualSummaryButton"; visible: tabs.currentIndex===1 && !!detail.visualReview && !!detail.visualReview.summaryMarkdown; text: showVisualSummary ? "Voltar ao resumo original" : (detail.visualReview && detail.visualReview.scope ? "Ver resumo parcial do intervalo visual" : "Ver resumo visual solicitado"); onClicked: showVisualSummary=!showVisualSummary }
                             Label { visible: tabs.currentIndex===1 && showVisualSummary && !!detail.visualReview; text: detail.visualReview && detail.visualReview.scope ? "PARCIAL · " + preciseClock(detail.visualReview.scope.startSeconds) + "–" + preciseClock(detail.visualReview.scope.endSeconds) + " · restante omitido; revisar origem" : "Resumo visual solicitado · revisar origem"; textFormat: Text.PlainText; color: warningColor; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                            Label { visible: !!detail.artifactMessage; text: detail.artifactMessage || ""; textFormat: Text.PlainText; color: warningColor; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                             Label { visible: tabs.currentIndex === 1; text: detail.summaryInfo ? "Configuração do job: " + detail.summaryInfo + " · Resumo de IA: confira a fonte e os avisos de revisão." : "Resumo de IA: confira a fonte e os avisos de revisão."; textFormat: Text.PlainText; color: muted; wrapMode: Text.WordWrap; Layout.fillWidth: true; font.pixelSize: 11 }
                             Label { visible: tabs.currentIndex === 0 && detail.transcript.timing === "block"; text: "Texto original; tempos aproximados por bloco."; color: muted; font.pixelSize: 11; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                             Label { visible: tabs.currentIndex === 2; textFormat: Text.PlainText; text: detail.diarization.message || "Identifique os falantes para revisar suas participações nesta gravação."; color: detail.diarization.state === "failed" ? errorColor : muted; font.pixelSize: 11; wrapMode: Text.WordWrap; Layout.fillWidth: true }

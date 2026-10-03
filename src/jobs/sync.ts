@@ -7,6 +7,8 @@ import { refreshAiContextIfEnabled } from "../knowledge/context";
 import { reconcileTimeEntryForJob } from "../timesheet/reconcile";
 import { acquireSingleton } from "../runtime/singleton";
 import { processJob } from "./pipeline";
+import { readBoundedArtifact } from "./transcript-access";
+import { writePrivateArtifact } from "./artifacts";
 import {
   pullRemoteArtifacts,
   readRemoteStatus,
@@ -31,8 +33,11 @@ const verifyLocalSource = async (record: JobRecord): Promise<void> => {
 
 const publishLocalArtifacts = async (record: JobRecord, workDir: string): Promise<void> => {
   await fs.mkdir(record.artifactDir, { recursive: true, mode: 0o700 });
-  for (const name of ARTIFACT_NAMES) {
-    await fs.copyFile(join(workDir, name), join(record.artifactDir, name));
+  for (const name of [...ARTIFACT_NAMES, "transcript-receipt.json"]) {
+    let raw: string;
+    try { raw = await readBoundedArtifact(join(workDir, name), name === "transcript-receipt.json" ? 4096 : 20 * 1024 * 1024); }
+    catch (error) { if (name === "transcript-receipt.json" && (error as NodeJS.ErrnoException).code === "ENOENT") continue; throw error; }
+    await writePrivateArtifact(join(record.artifactDir, name), raw);
   }
 };
 

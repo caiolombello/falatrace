@@ -55,6 +55,7 @@ test("a detected call records without OBS and leaves exactly one job for the wor
     }));
     const runtime = new CallMonitorRuntime(config, false, {
       run,
+      network: async () => Object.fromEntries(["slack", "zen", "helium"].map(app => [app, { tcpSockets: 0, udpSockets: 0, tcpBytesSent: 0, tcpBytesReceived: 0 }])) as any,
       monitor: async (emit, signal) => {
         emit(nodes);
         const timer = setTimeout(() => emit([]), 13_000);

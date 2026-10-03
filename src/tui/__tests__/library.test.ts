@@ -130,7 +130,9 @@ describe("recording library", () => {
     await fs.writeFile(mediaPath, "video");
     const config = mergeConfig(DEFAULT_CONFIG, { recordingsDir });
     const store = new JobStore(join(root, "state"), join(root, "data"));
-    const job = await store.enqueue(config, mediaPath);
+    const pending = await store.enqueue(config, mediaPath);
+    // Legacy published Markdown is readable only after the job is committed.
+    const job = await store.update(pending.id, "completed");
     await fs.mkdir(job.artifactDir, { recursive: true });
     await fs.writeFile(join(job.artifactDir, "transcript.md"), "transcript");
 
@@ -148,7 +150,9 @@ describe("recording library", () => {
     await fs.writeFile(mediaPath, "video");
     const config = mergeConfig(DEFAULT_CONFIG, { recordingsDir });
     const store = new JobStore(join(root, "state"), join(root, "data"));
-    const job = await store.enqueue(config, mediaPath);
+    const pending = await store.enqueue(config, mediaPath);
+    // Legacy published Markdown is readable only after the job is committed.
+    const job = await store.update(pending.id, "completed");
     await fs.mkdir(job.artifactDir, { recursive: true });
     await fs.writeFile(join(job.artifactDir, "transcript.md"), "OBS transcript");
 
@@ -164,7 +168,9 @@ describe("recording library", () => {
     await fs.writeFile(mediaPath, "video");
     const config = mergeConfig(DEFAULT_CONFIG, { recordingsDir });
     const store = new JobStore(join(root, "state"), join(root, "data"));
-    const job = await store.enqueue(config, mediaPath);
+    const pending = await store.enqueue(config, mediaPath);
+    // Legacy published Markdown is readable only after the job is committed.
+    const job = await store.update(pending.id, "completed");
     await fs.mkdir(join(redirectedRoot, job.id), { recursive: true });
     await fs.writeFile(join(redirectedRoot, job.id, "transcript.md"), "redirected");
     await fs.symlink(redirectedRoot, join(root, "obs-recording.recording"), "dir");

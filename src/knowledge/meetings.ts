@@ -3,6 +3,7 @@ import { promises as fs } from "node:fs";
 import { join, resolve } from "node:path";
 import type { AppConfig } from "../config/defaults";
 import { JobStore } from "../jobs/store";
+import { readTranscriptArtifact, type TranscriptProvenance } from "../jobs/transcript-access";
 import {
   type JobRecord,
   type RecordingSummary,
@@ -38,11 +39,14 @@ export type MeetingSearchItem = {
   title: string;
   date: string;
   sourcePath: string;
-  summaryPath: string;
+  summaryPath: string | null;
   transcriptPath: string;
   mediaSha256: string;
-  summaryArtifactSha256: string;
+  summaryArtifactSha256: string | null;
   transcriptArtifactSha256: string;
+  jobState: JobRecord["state"];
+  artifactStates: { transcript: "ready"; summary: "ready" | "unavailable" };
+  transcriptProvenance: TranscriptProvenance;
   score: number;
   excerpt: string;
 };
@@ -59,13 +63,16 @@ export type MeetingContextResult = {
   title: string;
   date: string;
   sourcePath: string;
-  summaryPath: string;
+  summaryPath: string | null;
   transcriptPath: string;
   mediaSha256: string;
-  summaryArtifactSha256: string;
+  summaryArtifactSha256: string | null;
   startOffset: number;
   dataPolicy: string;
-  summary: RecordingSummary;
+  summary: RecordingSummary | null;
+  jobState: JobRecord["state"];
+  artifactStates: { transcript: "ready"; summary: "ready" | "unavailable" };
+  transcriptProvenance: TranscriptProvenance;
   excerpts: Array<{
     artifact: "transcript.json";
     charOffset: { start: number; end: number };
@@ -146,17 +153,19 @@ const assertArtifact = async (
   }
 };
 
-const readValidated = async (job: JobRecord): Promise<{ summary: RecordingSummary; transcript: Transcript; summaryRaw: string; transcriptRaw: string }> => {
-  const [summaryRaw, transcriptRaw] = await Promise.all([
-    assertArtifact(job, "summary.json", MAX_SUMMARY_BYTES),
-    assertArtifact(job, "transcript.json", MAX_TRANSCRIPT_BYTES)
-  ]);
-  return {
-    summary: validateSummary(JSON.parse(summaryRaw), job.summary.provider, job.summary.model),
-    transcript: validateTranscript(JSON.parse(transcriptRaw)),
-    summaryRaw,
-    transcriptRaw
-  };
+const readValidated = async (job: JobRecord) => {
+  const artifact = await readTranscriptArtifact(job);
+  let summary: RecordingSummary | null = null;
+  let summaryRaw: string | null = null;
+  // Partial jobs never expose an uncommitted/stale summary.
+  if (job.state === "completed") {
+    try {
+      summaryRaw = await assertArtifact(job, "summary.json", MAX_SUMMARY_BYTES);
+      summary = validateSummary(JSON.parse(summaryRaw), job.summary.provider, job.summary.model);
+    } catch { summaryRaw = null; }
+  }
+  return { summary, transcript: artifact.transcript, summaryRaw, transcriptRaw: artifact.raw,
+    transcriptPath: artifact.path, transcriptProvenance: artifact.provenance };
 };
 
 const summaryText = (summary: RecordingSummary): string =>
@@ -194,15 +203,15 @@ const queryScore = (query: string, text: string): number => {
   return wanted.reduce((score, token) => score + (haystack.includes(token) ? 1 : 0), 0) / wanted.length;
 };
 
-const meetingScore = (query: string, summary: RecordingSummary, transcript: Transcript): number => {
+const meetingScore = (query: string, summary: RecordingSummary | null, transcript: Transcript): number => {
   if (!query) return 0;
-  const title = normalize(summary.title);
-  const score = queryScore(query, `${summaryText(summary)}\n${transcript.text}`);
+  const title = normalize(summary?.title || "");
+  const score = queryScore(query, `${summary ? summaryText(summary) : ""}\n${transcript.text}`);
   return title === normalize(query) ? score + 2 : score;
 };
 
-const excerptFor = (query: string | undefined, summary: RecordingSummary, transcript: Transcript): string => {
-  const text = transcript.text || summaryText(summary);
+const excerptFor = (query: string | undefined, summary: RecordingSummary | null, transcript: Transcript): string => {
+  const text = transcript.text || (summary ? summaryText(summary) : "");
   if (!query) return sanitizeKnowledgeText(text.slice(0, MAX_EXCERPT), MAX_EXCERPT);
   const lower = normalize(text);
   const position = tokens(query).map((term) => lower.indexOf(term)).find((value) => value >= 0) ?? 0;
@@ -236,7 +245,7 @@ export const searchMeetings = async (
   const until = dateFilter(options.until, "until");
   if (since !== undefined && until !== undefined && since > until) throw new Error("since deve anteceder until");
   const { jobs, entries, clients } = await loadInputs(config);
-  const eligible = jobs.filter((job) => job.state === "completed").sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const eligible = jobs.filter((job) => job.state === "completed" || job.target === "local").sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const candidates: MeetingSearchItem[] = [];
   let scanned = 0;
   let skippedStale = 0;
@@ -246,19 +255,22 @@ export const searchMeetings = async (
     const dateTime = new Date(date).getTime();
     if ((since !== undefined && dateTime < since) || (until !== undefined && dateTime > until) || !matchesClient(job, options.client, entries, clients)) continue;
     try {
-      const { summary, transcript, summaryRaw, transcriptRaw } = await readValidated(job);
+      const { summary, transcript, summaryRaw, transcriptRaw, transcriptPath, transcriptProvenance } = await readValidated(job);
       if (!transcript.text.trim()) { skippedStale += 1; continue; }
       const score = meetingScore(query, summary, transcript);
       if (query && score === 0) continue;
       candidates.push({
         jobId: job.id,
-        title: sanitizeKnowledgeText(summary.title, 160),
+        title: sanitizeKnowledgeText(summary?.title || job.source.originalName, 160),
         date,
         sourcePath: job.sourcePath,
-        summaryPath: artifactPath(job, "summary.json"),
-        transcriptPath: artifactPath(job, "transcript.json"),
+        summaryPath: summary ? artifactPath(job, "summary.json") : null,
+        transcriptPath,
         mediaSha256: job.source.sha256,
-        summaryArtifactSha256: hashText(summaryRaw),
+        summaryArtifactSha256: summaryRaw ? hashText(summaryRaw) : null,
+    jobState: job.state,
+    artifactStates: { transcript: "ready" as const, summary: summary ? "ready" as const : "unavailable" as const },
+        transcriptProvenance,
         transcriptArtifactSha256: hashText(transcriptRaw),
         score,
         excerpt: excerptFor(query, summary, transcript)
@@ -318,13 +330,11 @@ export const readMeetingContext = async (
   const budget = safeBudget(options.maxCharacters);
   const query = safeQuery(options.query);
   const job = await new JobStore().get(id);
-  if (job.state !== "completed") throw new Error("Meeting job is not completed");
-  const { summary, transcript, summaryRaw, transcriptRaw } = await readValidated(job);
+  const { summary, transcript, summaryRaw, transcriptRaw, transcriptPath, transcriptProvenance } = await readValidated(job);
   if (!transcript.text.trim()) throw new Error("A gravação ainda não possui uma transcrição utilizável");
   const firstMatch = query ? tokens(query).map((term) => normalize(transcript.text).indexOf(term)).filter((index) => index >= 0).sort((a, b) => a - b)[0] : undefined;
   const offset = parseOffset(options.offset ?? (firstMatch === undefined ? 0 : Math.max(0, firstMatch - 250)), transcript.text.length);
-  const transcriptPath = artifactPath(job, "transcript.json");
-  const summaryPath = artifactPath(job, "summary.json");
+  const summaryPath = summary ? artifactPath(job, "summary.json") : null;
   const ranges: Array<{ start: number; end: number; timestamp: { start: number; end: number } }> = [];
   let cursor = 0;
   for (const segment of transcript.segments.slice(0, 100_000)) {
@@ -335,17 +345,20 @@ export const readMeetingContext = async (
     cursor = end;
     ranges.push({ start, end, timestamp: { start: segment.start, end: segment.end } });
   }
-  const summaryValue = safeSummaryForBudget(summary);
+  const summaryValue = summary ? safeSummaryForBudget(summary) : null;
   const base = {
     jobId: job.id,
-    title: sanitizeKnowledgeText(summary.title, 160),
+    title: sanitizeKnowledgeText(summary?.title || job.source.originalName, 160),
     date: dateFor(job),
     sourcePath: job.sourcePath,
     summaryPath,
     transcriptPath,
     mediaSha256: job.source.sha256,
     startOffset: offset,
-    summaryArtifactSha256: hashText(summaryRaw),
+    summaryArtifactSha256: summaryRaw ? hashText(summaryRaw) : null,
+    jobState: job.state,
+    artifactStates: { transcript: "ready" as const, summary: summary ? "ready" as const : "unavailable" as const },
+    transcriptProvenance,
     summary: summaryValue,
     excerpts: [] as MeetingContextResult["excerpts"],
     budget: { maxCharacters: budget, characters: 0, truncated: false } as MeetingContextResult["budget"],
@@ -354,10 +367,10 @@ export const readMeetingContext = async (
   };
   // Leave room for at least one cited excerpt even with a verbose summary.
   while (JSON.stringify(base).length > budget - 1000) {
-    if (base.summary.actionItems.length) base.summary.actionItems.pop();
-    else if (base.summary.decisions.length) base.summary.decisions.pop();
-    else if (base.summary.topics.length) base.summary.topics.pop();
-    else if (base.summary.overview.length > 100) base.summary.overview = base.summary.overview.slice(0, Math.floor(base.summary.overview.length / 2));
+    if (base.summary?.actionItems.length) base.summary.actionItems.pop();
+    else if (base.summary?.decisions.length) base.summary.decisions.pop();
+    else if (base.summary?.topics.length) base.summary.topics.pop();
+    else if (base.summary && base.summary.overview.length > 100) base.summary.overview = base.summary.overview.slice(0, Math.floor(base.summary.overview.length / 2));
     else throw new Error("Meeting context metadata exceeds maxCharacters");
   }
   const chunkSize = 1_000;

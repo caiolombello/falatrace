@@ -1,3 +1,4 @@
+import { assertPaidAudioSignal } from "./audio-preflight";
 import { promises as fs } from "node:fs";
 import { JOB_VERSION, type Transcript, type TranscriptSegment } from "../jobs/types";
 import { extractAudioMp3, probeMedia } from "../jobs/media";
@@ -173,5 +174,6 @@ export const transcribeWithGemini = async (
     throw new Error("O provedor Gemini experimental aceita arquivos de até 30 minutos");
   }
   const audioPath = await extractAudioMp3(sourcePath, workDir, signal);
+  await assertPaidAudioSignal(audioPath, signal);
   return transcribeGeminiAudio(await fs.readFile(audioPath), { model, language, duration }, fetch, signal);
 };

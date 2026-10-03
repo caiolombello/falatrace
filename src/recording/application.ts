@@ -5,7 +5,7 @@ import { TimeEntryStore } from "../timesheet/store";
 import { readAutomationState, type AutomationState } from "../calls/control";
 import { inspectAudioSources, type AudioSources } from "./capture";
 import { RecordingController } from "./controller";
-import { RecordingSessionStore, type RecordingSession } from "./session";
+import { capturedAudioConfig, RecordingSessionStore, type RecordingSession } from "./session";
 import { startRecording as startSimpleRecording } from "./simple";
 import { readState, type RecordingState } from "./state";
 
@@ -94,10 +94,12 @@ export const readCaptureStatus = async (
     warning = "Há uma gravação legada registrada. Finalize-a pelo terminal com `record stop`.";
   }
 
-  if (config.capture.audioSource !== "none") {
+  const audioConfig = active ? (session?.audio ? capturedAudioConfig(config.capture, session.audio) : undefined) : config.capture;
+  if (active && !audioConfig) audioError = "As origens capturadas desta sessão estão indisponíveis; os defaults atuais não validam esta captura.";
+  if (audioConfig && audioConfig.audioSource !== "none" && (!active || !warning)) {
     try {
       const inspection = await (dependencies.inspectAudioSources || inspectAudioSources)(
-        config.capture
+        audioConfig
       );
       if (!active) selected = inspection.selected;
       const sourceWarning = (inspection.warnings || [])
