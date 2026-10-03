@@ -117,7 +117,7 @@ describe("recording library", () => {
     const store = new JobStore(join(root, "state"), join(root, "data"));
     const job = await store.enqueue(config, mediaPath);
 
-    expect(await readArtifact(job, "transcript")).toBe(
+    expect(await readArtifact(job, "transcript", store)).toBe(
       "Transcrição ainda não disponível."
     );
   });
@@ -136,7 +136,7 @@ describe("recording library", () => {
     await fs.mkdir(job.artifactDir, { recursive: true });
     await fs.writeFile(join(job.artifactDir, "transcript.md"), "transcript");
 
-    expect(await getArtifactAvailability(job)).toEqual({
+    expect(await getArtifactAvailability(job, store)).toEqual({
       transcript: true,
       summary: false
     });
@@ -156,7 +156,7 @@ describe("recording library", () => {
     await fs.mkdir(job.artifactDir, { recursive: true });
     await fs.writeFile(join(job.artifactDir, "transcript.md"), "OBS transcript");
 
-    expect(await readArtifact(job, "transcript")).toBe("OBS transcript");
+    expect(await readArtifact(job, "transcript", store)).toBe("OBS transcript");
   });
 
   test("refuses to read through a redirected artifact directory", async () => {
@@ -175,7 +175,7 @@ describe("recording library", () => {
     await fs.writeFile(join(redirectedRoot, job.id, "transcript.md"), "redirected");
     await fs.symlink(redirectedRoot, join(root, "obs-recording.recording"), "dir");
 
-    await expect(readArtifact(job, "transcript")).rejects.toThrow(
+    await expect(readArtifact(job, "transcript", store)).rejects.toThrow(
       "Job artifact path does not match its recording"
     );
   });

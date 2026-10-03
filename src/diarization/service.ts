@@ -12,6 +12,7 @@ import { acquireSingleton } from "../runtime/singleton";
 import { alignCanonicalTranscript } from "./alignment";
 import { DIARIZATION_MODEL, DIARIZATION_AUDIO_ENCODING, diarizeAudioWithOpenAI, prepareDiarizationAudio, normalizeDiarizationResponse } from "./openai";
 import { DiarizationStore, transcriptChecksum, validSpeakerLabel, type DiarizationResult, type DiarizationStatus } from "./store";
+import { readReviewedView, saveRevision, type RevisionBase, type RevisionHead } from "../revisions";
 
 export const readCanonicalTranscript = async (job: JobRecord): Promise<Transcript> => {
   if (job.state !== "completed") throw new Error("Aguarde a transcrição terminar antes de identificar os falantes");
@@ -143,19 +144,13 @@ const createDiarizationOwned = async (
   } finally { await lease.release(); }
 };
 
-export const nameDiarizationSpeaker = async (id: string, speakerId: string, label: string): Promise<void> => {
+export const nameDiarizationSpeaker = async (id: string, speakerId: string, label: string, expected?: { expectedRevision: number; base: RevisionBase }): Promise<RevisionHead> => {
   validateJobId(id);
   if (!validSpeakerLabel(label)) throw new Error("Informe um nome de até 80 caracteres, sem quebras de linha");
-  const lease = await acquireSingleton(`diarization-create-${id}`);
-  try {
-    const job = await new JobStore().get(id);
-    const canonical = await readCanonicalTranscript(job);
-    const store = new DiarizationStore();
-    const result = await store.read(id, job.source.sha256, canonical.text);
-    if (!result || !Object.prototype.hasOwnProperty.call(result.labels, speakerId)) throw new Error("Falante não encontrado nesta gravação");
-    result.labels[speakerId] = label.trim();
-    await store.save(result);
-  } finally { await lease.release(); }
+  const job = await new JobStore().get(id);
+  const view = await readReviewedView(job);
+  return saveRevision(job, { expectedRevision: expected?.expectedRevision ?? view.revision.revision, base: expected?.base ?? view.revision.base,
+    operations: [{ kind: "speaker-label", speakerId, label }] });
 };
 
 export const createDiarization = (...args: Parameters<typeof createDiarizationOwned>) =>

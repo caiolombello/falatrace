@@ -1,3 +1,11 @@
+## 0.2.0-alpha.11 — reviewed source, exports and Studio summary consent
+
+- Add revision-bound transcript/speaker corrections and undo, reviewed consumers and snapshot-bound JSON/Markdown/SRT/WebVTT export.
+- Compose explicit local summary plan, destination/input/cost disclosure, consent, generation and cancellation in the Studio; preserve disabled settings and separate frame consent.
+- Bind visual evidence to reviewed revisions, reject summary redirects and protect legacy processing from stale writes.
+- Preserve configuration through onboarding save/cancel/conflict/recovery; add non-executable removal planning without claiming unified deletion.
+- Candidate verification: 759 offline tests, six checks and 8 Qt summary journeys; synthetic inference does not establish real model/capture quality. See [alpha.11 scope](docs/ALPHA11.md).
+
 ## 0.2.0-alpha.10 — experimental transcript, audio and title fixes
 
 - Keep verified local transcripts available after later summary failure, with explicit artifact readiness and provenance; never implicitly reprocess on retrieval.

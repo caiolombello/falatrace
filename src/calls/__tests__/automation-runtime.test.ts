@@ -101,6 +101,8 @@ test("pause suppresses future automatic captures and preserves a recording alrea
     emit(nodes);
     await until(async () => starts === 2);
     await until(async () => !active);
+    // The stop adapter finishes before the monitor publishes its next status/ACK.
+    await until(async () => (await readCallStatus())?.automationPaused === true);
     expect(recordingStartedNotifications).toBe(1);
     expect((await readCallStatus())?.automationPaused).toBe(true);
   } finally {

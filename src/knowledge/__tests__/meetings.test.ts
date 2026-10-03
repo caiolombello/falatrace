@@ -132,7 +132,7 @@ describe("on-demand meeting retrieval", () => {
         offset = item.charOffset.end;
         expect(item.originalTextSha256).toBe(hash(text.slice(item.charOffset.start, offset)));
         expect(item.textSha256).toBe(hash(item.text));
-        expect(item.timing).toBe("none");
+        expect(item.timing).toBe("block");
         expect(item.timestamps).toBeUndefined();
       }
       pages += 1;
@@ -151,7 +151,7 @@ describe("on-demand meeting retrieval", () => {
     const focused = await readMeetingContext(config, id, { query: "permissões", maxCharacters: 4096 });
     expect(focused.startOffset).toBeGreaterThan(5000);
     expect(focused.excerpts.some((item) => item.text.includes("permissões"))).toBe(true);
-    expect(focused.excerpts.every((item) => item.timing === "none")).toBe(true);
+    expect(focused.excerpts.every((item) => item.timing === "block")).toBe(true);
     await expect(searchMeetings(config, { limit: NaN })).rejects.toThrow("limit");
     await expect(searchMeetings(config, { query: "a".repeat(1001) })).rejects.toThrow("query");
   });

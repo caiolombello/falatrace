@@ -5,11 +5,19 @@ import type { AppConfig } from "../config/defaults";
 import { JobStore } from "../jobs/store";
 import { ArchiveStore, type ArchiveRecord } from "../archive/store";
 import { invalidateAiContext } from "../knowledge/invalidation";
+import { buildRemovalPlan, getRemovalRoots, type RemovalPlan } from "../lifecycle/removal-plan";
 import {
   MEDIA_EXTENSIONS,
   type JobRecord,
   validateSummary
 } from "../jobs/types";
+import { readBoundedArtifact } from "../jobs/transcript-access";
+import { formatSummaryMarkdown } from "../jobs/format";
+import { summaryEvidenceMatches } from "../summary/evidence";
+import { readCurrentReviewedSummary } from "../summary/reviewed";
+import { assertCurrentJob, assertCurrentReviewedView, assertUnreviewedLegacyJob, formatReviewedTranscriptMarkdown,
+  isUnreviewedLegacyAbsence, readCurrentReviewedView } from "../revisions/compat";
+import type { ReviewedView } from "../revisions";
 
 const MAX_LIBRARY_FILES = 100_000;
 const MAX_ARTIFACT_BYTES = 10 * 1024 * 1024;
@@ -34,6 +42,8 @@ export type DeleteResult = {
   trashedPaths: string[];
   removedJobs: number;
   keptSharedArtifacts: boolean;
+  /** Captured before Trash; no new-root candidate is executed by the legacy deletion path. */
+  removalPlans: RemovalPlan[];
   scope: {
     local: "trash";
     remoteCopies: "preserved-not-contacted";
@@ -41,6 +51,10 @@ export type DeleteResult = {
     aiContext: "invalidated" | "not-found" | "failed";
     externalExports: "not-controlled";
     auxiliaryState: "preserved";
+    revisions: "preserved";
+    reviewedSummaries: "preserved";
+    managedExports: "preserved";
+    completeness: "legacy-local-only";
   };
 };
 
@@ -49,7 +63,7 @@ const deletionScope = async (): Promise<DeleteResult["scope"]> => {
   const aiContext = await invalidateAiContext();
   if (aiContext === "failed") throw new Error("Cannot safely invalidate AI context; deletion cancelled");
   return { local: "trash", remoteCopies: "preserved-not-contacted", archiveCatalog: "preserved",
-    aiContext, externalExports: "not-controlled", auxiliaryState: "preserved" };
+    aiContext, externalExports: "not-controlled", auxiliaryState: "preserved", revisions: "preserved", reviewedSummaries: "preserved", managedExports: "preserved", completeness: "legacy-local-only" };
 };
 
 const expandHome = (path: string): string =>
@@ -192,7 +206,7 @@ export const buildLibrary = async (
     entry.jobs.sort((left, right) => right.createdAt.localeCompare(left.createdAt));
     for (const job of entry.jobs) {
       if (job.state !== "completed") continue;
-      const title = await readMeetingTitle(job);
+      const title = await readMeetingTitle(job, store);
       if (title) {
         entry.meetingTitle = title;
         break;
@@ -261,12 +275,50 @@ export const getManagedArtifactPath = (
 
 export const readArtifact = async (
   job: JobRecord,
-  kind: ArtifactKind
+  kind: ArtifactKind,
+  store: Pick<JobStore, "get"> = new JobStore()
 ): Promise<string> => {
+  let view: ReviewedView | undefined;
+  try { view = await readCurrentReviewedView(job, store); }
+  catch (error) {
+    if (!await isUnreviewedLegacyAbsence(job, error)) {
+      if (job.state !== "completed") { await assertCurrentJob(job, store); return kind === "summary" ? "Resumo ainda não disponível." : "Transcrição ainda não disponível."; }
+      throw error;
+    }
+    await assertUnreviewedLegacyJob(job, store);
+  }
+  const unavailable = kind === "transcript" ? "Transcrição ainda não disponível." : "Resumo ainda não disponível.";
+  if (kind === "summary" && view) {
+    const summary = await readCurrentReviewedSummary(job, view);
+    await assertCurrentReviewedView(job, view, store);
+    if (summary) return `Revisão de entrada: ${summary.revision.revision}. Autoria: modelo; resumo regenerado sobre a transcrição revisada.\n\n${formatSummaryMarkdown(summary.summary)}`;
+    if (job.state !== "completed") return unavailable;
+    if (view.revision.humanReviewed) return "Resumo anterior à revisão humana; regenere o resumo para a revisão atual.";
+  }
+  if (kind === "summary" && job.state !== "completed") return unavailable;
+  if (kind === "summary") {
+    // Legacy Markdown-only/no-support publications remain compatible. Explicit
+    // support that no longer matches cannot advertise the original as current.
+    try {
+      const metadata = join(job.artifactDir, "summary.json");
+      await assertExistingJobArtifactPath(job, metadata);
+      const original = validateSummary(JSON.parse(await readBoundedArtifact(metadata, MAX_SUMMARY_METADATA_BYTES)), job.summary.provider, job.summary.model);
+      if (original.support && (!view || !summaryEvidenceMatches(original, job.source.sha256, view.original.transcript))) {
+        if (view) await assertCurrentReviewedView(job, view, store);
+        else await assertUnreviewedLegacyJob(job, store);
+        return "Resumo sem vínculo com a transcrição atual; regenere o resumo.";
+      }
+    } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+  }
+  if (kind === "transcript" && view?.revision.humanReviewed) {
+    await assertCurrentReviewedView(job, view, store);
+    const markdown = formatReviewedTranscriptMarkdown(view);
+    if (Buffer.byteLength(markdown) > MAX_ARTIFACT_BYTES) throw new Error("Reviewed transcript exceeds the 10 MiB display limit");
+    return markdown;
+  }
   if (job.state !== "completed") {
-    if (kind === "summary") return "Resumo ainda não disponível.";
-    const artifact = await import("../jobs/transcript-access").then(module => module.readTranscriptArtifact(job)).catch(() => undefined);
-    return artifact ? artifact.transcript.text : "Transcrição ainda não disponível.";
+    if (view) await assertCurrentReviewedView(job, view, store);
+    return view?.transcript.text || unavailable;
   }
   const path = getArtifactPath(job, kind);
   try {
@@ -277,65 +329,69 @@ export const readArtifact = async (
     if (stat.size > MAX_ARTIFACT_BYTES) {
       throw new Error(`${kind}.md exceeds the 10 MiB display limit`);
     }
-    return await fs.readFile(path, "utf-8");
+    const raw = await readBoundedArtifact(path, MAX_ARTIFACT_BYTES);
+    if (view) await assertCurrentReviewedView(job, view, store);
+    else await assertUnreviewedLegacyJob(job, store);
+    return raw;
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-      if (kind === "transcript") {
-        const artifact = await import("../jobs/transcript-access").then(module => module.readTranscriptArtifact(job)).catch(() => undefined);
-        if (artifact) return artifact.transcript.text;
-      }
-      return kind === "transcript" ? "Transcrição ainda não disponível." : "Resumo ainda não disponível.";
+      if (view) await assertCurrentReviewedView(job, view, store);
+      else await assertUnreviewedLegacyJob(job, store);
+      return kind === "transcript" ? view?.transcript.text || unavailable : unavailable;
     }
     throw err;
   }
 };
 
 export const getArtifactAvailability = async (
-  job: JobRecord
+  job: JobRecord,
+  store: Pick<JobStore, "get"> = new JobStore()
 ): Promise<ArtifactAvailability> => {
-  if (job.state !== "completed") {
-    return { transcript: await import("../jobs/transcript-access").then(module => module.readTranscriptArtifact(job)).then(() => true).catch(() => false), summary: false };
-  }
-  const availability: ArtifactAvailability = {
-    transcript: false,
-    summary: false
+  const available = async (kind: ArtifactKind): Promise<boolean> => {
+    try {
+      const content = await readArtifact(job, kind, store);
+      return content !== "Transcrição ainda não disponível." && content !== "Resumo ainda não disponível." &&
+        content !== "Resumo anterior à revisão humana; regenere o resumo para a revisão atual." &&
+        content !== "Resumo sem vínculo com a transcrição atual; regenere o resumo.";
+    } catch { return false; }
   };
-  await Promise.all(
-    (Object.keys(availability) as ArtifactKind[]).map(async (kind) => {
-      const path = getArtifactPath(job, kind);
-      try {
-        const stat = await assertExistingJobArtifactPath(job, path);
-        availability[kind] =
-          stat.isFile() && stat.size <= MAX_ARTIFACT_BYTES;
-      } catch (err) {
-        if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-          availability[kind] = false;
-        }
-      }
-    })
-  );
-  if (!availability.transcript) {
-    availability.transcript = await import("../jobs/transcript-access").then(module => module.readTranscriptArtifact(job)).then(() => true).catch(() => false);
-  }
-  return availability;
+  const [transcript, summary] = await Promise.all([available("transcript"), available("summary")]);
+  return { transcript, summary };
 };
 
 export const readMeetingTitle = async (
-  job: JobRecord
+  job: JobRecord,
+  store: Pick<JobStore, "get"> = new JobStore()
 ): Promise<string | undefined> => {
   const path = join(job.artifactDir, "summary.json");
   try {
+    let view: ReviewedView | undefined;
+    try { view = await readCurrentReviewedView(job, store); }
+    catch (error) {
+      if (!await isUnreviewedLegacyAbsence(job, error)) throw error;
+      await assertUnreviewedLegacyJob(job, store);
+    }
+    if (view) {
+      const current = await readCurrentReviewedSummary(job, view);
+      await assertCurrentReviewedView(job, view, store);
+      if (current || view.revision.humanReviewed) return current?.summary.title;
+    }
+    if (job.state !== "completed") return undefined;
     const stat = await assertExistingJobArtifactPath(job, path);
     if (!stat.isFile() || stat.size > MAX_SUMMARY_METADATA_BYTES) {
       return undefined;
     }
-    const raw = await fs.readFile(path, "utf-8");
+    const raw = await readBoundedArtifact(path, MAX_SUMMARY_METADATA_BYTES);
     if (Buffer.byteLength(raw) > MAX_SUMMARY_METADATA_BYTES) return undefined;
-    return validateSummary(
+    const original = validateSummary(
       JSON.parse(raw),
       job.summary.provider,
       job.summary.model
-    ).title;
+    );
+    if (original.support && (!view || !summaryEvidenceMatches(original, job.source.sha256, view.original.transcript))) return undefined;
+    if (view) await assertCurrentReviewedView(job, view, store);
+    else await assertUnreviewedLegacyJob(job, store);
+    return original.title;
   } catch {
     return undefined;
   }
@@ -443,6 +499,9 @@ export const deleteJobArtifacts = async (
   const overlapsAnotherJob = entry.jobs.some(
     (candidate) => candidate.id !== job.id && pathsOverlap(candidate.artifactDir, job.artifactDir)
   );
+  const currentJob = await store.get(job.id);
+  if (currentJob.sourcePath !== job.sourcePath || currentJob.artifactDir !== job.artifactDir || currentJob.source.sha256 !== job.source.sha256) throw new Error("Selected job changed; refresh the library before deletion");
+  const removalPlans = [await buildRemovalPlan({ job: currentJob, roots: getRemovalRoots(recordingsDir, store), reason: "manual" })];
   const scope = await deletionScope();
   const trashedPaths: string[] = [];
   if (!overlapsAnotherJob) {
@@ -450,7 +509,7 @@ export const deleteJobArtifacts = async (
     if (destination) trashedPaths.push(destination);
   }
   await store.remove(job.id);
-  return { trashedPaths, removedJobs: 1, keptSharedArtifacts: overlapsAnotherJob, scope };
+  return { trashedPaths, removedJobs: 1, keptSharedArtifacts: overlapsAnotherJob, removalPlans, scope };
 };
 
 export const deleteRecording = async (
@@ -474,6 +533,12 @@ export const deleteRecording = async (
   const otherJobs = (await store.list()).filter(
     (job) => !selectedJobIds.has(job.id) && pathsOverlap(artifactRoot, job.artifactDir)
   );
+  const removalPlans: RemovalPlan[] = [];
+  for (const job of entry.jobs) {
+    const currentJob = await store.get(job.id);
+    if (currentJob.sourcePath !== job.sourcePath || currentJob.artifactDir !== job.artifactDir || currentJob.source.sha256 !== job.source.sha256) throw new Error("Selected job changed; refresh the library before deletion");
+    removalPlans.push(await buildRemovalPlan({ job: currentJob, roots: getRemovalRoots(recordingsDir, store), reason: "manual" }));
+  }
   const scope = await deletionScope();
   const trashedPaths: string[] = [];
   const sourceDestination = await moveToTrash(entry.sourcePath, trashRoot);
@@ -494,5 +559,5 @@ export const deleteRecording = async (
     }
   }
   for (const job of entry.jobs) await store.remove(job.id);
-  return { trashedPaths, removedJobs: entry.jobs.length, keptSharedArtifacts, scope };
+  return { trashedPaths, removedJobs: entry.jobs.length, keptSharedArtifacts, removalPlans, scope };
 };

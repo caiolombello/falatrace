@@ -1,9 +1,10 @@
 import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { AppConfig } from "../config/defaults";
 import { hashFile, JobStore } from "./store";
 import { validateJobId, validateJobStatus } from "./types";
+import { buildRemovalPlan, getRemovalRoots, type RemovalPlan, type RemovalRoots } from "../lifecycle/removal-plan";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MAX_RETENTION_ENTRIES = 100_000;
@@ -14,6 +15,32 @@ export type RetentionReport = {
   remoteIncoming: number;
   remoteResults: number;
   remoteFailures: number;
+  /** Work that can still be the canonical base of a human journal or immutable snapshot. */
+  protectedLocalCompletedWork?: number;
+};
+
+export type RetentionPlanningReport = {
+  mode: "dry-run"; plans: RemovalPlan[]; eligibleLocalWork: number; protectedLocalWork: number;
+  scope: "local-only-no-writes-no-remote-contact";
+};
+
+/** New roots are planned independently; existing auto-cleanup never expands into them. */
+export const planLocalRetention = async (
+  store: JobStore,
+  days: number,
+  options: { now: number; roots?: RemovalRoots }
+): Promise<RetentionPlanningReport> => {
+  if (!Number.isSafeInteger(days) || days < 0 || !Number.isFinite(options.now)) throw Error("Invalid retention planning policy");
+  const report: RetentionPlanningReport = { mode: "dry-run", plans: [], eligibleLocalWork: 0, protectedLocalWork: 0, scope: "local-only-no-writes-no-remote-contact" };
+  for (const job of await store.list()) {
+    const plan = await buildRemovalPlan({ job, roots: options.roots || getRemovalRoots(dirname(job.sourcePath), store), reason: "retention", retentionDays: days, now: options.now });
+    report.plans.push(plan);
+    if (plan.retention.eligible && plan.inventory.some(item => item.root === "jobWork" && item.path === join(plan.roots.jobWork, job.id) && item.kind !== "missing")) {
+      if (!plan.localWorkProtection.canPruneLegacyWork) report.protectedLocalWork += 1;
+      else report.eligibleLocalWork += 1;
+    }
+  }
+  return report;
 };
 
 const emptyReport = (): RetentionReport => ({
@@ -32,7 +59,7 @@ const isExpired = (modifiedAt: number, days: number, now: number): boolean =>
 export const cleanupLocalCompletedWork = async (
   store: JobStore,
   days: number,
-  options: { dryRun?: boolean; now?: number } = {}
+  options: { dryRun?: boolean; now?: number; removalRoots?: RemovalRoots } = {}
 ): Promise<RetentionReport> => {
   const report = emptyReport();
   if (days === 0) return report;
@@ -46,6 +73,14 @@ export const cleanupLocalCompletedWork = async (
     try {
       const stat = await fs.lstat(workDir);
       if (!stat.isDirectory() || stat.isSymbolicLink()) continue;
+      // Never destroy a possibly sole canonical base of a saved review or snapshot.
+      // Unsafe/unverifiable planning also preserves work instead of broadening cleanup.
+      let referenced = true;
+      try {
+        const plan = await buildRemovalPlan({ job, roots: options.removalRoots || getRemovalRoots(dirname(job.sourcePath), store), reason: "retention", retentionDays: days, now });
+        referenced = !plan.localWorkProtection.canPruneLegacyWork;
+      } catch { /* retain work when roots, ownership, or the bounded scan are unsafe */ }
+      if (referenced) { report.protectedLocalCompletedWork = (report.protectedLocalCompletedWork || 0) + 1; continue; }
       report.localCompletedWork += 1;
       if (!options.dryRun) await store.removeWorkData(job.id);
     } catch (err) {
@@ -199,4 +234,4 @@ export const cleanupRemoteServer = async (
 };
 
 export const retentionTotal = (report: RetentionReport): number =>
-  Object.values(report).reduce((total, value) => total + value, 0);
+  report.localCompletedWork + report.remoteIncoming + report.remoteResults + report.remoteFailures;

@@ -1,3 +1,5 @@
+import { sourceTimingQuality } from "../transcript/timing";
+
 export type PlayerTranscript = {
   text: string;
   timing: "segment" | "block" | "none";
@@ -23,6 +25,7 @@ export const parsePlayerTranscript = (value: unknown): PlayerTranscript => {
     return [{ start: segment.start, end: segment.end, text: segment.text.trim(), ...(speaker ? { speaker } : {}) }];
   }).sort((a, b) => a.start - b.start || a.end - b.end);
   const text = typeof raw.text === "string" ? raw.text.trim() : segments.map((segment) => segment.text).join(" ");
-  const blockTiming = typeof raw.model === "string" && /^gpt/i.test(raw.model) && !/diarize/i.test(raw.model);
-  return { text, timing: segments.length === 0 ? "none" : blockTiming ? "block" : "segment", segments, ...(reviewRequired ? { reviewRequired: true } : {}) };
+  const quality = sourceTimingQuality({ ...raw, segments });
+  const timing = segments.length === 0 ? "none" : quality === "approximate-block" ? "block" : ["word", "segment"].includes(quality) ? "segment" : "none";
+  return { text, timing, segments, ...(reviewRequired ? { reviewRequired: true } : {}) };
 };

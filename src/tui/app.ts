@@ -1364,6 +1364,7 @@ class RecordingTui {
             ? `Vídeo restaurado do Proton, verificado e aberto no player${position}.`
             : `Vídeo do vaio aberto no player${position} via SSHFS somente leitura.`;
       }
+      if (result.warnings?.length) this.message += " " + result.warnings.join(" ");
     } catch (err) {
       this.message = `Falha ao reproduzir: ${err instanceof Error ? err.message : String(err)}`;
     } finally {

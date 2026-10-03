@@ -1,5 +1,15 @@
 # Completion goal and finite roadmap
 
+Alpha.11 source checkpoint, 2026-10-03: the isolated G4/G5/G7 compatibility candidate adds
+reviewed-view consumers, explicit revision-bound local summary regeneration,
+frame consent/result revision binding and non-executable removal planning.
+See [snapshot compatibility](REVIEWED-SNAPSHOT-COMPATIBILITY.md). Original
+artifacts and prior candidates are preserved. This product is included in the
+alpha.11 source release; installation readback remains a separate receipt. This
+cut does not complete unified purge, validate models/capture or implement track
+selection and replaceable memory. Earlier statements below are historical
+checkpoints; see ALPHA11.md for the current delivered source scope.
+
 Roadmap documentation, reviewed 2026-10-01; the alpha.7 application and release artifacts are unchanged. This goal defines the finish line for the product roadmap, not a claim that every item below is already implemented or permission to install, capture or run a provider.
 
 **Goal:** make FalaTrace a reviewable Linux workflow from a deliberately configured automatic recording to recovered context for the user's AI: visible recording controls, searchable recordings, transcript-first summaries, selectively requested frames tied to the actual source, explicit recipient/provider permission, persistent budgets, and data-preserving installation/recovery/deletion. The author already uses the recording/context core continuously. Broader app coverage and new AI/memory/speaker workflows need their own evidence.
@@ -42,7 +52,22 @@ The alpha prioritizes safe recording state, traceable context and explicit data 
 No chat/API entitlement is bundled. Costs and latency depend on configured providers; retries/cancellation do not retract data already accepted by them. Remote unified deletion and complete multi-file transactional publication remain future work.
 
 
-## Speaker corrections and subtitles — planned, not implemented
+## Speaker corrections and subtitles — local candidate, partially implemented
+
+The isolated G5/G7 candidate implements versioned human overlays, stable IDs,
+explicit editor CAS, undo and controlled context invalidation, together with local
+JSON/Markdown/SRT/WebVTT export and snapshot-bound previews. Original artifacts
+are preserved; edited words do not acquire a new acoustic alignment. See
+[Human review and export](HUMAN-REVIEW-EXPORT.md) for contracts and limits. This
+candidate is now included in alpha.11 source; installation is separately verified, and real model quality and native playback are
+not inferred from offline fixtures. Legacy consumers now use reviewed views;
+explicit summary regeneration and revision-bound frames have production routes
+tested with stubs. Studio now composes the same explicit plan/consent/run/cancel
+contract through its Summary tab, without enabling disabled settings. Automatic
+regeneration and unified export purge remain gaps; real model quality is unvalidated.
+Original APIs remain historical, and repeated frame analysis can be refused by
+the existing persisted identity lock. The criteria below remain
+separate; text-only completion does not close the entire roadmap.
 
 The following items are planned in priority order. They require separate implementation and validation; adding this section does not enable transcription, diarization or paid inference.
 

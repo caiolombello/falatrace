@@ -1,4 +1,6 @@
 import { promises as fs } from "node:fs";
+import { withRevisionLease, RevisionConflictError } from "../revisions";
+import { hasSavedRevision } from "../revisions/service";
 import { join } from "node:path";
 import type { AppConfig } from "../config/defaults";
 import { runCommand } from "./command";
@@ -211,7 +213,8 @@ export const pullRemoteArtifacts = async (
   config: AppConfig,
   record: JobRecord,
   archiveRelative?: string
-): Promise<void> => {
+): Promise<void> => withRevisionLease(record.id, async () => {
+  if (await hasSavedRevision(record.id)) throw new RevisionConflictError("Human review exists; remote original artifacts were preserved without contacting the remote.");
   await fs.mkdir(record.artifactDir, { recursive: true, mode: 0o700 });
   const archiveDir = archiveRelative ? await resolveRemoteArchiveDir(config) : undefined;
   const sourceRoot = archiveRelative
@@ -228,7 +231,7 @@ export const pullRemoteArtifacts = async (
       { env: getRsyncEnvironment(config), timeoutMs: 10 * 60 * 1000 }
     );
   }
-};
+});
 
 export const checkRemote = async (config: AppConfig): Promise<string> =>
   runSsh(config, [

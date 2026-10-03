@@ -100,7 +100,7 @@ test("failed-summary checkpoint and completed legacy artifacts display actual re
     await fs.writeFile(join(failed.artifactDir, "transcript.json"), raw);
     await fs.writeFile(join(failed.artifactDir, "summary.json"), JSON.stringify({ title: "Título legado", overview: "Sintético", topics: [], decisions: [], actionItems: [] }));
     const completed = await store.update(failed.id, "completed");
-    const legacy = { ...failedEntry, jobs: [completed], meetingTitle: await readMeetingTitle(completed) };
+    const legacy = { ...failedEntry, jobs: [completed], meetingTitle: await readMeetingTitle(completed, store) };
     const display = recordingPresentation(legacy, await readArtifactStates(completed, store));
     expect(display.title).toBe("Título legado"); expect(display.artifactStatus).toBe("Transcrição pronta · Resumo pronto");
     expect(display.hasMeetingTitle).toBe(true);

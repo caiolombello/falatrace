@@ -73,7 +73,8 @@ class Player(Gtk.Window):
         self.rendered = False
         self.segments = [(s["start"], s["end"], s["text"]) for s in transcript.get("segments", [])]
         self.plain_text = transcript.get("text", "")
-        self.coarse = transcript.get("timing") == "block"
+        self.transcript_warnings = transcript.get("warnings", [])
+        self.coarse = transcript.get("timing") != "segment"
         self.active_row = None
         self.rows = []
         self.area = Gtk.GLArea()
@@ -130,6 +131,7 @@ class Player(Gtk.Window):
         side.pack_start(self.follow, False, False, 0)
         self.captions = Gtk.CheckButton(label="Legenda sobre o vídeo")
         self.captions.set_active(bool(self.segments) and not self.coarse)
+        self.captions.set_sensitive(bool(self.segments) and not self.coarse)
         side.pack_start(self.captions, False, False, 0)
         content.pack2(side, False, False)
         root.pack_start(content, True, True, 0)
@@ -172,8 +174,9 @@ class Player(Gtk.Window):
                 row = Gtk.ListBoxRow(); row.add(label); row._segment = None
                 self.listbox.add(row)
         self.listbox.show_all()
-        if not self.segments: self.status.set_text("Transcrição sem trechos temporizados")
-        elif self.coarse: self.status.set_text("Tempos aproximados por bloco")
+        if self.transcript_warnings: self.status.set_text(" · ".join(self.transcript_warnings))
+        elif not self.segments: self.status.set_text("Transcrição sem trechos temporizados")
+        elif self.coarse: self.status.set_text("Tempos aproximados ou não verificados; legendas indisponíveis")
         else: self.status.set_text("Transcrição sincronizada por trecho")
 
     def fail_start(self):

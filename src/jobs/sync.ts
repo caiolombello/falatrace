@@ -18,6 +18,8 @@ import {
 } from "./remote";
 import { hashFile, JobStore } from "./store";
 import type { JobRecord } from "./types";
+import { withRevisionLease, RevisionConflictError } from "../revisions";
+import { hasSavedRevision } from "../revisions/service";
 
 const ARTIFACT_NAMES = ["transcript.json", "transcript.md", "summary.json", "summary.md"];
 
@@ -31,7 +33,8 @@ const verifyLocalSource = async (record: JobRecord): Promise<void> => {
   }
 };
 
-const publishLocalArtifacts = async (record: JobRecord, workDir: string): Promise<void> => {
+const publishLocalArtifacts = async (record: JobRecord, workDir: string): Promise<void> => withRevisionLease(record.id, async () => {
+  if (await hasSavedRevision(record.id)) throw new RevisionConflictError("Human review exists; original artifact publication was refused. Use revision-bound summary regeneration.");
   await fs.mkdir(record.artifactDir, { recursive: true, mode: 0o700 });
   for (const name of [...ARTIFACT_NAMES, "transcript-receipt.json"]) {
     let raw: string;
@@ -39,13 +42,14 @@ const publishLocalArtifacts = async (record: JobRecord, workDir: string): Promis
     catch (error) { if (name === "transcript-receipt.json" && (error as NodeJS.ErrnoException).code === "ENOENT") continue; throw error; }
     await writePrivateArtifact(join(record.artifactDir, name), raw);
   }
-};
+});
 
 const processLocalJobOwned = async (
   config: AppConfig,
   store: JobStore,
   record: JobRecord
 ): Promise<JobRecord> => {
+  if (await hasSavedRevision(record.id)) throw new RevisionConflictError("Human review exists; original processing was refused before changing the job state.");
   await store.update(record.id, "processing");
   try {
     const workDir = store.getWorkDir(record.id);
@@ -95,14 +99,19 @@ const syncRemoteJob = async (
   store: JobStore,
   record: JobRecord
 ): Promise<JobRecord> => {
+  if (await hasSavedRevision(record.id)) throw new RevisionConflictError("Human review exists; remote synchronization was refused before contacting the remote.");
   if (record.state === "transferring") {
     record = await store.update(record.id, "pending");
   }
   if (record.state === "pending") {
     const existingStatus = await readRemoteStatus(config, record.id).catch(() => null);
+    if (await hasSavedRevision(record.id)) throw new RevisionConflictError("Human review changed during remote status read; further remote work was refused.");
     if (
       existingStatus?.state === "failed" &&
-      await requeueRemoteFailedJob(config, record.id)
+      await withRevisionLease(record.id, async () => {
+        if (await hasSavedRevision(record.id)) throw new RevisionConflictError("Human review exists; remote requeue was refused.");
+        return requeueRemoteFailedJob(config, record.id);
+      })
     ) {
       return store.update(record.id, "queued");
     }
@@ -119,14 +128,20 @@ const syncRemoteJob = async (
       }
       return updated;
     }
-    if (await remoteJobIsQueued(config, record.id)) {
+    const queued = await remoteJobIsQueued(config, record.id);
+    if (await hasSavedRevision(record.id)) throw new RevisionConflictError("Human review changed during remote queue read; transfer was refused.");
+    if (queued) {
       return store.update(record.id, "queued");
     }
-    await store.update(record.id, "transferring");
     try {
-      await transferJob(config, record, join(store.getWorkDir(record.id), "manifest.json"));
-      return await store.update(record.id, "queued");
+      return await withRevisionLease(record.id, async () => {
+        if (await hasSavedRevision(record.id)) throw new RevisionConflictError("Human review exists; remote transfer was refused.");
+        await store.update(record.id, "transferring");
+        await transferJob(config, record, join(store.getWorkDir(record.id), "manifest.json"));
+        return store.update(record.id, "queued");
+      });
     } catch (err) {
+      if (err instanceof RevisionConflictError) throw err;
       return store.update(record.id, "pending", {
         error: err instanceof Error ? err.message : String(err)
       });
@@ -134,6 +149,7 @@ const syncRemoteJob = async (
   }
 
   const status = await readRemoteStatus(config, record.id);
+  if (await hasSavedRevision(record.id)) throw new RevisionConflictError("Human review changed during remote status read; further remote work was refused.");
   if (!status) {
     return record;
   }

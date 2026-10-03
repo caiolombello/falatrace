@@ -4,16 +4,20 @@ import { homedir } from "node:os";
 import { basename, dirname, join, parse, resolve } from "node:path";
 import type { AppConfig } from "../config/defaults";
 import { JobStore } from "../jobs/store";
+import { readBoundedArtifact } from "../jobs/transcript-access";
 import {
   type JobRecord,
   type RecordingSummary,
   deriveMeetingTitle,
-  validateSummary,
-  validateTranscript
+  validateSummary
 } from "../jobs/types";
 import { findClient, loadTimesheetContext } from "../timesheet/context";
 import { TimeEntryStore } from "../timesheet/store";
-import { assertFreshAiContext, clearContextInvalidation, readContextInvalidation } from "./invalidation";
+import { assertFreshAiContext, clearContextInvalidation, readContextInvalidation, withContextPublicationLease } from "./invalidation";
+import { type ReviewedView } from "../revisions";
+import { assertCurrentReviewedView, assertUnreviewedLegacyJob, isUnreviewedLegacyAbsence, readCurrentReviewedView } from "../revisions/compat";
+import { readCurrentReviewedSummary } from "../summary/reviewed";
+import { summaryEvidenceMatches } from "../summary/evidence";
 import type {
   TimeEntry,
   TimesheetClient,
@@ -193,24 +197,46 @@ const readArtifactJson = async (
   ) {
     throw new Error("Job artifact path does not match its recording");
   }
-  const raw = await fs.readFile(realPath, "utf-8");
+  const raw = await readBoundedArtifact(realPath, maximumBytes);
   if (Buffer.byteLength(raw) > maximumBytes) {
     throw new Error(`${name} exceeds the size limit`);
   }
   return JSON.parse(raw);
 };
 
-const readSummary = async (job: JobRecord): Promise<RecordingSummary> =>
-  validateSummary(
+const readSummary = async (job: JobRecord, store: Pick<JobStore, "get">): Promise<RecordingSummary> => {
+  let reviewed: ReviewedView | undefined;
+  try {
+    reviewed = await readCurrentReviewedView(job, store);
+  } catch (error) {
+    // Existing summary-only publications remain original evidence. Saved
+    // revisions and malformed receipts cannot take this legacy fallback.
+    if (!await isUnreviewedLegacyAbsence(job, error)) throw error;
+    await assertUnreviewedLegacyJob(job, store);
+  }
+  if (reviewed) {
+    const current = await readCurrentReviewedSummary(job, reviewed);
+    await assertCurrentReviewedView(job, reviewed, store);
+    if (current) return { ...current.summary, limitations: [
+      `Resumo gerado por modelo a partir da revisão ${current.revision.revision}; a autoria continua sendo do modelo.`,
+      ...(current.summary.limitations || []).slice(0, 99)
+    ] };
+    if (reviewed.derivedStale) throw Error("Resumo anterior à revisão humana; reconstrução explícita necessária");
+  }
+  const summary = validateSummary(
     await readArtifactJson(job, "summary.json", MAX_SUMMARY_BYTES),
     job.summary.provider,
     job.summary.model
   );
+  if (summary.support && (!reviewed || !summaryEvidenceMatches(summary, job.source.sha256, reviewed.transcript))) throw Error("Resumo sem vínculo com a evidência atual");
+  if (!summary.support) summary.limitations = ["Resumo original legado; sem vínculo verificável com a transcrição atual.", ...(summary.limitations || []).slice(0, 99)];
+  if (reviewed) await assertCurrentReviewedView(job, reviewed, store);
+  else await assertUnreviewedLegacyJob(job, store);
+  return summary;
+};
 
-const readTranscriptText = async (job: JobRecord): Promise<string> =>
-  validateTranscript(
-    await readArtifactJson(job, "transcript.json", MAX_TRANSCRIPT_BYTES)
-  ).text;
+const readTranscriptText = async (job: JobRecord, store: Pick<JobStore, "get">): Promise<string> =>
+  (await readCurrentReviewedView(job, store)).transcript.text;
 
 const trustedEntryClient = (
   entry: TimeEntry | undefined,
@@ -270,7 +296,7 @@ const collectKnowledge = async (
     if (seenRecordings.has(sourcePath)) continue;
     let summary: RecordingSummary;
     try {
-      summary = await readSummary(job);
+      summary = await readSummary(job, jobStore);
     } catch {
       skippedUnreadable += 1;
       continue;
@@ -320,7 +346,7 @@ const collectKnowledge = async (
       ? []
       : matchClients(context, summarySearchText(summary));
     if (!trustedClient && matchedClients.length === 0) {
-      const transcriptText = await readTranscriptText(job).catch(() => "");
+      const transcriptText = await readTranscriptText(job, jobStore).catch(() => "");
       if (transcriptText) {
         matchedClients = matchClients(context, transcriptText);
       }
@@ -404,7 +430,7 @@ const renderMeeting = (meeting: MeetingKnowledge): string => {
   }
   if (!meeting.allocationOnly) {
     lines.push(meeting.summary.support?.reviewRequired === false
-      ? "Evidência: referências de transcrição disponíveis; verificar o resumo original."
+      ? "Evidência: referências de transcrição disponíveis; verificar o resumo."
       : "Evidência: revisão humana necessária; suporte ausente ou incerto.");
     lines.push(...compactList("Limitações:", meeting.summary.limitations || [], 2, 220));
     lines.push(
@@ -567,6 +593,7 @@ export const buildAiContextFiles = async (
   const clientsDir = join(outputDir, "clients");
   await ensurePrivateDirectory(outputDir);
   await ensurePrivateDirectory(clientsDir);
+  return withContextPublicationLease(outputDir, async () => {
   const invalidationBefore = await readContextInvalidation(outputDir);
   const generatedAt = options.generatedAt || new Date().toISOString();
   const collected = await collectKnowledge(
@@ -623,7 +650,7 @@ export const buildAiContextFiles = async (
     }
   }
   const indexPath = await writeIndex(outputDir, collected.context, generatedAt);
-  if (!selectedClient) await clearContextInvalidation(outputDir, invalidationBefore);
+  if (!selectedClient) await clearContextInvalidation(outputDir, invalidationBefore, true);
   return {
     outputDir,
     indexPath,
@@ -636,6 +663,7 @@ export const buildAiContextFiles = async (
     skippedUnassigned: collected.skippedUnassigned,
     skippedUnreadable: collected.skippedUnreadable
   };
+  });
 };
 
 export const refreshAiContextIfEnabled = async (
@@ -674,6 +702,7 @@ export const readClientAiContext = async (
   selector: string,
   outputDir = getDefaultAiContextDir()
 ): Promise<string> => {
+  return withContextPublicationLease(resolve(outputDir), async () => {
   await assertFreshAiContext(outputDir);
   const path = await getClientAiContextPath(config, selector, outputDir);
   const stat = await fs.lstat(path);
@@ -691,7 +720,10 @@ export const readClientAiContext = async (
   if (dirname(realPath) !== realDirectory) {
     throw new Error("AI context path is invalid");
   }
-  return fs.readFile(realPath, "utf-8");
+  const text = await readBoundedArtifact(realPath, config.aiContext.maxCharactersPerClient + 1_024);
+  await assertFreshAiContext(outputDir);
+  return text;
+  });
 };
 
 export const listAiContexts = async (

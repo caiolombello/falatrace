@@ -3,6 +3,8 @@ import { promises as fs } from "node:fs";
 import { createHash } from "node:crypto";
 import { getDefaultJobStateDir, hashFile } from "./store";
 import { writePrivateArtifact } from "./artifacts";
+import { hasSavedRevision } from "../revisions/service";
+import { withRevisionLease, RevisionConflictError } from "../revisions";
 import { join, dirname } from "node:path";
 import type { AppConfig } from "../config/defaults";
 import { summarizeWithOllama } from "../summary/ollama";
@@ -35,6 +37,11 @@ export const assertUsableTranscript = (transcript: Transcript): void => {
 
 const digest = (value: string): string => createHash("sha256").update(value).digest("hex");
 const transcriptionIdentity = (manifest: JobManifest): string => digest(JSON.stringify({media:manifest.source.sha256,transcription:manifest.transcription}));
+const assertUnreviewedPublication = async (jobId: string): Promise<void> => {
+  if (await hasSavedRevision(jobId)) throw new RevisionConflictError("Revisão humana existente: o processamento original foi recusado. Use a regeneração vinculada à revisão; os artefatos foram preservados.");
+};
+const publishOriginal = async <T>(jobId: string, publish: () => Promise<T>): Promise<T> =>
+  withRevisionLease(jobId, async () => { await assertUnreviewedPublication(jobId); return publish(); });
 const loadReusableTranscript = async (outputDir: string, manifest: JobManifest): Promise<{transcript:Transcript;legacy:boolean} | null> => {
   const path = join(outputDir, "transcript.json");
   const stat = await fs.lstat(path).catch(error => { if (error.code === "ENOENT") return undefined; throw error; });
@@ -61,6 +68,7 @@ const processJobOwned = async (
   options: { signal?: AbortSignal; visual?: { root: string; adapter: LocalVisualAdapter; ttlSeconds?: number; manual?: ManualVisualConsent; review?:{id:string;consent:boolean;consentKey:string} } } = {}
 ): Promise<void|{committedGrantId:string}> => {
   options.signal?.throwIfAborted();
+  await assertUnreviewedPublication(manifest.id);
   await fs.mkdir(outputDir, { recursive: true, mode: 0o700 });
   let transcriptionWorkDir: string | undefined;
   try {
@@ -72,6 +80,7 @@ const processJobOwned = async (
     if (!transcript) {
       await probeMedia(sourcePath, options.signal);
       transcriptionWorkDir = await fs.mkdtemp(join(outputDir,".transcription-"));
+      await assertUnreviewedPublication(manifest.id);
       transcript =
         manifest.transcription.provider === "openai"
           ? await transcribeWithOpenAI(
@@ -103,14 +112,16 @@ const processJobOwned = async (
           );
     }
     assertUsableTranscript(transcript);
+    const transcriptSnapshot = transcript;
     options.signal?.throwIfAborted();
     if (await hashFile(sourcePath) !== manifest.source.sha256) throw new Error("Source changed during transcription; artifacts not published");
-    if (!reusable) {
-      const raw = JSON.stringify(transcript, null, 2);
+    await publishOriginal(manifest.id, async () => { if (!reusable) {
+      const raw = JSON.stringify(transcriptSnapshot, null, 2);
       await writePrivateArtifact(join(outputDir,"transcript.json"),raw);
       await writePrivateArtifact(join(outputDir,"transcript-receipt.json"),JSON.stringify({version:1,identity:transcriptionIdentity(manifest),transcriptSha256:digest(raw)}));
     }
-    await writePrivateArtifact(join(outputDir, "transcript.md"), formatTranscriptMarkdown(transcript));
+    await writePrivateArtifact(join(outputDir, "transcript.md"), formatTranscriptMarkdown(transcriptSnapshot));
+    });
 
     if(options.visual&&manifest.summary.provider!=='ollama')throw Error('Scoped visual pipeline supports local Ollama summary only');
     const summaryIdentity=JSON.stringify({provider:manifest.summary.provider,model:manifest.summary.model,endpoint:config.summary.ollamaUrl});
@@ -121,7 +132,7 @@ const processJobOwned = async (
     const budgetIdentity=digest(JSON.stringify({media:manifest.source.sha256,transcript,visualAdapter:options.visual?.adapter.identity,summaryProvider:manifest.summary.provider,summaryModel:manifest.summary.model}));
     const visualAdapter=options.visual?{...options.visual.adapter,identity:pipelineSessionIdentity(options.visual.adapter.identity,scoped!.review),
       select:async()=>{throw Error('Pipeline selection requires separate scoped planner/preview; cannot infer images in one call');},
-      inspect:async(input:Parameters<LocalVisualAdapter['inspect']>[0],signal?:AbortSignal)=>{const approved=await validateReview();if(digest(JSON.stringify(input.frames.map(({file,timestampSeconds,sha256,bytes})=>({file,timestampSeconds,sha256,bytes}))))!==digest(JSON.stringify(approved!.review.frames)))throw Error('Pipeline frames changed after consent');await appBudget!.reserve('inference',manifest.id,budgetIdentity,config.visualReview,true,scoped!.review.policyRevision);signal?.throwIfAborted();return options.visual!.adapter.inspect(input,signal);}
+      inspect:async(input:Parameters<LocalVisualAdapter['inspect']>[0],signal?:AbortSignal)=>{const approved=await validateReview();if(digest(JSON.stringify(input.frames.map(({file,timestampSeconds,sha256,bytes})=>({file,timestampSeconds,sha256,bytes}))))!==digest(JSON.stringify(approved!.review.frames)))throw Error('Pipeline frames changed after consent');await appBudget!.reserve('inference',manifest.id,budgetIdentity,config.visualReview,true,scoped!.review.policyRevision);signal?.throwIfAborted();await assertUnreviewedPublication(manifest.id);return options.visual!.adapter.inspect(input,signal);}
     }:undefined;
     const visual = options.visual ? await runVisualSession({
       mediaHash: manifest.source.sha256, transcript, durationSeconds: await probeMedia(sourcePath, options.signal), sourcePath,
@@ -137,7 +148,9 @@ const processJobOwned = async (
       maxCharacters: config.summary.maxInputCharacters, provider: manifest.summary.provider,
       model: manifest.summary.model, adapterIdentity: manifest.summary.provider === "ollama" ? config.summary.ollamaUrl : "openai-chat", cacheDir: join(outputDir, ".summary-chunks"), signal: options.signal,
       adapter: async(part, signal) => {
+        await assertUnreviewedPublication(manifest.id);
         if(appBudget){await validateReview();await appBudget.reserve('inference',manifest.id,budgetIdentity,config.visualReview,true,scoped!.review.policyRevision);}
+        await assertUnreviewedPublication(manifest.id);
         signal?.throwIfAborted();return manifest.summary.provider === "openai"
         ? summarizeWithOpenAI(config, part.text, manifest.summary.model, scoped?undefined:manifest.summary.context, part.evidence, signal)
         : summarizeWithOllama(config, part.text, manifest.summary.model, scoped?undefined:manifest.summary.context, part.evidence, signal);
@@ -168,11 +181,14 @@ const processJobOwned = async (
     if (visualEvidence) await writePrivateArtifact(join(outputDir,scoped?'visual-summary-evidence.json':'visual-evidence.json'),JSON.stringify({version:1,summarySha256:digest(summaryJson),mediaSha256:manifest.source.sha256,...visualEvidence},null,2));
     else await fs.unlink(join(outputDir,scoped?'visual-summary-evidence.json':'visual-evidence.json')).catch(error=>{if(error.code!=='ENOENT')throw error;});
     await writePrivateArtifact(join(outputDir,summaryPrefix+".json"),summaryJson);
-    };if(scoped)return await commitPipelineVisualReview(scoped.review.id,scoped.review.consentKey,{jobId:manifest.id,outputDir,sessionRoot:options!.visual!.root},publish);else await publish();
+    };return await publishOriginal(manifest.id, async () => {
+      if(scoped)return await commitPipelineVisualReview(scoped.review.id,scoped.review.consentKey,{jobId:manifest.id,outputDir,sessionRoot:options!.visual!.root},publish);
+      await publish();
+    });
   } finally {
     if (transcriptionWorkDir) await fs.rm(transcriptionWorkDir, {recursive:true,force:true});
   }
 };
 
 export const processJob = (...args: Parameters<typeof processJobOwned>): Promise<void> =>
-  withHeavyAdmission('pipeline',args[1].id,async()=>{const [config,manifest,sourcePath,outputDir,options]=args;if(!options?.visual){await processJobOwned(...args);return;}const grant=options.visual.review;if(!grant)throw Error('Pipeline requires scoped preview consent');const cached=await loadReusableTranscript(outputDir,manifest);if(!cached)throw Error('Pipeline visual review requires existing transcript');if(await hashFile(sourcePath)!==manifest.source.sha256)throw Error('Pipeline source changed');await validatePipelineVisualReview({...grant,transcript:cached.transcript,mediaHash:manifest.source.sha256,duration:await probeMedia(sourcePath,options.signal),adapter:options.visual.adapter,adapterIdentity:options.visual.adapter.identity,summaryIdentity:JSON.stringify({provider:manifest.summary.provider,model:manifest.summary.model,endpoint:config.summary.ollamaUrl}),policy:config.visualReview,signal:options.signal});return withPipelineVisualClaim(grant.id,grant.consentKey,{jobId:manifest.id,outputDir,sessionRoot:options.visual.root},()=>processJobOwned(...args));},{signal:args[4]?.signal,onWait:cliAdmissionWait});
+  withHeavyAdmission('pipeline',args[1].id,async()=>{const [config,manifest,sourcePath,outputDir,options]=args;await assertUnreviewedPublication(manifest.id);if(!options?.visual){await processJobOwned(...args);return;}const grant=options.visual.review;if(!grant)throw Error('Pipeline requires scoped preview consent');const cached=await loadReusableTranscript(outputDir,manifest);if(!cached)throw Error('Pipeline visual review requires existing transcript');if(await hashFile(sourcePath)!==manifest.source.sha256)throw Error('Pipeline source changed');await validatePipelineVisualReview({...grant,transcript:cached.transcript,mediaHash:manifest.source.sha256,duration:await probeMedia(sourcePath,options.signal),adapter:options.visual.adapter,adapterIdentity:options.visual.adapter.identity,summaryIdentity:JSON.stringify({provider:manifest.summary.provider,model:manifest.summary.model,endpoint:config.summary.ollamaUrl}),policy:config.visualReview,signal:options.signal});return withPipelineVisualClaim(grant.id,grant.consentKey,{jobId:manifest.id,outputDir,sessionRoot:options.visual.root},()=>processJobOwned(...args));},{signal:args[4]?.signal,onWait:cliAdmissionWait});

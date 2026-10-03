@@ -1,5 +1,13 @@
-import { readTranscriptArtifact, readArtifactStates, type TranscriptArtifact } from "../jobs/transcript-access";
+import { readTranscriptArtifact, readArtifactStates, artifactDigest, type TranscriptArtifact } from "../jobs/transcript-access";
 import { recordingPresentation } from "./recording-presentation";
+import { readReviewedView, saveRevision, undoRevision, withRevisionLease, RevisionConflictError, type RevisionBase, type RevisionOperation, type ReviewedView } from "../revisions";
+import { readCurrentReviewedView, assertCurrentReviewedView } from "../revisions/compat";
+import { readCurrentReviewedSummary, type ReviewedSummaryArtifact } from "../summary/reviewed";
+import { StudioSummaryFlow } from "../summary/studio";
+import type { AppConfig } from "../config/defaults";
+const studioSummary = new StudioSummaryFlow();
+import { formatSummaryMarkdown } from "../jobs/format";
+import { previewExport, saveExport } from "../export";
 import { version as productVersion } from "../../package.json";
 import { readHeavyStatus } from '../runtime/heavy-admission';
 /** JSONL bridge for the desktop application. */
@@ -11,7 +19,7 @@ import { acquireSingleton } from "../../src/runtime/singleton";
 import { readCaptureStatus, startCapture, stopCapture } from "../../src/recording/application";
 import { queueSelectedJob } from "../../src/jobs/queue";
 import { readMeetingContext } from "../../src/knowledge/meetings";
-import { getDefaultJobStateDir, JobStore } from "../../src/jobs/store";
+import { getDefaultJobStateDir, hashFile, JobStore } from "../../src/jobs/store";
 import type { JobRecord, Transcript } from "../../src/jobs/types";
 import { runCommand } from "../../src/jobs/command";
 import { buildLibrary, readArtifact, assertExistingJobArtifactPath, assertExistingManagedPath, type LibraryEntry } from "../../src/tui/library";
@@ -50,8 +58,8 @@ export const handleRealFrameOperation=async(flow:StudioVisualFlow,request:Reques
 
 import { setAutomationPaused } from "../calls/control";
 
-const OPERATIONS = ["provider-authorize","provider-analyze","provider-cancel","agent-cancel","agent-status","agent-authorize","agent-pause","agent-resume","agent-revoke","agent-frames","processing-status", "ux-capabilities", "onboarding-read", "onboarding-save-local", "frames-check-models", "frames-scope", "frames-plan", "frames-preview-plan", "frames-preview", "frames-confirm", "frames-cancel", "list", "detail", "resolve", "playback-status", "subtitles", "diarization", "automation-pause", "automation-resume", "capture-status", "capture-start", "capture-stop", "capture-recover", "audio-defaults", "jobs-list", "job-process", "job-retry", "diarization-name", "context-meeting"] as const;
-type Request = { id: number; op: typeof OPERATIONS[number]; key?: string; payload?: {provider?:'openai'|'google';model?:string;analysis?:import('../provider-analysis/contracts').AnalysisOptions;context?:boolean;maxFrames?:number;maxBytes?:number;requestId?:string;grantId?:string;recipientId?:string;data?:Array<'context'|'frames'>;timestamps?:number[]; title?: string; speakerId?: string; label?: string; maxCharacters?: number; query?: string; offset?: number; question?: string; seconds?: number; previewId?: string; consent?: boolean; revision?: string; visionModel?: string; summaryModel?: string; capabilityId?: string; consentKey?: string; planId?:string; consentTranscript?:boolean; scopeId?:string; startSeconds?:number; endSeconds?:number } };
+const OPERATIONS = ["summary-plan", "summary-run", "summary-cancel","provider-authorize","provider-analyze","provider-cancel","agent-cancel","agent-status","agent-authorize","agent-pause","agent-resume","agent-revoke","agent-frames","processing-status", "ux-capabilities", "onboarding-read", "onboarding-save-local", "frames-check-models", "frames-scope", "frames-plan", "frames-preview-plan", "frames-preview", "frames-confirm", "frames-cancel", "list", "detail", "resolve", "playback-status", "subtitles", "diarization", "automation-pause", "automation-resume", "capture-status", "capture-start", "capture-stop", "capture-recover", "audio-defaults", "jobs-list", "job-process", "job-retry", "diarization-name", "context-meeting", "revision-save", "revision-undo", "export-preview", "export-save"] as const;
+export type Request = { id: number; op: typeof OPERATIONS[number]; key?: string; payload?: {maxRequests?:number;expectedRevision?:number;expectedSnapshotSha256?:string;base?:RevisionBase;expectedBase?:RevisionBase;operations?:RevisionOperation[];format?:"json"|"markdown"|"srt"|"vtt";track?:"transcript"|"diarization";provider?:'openai'|'google';model?:string;analysis?:import('../provider-analysis/contracts').AnalysisOptions;context?:boolean;maxFrames?:number;maxBytes?:number;requestId?:string;grantId?:string;recipientId?:string;data?:Array<'context'|'frames'>;timestamps?:number[]; title?: string; speakerId?: string; label?: string; maxCharacters?: number; query?: string; offset?: number; question?: string; seconds?: number; previewId?: string; consent?: boolean; revision?: string; visionModel?: string; summaryModel?: string; capabilityId?: string; consentKey?: string; planId?:string; consentTranscript?:boolean; scopeId?:string; startSeconds?:number; endSeconds?:number } };
 type Response = { id: number; ok: true; result: unknown } | { id: number; ok: false; error: string };
 const MAX_LINE = 1024 * 1024;
 const UUID = /^[a-f0-9-]{36}$/i;
@@ -77,10 +85,14 @@ const safeError = (op: string, error: unknown): string => {
     "A gravação ainda não possui contexto disponível.", "Muitas operações pendentes; tente novamente."
   ];
   if (known.includes(text)) return text;
+  if (op.startsWith("summary-")) return error instanceof RevisionConflictError ? "A revisão ou sua origem mudou. Prepare um novo plano antes de gerar; o original foi preservado." : "Resumo não confirmado ou cancelado. Confira modelo local, destino, limite e consentimento. Não repita uma tentativa incerta; releia antes de preparar outro plano. Original preservado.";
+  if (op.startsWith("revision-")) return error instanceof RevisionConflictError ? "A revisão ou sua origem mudou. Releia antes de salvar; sua edição não foi aplicada." : "Não foi possível confirmar a revisão. Releia o resultado antes de tentar novamente.";
+  if (op.startsWith("export-")) return "Não foi possível confirmar a exportação. Atualize a prévia e confira a origem e a revisão antes de salvar novamente.";
   if(op.startsWith("provider-"))return "Análise indisponível ou recusada. Confira destino/modelo, autorização e orçamento; não repita automaticamente uma tentativa incerta.";
   if(op.startsWith("agent-"))return "Acesso recusado ou indisponível. Confira escopo, destinatário, pausa/revogação e orçamento. Dados preservados.";
   if (op.startsWith("frames-")) return "Pedido visual recusado/cancelado. Confira horário, preview, consentimento e budget; verifique modelos locais/capabilities, identidade da origem, consentimento e limite persistente. Dados preservados.";
-  if (op.startsWith("onboarding-")) return "Configuração inválida, insegura ou alterada. Dados preservados; reabra antes de salvar.";
+  if (op === "onboarding-save-local") return "Não foi possível confirmar o salvamento. Confira a configuração após reler; ela pode ser inválida, insegura ou ter sido alterada.";
+  if (op === "onboarding-read") return "Não foi possível ler a configuração. Confira se o arquivo é válido e está em um local seguro.";
   if (op.startsWith("capture-") || op === "audio-defaults") return "Falha na operação de captura; verifique o estado e a configuração de áudio.";
   if (op.startsWith("job")) return "Falha na operação do job selecionado.";
   if (op === "context-meeting") return "Não foi possível carregar o contexto desta reunião.";
@@ -186,7 +198,32 @@ const timesheetText = async (key: string): Promise<string> => {
   const entries = (await new TimeEntryStore().list()).filter((entry) => entry.source.recordingPath && resolve(entry.source.recordingPath) === resolve(key));
   return entries.map((entry) => [entry.clientName || entry.clientCode || "", entry.cardId || "", entry.activityDate, formatHours(entry.hours), entry.description || ""].filter(Boolean).join(" · ")).join("\n");
 };
+export const buildReviewedBoundary = (view: ReviewedView, captions: PlayerTranscript, diarization: DiarizationView) => {
+  const labels=view.diarization?.labels || {};
+  const reviewedDiarization=view.diarization ? {
+    ...diarization,
+    // Keep the existing bounded text envelope; IDs/labels come from the same revision.
+    turns:view.diarization.turns.map((turn,index)=>{
+      const prior=diarization.turns?.[index];
+      return {...turn,...(prior?.text===undefined?{text:undefined}:{text:turn.text})};
+    })
+  } : diarization;
+  // Canonical/aligned subtitle speaker IDs and acoustic diarizer IDs are separate
+  // namespaces. A matching string alone never proves their attribution.
+  const boundary=buildTranscriptBoundary(view.original.transcript,captions,reviewedDiarization);
+  return {...boundary,transcript:{...parsePlayerTranscript(view.transcript),text:view.transcript.text,
+    segments:view.segments.filter(segment=>segment.end>segment.start&&segment.text.trim()).map(segment=>({...segment,...(segment.speakerId?{speaker:segment.humanSpeakerEdited?labels[segment.speakerId]||segment.speakerId:segment.speakerId}:{speaker:undefined})}))},
+    review:{revision:view.revision,canUndo:view.canUndo,notes:view.notes,derivedStale:view.derivedStale,speakerLabels:labels,
+      segmentEditUnavailable:view.segments.some(segment=>!segment.textRange)},
+    captionOriginalText:view.segments.some(segment=>segment.humanEdited)};
+};
 export const registeredAgentRecordingId=(entry:LibraryEntry)=>completedJob(entry)?.id||entry.jobs[0]?.id||(entry.archive?.source.sha256?entry.archive.id:undefined);
+export const reviewedVisualIdentity = (view: ReviewedView): string | undefined => view.revision.revision > 0
+  ? artifactDigest(JSON.stringify({ revision: view.revision, original: view.original.provenance })) : undefined;
+export const assertCurrentSummaryPresentation = async (job: JobRecord, expected: ReviewedSummaryArtifact | undefined): Promise<void> => {
+  const current = await readCurrentReviewedSummary(job);
+  if (current?.raw !== expected?.raw) throw new RevisionConflictError("Summary result changed during Studio read; reread before presenting it");
+};
 const list = async (): Promise<unknown> => {
   const { entries: items } = await loadLibrary(true);
   return { items: await Promise.all(items.map(async (entry) => ({ key: entry.sourcePath, recordingId:registeredAgentRecordingId(entry), ...recordingPresentation(entry, entry.jobs[0] ? await readArtifactStates(entry.jobs[0]) : undefined), fileName: basename(entry.sourcePath), modifiedAt: entry.modifiedAt, sourceExists: entry.sourceExists, location: locationOf(entry), status: statusOf(entry), backup: backupOf(entry) }))) };
@@ -199,15 +236,19 @@ const detail = async (key: string): Promise<unknown> => {
   const readable = await readableTranscriptJob(entry);
   const job = readable?.job || completedJob(entry);
   const subtitleId = entry.archive?.vaio.state === "completed" ? entry.archive.id : entry.jobs.find((item) => item.target === "remote" && item.state === "completed")?.id;
-  const [{ transcript: originalTranscript }, summary, timesheet, canonical] = await Promise.all([transcriptFor(entry, job), job?.state === "completed" ? readPlainArtifact(job, "summary") : Promise.resolve(""), timesheetText(entry.sourcePath), Promise.resolve(readable?.artifact.transcript)]);
-  const visualReview=job&&canonical?await studioFrames.readResult(job.id,job.source.sha256,canonical).catch(()=>undefined):undefined;
+  const reviewed=job&&readable?await readCurrentReviewedView(job):undefined;
+  const canonical=reviewed?.original.transcript || readable?.artifact.transcript;
+  const [{ transcript: originalTranscript }, timesheet] = await Promise.all([transcriptFor(entry, job), timesheetText(entry.sourcePath)]);
+  const currentSummary=job&&reviewed?await readCurrentReviewedSummary(job,reviewed):undefined;
+  const summary=currentSummary?formatSummaryMarkdown(currentSummary.summary):job?await readPlainArtifact(job,"summary"):"";
+  const visualReview=job&&reviewed?await studioFrames.readResult(job.id,job.source.sha256,reviewed.transcript,reviewedVisualIdentity(reviewed)).catch(()=>undefined):undefined;
   const diarizationResult = job && canonical ? await new DiarizationStore().read(job.id, job.source.sha256, canonical.text) : undefined;
   // Speaker timing comes from its own acoustic timeline. A lexical match inside
   // a 10-minute transcript block is not enough evidence to invent word timing.
   const diarization: DiarizationView = diarizationResult ? buildDiarizationView(diarizationResult)
     : job && canonical ? await readDiarizationStatus(job, canonical) : { state: "idle" };
   const captions = canonical && job?.state !== "completed" ? parsePlayerTranscript(canonical) : originalTranscript;
-  const boundary = buildTranscriptBoundary(canonical, captions, diarization);
+  const boundary = reviewed?buildReviewedBoundary(reviewed,captions,diarization):buildTranscriptBoundary(canonical, captions, diarization);
   let subtitleState = originalTranscript.timing === "segment" ? "ready" : "idle";
   let subtitleMessage: string | undefined;
   if (subtitleId && subtitleState !== "ready") {
@@ -219,7 +260,8 @@ const detail = async (key: string): Promise<unknown> => {
   const artifacts = job ? await readArtifactStates(job) : undefined;
   const presentation = recordingPresentation(entry, artifacts);
   if (job && entry.jobs[0] && entry.jobs[0].id !== job.id) presentation.artifactStatus += " · conteúdo de tarefa anterior";
-  return { key: entry.sourcePath, recordingId:registeredAgentRecordingId(entry), ...presentation, status: entry.jobs[0]?.state || statusOf(entry), backup: backupOf(entry), artifacts, transcriptProvenance: readable?.artifact.provenance, artifactMessage: readable && job?.state !== "completed" ? "Transcrição pronta e verificada. O processamento posterior não foi concluído; o resumo está indisponível. Não é necessário repetir a transcrição." : "", ...boundary, summary: summary, visualReview, summaryInfo: job ? `${job.summary.provider}/${job.summary.model} · ${job.summary.provider === "openai" ? "provedor externo" : "Ollama: endpoint configurado"}` : "", timesheet, subtitleState, subtitleMessage,
+  if (job && reviewed) { await assertCurrentReviewedView(job, reviewed); await assertCurrentSummaryPresentation(job,currentSummary); }
+  return { key: entry.sourcePath, recordingId:registeredAgentRecordingId(entry), ...presentation, status: entry.jobs[0]?.state || statusOf(entry), backup: backupOf(entry), artifacts, transcriptProvenance: reviewed?.original.provenance || readable?.artifact.provenance, artifactMessage: currentSummary ? "Resumo de modelo vinculado à revisão humana atual; o original foi preservado. Hashes verificam origem, não qualidade semântica." : reviewed?.derivedStale ? "Revisão humana aplicada. O resumo e a revisão visual anteriores estão desatualizados; nenhum modelo foi chamado para refazê-los." : readable && job?.state !== "completed" ? "Transcrição pronta e verificada. O processamento posterior não foi concluído; o resumo está indisponível. Não é necessário repetir a transcrição." : "", ...boundary, summary: artifacts?.summary.state!=="ready" ? "" : summary, visualReview, summaryInfo: currentSummary ? `${currentSummary.provenance.provider.provider}/${currentSummary.provenance.provider.model} · revisão ${currentSummary.revision.revision} · autoria: modelo` : job ? `${job.summary.provider}/${job.summary.model} · ${job.summary.provider === "openai" ? "provedor externo" : "Ollama: endpoint configurado"}` : "", timesheet, subtitleState, subtitleMessage,
     ...(job && canonical ? { jobId: job.id, ...(job.state === "completed" ? { diarizationId: job.id } : {}) } : {}), ...(subtitleId ? { subtitleId } : {}) };
 };
 const resolvePlayback = async (key: string): Promise<unknown> => {
@@ -248,11 +290,25 @@ export const parseRequest = (value: unknown): Request => {
   if (request.key !== undefined && (typeof request.key !== "string" || request.key.length > 4096 || /[\x00-\x1f]/.test(request.key))) throw new Error("key inválido");
   if (request.payload !== undefined && (!request.payload || typeof request.payload !== "object" || Array.isArray(request.payload))) throw new Error("payload inválido");
   const payload = (request.payload || {}) as Record<string, unknown>;
-  const allowed = request.op === "provider-authorize" ? ["provider","model","analysis","context","maxFrames","maxBytes","consent"] : request.op === "provider-analyze" ? ["grantId","requestId","question","timestamps"] : request.op === "provider-cancel" ? ["grantId"] : request.op === "agent-status" ? [] : request.op === "agent-authorize" ? ["recipientId","data","consent"] : ["agent-cancel","agent-pause","agent-resume","agent-revoke"].includes(request.op as string) ? ["grantId"] : request.op === "agent-frames" ? ["grantId","timestamps"] : request.op === "frames-check-models" ? ["visionModel", "summaryModel"] : request.op === "frames-scope" ? ["startSeconds","endSeconds"] : request.op === "frames-plan" ? ["capabilityId","consentTranscript","scopeId"] : request.op === "frames-preview-plan" ? ["planId"] : request.op === "frames-preview" ? ["question", "seconds", "capabilityId"] : request.op === "frames-confirm" ? ["previewId", "consent", "consentKey"] : request.op === "frames-cancel" ? ["previewId","scopeId"] : request.op === "onboarding-save-local" ? ["revision"] : request.op === "capture-start" ? ["title"] : request.op === "diarization-name" ? ["speakerId", "label"] : request.op === "context-meeting" ? ["maxCharacters", "query", "offset"] : [];
+  const allowed = request.op === "summary-plan" ? ["requestId", "maxRequests"] : request.op === "summary-run" ? ["requestId", "consent", "consentKey"] : request.op === "summary-cancel" ? ["requestId"] : request.op === "provider-authorize" ? ["provider","model","analysis","context","maxFrames","maxBytes","consent"] : request.op === "provider-analyze" ? ["grantId","requestId","question","timestamps"] : request.op === "provider-cancel" ? ["grantId"] : request.op === "agent-status" ? [] : request.op === "agent-authorize" ? ["recipientId","data","consent"] : ["agent-cancel","agent-pause","agent-resume","agent-revoke"].includes(request.op as string) ? ["grantId"] : request.op === "agent-frames" ? ["grantId","timestamps"] : request.op === "frames-check-models" ? ["visionModel", "summaryModel"] : request.op === "frames-scope" ? ["startSeconds","endSeconds"] : request.op === "frames-plan" ? ["capabilityId","consentTranscript","scopeId"] : request.op === "frames-preview-plan" ? ["planId"] : request.op === "frames-preview" ? ["question", "seconds", "capabilityId"] : request.op === "frames-confirm" ? ["previewId", "consent", "consentKey"] : request.op === "frames-cancel" ? ["previewId","scopeId"] : request.op === "revision-save" ? ["expectedRevision","base","operations"] : request.op === "revision-undo" ? ["expectedRevision","base"] : request.op === "export-preview" ? ["format","track"] : request.op === "export-save" ? ["format","track","expectedRevision","expectedBase","expectedSnapshotSha256"] : request.op === "onboarding-save-local" ? ["revision"] : request.op === "capture-start" ? ["title"] : request.op === "diarization-name" ? ["speakerId", "label"] : request.op === "context-meeting" ? ["maxCharacters", "query", "offset"] : [];
   if (Object.keys(payload).some((key) => !allowed.includes(key))) throw new Error("payload inválido");
   for (const [key, max] of [["title", 200], ["speakerId", 8], ["label", 80], ["query", 1000], ["question", 1000], ["previewId", 36], ["revision", 64], ["visionModel", 200], ["summaryModel", 200], ["capabilityId", 36], ["consentKey", 64]] as const) {
     if (payload[key] !== undefined && (typeof payload[key] !== "string" || (payload[key] as string).length > max || /[\x00-\x1f\x7f]/.test(payload[key] as string))) throw new Error("payload inválido");
   }
+  if (payload.expectedRevision !== undefined && (!Number.isSafeInteger(payload.expectedRevision) || (payload.expectedRevision as number)<0)) throw new Error("payload inválido");
+  if (["revision-save","revision-undo","export-save"].includes(request.op as string) && payload.expectedRevision === undefined) throw new Error("payload inválido");
+  for (const name of ["base","expectedBase"] as const) {
+    const base=payload[name];
+    if(base!==undefined) {
+      if(!base||typeof base!=="object"||Array.isArray(base))throw new Error("payload inválido");
+      const b=base as Record<string,unknown>;
+      if(Object.keys(b).some(key=>!["jobId","mediaSha256","transcriptArtifactSha256","diarizationSha256"].includes(key))||typeof b.jobId!=="string"||!UUID.test(b.jobId)||![b.mediaSha256,b.transcriptArtifactSha256].every(h=>typeof h==="string"&&/^[a-f0-9]{64}$/.test(h))||(b.diarizationSha256!==undefined&&(typeof b.diarizationSha256!=="string"||!/^[a-f0-9]{64}$/.test(b.diarizationSha256))))throw new Error("payload inválido");
+    }
+  }
+  if(["revision-save","revision-undo"].includes(request.op as string)&&!payload.base)throw new Error("payload inválido");
+  if(request.op==="revision-save"&&(!Array.isArray(payload.operations)||payload.operations.length<1||payload.operations.length>100))throw new Error("payload inválido");
+  if(request.op==="export-save"&&(!payload.expectedBase||typeof payload.expectedSnapshotSha256!=="string"||!/^[a-f0-9]{64}$/.test(payload.expectedSnapshotSha256)))throw new Error("payload inválido");
+  if((request.op as string).startsWith("export-")&&(!["json","markdown","srt","vtt"].includes(payload.format as string)||!["transcript","diarization"].includes(payload.track as string)))throw new Error("payload inválido");
   if (payload.maxCharacters !== undefined && (!Number.isSafeInteger(payload.maxCharacters) || (payload.maxCharacters as number) < 4096 || (payload.maxCharacters as number) > 24000)) throw new Error("payload inválido");
   if (payload.offset !== undefined && (!Number.isSafeInteger(payload.offset) || (payload.offset as number) < 0)) throw new Error("payload inválido");
   if (payload.seconds !== undefined && (typeof payload.seconds !== "number" || !Number.isFinite(payload.seconds) || payload.seconds < 0)) throw new Error("payload inválido");
@@ -272,9 +328,63 @@ export const parseRequest = (value: unknown): Request => {
   if(payload.data!==undefined&&(!Array.isArray(payload.data)||!payload.data.length||payload.data.length>2||payload.data.some(x=>!['context','frames'].includes(x))))throw Error('payload inválido');
   if(payload.timestamps!==undefined&&(!Array.isArray(payload.timestamps)||payload.timestamps.length>6||payload.timestamps.some(x=>typeof x!=='number'||!Number.isFinite(x)||x<0||x>86400)))throw Error('payload inválido');
   if (payload.consent !== undefined && typeof payload.consent !== "boolean") throw new Error("payload inválido");
+  if ((request.op as string).startsWith("summary-")) {
+    if (typeof request.key!=="string" || !UUID.test(request.key) || typeof payload.requestId!=="string" || !UUID.test(payload.requestId)) throw Error("payload inválido");
+    if (request.op==="summary-plan" && (!Number.isSafeInteger(payload.maxRequests) || Number(payload.maxRequests)<1 || Number(payload.maxRequests)>8)) throw Error("payload inválido");
+    if (request.op==="summary-run" && (payload.consent!==true || typeof payload.consentKey!=="string" || !/^[a-f0-9]{64}$/.test(payload.consentKey))) throw Error("payload inválido");
+  }
   return { id: request.id as number, op: request.op as Request["op"], ...(request.key === undefined ? {} : { key: request.key as string }), payload };
 };
+export const handleStudioSummaryOperation = async (flow: StudioSummaryFlow, request: Request, job: JobRecord, config?: AppConfig): Promise<unknown> => {
+  const p=request.payload || {};
+  if (request.key!==job.id) throw Error("Summary request/source mismatch");
+  if (request.op==="summary-cancel") return flow.cancel(job,p.requestId || "");
+  if (!config) throw Error("Explicit summary configuration required");
+  if (request.op==="summary-plan") return flow.plan(job,config,{requestId:p.requestId || "",maxRequests:p.maxRequests!});
+  if (request.op==="summary-run") return flow.run(job,config,{requestId:p.requestId || "",consent:p.consent===true,consentKey:p.consentKey || ""});
+  throw Error("Unknown summary operation");
+};
+/** Register cancellation before awaiting source/config reads, including an in-flight plan. */
+export class StudioSummaryRequestRouter {
+  private readonly resolving = new Map<string,{cancelled:boolean;readers:number;job?:JobRecord}>();
+  constructor(private readonly flow:StudioSummaryFlow) {}
+  async dispatch(request:Request,readSource:()=>Promise<{job:JobRecord;config?:AppConfig}>):Promise<unknown> {
+    const identity=JSON.stringify([request.key,request.payload?.requestId]);
+    if(request.op==="summary-cancel") {
+      const pending=this.resolving.get(identity);
+      if(pending)pending.cancelled=true;
+      // Active/queued work already resolved this exact job. Abort its controller
+      // before any further disk read can allow a late response to commit.
+      if(pending?.job)return handleStudioSummaryOperation(this.flow,request,pending.job);
+      const source=await readSource();
+      try { return await handleStudioSummaryOperation(this.flow,request,source.job); }
+      catch(error) {
+        if(pending && error instanceof Error && error.message==="Reviewed summary request is unavailable")
+          return {jobId:source.job.id,requestId:request.payload!.requestId,status:"cancelled",persisted:false};
+        throw error;
+      }
+    }
+    const pending=this.resolving.get(identity)||{cancelled:false,readers:0,job:undefined as JobRecord|undefined};pending.readers++;
+    this.resolving.set(identity,pending);
+    try {
+      const source=await readSource();
+      if(pending.cancelled)throw Error("Studio summary cancelled before source resolution; no dispatch");
+      pending.job=source.job;
+      return await handleStudioSummaryOperation(this.flow,request,source.job,source.config);
+    } finally { if(--pending.readers===0 && this.resolving.get(identity)===pending)this.resolving.delete(identity); }
+  }
+}
+const summaryRouter=new StudioSummaryRequestRouter(studioSummary);
+export const desktopRequestAdmitted=(pending:number,op:Request["op"]):boolean=>pending<32 || op==="summary-cancel";
 const handle = async (request: Request): Promise<unknown> => {
+  if (request.op.startsWith("summary-")) {
+    const result=await summaryRouter.dispatch(request,async()=>({
+      job:await new JobStore().get(request.key!),
+      config:request.op==="summary-cancel" ? undefined : (await loadConfig()).config,
+    }));
+    if (request.op==="summary-run") libraryCache=undefined;
+    return result;
+  }
   if(request.op.startsWith('provider-')){const p=request.payload||{},key=request.key||'';
    if(request.op==='provider-cancel')return providerStudio.cancel(p.grantId||'');
    const resolveId=async()=>{libraryCache=undefined;const {entry}=await findEntry(key);const id=registeredAgentRecordingId(entry);if(!id)throw Error('Recording not registered');return id;};
@@ -303,8 +413,14 @@ const handle = async (request: Request): Promise<unknown> => {
         if(!candidate)throw Error('A completed transcript is required');
         const job=await new JobStore().get(candidate.id);if(job.state!=='completed')throw Error('Completed job changed');
         await assertExistingManagedPath(config,entry.sourcePath);
-        const transcript=await readCanonicalTranscript(job);if(!transcript)throw Error('Transcript unavailable');
-        return {key,jobId:job.id,path:entry.sourcePath,mediaHash:job.source.sha256,transcript,config};
+        const reviewed=await readCurrentReviewedView(job);
+        return {key,jobId:job.id,path:entry.sourcePath,mediaHash:job.source.sha256,transcript:reviewed.transcript,config,
+          reviewIdentity:reviewedVisualIdentity(reviewed),publishCurrent:publish=>withRevisionLease(job.id,async()=>{
+            await assertCurrentReviewedView(job,reviewed);
+            await assertExistingManagedPath(config,entry.sourcePath);
+            if(await hashFile(entry.sourcePath)!==job.source.sha256)throw new RevisionConflictError("Frame media changed before result publication");
+            return publish();
+          })};
       };
       return handleRealFrameOperation(studioFrames,request,{...await readSource(),refresh:readSource});
     }
@@ -353,6 +469,14 @@ const handle = async (request: Request): Promise<unknown> => {
   }
   if (!request.key) throw new Error("key é obrigatório para esta operação");
   if (request.op === "job-process" || request.op === "job-retry") return queueSelectedJob(request.key, { retry: request.op === "job-retry" });
+  if(request.op.startsWith("revision-")||request.op.startsWith("export-")) {
+    if(!UUID.test(request.key))throw new Error("Informe o id UUID da gravação");
+    const job=await new JobStore().get(request.key), p=request.payload!;
+    if(request.op==="revision-save")return saveRevision(job,{expectedRevision:p.expectedRevision!,base:p.base!,operations:p.operations!});
+    if(request.op==="revision-undo")return undoRevision(job,{expectedRevision:p.expectedRevision!,base:p.base!});
+    if(request.op==="export-preview")return previewExport(job,{format:p.format!,track:p.track!});
+    return saveExport(job,{format:p.format!,track:p.track!,expectedRevision:p.expectedRevision!,expectedBase:p.expectedBase!,expectedSnapshotSha256:p.expectedSnapshotSha256!});
+  }
   if (request.op === "diarization-name" || request.op === "context-meeting") {
     const entry = UUID.test(request.key) ? undefined : (await findEntry(request.key)).entry;
     const id = UUID.test(request.key) ? request.key : request.op === "context-meeting" ? (await readableTranscriptJob(entry!))?.job.id : completedJob(entry!)?.id;
@@ -377,7 +501,7 @@ export const runDesktopBridge = async (): Promise<void> => {
       try {
         if (Buffer.byteLength(line, "utf8") > MAX_LINE) throw new Error("linha JSON excede 1 MiB");
         request = parseRequest(JSON.parse(line));
-        if (pending.size >= 32) throw new Error("Muitas operações pendentes; tente novamente.");
+        if (!desktopRequestAdmitted(pending.size,request.op)) throw new Error("Muitas operações pendentes; tente novamente.");
         const result = await handle(request);
         emit({ id: request.id, ok: true, result });
       } catch (error) {
@@ -407,6 +531,7 @@ export const runDesktopBridge = async (): Promise<void> => {
   }
   if (!dropping && buffer.length) accept(buffer.toString("utf8"));
   studioFrames.cancelAll();
+  await studioSummary.shutdown();
   await Promise.allSettled([...pending]);
 };
 if (import.meta.main) void runDesktopBridge();

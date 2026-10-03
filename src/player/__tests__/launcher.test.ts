@@ -37,6 +37,14 @@ describe("recording player launcher", () => {
       .rejects.toThrow("arquivo regular");
   });
 
+  test("an in-memory reviewed snapshot takes precedence over a stale transcript path", async () => {
+    await expect(launchRecordingPlayer("/tmp/recording-cli-player-no-such-file.mkv", {
+      transcriptPath: "/tmp/recording-cli-player-no-such-transcript.json",
+      transcript: { version: 1, provider: "whisper-cpp", model: "fixture", language: "pt", text: "Revisão em memória", segments: [] },
+      warnings: ["Legendas indisponíveis: texto revisado sem alinhamento."]
+    })).rejects.toThrow("O vídeo não é um arquivo regular");
+  });
+
   test("preserves untimed text without inventing subtitle timestamps", () => {
     expect(parsePlayerTranscript({ text: "Fala sem alinhamento", segments: [] })).toEqual({
       text: "Fala sem alinhamento", timing: "none", segments: []

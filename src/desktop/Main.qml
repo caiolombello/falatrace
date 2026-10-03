@@ -62,7 +62,8 @@ ApplicationWindow {
             const source = detail.captionSource === "diarization"
                 ? "Falas automáticas · revise texto e horários" + (detail.captionPartial ? " · faixa parcial" : "")
                 : "Faixa de legendas por segmento"
-            return captions ? source : "Legendas desativadas · " + source
+            const label=source+(detail.captionOriginalText?" · texto da faixa original; correções na aba Transcrição":"")
+            return captions ? label : "Legendas desativadas · " + label
         }
         if (detail.subtitleState === "running") return "Legendas em preparação; ainda não há faixa disponível."
         return (captions ? "Preferência de legendas ativada. " : "Legendas desativadas. ")
@@ -78,9 +79,27 @@ ApplicationWindow {
     property string contextPath: ""
     property var contextCitations: []
     property bool contextLoading: false
+    property int reviewGeneration: 0
+    property var reviewTarget: ({})
+    property string reviewError: ""
+    property bool reviewNeedsReload: false
+    property bool revisionSpeakerExplicit: false
+    property var exportResult: ({})
+    property string exportError: ""
+    property int exportGeneration: 0
+    property var summaryPlan: ({})
+    property string summaryError: ""
+    property int summaryGeneration: 0
+    property string summaryRequestId: ""
+    property string summaryJobId: ""
+    property bool summaryRunning: false
+    property bool summaryNeedsReload: false
+    property bool summaryCompleted: false
     property bool captureBusy: false
     property bool captureKnown: false
     property var speakerRows: {
+        const labels=detail.review&&detail.review.speakerLabels
+        if(labels)return Object.keys(labels).sort().map(function(id){return {speakerId:id,label:labels[id],anonymous:false}})
         const rows = []
         const seen = ({})
         for (const turn of (detail.diarization.turns || [])) {
@@ -98,6 +117,7 @@ ApplicationWindow {
     palette.disabled.text: muted
     palette.disabled.buttonText: muted
     palette.buttonText: ink
+    palette.dark: ink
     palette.button: buttonSurface
     palette.base: surface
     palette.highlight: accent
@@ -115,6 +135,9 @@ ApplicationWindow {
     property int frameGeneration: 0
     property var onboardingDraft: ({})
     property int onboardingGeneration: 0
+    property string onboardingError: ""
+    property bool onboardingNeedsReload: false
+    property bool onboardingSaveUncertain: false
     property string uxError: ""
     property bool showAgentSetup: false
     property bool agentLoaded: false
@@ -138,7 +161,40 @@ ApplicationWindow {
     function openAgentAccess() { agentDialog.open() }
     function closeAgentAccess() { cancelProvider(); if (activeGrant.id && hasPending("agent-frames")) send("agent-cancel", selected.key, {grantId:activeGrant.id}); agentDialog.close() }
     property string cliVersion: ""
-    property bool uxModal: aboutDialog.visible || captureConsent.visible || framesDialog.visible || onboardingDialog.visible || agentDialog.visible || recordingTools.visible
+    property bool uxModal: aboutDialog.visible || captureConsent.visible || framesDialog.visible || onboardingDialog.visible || agentDialog.visible || recordingTools.visible || reviewDialog.visible || exportDialog.visible || summaryDialog.visible
+    function summaryBusy() { return summaryRunning || hasPending("summary-plan") || hasPending("summary-run") }
+    function summaryPlanText() {
+        const p=summaryPlan
+        if (!p.requestId) return hasPending("summary-plan") ? "Preparando plano local; nenhum modelo chamado…" : "Escolha o limite e prepare o plano. Nenhum modelo é chamado nesta etapa."
+        const provider=p.provider||({}), cost=p.cost||({})
+        return "Modelo: "+provider.provider+" / "+provider.model+"\nDestino: "+(provider.endpoint||"Indisponível")+
+            "\nRevisão "+p.revision+" · "+p.inputCharacters+" caracteres de transcrição · "+p.chunkCount+" partes · limite "+p.maxRequests+" chamadas"+
+            "\nContexto do job: "+(p.contextIncluded?"incluído":"omitido")+". Notas humanas sem tempo e rótulos acústicos não entram no modelo."+
+            "\nCusto: "+(cost.state==="known"?String(cost.estimatedUsd)+" USD":"desconhecido; processamento local consome recursos, sem estimativa monetária")+
+            "\nLimite persistente: 32 pedidos por gravação, até 8 chamadas por plano. Nova sessão não repõe o limite."
+    }
+    function abandonSummary() {
+        if (!summaryCompleted && summaryRequestId && summaryJobId && backend.available) send("summary-cancel",summaryJobId,{requestId:summaryRequestId})
+        summaryGeneration+=1;summaryPlan=({});summaryConsent.checked=false;summaryRequestId="";summaryJobId="";summaryRunning=false;summaryCompleted=false
+    }
+    function summaryConnectionLost() {
+        summaryGeneration+=1;summaryPlan=({});summaryConsent.checked=false;summaryRunning=false;summaryNeedsReload=true
+        if(summaryDialog.visible)summaryError="Conexão perdida; a geração pode ter iniciado. Releia o resumo antes de preparar outro pedido. O original foi preservado."
+    }
+    function openSummary() {
+        if(!backend.available || !detail.review || revisionPending() || summaryBusy())return
+        summaryDialog.open()
+    }
+    function prepareSummary() {
+        if(!backend.available || !summaryJobId || summaryBusy() || summaryNeedsReload || summaryPlan.requestId)return
+        summaryRequestId=newRequestUUID();summaryError="";summaryConsent.checked=false
+        send("summary-plan",summaryJobId,{requestId:summaryRequestId,maxRequests:Number(summaryBudget.value)})
+    }
+    function generateSummary() {
+        if(!backend.available || summaryBusy() || summaryNeedsReload || !summaryConsent.checked || !summaryPlan.requestId)return
+        summaryRunning=true;summaryError=""
+        if(send("summary-run",summaryJobId,{requestId:summaryPlan.requestId,consent:true,consentKey:summaryPlan.consentKey})<0)summaryConnectionLost()
+    }
     function cancelFramePreview() {
         if (framePlan.id || framePreview.id || hasPending("frames-preview") || hasPending("frames-plan") || hasPending("frames-preview-plan") || hasPending("frames-scope")) send("frames-cancel", selected.key, {previewId: framePreview.id || ""})
         frameGeneration += 1; framePlan = ({}); framePreview = ({}); frameResult = ({})
@@ -389,33 +445,67 @@ ApplicationWindow {
     Dialog {
         id:onboardingDialog; objectName:"onboardingDialog"; title:"Configuração e privacidade"
         anchors.centerIn:parent; width:Math.min(window.width-48,580); height:Math.min(window.height-64,600); modal:true
-        closePolicy:hasPending("onboarding-save-local")?Popup.NoAutoClose:Popup.CloseOnEscape
-        onOpened:{onboardingGeneration+=1;onboardingDraft=({});localChoice.checked=false;uxError="";send("onboarding-read","");localChoice.forceActiveFocus(Qt.TabFocusReason)}
+        closePolicy:hasOnboardingPending("onboarding-save-local")?Popup.NoAutoClose:Popup.CloseOnEscape
+        onOpened:{onboardingError="";onboardingNeedsReload=false;onboardingSaveUncertain=false;loadOnboarding();onboardingCancel.forceActiveFocus(Qt.TabFocusReason)}
         onClosed:{onboardingGeneration+=1;onboardingDraft=({});localChoice.checked=false;onboardingButton.forceActiveFocus(Qt.TabFocusReason)}
-        contentItem:ScrollView { id:onboardingScroll; clip:true; contentWidth:availableWidth
+        contentItem:ColumnLayout { spacing:12
+         Label { objectName:"onboardingError"; visible:!!onboardingError; text:onboardingError; textFormat:Text.PlainText; wrapMode:Text.WordWrap; color:errorColor; Layout.fillWidth:true; Accessible.name:text }
+         ScrollView { id:onboardingScroll; objectName:"onboardingScroll"; clip:true; contentWidth:availableWidth; Layout.fillWidth:true; Layout.fillHeight:true
          ColumnLayout { width:onboardingScroll.availableWidth; spacing:16
-          Label { text:onboardingDraft.revision?(onboardingDraft.exists?"Suas escolhas atuais":"Comece neste computador"):"Lendo configuração…"; color:ink; font.pixelSize:22; font.weight:Font.DemiBold; wrapMode:Text.WordWrap; Layout.fillWidth:true }
+          Label { text:onboardingDraft.revision?(onboardingDraft.exists?"Suas escolhas atuais":"Comece neste computador"):(hasOnboardingPending("onboarding-read")?"Lendo configuração…":"Releia a configuração"); color:ink; font.pixelSize:22; font.weight:Font.DemiBold; wrapMode:Text.WordWrap; Layout.fillWidth:true }
           Label { text:onboardingDraft.exists?"Você só altera a configuração ao salvar. Cancelar mantém tudo como está.":"Escolha o processamento local para a primeira configuração. Esta tela não instala modelos nem inicia uma gravação."; color:muted; wrapMode:Text.WordWrap; Layout.fillWidth:true }
           Frame { visible:!!onboardingDraft.revision; Layout.fillWidth:true; padding:14
            background:Rectangle { color:surface; radius:8; border.color:buttonSurface }
            ColumnLayout { width:parent.width; spacing:8
-            Label { text:"RESUMO E DESTINO ATUAIS"; font.pixelSize:11; font.letterSpacing:1; color:accent }
-            Label { text:onboardingDraft.revision ? onboardingDraft.summaryProvider+" · "+onboardingDraft.destination : ""; textFormat:Text.PlainText; wrapMode:Text.WrapAnywhere; Layout.fillWidth:true; color:ink }
-            Label { text:onboardingDraft.local?"Destino configurado neste computador. Modelo ainda não validado.":"Destino externo ou fora deste computador. Confira antes de enviar conteúdo."; color:onboardingDraft.local?muted:warningColor; wrapMode:Text.WordWrap; Layout.fillWidth:true }
+            Label { text:"ROTAS ATUAIS DE PROCESSAMENTO"; font.pixelSize:11; font.letterSpacing:1; color:accent }
+            Label { text:onboardingDraft.revision?"Transcrição: "+onboardingDraft.transcriptionDestination:""; textFormat:Text.PlainText; wrapMode:Text.WordWrap; Layout.fillWidth:true; color:onboardingDraft.transcriptionLocal?ink:warningColor }
+            Label { text:onboardingDraft.revision ? "Resumo: "+onboardingDraft.summaryProvider+" · "+onboardingDraft.destination : ""; textFormat:Text.PlainText; wrapMode:Text.WrapAnywhere; Layout.fillWidth:true; color:onboardingDraft.local?ink:warningColor }
+            Label { text:onboardingDraft.revision?"Execução: "+onboardingDraft.processingDestination:""; textFormat:Text.PlainText; wrapMode:Text.WordWrap; Layout.fillWidth:true; color:onboardingDraft.processingTarget==="local"?ink:warningColor }
+            Label { text:"Processamento automático após gravação: "+(onboardingDraft.automaticEnqueue?"ativado":"desativado"); wrapMode:Text.WordWrap; Layout.fillWidth:true; color:muted }
+            Label { text:"Arquivamento: "+(onboardingDraft.archiveEnabled?(onboardingDraft.archiveDestinations||[]).join(", "):"desativado")+". S3: "+(onboardingDraft.s3Enabled?"ativado":"desativado")+". Integração Proton: "+(onboardingDraft.protonEnabled?"ativada":"desativada")+"."; textFormat:Text.PlainText; wrapMode:Text.WordWrap; Layout.fillWidth:true; color:muted }
+            Label { visible:!!onboardingDraft.timesheetAIExternal; text:"Classificação de atividades com IA externa está ativada."; wrapMode:Text.WordWrap; Layout.fillWidth:true; color:warningColor }
+            Label { text:(!onboardingDraft.local||!onboardingDraft.transcriptionLocal||onboardingDraft.processingTarget!=="local"||onboardingDraft.archiveExternal||onboardingDraft.s3Enabled||onboardingDraft.protonEnabled||onboardingDraft.timesheetAIExternal)?"Há rotas externas configuradas. Confira antes de processar ou arquivar conteúdo.":"Rotas de transcrição e resumo configuradas para este computador. Modelos ainda não validados."; color:warningColor; wrapMode:Text.WordWrap; Layout.fillWidth:true }
            }
           }
-          WrappedCheck { id:localChoice; objectName:"localChoice"; text:"Usar Whisper.cpp para transcrição e Ollama neste computador para resumos"; enabled:!!onboardingDraft.revision&&!hasPending("onboarding-save-local"); Accessible.name:text }
+          WrappedCheck { id:localChoice; objectName:"localChoice"; text:"Usar Whisper.cpp para transcrição e Ollama neste computador para resumos"; enabled:backend.available&&!!onboardingDraft.revision&&!hasOnboardingPending("onboarding-read")&&!hasOnboardingPending("onboarding-save-local"); Accessible.name:text
+           indicator:Rectangle {
+            implicitWidth:28; implicitHeight:28; x:localChoice.leftPadding; y:(localChoice.height-height)/2
+            radius:2; color:surface; border.width:localChoice.visualFocus?2:1; border.color:localChoice.visualFocus?accent:muted; opacity:localChoice.enabled?1:0.5
+            Text { anchors.centerIn:parent; text:localChoice.checked?"✓":""; color:ink; font.pixelSize:20; font.bold:true }
+           }
+          }
           Label { text:"Ao salvar esta escolha"; font.pixelSize:17; font.weight:Font.DemiBold; color:ink }
-          Label { text:"• O processamento automático de novas gravações fica desativado.\n• As demais opções são preservadas. Se já há um arquivo de configuração, é criada uma cópia privada de segurança.\n• Serviços existentes podem usar a nova escolha nas próximas execuções."; wrapMode:Text.WordWrap; Layout.fillWidth:true; color:muted }
-          Label { text:"Whisper.cpp, Ollama e os modelos precisam estar instalados separadamente. Uma assinatura de chat não inclui uso de API. Excluir aqui não apaga cópias remotas ou já exportadas."; wrapMode:Text.WordWrap; Layout.fillWidth:true; color:muted; font.pixelSize:12 }
-          Label { visible:!!uxError; text:uxError; textFormat:Text.PlainText; wrapMode:Text.WordWrap; color:errorColor; Layout.fillWidth:true }
+          Label { text:"• A transcrição, os resumos e a execução ficam configurados para este computador. O processamento automático após gravação fica desativado.\n• As demais opções, incluindo arquivamento, S3, Proton, classificação de atividades e regras de gravação, são preservadas.\n• Se já há configuração, é criada uma cópia privada de segurança. Serviços existentes podem usar a nova escolha nas próximas execuções."; wrapMode:Text.WordWrap; Layout.fillWidth:true; color:muted }
+          Label { text:"Whisper.cpp, Ollama e os modelos precisam estar instalados separadamente. Esta tela não instala modelos, não verifica o comportamento de comandos personalizados nem valida a qualidade dos resultados. Uma assinatura de chat não inclui uso de API."; wrapMode:Text.WordWrap; Layout.fillWidth:true; color:muted; font.pixelSize:12 }
+          Label { visible:!!onboardingDraft.retention; text:onboardingDraft.retention?"Retenção configurada (dias; 0 desativa o prazo): dados de trabalho locais concluídos "+onboardingDraft.retention.localCompletedWorkDays+"; worker — entradas parciais "+onboardingDraft.retention.remoteIncomingDays+", resultados "+onboardingDraft.retention.remoteResultsDays+", falhas "+onboardingDraft.retention.remoteFailuresDays+".":""; textFormat:Text.PlainText; wrapMode:Text.WordWrap; Layout.fillWidth:true; color:muted; font.pixelSize:12 }
+          Label { text:"A limpeza local atua em dados de trabalho de jobs concluídos elegíveis. Ela não é uma exclusão completa da gravação: cópias remotas, exports e outros derivados podem permanecer. Revise o alcance sem apagar arquivos: falatrace jobs cleanup --dry-run."; textFormat:Text.PlainText; wrapMode:Text.WordWrap; Layout.fillWidth:true; color:muted; font.pixelSize:12 }
+         }
          }
         }
         footer:Item { implicitHeight:60; RowLayout { anchors.fill:parent; anchors.margins:12; spacing:10
          Item { Layout.fillWidth:true }
-         Button { text:"Cancelar"; enabled:!hasPending("onboarding-save-local"); onClicked:onboardingDialog.reject() }
-         Button { objectName:"onboardingSaveButton"; highlighted:enabled; opacity:enabled?1:0.5; text:hasPending("onboarding-save-local")?"Salvando…":"Salvar escolha local"; enabled:localChoice.checked&&!!onboardingDraft.revision&&!hasPending("onboarding-save-local"); onClicked:send("onboarding-save-local","",{revision:onboardingDraft.revision}) }
+         Button { id:onboardingCancel; objectName:"onboardingCancel"; text:"Cancelar"; enabled:!hasOnboardingPending("onboarding-save-local"); onClicked:onboardingDialog.reject() }
+         Button { id:onboardingReload; objectName:"onboardingReload"; visible:onboardingNeedsReload||!!onboardingError; text:backend.available?"Reler configuração":"Reconectar"; enabled:!hasOnboardingPending("onboarding-read")&&!hasOnboardingPending("onboarding-save-local"); onClicked:{if(backend.available)loadOnboarding();else backend.reconnect()} }
+         Button { id:onboardingSaveButton; objectName:"onboardingSaveButton"; highlighted:enabled; opacity:enabled?1:0.5; text:hasOnboardingPending("onboarding-save-local")?"Salvando…":"Salvar escolha local"; enabled:backend.available&&localChoice.checked&&!!onboardingDraft.revision&&!hasOnboardingPending("onboarding-read")&&!hasOnboardingPending("onboarding-save-local"); onClicked:{if(enabled)send("onboarding-save-local","",{revision:onboardingDraft.revision})} }
         } }
+    }
+
+    function hasOnboardingPending(op) {
+        return Object.keys(pending).some(id => pending[id].op===op && pending[id].onboardingGeneration===onboardingGeneration)
+    }
+    function loadOnboarding() {
+        if(hasOnboardingPending("onboarding-save-local")||hasOnboardingPending("onboarding-read"))return
+        onboardingGeneration+=1;onboardingDraft=({});localChoice.checked=false
+        if(!backend.available){invalidateOnboarding("Serviço indisponível. Reconecte e releia a configuração antes de salvar.");return}
+        onboardingError="";onboardingNeedsReload=false;send("onboarding-read","")
+    }
+    function invalidateOnboarding(message) {
+        onboardingGeneration+=1;onboardingDraft=({});localChoice.checked=false;onboardingNeedsReload=true;onboardingError=message
+    }
+    function onboardingConnectionLost() {
+        if(!onboardingDialog.visible)return
+        onboardingSaveUncertain=onboardingSaveUncertain||hasOnboardingPending("onboarding-save-local")
+        invalidateOnboarding(onboardingSaveUncertain?"Conexão perdida durante o salvamento; o resultado ainda não foi confirmado. Reconecte e releia a configuração antes de tentar novamente.":"Serviço desconectado. Reconecte e releia a configuração antes de salvar.")
     }
 
     function revealFocusedControl(scroll) {
@@ -430,12 +520,26 @@ ApplicationWindow {
         else if(point.y+item.height>viewport.height-8)y+=point.y+item.height-viewport.height+8
         viewport.contentY=Math.max(0,Math.min(y,Math.max(0,viewport.contentHeight-viewport.height)))
     }
+    function revealFocusedListControl(list) {
+        const item=window.activeFocusItem
+        if(!item||!list.visible)return
+        let parentItem=item
+        while(parentItem&&parentItem!==list)parentItem=parentItem.parent
+        if(parentItem!==list)return
+        const point=item.mapToItem(list,0,0)
+        let y=list.contentY
+        if(point.y<4)y+=point.y-4
+        else if(point.y+item.height>list.height-4)y+=point.y+item.height-list.height+4
+        list.contentY=Math.max(list.originY,Math.min(y,Math.max(list.originY,list.originY+list.contentHeight-list.height)))
+    }
     onActiveFocusItemChanged:Qt.callLater(function(){
         if(agentDialog.visible)revealFocusedControl(agentScrollView)
         if(onboardingDialog.visible)revealFocusedControl(onboardingScroll)
         if(recordingTools.visible)revealFocusedControl(toolsScroll)
         if(framesDialog.visible)revealFocusedControl(frameScroll)
+        revealFocusedListControl(revisionSegmentsList);revealFocusedListControl(revisionSpeakersList);revealFocusedListControl(revisionTurnsList)
     })
+    onClosing:event=>{if(revisionPending()||hasPending("export-save")){event.accepted=false;notice="Aguarde a confirmação da operação local antes de fechar."}}
 
     property bool textHasFocus: !!activeFocusItem && typeof activeFocusItem.cursorPosition === "number"
 
@@ -476,6 +580,42 @@ ApplicationWindow {
     }
     function diarizationKey() { return detail.diarizationId || detail.jobId || "" }
     function hasPending(op) { return Object.keys(pending).some(id => pending[id].op === op) }
+    function revisionPending() { return hasPending("revision-save") || hasPending("revision-undo") }
+    function clearDerivedView() { contextLoading=false; contextText=""; contextCopyText=""; contextPath=""; contextCitations=[]; showVisualSummary=false; exportResult=({}); exportGeneration+=1 }
+    function openReview(kind, target) {
+        if (!backend.available || !detail.review || revisionPending()) return
+        reviewTarget=Object.assign({kind:kind},target||({})); reviewError=""; reviewNeedsReload=false; revisionSpeakerExplicit=false
+        revisionText.text=kind==="speaker-label" ? target.label || "" : kind==="segment-text" ? target.text || "" : ""
+        const speaker=target&&target.speakerId || target&&target.speaker || ""
+        revisionSpeaker.currentIndex=Math.max(0,revisionSpeaker.model.findIndex(function(row){return row.speakerId===speaker}))
+        reviewDialog.open()
+    }
+    function submitRevision() {
+        if (!detail.review || revisionPending() || reviewNeedsReload || !backend.available) return
+        const target=reviewTarget, operation={kind:target.kind}
+        if (target.kind==="segment-text") { operation.segmentId=target.id; operation.text=revisionText.text }
+        else if(target.kind==="speaker-label") { operation.speakerId=target.speakerId; operation.label=revisionText.text.trim() }
+        else if(target.kind==="turn-speaker") { operation.turnId=target.id; operation.speakerId=revisionSpeaker.model[revisionSpeaker.currentIndex].speakerId || null }
+        else { operation.text=revisionText.text }
+        reviewGeneration+=1; clearDerivedView(); reviewError=""
+        const operations=[operation]
+        if(target.kind==="segment-text"&&speakerRows.length){const speaker=revisionSpeaker.model[revisionSpeaker.currentIndex].speakerId||null;if(speaker!==(target.speakerId||null)||revisionSpeakerExplicit)operations.push({kind:"segment-speaker",segmentId:target.id,speakerId:speaker})}
+        send("revision-save",diarizationKey(),{expectedRevision:detail.review.revision.revision,base:detail.review.revision.base,operations:operations})
+    }
+    function undoRevision() {
+        if (!detail.review || !detail.review.canUndo || revisionPending() || !backend.available) return
+        reviewGeneration+=1; clearDerivedView()
+        send("revision-undo",diarizationKey(),{expectedRevision:detail.review.revision.revision,base:detail.review.revision.base})
+    }
+    function revisionConnectionLost() {
+        if(reviewDialog.visible || revisionPending()) { reviewNeedsReload=true; reviewError="Conexão perdida; o salvamento pode ter ocorrido. Releia antes de tentar novamente." }
+        if(exportDialog.visible) { exportError="Conexão perdida; confira a exportação após reconectar antes de salvar novamente."; exportResult=({}) }
+        reviewGeneration+=1; exportGeneration+=1; clearDerivedView()
+    }
+    function previewExport() {
+        exportGeneration+=1; exportResult=({}); exportError=""
+        if(backend.available && detail.review)send("export-preview",diarizationKey(),{format:exportFormat.currentValue,track:exportTrack.currentValue})
+    }
     function activeSpeakerLabels(seconds) {
         const turns = (detail.diarization && detail.diarization.turns) || []
         const labels = turns.filter(turn => Number(turn.start) <= seconds && seconds < Number(turn.end)).map(turn => turn.label || turn.speaker || "Falante incerto")
@@ -484,13 +624,15 @@ ApplicationWindow {
     function send(op, key, payload) {
         if (["agent-authorize","provider-authorize","agent-frames","provider-analyze"].includes(op)) agentError=""
         const id = backend.request(op, key || "", payload || ({}))
-        if (id < 0) { if(op.startsWith("agent-")||op.startsWith("provider-"))agentError="Serviço indisponível; dados preservados. Feche e reconecte para continuar."; if(op.startsWith("frames-") || op.startsWith("onboarding-")) uxError = "Serviço indisponível; dados preservados. Reabra após reconectar."; errorText = "O serviço da biblioteca está indisponível. Reabra esta janela."; return -1 }
+        if (id < 0) { if(op.startsWith("summary-"))summaryConnectionLost();if(op.startsWith("revision-")){reviewNeedsReload=true;reviewError="Pedido sem confirmação; reconecte e releia antes de tentar novamente."}if(op.startsWith("export-")){exportError="Pedido sem confirmação; atualize a prévia após reconectar.";exportResult=({})}if(op.startsWith("agent-")||op.startsWith("provider-"))agentError="Serviço indisponível; dados preservados. Feche e reconecte para continuar."; if(op.startsWith("frames-"))uxError="Serviço indisponível; dados preservados. Reabra após reconectar.";if(op.startsWith("onboarding-"))invalidateOnboarding("O serviço não recebeu este pedido. Reconecte e releia a configuração antes de salvar."); errorText = "O serviço da biblioteca está indisponível. Reabra esta janela."; return -1 }
         const next = Object.assign({}, pending)
-        next[id] = {op: op, key: key, generation: generation, frameGeneration: frameGeneration, onboardingGeneration: onboardingGeneration, agentGeneration:agentGeneration}
+        next[id] = {op: op, key: key, generation: generation, frameGeneration: frameGeneration, onboardingGeneration: onboardingGeneration, agentGeneration:agentGeneration, reviewGeneration:reviewGeneration,exportGeneration:exportGeneration,summaryGeneration:summaryGeneration}
         pending = next
         return id
     }
     function backToLibrary() {
+        if(revisionPending() || hasPending("export-save"))return
+        summaryDialog.close(); reviewDialog.close(); exportDialog.close(); reviewGeneration+=1; exportGeneration+=1
         closeAgentAccess(); framesDialog.close(); cancelFramePreview()
         generation += 1; sourceReferenceSeconds = -1; selected = ({}); detail = {transcript: {segments: [], text: "", timing: "none"}, diarization: {state: "idle"}}
         detailLoading = false; resolving = false; contextLoading = false; contextText = ""; contextCopyText = ""; contextPath = ""; contextCitations = []
@@ -499,6 +641,8 @@ ApplicationWindow {
         search.forceActiveFocus(Qt.TabFocusReason)
     }
     function selectRecording(item) { showVisualSummary=false;
+        if(revisionPending() || hasPending("export-save"))return
+        summaryDialog.close(); reviewDialog.close(); exportDialog.close(); reviewGeneration+=1; exportGeneration+=1
         closeAgentAccess(); framesDialog.close(); cancelFramePreview()
         generation += 1; sourceReferenceSeconds = -1
         selected = item
@@ -529,13 +673,111 @@ ApplicationWindow {
     function togglePlay() { if (mediaReady) video.setPropertyAsync("pause", !paused) }
     function requestMeetingContext() {
         const id = diarizationKey()
-        if (!backend.available || !id || contextLoading) return
+        if (!backend.available || !id || contextLoading || revisionPending()) return
         contextLoading = true; contextText = ""; contextCopyText = ""; tabs.currentIndex = 3
         if (send("context-meeting", id, {maxCharacters: 10000}) < 0) contextLoading = false
     }
     Shortcut { sequence: "Space"; enabled: mediaReady && !textHasFocus && !uxModal && !captionToggle.activeFocus && !captionHasFocus(); onActivated: togglePlay() }
     Shortcut { sequence: "Right"; enabled: mediaReady && !textHasFocus && !uxModal && !captionHasFocus(); onActivated: seek(position + 5) }
     Shortcut { sequence: "Left"; enabled: mediaReady && !textHasFocus && !uxModal && !captionHasFocus(); onActivated: seek(position - 5) }
+    Dialog {
+        id:summaryDialog; objectName:"summaryDialog"; title:"Regenerar resumo da transcrição atual"
+        anchors.centerIn:parent; width:Math.min(680,window.width-48); height:Math.min(540,window.height-48); modal:true; closePolicy:Popup.CloseOnEscape
+        onOpened:{summaryGeneration+=1;summaryPlan=({});summaryError="";summaryNeedsReload=false;summaryCompleted=false;summaryRunning=false;summaryRequestId="";summaryJobId=detail.review.revision.base.jobId;summaryConsent.checked=false;summaryBudget.value=1;summaryCancelButton.forceActiveFocus(Qt.TabFocusReason)}
+        onClosed:{abandonSummary();summaryRegenerateButton.forceActiveFocus(Qt.TabFocusReason)}
+        contentItem:ColumnLayout {
+            spacing:10
+            RowLayout {
+                Layout.fillWidth:true
+                Label { text:"Máximo de chamadas ao modelo"; color:ink; Layout.fillWidth:true }
+                SpinBox { id:summaryBudget; objectName:"summaryBudget";Keys.priority:Keys.BeforeItem
+                    Keys.onTabPressed:function(event){event.accepted=true;(event.modifiers&Qt.ShiftModifier?summaryCancelButton:summaryPlanButton).forceActiveFocus(event.modifiers&Qt.ShiftModifier?Qt.BacktabFocusReason:Qt.TabFocusReason)}
+                    Keys.onBacktabPressed:function(event){summaryCancelButton.forceActiveFocus(Qt.BacktabFocusReason);event.accepted=true} from:1;to:8;value:1;editable:false;enabled:!summaryBusy()&&!summaryPlan.requestId&&!summaryNeedsReload;Accessible.name:"Limite explícito de chamadas para este resumo"
+                    contentItem:TextInput { objectName:"summaryBudgetValue";text:String(summaryBudget.value);font:summaryBudget.font;color:ink;readOnly:true;horizontalAlignment:Text.AlignHCenter;verticalAlignment:Text.AlignVCenter;Keys.priority:Keys.BeforeItem
+                        Keys.onTabPressed:function(event){event.accepted=true;(event.modifiers&Qt.ShiftModifier?summaryCancelButton:summaryPlanButton).forceActiveFocus(event.modifiers&Qt.ShiftModifier?Qt.BacktabFocusReason:Qt.TabFocusReason)}
+                        Keys.onBacktabPressed:function(event){summaryCancelButton.forceActiveFocus(Qt.BacktabFocusReason);event.accepted=true}
+                    }
+                }
+                Button { id:summaryPlanButton;objectName:"summaryPlanButton";Keys.priority:Keys.BeforeItem
+                    Keys.onTabPressed:function(event){event.accepted=true;if(event.modifiers&Qt.ShiftModifier)summaryBudget.forceActiveFocus(Qt.BacktabFocusReason);else (summaryConsent.enabled?summaryConsent:summaryCancelButton).forceActiveFocus(Qt.TabFocusReason)}
+                    Keys.onBacktabPressed:function(event){summaryBudget.forceActiveFocus(Qt.BacktabFocusReason);event.accepted=true} text:hasPending("summary-plan")?"Preparando…":"Preparar plano";enabled:backend.available&&!summaryBusy()&&!summaryPlan.requestId&&!summaryNeedsReload;onClicked:prepareSummary() }
+            }
+            ScrollView { id:summaryScroll;Layout.fillWidth:true;Layout.fillHeight:true;clip:true
+                ColumnLayout { width:summaryScroll.availableWidth; spacing:10
+                    Label { objectName:"summaryPlanInfo"; text:summaryPlanText();textFormat:Text.PlainText;wrapMode:Text.WrapAnywhere;color:ink;Layout.fillWidth:true;Accessible.name:"Modelo, destino, entrada e custo do plano de resumo" }
+                    Label { text:"O resumo novo será ligado à revisão e preservará o original. Não grava mídia, não envia frames e não ativa automações ou configurações desligadas. Resultado de IA exige revisão da fonte.";textFormat:Text.PlainText;wrapMode:Text.WordWrap;color:muted;Layout.fillWidth:true }
+                    Label { objectName:"summaryError";visible:!!summaryError;text:summaryError;textFormat:Text.PlainText;wrapMode:Text.WordWrap;color:errorColor;Layout.fillWidth:true }
+                }
+            }
+            CheckBox { id:summaryConsent;objectName:"summaryConsent";KeyNavigation.priority:KeyNavigation.BeforeItem;KeyNavigation.backtab:summaryPlanButton.enabled?summaryPlanButton:summaryCancelButton;KeyNavigation.tab:summaryCancelButton;text:"Autorizo esta geração com o plano exibido";enabled:!!summaryPlan.requestId&&!summaryBusy()&&!summaryNeedsReload;Layout.fillWidth:true;Accessible.name:"Consentimento para gerar este resumo com o destino e limite exibidos"
+                indicator:Rectangle { objectName:"summaryConsentIndicator";implicitWidth:24;implicitHeight:24;x:summaryConsent.leftPadding;y:(summaryConsent.height-height)/2;radius:3;color:summaryConsent.checked?accent:(lightTheme?"#FFFFFF":surface);border.width:summaryConsent.visualFocus?3:2;border.color:summaryConsent.visualFocus?accent:muted
+                    Text { anchors.centerIn:parent;text:summaryConsent.checked?"✓":"";font.pixelSize:17;font.bold:true;color:lightTheme?"#FFFFFF":"#0B1716" }
+                }
+            }
+            Label { visible:summaryRunning;text:processingWait||"Gerando… Cancelar bloqueia respostas pendentes; um resultado já concluído continua salvo. Uma chamada enviada pode continuar no modelo.";textFormat:Text.PlainText;wrapMode:Text.WordWrap;color:warningColor;Layout.fillWidth:true }
+        }
+        footer:RowLayout {
+            spacing:8
+            Button { id:summaryCancelButton;objectName:"summaryCancelButton";KeyNavigation.priority:KeyNavigation.BeforeItem;KeyNavigation.backtab:summaryConsent.enabled?summaryConsent:(summaryPlanButton.enabled?summaryPlanButton:summaryBudget);KeyNavigation.tab:summaryReloadButton.visible&&summaryReloadButton.enabled?summaryReloadButton:(summaryRunButton.enabled?summaryRunButton:(summaryBudget.enabled?summaryBudget:summaryConsent));text:summaryBusy()?"Cancelar pedido e fechar":"Cancelar";onClicked:summaryDialog.close() }
+            Item { Layout.fillWidth:true }
+            Button { id:summaryReloadButton;objectName:"summaryReloadButton";KeyNavigation.priority:KeyNavigation.BeforeItem;KeyNavigation.backtab:summaryCancelButton;KeyNavigation.tab:summaryRunButton.enabled?summaryRunButton:summaryCancelButton;visible:summaryNeedsReload;text:"Reler resumo";enabled:backend.available&&!hasPending("detail");onClicked:{summaryDialog.close();detailLoading=true;send("detail",selected.key)} }
+            Button { id:summaryRunButton;objectName:"summaryRunButton";KeyNavigation.priority:KeyNavigation.BeforeItem;KeyNavigation.backtab:summaryReloadButton.visible&&summaryReloadButton.enabled?summaryReloadButton:summaryCancelButton;KeyNavigation.tab:summaryBudget.enabled?summaryBudget:summaryConsent;text:summaryRunning?"Gerando…":"Gerar resumo";enabled:backend.available&&!!summaryPlan.requestId&&summaryConsent.checked&&!summaryBusy()&&!summaryNeedsReload;onClicked:generateSummary() }
+        }
+    }
+    Dialog {
+        id:reviewDialog; objectName:"reviewDialog"; title:reviewTarget.kind==="turn-speaker" ? "Revisar atribuição da fala" : reviewTarget.kind==="speaker-label" ? "Revisar nome do falante" : reviewTarget.kind==="note" ? "Adicionar nota sem tempo" : "Revisar trecho"
+        anchors.centerIn:parent; width:Math.min(620,window.width-48); height:Math.min(570,window.height-48); modal:true
+        closePolicy:revisionPending()?Popup.NoAutoClose:Popup.CloseOnEscape
+        onOpened:revisionCancel.forceActiveFocus(Qt.TabFocusReason)
+        onClosed:{reviewTarget=({});reviewError="";reviewNeedsReload=false;revisionSpeakerExplicit=false;reviewNoteButton.forceActiveFocus(Qt.TabFocusReason)}
+        contentItem:ColumnLayout { spacing:10
+            Label { text:"Revisão humana local. O artefato original e seus horários são preservados. Nomes e atribuições não confirmam a identidade de uma pessoa."; color:muted; wrapMode:Text.WordWrap; Layout.fillWidth:true }
+            Label { objectName:"revisionOrigin"; text:reviewTarget.id ? "Origem: "+reviewTarget.id+" · "+preciseClock(reviewTarget.start)+"–"+preciseClock(reviewTarget.end)+" · intervalo herdado, sem novo alinhamento" : "Sem timestamp atribuído"; color:accent; wrapMode:Text.WordWrap; Layout.fillWidth:true }
+            Label { visible:reviewTarget.kind==="segment-text"; text:"Original: "+(reviewTarget.originalText||reviewTarget.text||""); textFormat:Text.PlainText; color:muted; wrapMode:Text.WordWrap; Layout.fillWidth:true; maximumLineCount:5; elide:Text.ElideRight }
+            Label { objectName:"revisionError"; visible:!!reviewError; text:reviewError; textFormat:Text.PlainText; color:errorColor; wrapMode:Text.WordWrap; Layout.fillWidth:true }
+            ScrollView { Layout.fillWidth:true; Layout.fillHeight:true; visible:reviewTarget.kind!=="turn-speaker"; clip:true
+                TextArea { id:revisionText; objectName:"revisionText"; readOnly:revisionPending()||reviewNeedsReload; textFormat:TextEdit.PlainText; wrapMode:TextEdit.Wrap; selectByMouse:true; color:ink; Accessible.name:reviewTarget.kind==="speaker-label"?"Nome informado pelo revisor":"Texto da revisão humana"
+                    Keys.priority:Keys.BeforeItem
+                    Keys.onPressed:event=>{if(event.key===Qt.Key_Tab||event.key===Qt.Key_Backtab){const backwards=event.key===Qt.Key_Backtab||!!(event.modifiers&Qt.ShiftModifier);(backwards?revisionCancel:revisionSpeaker.visible?revisionSpeaker:revisionCancel).forceActiveFocus(backwards?Qt.BacktabFocusReason:Qt.TabFocusReason);event.accepted=true}}
+                }
+            }
+            ComboBox { id:revisionSpeaker; objectName:"revisionSpeaker"; visible:reviewTarget.kind==="turn-speaker"||(reviewTarget.kind==="segment-text"&&speakerRows.length>0); Layout.fillWidth:true; textRole:"label"; enabled:!revisionPending()&&!reviewNeedsReload; model:[{speakerId:"",label:"Atribuição incerta"}].concat(speakerRows); Accessible.name:"Selecione para atribuir um falante da fonte acústica"; onActivated:revisionSpeakerExplicit=true }
+            Label { visible:reviewTarget.kind==="segment-text"&&revisionSpeaker.visible; text:revisionSpeakerExplicit?"Atribuição selecionada por você; será registrada ao salvar.":"Selecione um falante para vincular as fontes. Códigos iguais não comprovam a mesma voz."; color:muted; wrapMode:Text.WordWrap; Layout.fillWidth:true }
+            Label { text:revisionPending()?"Salvando revisão; aguarde a confirmação…":"Salvar invalida os derivados antigos. Não chama um modelo nem regenera o resumo."; color:warningColor; wrapMode:Text.WordWrap; Layout.fillWidth:true }
+        }
+        footer:DialogButtonBox {
+            Button { id:revisionCancel; objectName:"revisionCancel"; text:"Cancelar"; enabled:!revisionPending(); onClicked:reviewDialog.close() }
+            Button { objectName:"revisionReload"; text:"Reler e descartar rascunho"; visible:reviewNeedsReload; enabled:backend.available&&!revisionPending()&&!hasPending("detail"); onClicked:{reviewDialog.close();detailLoading=true;send("detail",selected.key)} }
+            Button { objectName:"revisionSave"; text:revisionPending()?"Salvando…":"Salvar revisão"; enabled:backend.available&&!!detail.review&&!revisionPending()&&!reviewNeedsReload&&(reviewTarget.kind==="turn-speaker"||!!revisionText.text.trim()); onClicked:submitRevision() }
+        }
+    }
+    Dialog {
+        id:exportDialog; objectName:"exportDialog"; title:"Exportar resultado revisado"; anchors.centerIn:parent; width:Math.min(680,window.width-48); height:Math.min(610,window.height-48); modal:true
+        closePolicy:hasPending("export-save")?Popup.NoAutoClose:Popup.CloseOnEscape
+        onOpened:{exportClose.forceActiveFocus(Qt.TabFocusReason);previewExport()}
+        onClosed:{exportGeneration+=1;exportResult=({});exportError="";exportButton.forceActiveFocus(Qt.TabFocusReason)}
+        contentItem:ColumnLayout { spacing:10
+            Label { text:"Arquivo privado neste computador; não há envio. O conteúdo pode ser sensível. JSON/Markdown incluem origem e revisão; legendas usam somente intervalos disponíveis, com manifesto de proveniência."; color:muted; wrapMode:Text.WordWrap; Layout.fillWidth:true }
+            RowLayout { Layout.fillWidth:true
+                ComboBox { id:exportFormat; objectName:"exportFormat"; textRole:"label"; valueRole:"value"; model:[{label:"JSON",value:"json"},{label:"Markdown",value:"markdown"},{label:"SRT",value:"srt"},{label:"WebVTT",value:"vtt"}]; enabled:!hasPending("export-save"); onActivated:previewExport(); Accessible.name:"Formato da exportação" }
+                ComboBox { id:exportTrack; objectName:"exportTrack"; textRole:"label"; valueRole:"value"; Layout.fillWidth:true; model:[{label:"Transcrição canônica revisada",value:"transcript"},{label:"Falas do diarizador revisadas",value:"diarization"}]; enabled:!hasPending("export-save"); onActivated:previewExport(); Accessible.name:"Fonte da exportação" }
+            }
+            Label { objectName:"exportError"; visible:!!exportError||!!exportResult.error; text:exportError||exportResult.error||""; color:errorColor; textFormat:Text.PlainText; wrapMode:Text.WordWrap; Layout.fillWidth:true }
+            Label { objectName:"exportWarnings"; text:(exportResult.warnings||[]).join("\n")+(exportResult.displayTruncated?"\nPrévia parcial; o arquivo local preserva o resultado completo.":""); visible:!!text; textFormat:Text.PlainText; color:warningColor; wrapMode:Text.WordWrap; Layout.fillWidth:true }
+            ScrollView { Layout.fillWidth:true; Layout.fillHeight:true; clip:true
+                TextArea { id:exportPreviewText; objectName:"exportPreviewText"; readOnly:true; selectByMouse:true; textFormat:TextEdit.PlainText; wrapMode:TextEdit.Wrap; color:ink; text:exportResult.display|| (hasPending("export-preview")?"Preparando prévia local…":"Prévia indisponível."); Accessible.name:"Prévia do arquivo exportado"
+                    Keys.priority:Keys.BeforeItem
+                    Keys.onPressed:event=>{if(event.key===Qt.Key_Tab||event.key===Qt.Key_Backtab){exportClose.forceActiveFocus(event.key===Qt.Key_Backtab||!!(event.modifiers&Qt.ShiftModifier)?Qt.BacktabFocusReason:Qt.TabFocusReason);event.accepted=true}}
+                }
+            }
+            Label { objectName:"exportSavedPath"; visible:!!exportResult.path; text:"Salvo localmente: "+(exportResult.path||"")+"\nManifesto: "+(exportResult.manifestPath||""); color:accent; textFormat:Text.PlainText; wrapMode:Text.WrapAnywhere; Layout.fillWidth:true }
+        }
+        footer:DialogButtonBox {
+            Button { id:exportClose; objectName:"exportClose"; text:"Fechar"; enabled:!hasPending("export-save"); onClicked:exportDialog.close() }
+            Button { objectName:"exportReload"; text:"Atualizar prévia"; enabled:backend.available&&!hasPending("export-save")&&!hasPending("export-preview"); onClicked:previewExport() }
+            Button { objectName:"exportSave"; text:hasPending("export-save")?"Salvando…":"Salvar arquivo local"; enabled:backend.available&&exportResult.available===true&&exportResult.revision!==undefined&&!!exportResult.snapshotSha256&&!hasPending("export-preview")&&!hasPending("export-save"); onClicked:send("export-save",diarizationKey(),{format:exportResult.format,track:exportResult.track,expectedRevision:exportResult.revision,expectedBase:exportResult.base,expectedSnapshotSha256:exportResult.snapshotSha256}) }
+        }
+    }
     Dialog {
         id: aboutDialog; objectName: "aboutDialog"; title: "Sobre o FalaTrace"
         anchors.centerIn: parent; width: Math.min(520, window.width - 32); modal: true
@@ -577,15 +819,15 @@ ApplicationWindow {
         }
     }
     Shortcut { sequence: "Escape"; enabled: !!selected.key && !uxModal; onActivated: backToLibrary() }
-    Timer { interval: processingWait || hasPending("frames-preview") || hasPending("frames-confirm") ? 500 : 2000; running: backend.available; repeat: true; onTriggered: { if (!hasPending("processing-status")) send("processing-status", "") } }
+    Timer { interval: processingWait || summaryRunning || hasPending("frames-preview") || hasPending("frames-confirm") ? 500 : 2000; running: backend.available; repeat: true; onTriggered: { if (!hasPending("processing-status")) send("processing-status", "") } }
     Label { z: 100; anchors.bottom: parent.bottom; anchors.horizontalCenter: parent.horizontalCenter; width: parent.width - 32; visible: !!processingWait; text: processingWait; textFormat: Text.PlainText; wrapMode: Text.WordWrap; color: warningColor; padding: 8; background: Rectangle { color: panel } }
     Timer { interval: 1000; running: captureStatus.active; repeat: true; onTriggered: statusNow = Date.now() }
     Component.onCompleted: if (backend.available) { send("list", ""); send("capture-status", ""); send("jobs-list", ""); send("ux-capabilities", "") }
     Connections {
         target: backend
-        function onFailed(message) { if(agentDialog.visible)agentError=message; captureKnown = false; pending = {}; errorText = message; loading = false; resolving = false; detailLoading = false; operationPolling = false; captureBusy = false; contextLoading = false }
+        function onFailed(message) { summaryConnectionLost();revisionConnectionLost();onboardingConnectionLost();if(agentDialog.visible)agentError=message; captureKnown = false; pending = {}; errorText = message; loading = false; resolving = false; detailLoading = false; operationPolling = false; captureBusy = false; contextLoading = false }
         function onAvailabilityChanged() {
-            if (!backend.available) { if(agentDialog.visible)agentError="Serviço desconectado; dados preservados. Feche e reconecte para continuar."; captureKnown = false; pending = {}; loading = false; resolving = false; detailLoading = false; operationPolling = false; captureBusy = false; contextLoading = false; notice = "Serviço desconectado. Use Reconectar para continuar." }
+            if (!backend.available) { summaryConnectionLost();revisionConnectionLost();onboardingConnectionLost();if(agentDialog.visible)agentError="Serviço desconectado; dados preservados. Feche e reconecte para continuar."; captureKnown = false; pending = {}; loading = false; resolving = false; detailLoading = false; operationPolling = false; captureBusy = false; contextLoading = false; notice = "Serviço desconectado. Use Reconectar para continuar." }
             else { errorText = ""; notice = "Serviço conectado."; send("capture-status", ""); send("jobs-list", ""); send("list", ""); send("ux-capabilities", "") }
         }
         function onResponse(message) {
@@ -594,19 +836,29 @@ ApplicationWindow {
             const next = Object.assign({}, pending)
             delete next[message.id]
             pending = next
-            if (["detail", "resolve", "playback-status", "context-meeting", "diarization-name", "subtitles", "diarization"].includes(request.op) && request.generation !== generation) return
+            if (["detail", "resolve", "playback-status", "context-meeting", "diarization-name", "subtitles", "diarization","revision-save","revision-undo","export-preview","export-save"].includes(request.op) && request.generation !== generation) return
+            if (["detail","context-meeting","revision-save","revision-undo"].includes(request.op) && request.reviewGeneration !== reviewGeneration) return
+            if(request.op.startsWith("export-") && request.exportGeneration!==exportGeneration)return
             if (request.op === "playback-status") operationPolling = false
             if (request.op === "list") loading = false
             if (request.op === "detail") detailLoading = false
             if (request.op.startsWith("frames-") && request.op !== "frames-cancel" && (request.generation !== generation || request.frameGeneration !== frameGeneration)) return
             if((request.op.startsWith("agent-")||request.op.startsWith("provider-")) && (request.generation !== generation || request.agentGeneration !== agentGeneration)) return
+            if (request.op.startsWith("summary-") && request.op!=="summary-cancel" && (request.generation!==generation || request.summaryGeneration!==summaryGeneration))return
             if (request.op.startsWith("onboarding-") && request.onboardingGeneration !== onboardingGeneration) return
             if (!message.ok && (request.op.startsWith("agent-")||request.op.startsWith("provider-"))) { agentError=message.error; return }
             if (!message.ok && request.op === "processing-status") { processingWait = "Estado do processamento indisponível; nenhuma alteração na captura."; return }
-            if (!message.ok && (request.op.startsWith("frames-") || request.op.startsWith("onboarding-"))) { uxError = message.error; return }
+            if (!message.ok && request.op.startsWith("onboarding-")) { if(request.op==="onboarding-save-local")onboardingSaveUncertain=true;invalidateOnboarding(message.error+" Releia a configuração e confirme sua escolha antes de salvar novamente.");return }
+            if (!message.ok && request.op.startsWith("summary-") && request.op!=="summary-cancel") {summaryRunning=false;summaryNeedsReload=true;summaryConsent.checked=false;summaryPlan=({});summaryError=message.error;return}
+            if (request.op==="summary-cancel")return
+            if (!message.ok && request.op.startsWith("frames-")) { uxError = message.error; return }
+            if (!message.ok && request.op.startsWith("revision-")) { reviewNeedsReload=true;reviewError=message.error+" Releia os dados antes de tentar novamente.";errorText=reviewError;detailLoading=true;send("detail",selected.key);return }
+            if (!message.ok && request.op.startsWith("export-")) { exportError=message.error;exportResult=({});return }
             if (!message.ok) { errorText = message.error; notice = ""; captureBusy = false; contextLoading = false; if (request.op === "subtitles") subtitleQueued = false; if (request.op === "diarization") diarizationQueued = false; if (request.op === "resolve" || request.op === "playback-status") { resolving = false; playbackOperation = "" } return }
             const result = message.result
-            if(request.op === "provider-authorize") {providerConsent.checked=false;showAgentSetup=false;preferredGrantId=result.id;changeAgentGrant()
+            if(request.op === "summary-plan") {summaryPlan=result;summaryConsent.checked=false;summaryError=""
+            } else if(request.op === "summary-run") {summaryRunning=false;summaryCompleted=true;notice="Resumo novo ligado à revisão; confira a fonte. Original preservado.";summaryDialog.close();clearDerivedView();detailLoading=true;send("detail",selected.key)
+            } else if(request.op === "provider-authorize") {providerConsent.checked=false;showAgentSetup=false;preferredGrantId=result.id;changeAgentGrant()
             } else if(request.op === "provider-analyze") {providerPendingGrant="";providerResult=result;send("agent-status",selected.key)
             } else if(request.op === "provider-cancel") {agentError="Pedido de análise cancelado; resultado/custo podem ser incertos se já enviado."
             } else if(request.op === "agent-status") { const prior=preferredGrantId||activeGrant.id;preferredGrantId="";agentState=result;const index=visibleGrants.findIndex(function(g){return g.id===prior});grantPicker.currentIndex=index>=0?index:0;if(!agentLoaded){showAgentSetup=!visibleGrants.length;agentLoaded=true}
@@ -621,8 +873,8 @@ ApplicationWindow {
             } else if (request.op === "frames-plan") { framePlan = result
             } else if (request.op === "frames-preview" || request.op === "frames-preview-plan") { framePreview = result
             } else if (request.op === "frames-confirm") { frameResult = result; showVisualSummary=false; if (!result.synthetic && result.summaryMarkdown) { const updated=Object.assign({},detail); updated.visualReview=result; detail=updated }
-            } else if (request.op === "onboarding-read") { onboardingDraft = result; localChoice.forceActiveFocus(Qt.TabFocusReason)
-            } else if (request.op === "onboarding-save-local") { notice = "Escolha local salva; nenhum serviço iniciado."; onboardingDialog.close()
+            } else if (request.op === "onboarding-read") { onboardingDraft = result;onboardingError="";onboardingNeedsReload=false;onboardingSaveUncertain=false
+            } else if (request.op === "onboarding-save-local") { notice = result.cleanupPending?"Escolha local salva; uma cópia temporária privada pode permanecer na pasta da configuração. Nenhum serviço iniciado.":"Escolha local salva; nenhum serviço iniciado."; onboardingDialog.close()
             } else if (request.op === "list") {
                 items = result.items
                 if (selected.key) { const current = items.find(item => item.key === selected.key); if (current) { selected = current; detailLoading = true; send("detail", selected.key) } else backToLibrary() }
@@ -641,6 +893,13 @@ ApplicationWindow {
             } else if (request.op === "job-process" || request.op === "job-retry") {
                 notice = result.warning || (result.status === "completed" ? "Este job já está concluído." : result.status === "active" ? "Este job já está em processamento." : "Job enviado para processamento.")
                 send("jobs-list", "")
+            } else if(request.op === "revision-save" || request.op === "revision-undo") {
+                notice=request.op==="revision-undo"?"Revisão anterior restaurada por uma nova revisão; original preservado.":"Revisão humana salva; derivados antigos precisam de revisão."
+                reviewDialog.close();clearDerivedView();detailLoading=true;send("detail",selected.key)
+            } else if(request.op === "export-preview") {
+                exportResult=result;exportError=""
+            } else if(request.op === "export-save") {
+                exportResult=Object.assign({},exportResult,result);exportError="";notice="Exportação privada salva neste computador."
             } else if (request.op === "diarization-name") {
                 notice = "Nome do falante salvo nesta gravação."
                 detailLoading = true; send("detail", selected.key)
@@ -651,6 +910,7 @@ ApplicationWindow {
                 contextPath = result.path || result.sourcePath || ""
                 contextCitations = result.citations || []
             } else if (request.op === "detail") {
+                if(summaryDialog.visible && summaryPlan.requestId && (!result.review || summaryPlan.revision!==result.review.revision.revision)) {abandonSummary();summaryNeedsReload=true;summaryError="A revisão mudou. Releia e prepare um novo plano; o original foi preservado."}
                 if (!initialTranscriptTiming) initialTranscriptTiming = result.transcript.timing
                 selected = Object.assign({}, selected, {
                     status: result.status, backup: result.backup,
@@ -797,7 +1057,7 @@ ApplicationWindow {
                                 anchors.top: parent.top; anchors.left: parent.left; anchors.margins: 12
                                 width: Math.min(parent.width - 24, currentVoices.implicitWidth + 20); height: currentVoices.implicitHeight + 12; radius: 5; color: "#d910141a"
                                 visible: mediaReady && !!activeSpeakerLabels(position)
-                                Label { id: currentVoices; anchors.centerIn: parent; width: parent.width - 20; text: activeSpeakerLabels(position) + " · automático"; textFormat: Text.PlainText; color: "#57D5B0"; font.pixelSize: 12; wrapMode: Text.WordWrap; maximumLineCount: 2; elide: Text.ElideRight }
+                                Label { id: currentVoices; anchors.centerIn: parent; width: parent.width - 20; text: activeSpeakerLabels(position) + (detail.review&&detail.review.revision.humanReviewed?" · revisão humana; identidade não confirmada":" · automático"); textFormat: Text.PlainText; color: "#57D5B0"; font.pixelSize: 12; wrapMode: Text.WordWrap; maximumLineCount: 2; elide: Text.ElideRight }
                             }
                             Rectangle {
                                 id: captionOverlay; objectName: "captionOverlay"
@@ -841,7 +1101,7 @@ ApplicationWindow {
                     Rectangle {
                         Layout.preferredWidth: Math.max(290, Math.min(390, window.width * 0.28)); Layout.fillHeight: true; color: surface; radius: 8
                         ColumnLayout {
-                            anchors.fill: parent; anchors.margins: 14; spacing: 12
+                            anchors.fill: parent; anchors.margins: 14; spacing: 6
                             TabBar {
                                 id: tabs; Layout.fillWidth: true
                                 Repeater {
@@ -854,23 +1114,33 @@ ApplicationWindow {
                                     }
                                 }
                             }
-                            Button { id: visualSummaryButton; objectName: "visualSummaryButton"; visible: tabs.currentIndex===1 && !!detail.visualReview && !!detail.visualReview.summaryMarkdown; text: showVisualSummary ? "Voltar ao resumo original" : (detail.visualReview && detail.visualReview.scope ? "Ver resumo parcial do intervalo visual" : "Ver resumo visual solicitado"); onClicked: showVisualSummary=!showVisualSummary }
+                            Button { id:summaryRegenerateButton;objectName:"summaryRegenerateButton";visible:tabs.currentIndex===1; text:"Regenerar resumo…";enabled:backend.available&&!!detail.review&&!revisionPending()&&!detailLoading&&!summaryBusy();onClicked:openSummary();Accessible.name:"Preparar plano e consentimento para regenerar o resumo" }
+                            Button { id: visualSummaryButton; objectName: "visualSummaryButton"; visible: tabs.currentIndex===1 && !!detail.visualReview && !!detail.visualReview.summaryMarkdown; text: showVisualSummary ? "Voltar ao resumo da transcrição" : (detail.visualReview && detail.visualReview.scope ? "Ver resumo parcial do intervalo visual" : "Ver resumo visual solicitado"); onClicked: showVisualSummary=!showVisualSummary }
                             Label { visible: tabs.currentIndex===1 && showVisualSummary && !!detail.visualReview; text: detail.visualReview && detail.visualReview.scope ? "PARCIAL · " + preciseClock(detail.visualReview.scope.startSeconds) + "–" + preciseClock(detail.visualReview.scope.endSeconds) + " · restante omitido; revisar origem" : "Resumo visual solicitado · revisar origem"; textFormat: Text.PlainText; color: warningColor; wrapMode: Text.WordWrap; Layout.fillWidth: true }
-                            Label { visible: !!detail.artifactMessage; text: detail.artifactMessage || ""; textFormat: Text.PlainText; color: warningColor; wrapMode: Text.WordWrap; Layout.fillWidth: true }
-                            Label { visible: tabs.currentIndex === 1; text: detail.summaryInfo ? "Configuração do job: " + detail.summaryInfo + " · Resumo de IA: confira a fonte e os avisos de revisão." : "Resumo de IA: confira a fonte e os avisos de revisão."; textFormat: Text.PlainText; color: muted; wrapMode: Text.WordWrap; Layout.fillWidth: true; font.pixelSize: 11 }
-                            Label { visible: tabs.currentIndex === 0 && detail.transcript.timing === "block"; text: "Texto original; tempos aproximados por bloco."; color: muted; font.pixelSize: 11; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                            Label { visible: tabs.currentIndex===1 && !!detail.artifactMessage; text: detail.artifactMessage || ""; textFormat: Text.PlainText; color: warningColor; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                            Label { visible: tabs.currentIndex === 1; text: detail.summaryInfo ? "Resumo: " + detail.summaryInfo + " · Resumo de IA: confira a fonte e os avisos de revisão." : "Resumo de IA: confira a fonte e os avisos de revisão."; textFormat: Text.PlainText; color: muted; wrapMode: Text.WordWrap; Layout.fillWidth: true; font.pixelSize: 11 }
+                            Label { visible: tabs.currentIndex === 0 && detail.transcript.timing === "block"; text: "Tempos aproximados por bloco; a revisão não cria alinhamento por palavra."; color: muted; font.pixelSize: 11; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                            Flow { visible:!!detail.review; Layout.fillWidth:true; spacing:6
+                                Button { id:reviewNoteButton; objectName:"reviewNoteButton"; text:"Nota"; width:76; height:36; Accessible.name:"Adicionar nota humana sem tempo"; enabled:backend.available&&!revisionPending(); onClicked:openReview("note",({})) }
+                                Button { objectName:"revisionUndo"; text:"Desfazer"; width:88; height:36; Accessible.name:"Desfazer última revisão humana"; enabled:backend.available&&!!detail.review&&detail.review.canUndo===true&&!revisionPending(); onClicked:undoRevision() }
+                                Button { id:exportButton; objectName:"exportButton"; text:"Exportar"; width:80; height:36; enabled:backend.available&&!revisionPending(); onClicked:exportDialog.open() }
+                            }
+                            Label { objectName:"revisionState"; visible:!!detail.review; text:detail.review ? "Revisão "+detail.review.revision.revision+(detail.review.derivedStale?" · derivados anteriores desatualizados":" · original preservado") : ""; color:warningColor; wrapMode:Text.WordWrap; Layout.fillWidth:true; font.pixelSize:11 }
+                            Label { visible:!!detail.review&&(detail.review.notes||[]).length>0; text:detail.review&&(detail.review.notes||[]).length>0 ? "Notas humanas sem tempo: "+detail.review.notes.length+". Última prévia: "+detail.review.notes[detail.review.notes.length-1].slice(0,180)+(detail.review.notes[detail.review.notes.length-1].length>180?"…":"")+" · conteúdo completo no JSON/Markdown exportado." : ""; textFormat:Text.PlainText; color:ink; wrapMode:Text.WordWrap; Layout.fillWidth:true; font.pixelSize:11 }
+                            Label { visible:tabs.currentIndex===0&&!!detail.review&&detail.review.segmentEditUnavailable; text:"Trechos sem correspondência literal no texto original aceitam somente uma nota sem tempo."; color:muted; wrapMode:Text.WordWrap; Layout.fillWidth:true; font.pixelSize:11 }
                             Label { visible: tabs.currentIndex === 2; textFormat: Text.PlainText; text: detail.diarization.message || "Identifique os falantes para revisar suas participações nesta gravação."; color: detail.diarization.state === "failed" ? errorColor : muted; font.pixelSize: 11; wrapMode: Text.WordWrap; Layout.fillWidth: true }
-                            Label { visible: tabs.currentIndex === 2 && (detail.diarization.turns || []).length > 0; text: "A aba Transcrição mantém o texto original. Os horários desta aba pertencem à identificação de vozes."; color: muted; font.pixelSize: 11; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                            Label { visible: tabs.currentIndex === 2 && (detail.diarization.turns || []).length > 0; text: "Transcrição mostra a vista revisada; o original é preservado. Os horários das falas pertencem ao diarizador."; color: muted; font.pixelSize: 11; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                             ListView {
+                                id:revisionSegmentsList; objectName:"revisionSegmentsList"
                                 visible: tabs.currentIndex === 0 && (detail.transcript.segments || []).length > 0
                                 Layout.fillWidth: true; Layout.fillHeight: true; model: detail.transcript.segments || []; clip: true; spacing: 6
                                 ScrollBar.vertical: ScrollBar {}
                                 delegate: ItemDelegate {
                                     required property var modelData; required property int index
                                     width: ListView.view.width; height: segmentContent.implicitHeight + 20
-                                    enabled: mediaReady
+                                    enabled: true
                                     background: Rectangle { radius: 6; color: activeSegment === index ? selectedSurface : parent.hovered ? hoverSurface : "transparent" }
-                                    contentItem: ColumnLayout { id: segmentContent; spacing: 5; Label { text: clock(modelData.start); color: accent; font.pixelSize: 11; font.family: "monospace" } Label { visible: !!modelData.speaker; text: "Falante: " + (modelData.speaker || ""); textFormat: Text.PlainText; color: muted; font.pixelSize: 11 } Label { text: modelData.text; textFormat: Text.PlainText; color: ink; wrapMode: Text.WordWrap; Layout.fillWidth: true; font.pixelSize: 13 } }
+                                    contentItem: ColumnLayout { id: segmentContent; spacing: 5; RowLayout { Layout.fillWidth:true; Label { text: clock(modelData.start); color: accent; font.pixelSize: 11; font.family: "monospace"; Layout.fillWidth:true } Button { objectName:"segmentReview-"+(modelData.id||index); text:"Revisar"; visible:!!modelData.id; enabled:backend.available&&!revisionPending()&&!!modelData.textRange; onClicked:openReview("segment-text",modelData) } } Label { visible: !!modelData.speaker; text: "Falante: " + (modelData.speaker || ""); textFormat: Text.PlainText; color: muted; font.pixelSize: 11 } Label { text: modelData.text; textFormat: Text.PlainText; color: ink; wrapMode: Text.WordWrap; Layout.fillWidth: true; font.pixelSize: 13 } }
                                     onClicked: seek(modelData.start)
                                 }
                             }
@@ -879,7 +1149,9 @@ ApplicationWindow {
                                 Layout.fillWidth: true; Layout.fillHeight: true; spacing: 6
                                 Label { text: "Nomes dos falantes"; color: muted; font.pixelSize: 10 }
                                 ListView {
-                                    Layout.fillWidth: true; Layout.preferredHeight: Math.min(112, Math.max(54, speakerRows.length * 54)); model: speakerRows; clip: true; spacing: 4
+                                    id:revisionSpeakersList; objectName:"revisionSpeakersList"
+                                    Layout.fillWidth: true; Layout.preferredHeight: Math.min(86, Math.max(54, speakerRows.length * 54)); model: speakerRows; clip: true; spacing: 4
+                                    ScrollBar.vertical: ScrollBar {}
                                     delegate: ItemDelegate {
                                         required property var modelData
                                         width: ListView.view.width; height: 50
@@ -887,25 +1159,27 @@ ApplicationWindow {
                                         Accessible.name: modelData.label || "Falante incerto"
                                         contentItem: RowLayout {
                                             spacing: 6
-                                            Label { text: modelData.speakerId; color: accent; Layout.preferredWidth: 70; elide: Text.ElideRight; font.pixelSize: 10 }
-                                            TextField { id: renameField; placeholderText: "Falante incerto"; text: modelData.label; Layout.fillWidth: true; font.pixelSize: 11; onAccepted: if (text.trim()) send("diarization-name", diarizationKey(), {speakerId: modelData.speakerId, label: text.trim()}) }
-                                            Button { opacity: enabled ? 1 : 0.5; text: "Salvar"; Layout.preferredWidth: 58; enabled: backend.available && !!renameField.text.trim() && renameField.text.trim() !== modelData.label; onClicked: send("diarization-name", diarizationKey(), {speakerId: modelData.speakerId, label: renameField.text.trim()}) }
+                                            Label { text: modelData.speakerId; color: accent; Layout.preferredWidth: 40; elide: Text.ElideRight; font.pixelSize: 10 }
+                                            Label { text:modelData.label||"Falante incerto"; textFormat:Text.PlainText; color:ink; Layout.fillWidth:true; elide:Text.ElideRight }
+                                            Button { objectName:"speakerReview-"+modelData.speakerId; text:"Revisar"; Layout.preferredWidth:76; Accessible.name:"Revisar nome do falante "+modelData.speakerId; enabled:backend.available&&!revisionPending()&&!!detail.review; onClicked:openReview("speaker-label",modelData) }
                                         }
                                     }
                                 }
                                 Label { text: "Falas do diarizador · texto automático, revisar"; color: muted; font.pixelSize: 10; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                                 Label { visible: !!detail.diarization.textCoverage && detail.diarization.textCoverage.shownTurns < detail.diarization.textCoverage.totalTurns; text: detail.diarization.textCoverage ? "Texto parcial na interface: " + detail.diarization.textCoverage.shownTurns + "/" + detail.diarization.textCoverage.totalTurns + " falas. Os horários e nomes continuam disponíveis; o resultado local completo foi preservado." : ""; textFormat: Text.PlainText; color: warningColor; wrapMode: Text.WordWrap; Layout.fillWidth: true; font.pixelSize: 10 }
                                 ListView {
+                                    id:revisionTurnsList; objectName:"revisionTurnsList"
                                     Layout.fillWidth: true; Layout.fillHeight: true; model: detail.diarization.turns || []; clip: true; spacing: 3
                                     ScrollBar.vertical: ScrollBar {}
                                     delegate: ItemDelegate {
                                         required property var modelData
-                                        width: ListView.view.width; height: turnContent.implicitHeight + 18; enabled: mediaReady
+                                        width: ListView.view.width; height: turnContent.implicitHeight + 18; enabled: true
                                         Accessible.name: (modelData.label || modelData.speaker || "Falante incerto") + ", " + preciseClock(modelData.start) + " a " + preciseClock(modelData.end) + ". " + (modelData.text !== undefined ? modelData.text : "Texto não disponível nesta prévia.")
                                         contentItem: ColumnLayout {
                                             id: turnContent; spacing: 5
                                             RowLayout { spacing: 6; Label { text: preciseClock(modelData.start) + "–" + preciseClock(modelData.end); color: accent; font.family: "monospace"; font.pixelSize: 10; Layout.preferredWidth: 128 } Label { text: modelData.label || modelData.speaker || "Falante incerto"; textFormat: Text.PlainText; color: accent; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight } }
                                             Label { text: modelData.text !== undefined ? modelData.text : "Texto não disponível nesta prévia."; textFormat: Text.PlainText; color: modelData.text !== undefined ? ink : muted; wrapMode: Text.WordWrap; Layout.fillWidth: true; font.pixelSize: 13 }
+                                            Button { objectName:"turnReview-"+(modelData.id||""); text:"Revisar atribuição"; visible:!!modelData.id; enabled:backend.available&&!revisionPending()&&!!detail.review; onClicked:openReview("turn-speaker",modelData) }
                                         }
                                         onClicked: seek(Number(modelData.start))
                                     }

@@ -105,9 +105,14 @@ export const readArtifactStates = async (job: JobRecord, store = new JobStore())
       const path = join(job.artifactDir, "summary.json");
       await assertExistingJobArtifactPath(job, path);
       const { validateSummary } = await import("./types");
-      validateSummary(JSON.parse(await readBoundedArtifact(path, 2 * 1024 * 1024)), job.summary.provider, job.summary.model);
+      const summary=validateSummary(JSON.parse(await readBoundedArtifact(path, 2 * 1024 * 1024)), job.summary.provider, job.summary.model);
+      const { summaryEvidenceMatches }=await import("../summary/evidence");
+      const { hasSavedRevision }=await import("../revisions/service");
+      if(await hasSavedRevision(job.id)||(summary.support&&(!transcript||!summaryEvidenceMatches(summary,job.source.sha256,transcript.transcript))))throw new Error("Summary evidence is stale or unavailable");
       summaryReady = true;
     } catch { /* do not advertise an unavailable artifact */ }
   }
+  const current=await import("../summary/reviewed").then(module=>module.readReviewedSummary(job)).catch(()=>undefined);
+  if(current)summaryReady=true;
   return { transcript: { state: transcript ? "ready" : "unavailable", ...(transcript ? { path: transcript.path, provenance: transcript.provenance } : {}) }, summary: { state: summaryReady ? "ready" : job.state === "failed" && transcript ? "failed" : "unavailable" } };
 };

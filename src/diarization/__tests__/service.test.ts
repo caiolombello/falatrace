@@ -18,6 +18,7 @@ import { join } from "node:path";
 import { DEFAULT_CONFIG } from ${module("src/config/defaults.ts")};
 import { JobStore, hashFile } from ${module("src/jobs/store.ts")};
 import { createDiarization, nameDiarizationSpeaker, resultStatus } from ${module("src/diarization/service.ts")};
+import { readReviewedView } from ${module("src/revisions/index.ts")};
 const root = process.env.TEST_ROOT!;
 const config = structuredClone(DEFAULT_CONFIG);
 config.recordingsDir = join(root, "recordings");
@@ -61,6 +62,7 @@ const first = await processing;
 await createDiarization(config,job.id,{diarize});
 await nameDiarizationSpeaker(job.id,"S01","Pessoa local");
 const renamed = await createDiarization(config,job.id,{diarize});
+const reviewed = await readReviewedView(job);
 const after = [await hashFile(original),await hashFile(summary),await hashFile(source)];
 const different = await jobs.enqueue(config,source);
 const changedJob = await jobs.update(different.id,"completed");
@@ -69,15 +71,15 @@ await fs.writeFile(join(changedJob.artifactDir,"transcript.json"),JSON.stringify
 pcm[pcm.length-1]=1; await fs.writeFile(source,pcm);
 let rejected = false;
 try {await createDiarization(config,changedJob.id,{diarize});} catch {rejected=true;}
-console.log(JSON.stringify({requests,duplicateRejected,preserved:JSON.stringify(before)===JSON.stringify(after),textPreserved:first.alignment.text===text,state:resultStatus(first).state,label:renamed.labels.S01,rejected}));
+console.log(JSON.stringify({requests,duplicateRejected,preserved:JSON.stringify(before)===JSON.stringify(after),textPreserved:first.alignment.text===text,state:resultStatus(first).state,label:reviewed.diarization.labels.S01,originalLabel:renamed.labels.S01,revision:reviewed.revision.revision,rejected}));
 `, { mode: 0o600 });
     const env = { ...process.env, TEST_ROOT: root, XDG_DATA_HOME: join(root, "data"), XDG_STATE_HOME: join(root, "state"), XDG_RUNTIME_DIR: join(root, "runtime"), XDG_CONFIG_HOME: join(root, "config") };
-    await fs.mkdir(env.XDG_RUNTIME_DIR, { recursive: true, mode: 0o700 });
-    const child = Bun.spawn([globalThis.process.execPath, script], { env, stdout: "pipe", stderr: "pipe" });
+    await Promise.all([env.XDG_RUNTIME_DIR, env.XDG_CONFIG_HOME, env.XDG_STATE_HOME, env.XDG_DATA_HOME].map(path => fs.mkdir(path, { recursive: true, mode: 0o700 })));
+    const child = Bun.spawn([globalThis.process.execPath, "--preload", join(repository, "scripts/offline-network.ts"), script], { env, stdout: "pipe", stderr: "pipe" });
     const [stdout, stderr, code] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited]);
     expect(stderr).toBe("");
     expect(code).toBe(0);
-    expect(JSON.parse(stdout)).toEqual({ requests: 1, duplicateRejected: true, preserved: true, textPreserved: true, state: "review", label: "Pessoa local", rejected: true });
+    expect(JSON.parse(stdout)).toEqual({ requests: 1, duplicateRejected: true, preserved: true, textPreserved: true, state: "review", label: "Pessoa local", originalLabel: "Falante 1", revision: 1, rejected: true });
   } finally { await fs.rm(root, { recursive: true, force: true }); }
 }, 30_000);
 

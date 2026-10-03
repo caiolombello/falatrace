@@ -12,6 +12,12 @@ import {
 import { notifyTimeEntryClassified } from "./notifier";
 import { TimeEntryStore } from "./store";
 import type { TimeEntry } from "./types";
+import { hasSavedRevision } from "../revisions/service";
+import { withRevisionLease, RevisionConflictError } from "../revisions";
+
+const assertOriginalClassification = async (jobId: string): Promise<void> => {
+  if (await hasSavedRevision(jobId)) throw new RevisionConflictError("A gravação tem revisão humana. A classificação legada foi preservada; não será refeita com artefatos originais desatualizados.");
+};
 
 const MAX_TRANSCRIPT_JSON_BYTES = 12 * 1024 * 1024;
 const MAX_SUMMARY_JSON_BYTES = 2 * 1024 * 1024;
@@ -81,11 +87,15 @@ export const reconcileTimeEntryForJob = async (
   options: { force?: boolean; notify?: boolean } = {}
 ): Promise<TimeEntry | null> => {
   if (!config.timesheet.enabled || record.state !== "completed") return null;
+  await assertOriginalClassification(record.id);
   let entry = await store.findForJob(record.id, record.sourcePath);
   if (!entry) return null;
   if (entry.splitGroupId) return entry;
   if (!entry.source.jobId) {
-    entry = await store.linkJob(entry.id, record.id, record.sourcePath);
+    entry = await withRevisionLease(record.id, async () => {
+      await assertOriginalClassification(record.id);
+      return store.linkJob(entry!.id, record.id, record.sourcePath);
+    });
   }
   if (
     !options.force &&
@@ -110,6 +120,7 @@ export const reconcileTimeEntryForJob = async (
       record.summary.provider,
       record.summary.model
     );
+    await assertOriginalClassification(record.id);
     const suggestion = await classifyTimeEntry(
       config,
       entry,
@@ -117,6 +128,8 @@ export const reconcileTimeEntryForJob = async (
       transcript,
       context
     );
+    const saved = await withRevisionLease(record.id, async () => {
+    await assertOriginalClassification(record.id);
     const current = await store.get(entry.id);
     const updated = applyTimeEntrySuggestion(
       current,
@@ -124,13 +137,18 @@ export const reconcileTimeEntryForJob = async (
       context,
       config.timesheet.readyConfidence
     );
-    const saved = await store.replace(updated);
+    return store.replace(updated);
+    });
     if (options.notify !== false) {
       await notifyTimeEntryClassified(saved).catch(() => undefined);
     }
     return saved;
   } catch (err) {
-    const failed = await markClassificationFailed(config, store, entry, err);
+    if (err instanceof RevisionConflictError) throw err;
+    const failed = await withRevisionLease(record.id, async () => {
+      await assertOriginalClassification(record.id);
+      return markClassificationFailed(config, store, entry, err);
+    });
     console.error(JSON.stringify({
       event: "timesheet.classification-failed",
       entryId: failed.id,

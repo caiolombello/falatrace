@@ -10,6 +10,12 @@ import {
 import { hashFile } from "../jobs/store";
 import type { JobRecord } from "../jobs/types";
 import type { Transcript } from "../jobs/types";
+import { validateTranscript } from "../jobs/types";
+import { readBoundedArtifact } from "../jobs/transcript-access";
+import { JobStore } from "../jobs/store";
+import { assertCurrentReviewedView, assertUnreviewedLegacyJob, isUnreviewedLegacyAbsence,
+  readCurrentReviewedView, reviewedTranscriptForDisplay } from "../revisions/compat";
+import { sourceTimingQuality } from "../transcript/timing";
 import { findAlignedSubtitles } from "../subtitles/aligned";
 import { launchRecordingPlayer } from "../player/launcher";
 import { inspectArchivedMedia } from "../archive/remote";
@@ -17,7 +23,7 @@ import { restoreProtonMedia } from "../archive/proton";
 import { sealedArchiveMedia } from "../archive/sync";
 import {
   assertExistingManagedPath,
-  assertExistingJobArtifactPath,
+  readMeetingTitle,
   type LibraryEntry
 } from "./library";
 
@@ -39,11 +45,70 @@ export type MediaDependencies = {
   inspectRemote?: typeof inspectRemoteArchivedSource;
   inspectArchive?: typeof inspectArchivedMedia;
   restoreProton?: typeof restoreProtonMedia;
+  player?: typeof launchRecordingPlayer;
+  jobStore?: Pick<JobStore, "get">;
 };
 
 export type PlaybackResult = {
   location: "local" | "vaio" | "proton";
   path: string;
+  warnings?: string[];
+};
+
+export type PlaybackTranscriptSelection = { transcript?: Transcript; warnings: string[];
+  jobId?: string; assertCurrent?: () => Promise<void>;
+  provenance?: { track: "reviewed-transcript" | "original-aligned"; revision?: number; transcriptArtifactSha256?: string } };
+
+/** The player receives a checked snapshot, never a path it can reread as stale.
+ * An aligned cache is a separate acoustic track and cannot overwrite a review. */
+export const selectPlaybackTranscript = async (
+  entry: Pick<LibraryEntry, "jobs" | "archive">,
+  selectedJob?: JobRecord,
+  store: Pick<JobStore, "get"> = new JobStore()
+): Promise<PlaybackTranscriptSelection> => {
+  const jobs = [...new Map([selectedJob, ...entry.jobs].filter((job): job is JobRecord => !!job).map(job => [job.id, job])).values()];
+  const mediaHash = entry.archive?.source.sha256 || selectedJob?.source.sha256 || entry.jobs[0]?.source.sha256;
+  const aligned = async (): Promise<Transcript | undefined> => {
+    const path = mediaHash ? await findAlignedSubtitles(mediaHash) : undefined;
+    if (!path) return undefined;
+    const raw = JSON.parse(await readBoundedArtifact(path, 10 * 1024 * 1024));
+    if (raw.mediaSha256 !== mediaHash) throw new Error("A legenda alinhada mudou de origem.");
+    return validateTranscript(raw);
+  };
+  for (const job of jobs) {
+    try {
+      const view = await readCurrentReviewedView(job, store);
+      if (view.revision.humanReviewed) {
+        const transcript = reviewedTranscriptForDisplay(view);
+        const editedText = view.segments.some(segment => segment.humanEdited);
+        const warnings = editedText ? ["Legendas indisponíveis: o texto humano revisado ainda não possui alinhamento acústico comprovado."] :
+          ["word", "segment"].includes(sourceTimingQuality(transcript)) ? [] : ["Legendas indisponíveis: os tempos da origem são aproximados ou não verificados."];
+        if (editedText) { transcript.segments = []; delete transcript.words; }
+        await assertCurrentReviewedView(job, view, store);
+        return { transcript, warnings, jobId: job.id, assertCurrent: () => assertCurrentReviewedView(job, view, store),
+          provenance: { track: "reviewed-transcript", revision: view.revision.revision,
+          transcriptArtifactSha256: view.original.provenance.transcriptSha256 } };
+      }
+      const cached = await aligned();
+      await assertCurrentReviewedView(job, view, store);
+      return { transcript: cached || view.transcript, warnings: [], jobId: job.id,
+        assertCurrent: () => assertCurrentReviewedView(job, view, store), provenance: cached ? { track: "original-aligned" } :
+        { track: "reviewed-transcript", revision: 0, transcriptArtifactSha256: view.original.provenance.transcriptSha256 } };
+    } catch (error) {
+      if (!await isUnreviewedLegacyAbsence(job, error)) return { warnings: ["Transcrição indisponível: a fonte ou revisão não pôde ser validada; releia a gravação."] };
+      // A legacy Markdown-only job may still have a separate aligned track.
+      await assertUnreviewedLegacyJob(job, store);
+      const cached = await aligned();
+      await assertUnreviewedLegacyJob(job, store);
+      if (cached) return { transcript: cached, warnings: [], jobId: job.id,
+        assertCurrent: () => assertUnreviewedLegacyJob(job, store), provenance: { track: "original-aligned" } };
+    }
+  }
+  if (!jobs.length) {
+    try { const cached = await aligned(); if (cached) return { transcript: cached, warnings: [], provenance: { track: "original-aligned" } }; }
+    catch { return { warnings: ["Legendas indisponíveis: o arquivo alinhado não pôde ser validado."] }; }
+  }
+  return { warnings: [] };
 };
 
 export type LocalSourceRemovalResult = {
@@ -306,23 +371,25 @@ export const playLibraryEntry = async (
   const playbackOptions = normalizePlaybackOptions(
     options || (isPlaybackOptions ? dependenciesOrOptions : {})
   );
+  let warnings: string[] = [];
   const launch: PlayerLauncher = dependencies.launch || (async (path, options) => {
-    const mediaHash = entry.archive?.source.sha256 || selectedJob?.source.sha256 || entry.jobs[0]?.source.sha256;
-    let transcriptPath = mediaHash ? await findAlignedSubtitles(mediaHash) : undefined;
-    for (const job of [selectedJob, ...entry.jobs].filter((job): job is JobRecord => !!job)) {
-      if (transcriptPath) break;
-      const candidate = join(job.artifactDir, "transcript.json");
-      try {
-        const stat = await assertExistingJobArtifactPath(job, candidate);
-        if (stat.isFile() && stat.size <= 10 * 1024 * 1024) { transcriptPath = candidate; break; }
-      } catch { /* Playback remains available while transcript artifacts are missing. */ }
+    const selection = await selectPlaybackTranscript(entry, selectedJob, dependencies.jobStore);
+    warnings = selection.warnings;
+    let transcript = selection.transcript;
+    const titleJob = [selectedJob, ...entry.jobs].find(job => job?.id === selection.jobId);
+    let title = titleJob ? await readMeetingTitle(titleJob, dependencies.jobStore) : undefined;
+    try { await selection.assertCurrent?.(); }
+    catch {
+      transcript = undefined; title = undefined;
+      warnings = ["Transcrição indisponível: a fonte ou revisão mudou durante a abertura do player; releia a gravação."];
     }
-    await launchRecordingPlayer(path, { ...options, transcriptPath, title: entry.meetingTitle || entry.relativePath });
+    await (dependencies.player || launchRecordingPlayer)(path, { ...options,
+      ...(transcript ? { transcript } : {}), warnings, title: title || entry.relativePath });
   });
   if (await localSourceExists(entry.sourcePath)) {
     await assertExistingManagedPath(config, entry.sourcePath);
     await launch(entry.sourcePath, playbackOptions);
-    return { location: "local", path: entry.sourcePath };
+    return { location: "local", path: entry.sourcePath, ...(warnings.length ? { warnings } : {}) };
   }
 
   const archive = entry.archive;
@@ -360,7 +427,7 @@ export const playLibraryEntry = async (
   if (!resolved) throw sourceError || new Error("Esta gravação não possui uma cópia concluída no vaio.");
   // A player startup failure is unrelated to storage and must not trigger another download.
   await launch(resolved.path, playbackOptions);
-  return resolved;
+  return { ...resolved, ...(warnings.length ? { warnings } : {}) };
 };
 
 export const removeVerifiedLocalSource = async (

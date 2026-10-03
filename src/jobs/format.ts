@@ -11,12 +11,12 @@ const formatTimestamp = (seconds: number): string => {
 
 export const formatTranscriptMarkdown = (transcript: Transcript): string => {
   const lines = ["# Transcrição", ""];
+  // Segment text need not cover canonical gaps, tails or the reading order.
+  if (transcript.text) lines.push("## Texto completo", "", transcript.text, "");
+  if (transcript.segments.length) lines.push("## Trechos", "");
   for (const segment of transcript.segments) {
     const speaker = segment.speaker ? ` ${segment.speaker}:` : "";
     lines.push(`[${formatTimestamp(segment.start)}]${speaker} ${segment.text.trim()}`);
-  }
-  if (transcript.segments.length === 0 && transcript.text) {
-    lines.push(transcript.text);
   }
   return `${lines.join("\n").trim()}\n`;
 };
@@ -54,7 +54,7 @@ export const formatSummaryMarkdown = (summary: RecordingSummary): string => {
       const refs = citation.segmentIds.map((id) => summary.support!.references.find((reference) => reference.id === id)).filter((reference) => reference !== undefined);
       lines.push(`- ${citation.section}[${citation.index}]: ${refs.map((ref) => `${ref.id} [${formatTimestamp(ref.start)}–${formatTimestamp(ref.end)}]`).join(", ")} (${citation.uncertainty})`);
     }
-    lines.push(...(summary.limitations || []).map((limitation) => `- ${limitation}`));
   }
+  if (summary.limitations?.length) lines.push("", "## Limitações", "", ...summary.limitations.map((limitation) => `- ${limitation}`));
   return `${lines.join("\n").trim()}\n`;
 };
