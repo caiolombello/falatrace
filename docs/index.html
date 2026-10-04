@@ -1,78 +1,541 @@
 <!doctype html>
 <html lang="pt-BR">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>FalaTrace — gravações e contexto com origem</title>
-<meta name="description" content="Gravações automáticas configuráveis, recuperação de contexto e fontes para suas IAs. Criado e usado continuamente por Caio Barbieri. Alpha Linux de código aberto.">
-<meta name="theme-color" content="#102B2A"><meta property="og:title" content="FalaTrace — suas gravações, contexto com origem"><meta property="og:description" content="Gravações automáticas e contexto para reencontrar. Criado e usado pelo autor; distribuição alpha para Linux."><meta property="og:image" content="https://caiolombello.github.io/falatrace/assets/falatrace-social-card.jpg"><meta property="og:image:alt" content="FalaTrace, alpha experimental Linux. Notas ligadas ao momento.">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FalaTrace — lembre o que foi decidido, confira onde foi dito</title>
+<meta name="description" content="Grave as chamadas que você escolher no Linux, transcreva com processamento local por padrão e leve contexto com fonte para seus agentes de IA. Código aberto (MIT), alpha experimental.">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#F4F1E9" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0B1716" media="(prefers-color-scheme: dark)">
 <link rel="canonical" href="https://caiolombello.github.io/falatrace/">
 <link rel="alternate" hreflang="pt-BR" href="https://caiolombello.github.io/falatrace/">
 <link rel="alternate" hreflang="en" href="https://caiolombello.github.io/falatrace/en/">
 <link rel="alternate" hreflang="x-default" href="https://caiolombello.github.io/falatrace/">
-<meta property="og:locale" content="pt_BR"><meta property="og:url" content="https://caiolombello.github.io/falatrace/">
-<link rel="icon" type="image/svg+xml" href="assets/favicon.svg"><link rel="stylesheet" href="style.css">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="FalaTrace">
+<meta property="og:locale" content="pt_BR">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:url" content="https://caiolombello.github.io/falatrace/">
+<meta property="og:title" content="FalaTrace — lembre o que foi decidido, confira onde foi dito">
+<meta property="og:description" content="Gravações de chamadas no Linux, resumos que apontam para a fonte e contexto limitado para seus agentes de IA. Código aberto, alpha experimental.">
+<meta property="og:image" content="https://caiolombello.github.io/falatrace/assets/falatrace-social-card.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="FalaTrace, alpha experimental para Linux. Suas gravações, uma origem que você pode seguir.">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+<link rel="stylesheet" href="style.css">
+<script src="site.js" defer></script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"FalaTrace","description":"Gravações de chamadas no Linux, resumos que apontam para a fonte e contexto limitado para agentes de IA.","applicationCategory":"MultimediaApplication","operatingSystem":"Linux","softwareVersion":"0.2.0-alpha.11","license":"https://opensource.org/licenses/MIT","url":"https://caiolombello.github.io/falatrace/","downloadUrl":"https://github.com/caiolombello/falatrace/releases/tag/v0.2.0-alpha.11","sameAs":"https://github.com/caiolombello/falatrace","inLanguage":"pt-BR","author":{"@type":"Person","name":"Caio Barbieri"},"offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}</script>
 </head>
 <body>
-<a class="skip" href="#main">Ir para o conteúdo</a>
-<div class="review-banner"><span class="wrap">Alpha.11 para Linux · automação configurável, contexto com origem e controle de acesso para IA.</span></div>
-<header class="wrap">
- <a class="brand" href="#" aria-label="FalaTrace, início"><img src="assets/falatrace-mark-light.svg" width="36" height="36" alt=""><span>FalaTrace</span></a>
- <nav aria-label="Principal"><a href="#workflow">Como funciona</a><a href="#studio">Studio</a><a href="#status">Limites</a><a class="github" href="https://github.com/caiolombello/falatrace">GitHub <span aria-hidden="true">↗</span></a></nav>
- <nav class="language-switch" aria-label="Idioma"><a href="./" lang="pt-BR" hreflang="pt-BR" aria-current="page">Português</a><a href="en/" lang="en" hreflang="en">English</a></nav>
+<a class="skip-link" href="#main">Ir para o conteúdo</a>
+
+<svg class="sprite" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+ <symbol id="mark" viewBox="0 0 64 64"><path d="M30 10H14V54H30" fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="square"/><circle cx="44" cy="32" r="6"/></symbol>
+ <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+ <symbol id="i-check-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.7 2.7 5.5-5.7"/></symbol>
+ <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7.5V12l3 2"/></symbol>
+ <symbol id="i-ban" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M5.8 18.2L18.2 5.8"/></symbol>
+ <symbol id="i-laptop" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="11" rx="1.5"/><path d="M2.5 19h19"/></symbol>
+ <symbol id="i-send" viewBox="0 0 24 24"><path d="M14 4h6v6"/><path d="M20 4l-8.5 8.5"/><path d="M18 13.5V19a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5.5"/></symbol>
+ <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3.2l7 2.8v5.2c0 4.3-2.9 7.7-7 9.6-4.1-1.9-7-5.3-7-9.6V6z"/><path d="M8.8 12.2l2.3 2.3 4.2-4.6"/></symbol>
+ <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4.5 7h15"/><path d="M9.5 7V4.5h5V7"/><path d="M6.5 7l.9 12.2a1 1 0 0 0 1 .8h7.2a1 1 0 0 0 1-.8L17.5 7"/></symbol>
+ <symbol id="i-terminal" viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="15" rx="2"/><path d="M7 9.5l3 2.5-3 2.5"/><path d="M12.5 15H17"/></symbol>
+ <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="3.6"/><path d="M10.6 12.4L19 4"/><path d="M15.5 7.5l2.2 2.2"/><path d="M13.3 9.7l1.7 1.7"/></symbol>
+ <symbol id="i-braces" viewBox="0 0 24 24"><path d="M9 4H8a2 2 0 0 0-2 2v3.5L4.5 12 6 14.5V18a2 2 0 0 0 2 2h1"/><path d="M15 4h1a2 2 0 0 1 2 2v3.5l1.5 2.5-1.5 2.5V18a2 2 0 0 1-2 2h-1"/></symbol>
+ <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M15.5 8.5v-2a2 2 0 0 0-2-2h-7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h2"/></symbol>
+ <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 4l9 16H3z"/><path d="M12 10v4.2"/><path d="M12 17.2v.1"/></symbol>
+ <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8v.1"/></symbol>
+</svg>
+
+<div class="announce">
+ <div class="wrap announce-inner">
+  <span class="announce-badge">Novo</span>
+  <p>Alpha.11: revise transcrições e falantes, exporte em SRT, WebVTT, Markdown ou JSON e gere resumos locais com consentimento no Studio.</p>
+  <a href="https://github.com/caiolombello/falatrace/releases/tag/v0.2.0-alpha.11">Ver novidades <span aria-hidden="true">↗</span></a>
+ </div>
+</div>
+
+<header class="site-header">
+ <div class="wrap header-inner">
+  <a class="brand" href="#" aria-label="FalaTrace, início"><svg class="mark" aria-hidden="true" focusable="false"><use href="#mark"/></svg><span>FalaTrace</span></a>
+  <nav class="site-nav" aria-label="Seções">
+   <a href="#como-funciona">Como funciona</a>
+   <a href="#agentes">Para IAs</a>
+   <a href="#studio">Studio</a>
+   <a href="#privacidade">Privacidade</a>
+   <a href="#status">Status</a>
+   <a href="#faq">FAQ</a>
+  </nav>
+  <div class="header-actions">
+   <nav class="lang" aria-label="Idioma"><a href="./" lang="pt-BR" hreflang="pt-BR" aria-current="page">Português</a><a href="en/" lang="en" hreflang="en">English</a></nav>
+   <a class="header-link" href="https://github.com/caiolombello/falatrace">GitHub <span aria-hidden="true">↗</span></a>
+   <a class="btn btn-sm" href="#comecar">Instalar</a>
+  </div>
+ </div>
 </header>
+
 <main id="main" tabindex="-1">
- <section class="hero wrap">
-  <div class="hero-copy">
-   <p class="eyebrow"><span class="status-dot" aria-hidden="true"></span> Linux · código aberto · alpha experimental</p>
-   <h1>A conversa fica.<br>O contexto <em>continua.</em></h1>
-   <p class="lead">Grave automaticamente as chamadas que você configurar. Reencontre decisões, volte ao momento da conversa e leve contexto para suas IAs, com uma fonte para conferir.</p>
-   <p class="author-use"><strong>Criado e usado continuamente por Caio Barbieri.</strong> Na rotina do autor, a gravação automática evita depender de lembrar de iniciar a captura; consultar as gravações ajuda a recuperar a informação.</p>
-   <div class="actions"><a class="button" href="https://github.com/caiolombello/falatrace/releases/tag/v0.2.0-alpha.11">Explorar a alpha.11 <span aria-hidden="true">↗</span></a><a class="secondary" href="#studio">Conhecer o Studio <span aria-hidden="true">↓</span></a></div>
-   <p class="small">Distribuição experimental em código-fonte para Linux. Instalação, regras de gravação e modelos são configurados por você; a cobertura depende do app, browser e desktop.</p>
+ <section class="hero" aria-labelledby="hero-title">
+  <div class="wrap hero-inner">
+   <p class="hero-kicker"><span class="dot" aria-hidden="true"></span>Linux · código aberto · alpha experimental</p>
+   <h1 id="hero-title">Lembre o que foi decidido.<br><em>Confira onde foi dito.</em></h1>
+   <p class="hero-lead">O FalaTrace grava as chamadas que você configurar, transcreve com processamento local por padrão e liga resumos e notas ao trecho da gravação. Quando sua IA precisa de contexto, consulta só o necessário — com horário e origem para você conferir.</p>
+   <div class="cta-row">
+    <a class="btn btn-lg" href="#comecar">Instalar a alpha.11 <span aria-hidden="true">↓</span></a>
+    <a class="btn btn-lg btn-ghost" href="https://github.com/caiolombello/falatrace">Ver código no GitHub <span aria-hidden="true">↗</span></a>
+   </div>
+   <ul class="hero-facts">
+    <li><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check"/></svg>Gratuito e MIT</li>
+    <li><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check"/></svg>Sem conta nem serviço hospedado</li>
+    <li><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check"/></svg>Nada é gravado só por instalar</li>
+   </ul>
   </div>
-  <aside class="source-note" aria-label="Três partes do fluxo">
-   <p class="eyebrow">Uma conversa, uma fonte consultável</p>
-   <ol><li><span class="step-number">01</span><div><h2>Grave com controle.</h2><p>Automação configurada, regras explícitas e pausa.</p></div></li><li><span class="step-number">02</span><div><h2>Encontre o momento.</h2><p>Biblioteca, transcrição e notas para conferir.</p></div></li><li><span class="step-number">03</span><div><h2>Leve contexto para a IA.</h2><p>Consulta limitada, com referência à gravação.</p></div></li></ol>
-   <p class="source-signature">Suas gravações.<br>Uma origem que você pode consultar.</p>
-  </aside>
- </section>
 
- <section id="studio" class="wrap section studio-section">
-  <div class="section-heading"><div><p class="eyebrow">Disponível no código público · v0.2.0-alpha.11</p><h2>Da biblioteca<br>ao momento da conversa.</h2></div><p>Vídeo, transcrição, resumo e contexto no mesmo Studio. Abra a fonte e revise as notas antes de usar uma conclusão de IA.</p></div>
-  <figure class="product-figure"><a class="image-link" href="assets/studio-alpha5.png" aria-label="Ampliar tela real do Studio alpha.5 com dados sintéticos"><img src="assets/studio-alpha5.png" width="1320" height="820" alt="Studio alpha.5 em português, tema claro: biblioteca à esquerda, área do vídeo ao centro e transcrição à direita. Conteúdo sintético."></a><figcaption><span class="tag">UI real · alpha.5</span> Render Qt com dados sintéticos e backend de teste. Nenhuma pessoa foi gravada. Abra a imagem para ampliar.</figcaption></figure>
-  <div class="feature-row"><article><span class="number">BIBLIOTECA</span><h3>Uma entrada para cada gravação.</h3><p>Busque pelo título e consulte os estados de processamento e da fonte.</p></article><article><span class="number">ORIGEM</span><h3>Volte à informação na fonte.</h3><p>Reabra o momento da conversa para conferir as notas. Horários aproximados são sinalizados; transcrição e resumo podem conter erros.</p></article><article><span class="number">CONTEXTO</span><h3>Consulte só o necessário.</h3><p>A CLI e a skill permitem buscar gravações e recuperar contexto limitado para suas ferramentas de IA.</p></article></div>
- </section>
+  <div class="wrap">
+   <figure class="hero-visual">
+    <div class="studio-mock mock-surface" role="img" aria-label="Ilustração com dados fictícios, no estilo do Studio: biblioteca de gravações à esquerda, vídeo de uma chamada pausado em 12:48 ao centro e resumo à direita. A decisão “Adiar a migração do banco para a sprint 42” está destacada e aponta para o trecho 12:48 da gravação.">
+     <div class="sm-titlebar">
+      <span class="sm-brand"><svg class="mark" aria-hidden="true" focusable="false"><use href="#mark"/></svg>FalaTrace Studio</span>
+      <span class="sm-status"><span class="sm-ring"></span>Captura parada</span>
+     </div>
+     <div class="sm-body">
+      <div class="sm-library">
+       <p class="sm-heading">Gravações <span>3</span></p>
+       <p class="sm-search">Buscar gravação…</p>
+       <ul>
+        <li class="is-active"><strong>Sincronização semanal</strong><span>29 set · 10:00</span><em>Neste computador · Processada</em></li>
+        <li><strong>Revisão de incidentes</strong><span>22 set · 15:30</span><em>Neste computador · Processada</em></li>
+        <li><strong>Planejamento do 4º trimestre</strong><span>15 set · 09:00</span><em>Neste computador · Processada</em></li>
+       </ul>
+      </div>
+      <div class="sm-player">
+       <p class="sm-title">Sincronização semanal</p>
+       <p class="sm-meta">29 set · 32 min · Neste computador</p>
+       <div class="sm-video">
+        <div class="sm-slide"><span class="sm-slide-title">Plano de migração</span><span class="sm-bar"></span><span class="sm-bar"></span><span class="sm-bar"></span></div>
+        <div class="sm-people"><span>MA</span><span>RF</span><span>AN</span></div>
+        <p class="sm-caption">Marina: Prefiro adiar para a sprint 42 — o rollback ainda não está coberto.</p>
+       </div>
+       <div class="sm-timeline"><span class="sm-track"><span class="sm-fill"></span><span class="sm-pin"></span></span><span class="sm-time">12:48 / 32:10</span></div>
+      </div>
+      <div class="sm-panel">
+       <div class="sm-tabs"><span>Transcrição</span><span class="is-active">Resumo</span><span>Falantes</span><span>Contexto IA</span></div>
+       <p class="sm-note">Resumo de IA · confira a fonte</p>
+       <p class="sm-section">Decisões</p>
+       <ul class="sm-items">
+        <li class="is-active"><span>Adiar a migração do banco para a sprint 42.</span><span class="ts">12:48</span></li>
+        <li class="sm-hide-narrow"><span>Manter o deploy de sexta atrás de uma feature flag.</span><span class="ts">18:31</span></li>
+       </ul>
+       <p class="sm-section">Ações</p>
+       <ul class="sm-items">
+        <li><span>Ana revisa o plano de rollback até sexta.</span><span class="ts">14:02</span></li>
+       </ul>
+       <p class="sm-flag"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-alert"/></svg>1 referência com horário aproximado</p>
+      </div>
+     </div>
+    </div>
+    <figcaption><span class="tag">Ilustração</span>Dados fictícios. Veja as <a href="#studio">telas reais do Studio</a> mais abaixo.</figcaption>
+   </figure>
+  </div>
 
- <section id="workflow" class="workflow-band section">
-  <div class="wrap"><div class="section-heading"><div><p class="eyebrow">Automação escolhida por você</p><h2>Menos procura.<br>Mais contexto para revisar.</h2></div><p>A gravação automática exige regras, configuração e consentimento. Não começa apenas por instalar o projeto.</p></div>
-  <div class="steps"><article><span class="number">01 / CONFIGURAR</span><h3>Defina quando gravar.</h3><p>Escolha as regras de detecção e a origem do áudio. Pause novas gravações quando precisar; uma captura em andamento exige uma ação própria para parar.</p></article><article><span class="number">02 / REVISAR</span><h3>Comece pela transcrição.</h3><p>Consulte o texto e as notas. No fluxo visual local da alpha.11, você seleciona um intervalo, confere o preview e autoriza a análise e o resumo parcial.</p></article><article><span class="number">03 / CONSULTAR</span><h3>Use com suas IAs.</h3><p>A skill orienta consultas com fontes e limites. Modelos e destinos dependem da sua configuração; uma assinatura de chat não inclui automaticamente API.</p></article></div>
-  <p class="small compatibility-note"><strong>Cobertura atual da detecção automática:</strong> Slack, Zen e Helium, por sinais locais de uso de microfone ou vídeo. Esse sinal não identifica o serviço da chamada. Outros browsers e apps ainda precisam de integração e testes; a gravação manual usa o backend configurado.</p>
-   <p class="small band-note">Fluxo visual exercitado offline com vídeo sintético e transporte de modelo simulado. A qualidade de um modelo real e sua decisão de pedir imagens não foram validadas.</p>
+  <div class="works">
+   <dl class="wrap works-grid">
+    <div><dt>Detecção automática no</dt><dd>Slack · Zen · Helium</dd></div>
+    <div><dt>Processa localmente com</dt><dd>Whisper.cpp · Ollama</dd></div>
+    <div><dt>Ou, se você escolher</dt><dd>OpenAI · Gemini</dd></div>
+    <div><dt>Contexto para agentes como</dt><dd>Claude Code · Codex · Gemini CLI</dd></div>
+   </dl>
   </div>
  </section>
 
- <section class="wrap section privacy-section">
-  <p class="eyebrow">Controle dos dados</p><h2>Saiba o que fica.<br>E para onde vai.</h2>
-  <div class="feature-row"><article><h3>Começo local.</h3><p>Uma configuração nova seleciona processamento local e deixa o processamento automático desativado. Whisper.cpp, Ollama e modelos são instalados separadamente.</p></article><article><h3>Envio é uma escolha.</h3><p>A transcrição pode usar Whisper.cpp, OpenAI ou Gemini; os resumos, Ollama ou OpenAI. Providers externos, workers e backups podem transmitir conteúdo. Confira o destino e os custos antes de processar. Configurações existentes são preservadas.</p></article><article><h3>Exclusão tem um escopo.</h3><p>Remover localmente não apaga cópias remotas ou dados já aceitos por um provider. A exclusão local invalida a memória derivada antes de alterar os artefatos.</p></article></div>
+ <section id="como-funciona" class="section" aria-labelledby="how-title">
+  <div class="wrap">
+   <div class="section-head">
+    <p class="eyebrow">Como funciona</p>
+    <h2 id="how-title">Da chamada ao contexto, sem perder a origem.</h2>
+    <p>Cada etapa fica sob seu controle. Você escolhe quando gravar, onde processar e o que compartilhar.</p>
+   </div>
+
+   <article class="feature" aria-labelledby="step-1">
+    <div class="feature-copy">
+     <p class="step"><span class="step-number">01</span>Gravar</p>
+     <h3 id="step-1">Grava as chamadas que você escolher.</h3>
+     <p>Ative regras para gravar quando Slack, Zen ou Helium usarem microfone ou câmera — ou inicie a captura manualmente. O estado da gravação fica sempre visível.</p>
+     <ul class="checks">
+      <li>A detecção fica desligada até você ativar; o modo inicial só notifica.</li>
+      <li>“Pausar novas gravações” e “Parar” são ações separadas.</li>
+      <li>Microfone e áudio do sistema em faixas separadas; tela via OBS ou GPU Screen Recorder.</li>
+     </ul>
+    </div>
+    <figure class="feature-visual">
+     <div class="rec-mock mock-surface" role="img" aria-label="Ilustração com dados fictícios: indicador REC com 02:08 de gravação e botão Parar; gravação automática ativa para Slack e Zen e desligada para Helium; botão Pausar novas gravações; aviso para confirmar a permissão das pessoas envolvidas.">
+      <div class="rec-row">
+       <span class="rec"><span class="rec-square"></span>REC <span class="rec-time">02:08</span></span>
+       <span class="rec-source">Slack · microfone e câmera em uso</span>
+       <span class="fake-btn">Parar</span>
+      </div>
+      <div class="rules">
+       <p class="rules-title">Gravação automática</p>
+       <ul>
+        <li>Slack<span class="switch switch-on">Ativa<i></i></span></li>
+        <li>Zen<span class="switch switch-on">Ativa<i></i></span></li>
+        <li>Helium<span class="switch">Desligada<i></i></span></li>
+       </ul>
+      </div>
+      <div class="rec-actions"><span class="fake-btn fake-btn-ghost">Pausar novas gravações</span>A captura atual continua até você parar.</div>
+      <p class="consent-note"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-info"/></svg>Confirme a permissão das pessoas envolvidas antes de gravar.</p>
+     </div>
+     <figcaption><span class="tag">Ilustração</span>Dados fictícios.</figcaption>
+    </figure>
+   </article>
+
+   <article class="feature feature-flip" aria-labelledby="step-2">
+    <div class="feature-copy">
+     <p class="step"><span class="step-number">02</span>Conferir</p>
+     <h3 id="step-2">Resumos que apontam para a fonte.</h3>
+     <p>Siga cada decisão até o trecho da transcrição e o momento do vídeo. Horários aproximados e referências incertas aparecem sinalizados para revisão.</p>
+     <ul class="checks">
+      <li>Referência ao segmento, ao horário e ao hash SHA-256 da gravação.</li>
+      <li>Transcrição com Whisper.cpp no seu computador, ou OpenAI e Gemini se você configurar.</li>
+      <li>A validação garante que a referência existe — não que o modelo tenha interpretado certo.</li>
+     </ul>
+    </div>
+    <figure class="feature-visual">
+     <div class="trace-mock mock-surface" role="img" aria-label="Ilustração com dados fictícios da cadeia de origem: a decisão do resumo cita o segmento s000214; o segmento vai de 12:48,4 a 12:55,1 e traz a fala da Marina; a gravação original é identificada por um hash SHA-256 conferido antes e depois do processamento.">
+      <div class="trace-node">
+       <p class="trace-kind">Resumo · decisão</p>
+       <p class="trace-text">Adiar a migração do banco para a sprint 42.</p>
+       <p class="trace-meta"><span class="ts">s000214</span>referência clara</p>
+      </div>
+      <div class="trace-link"></div>
+      <div class="trace-node is-source">
+       <p class="trace-kind">Transcrição · segmento s000214</p>
+       <p class="trace-text">“Prefiro adiar para a sprint 42 — o rollback ainda não está coberto.”</p>
+       <p class="trace-meta"><span class="ts">12:48.4 → 12:55.1</span>Marina · horário do segmento</p>
+      </div>
+      <div class="trace-link"></div>
+      <div class="trace-node">
+       <p class="trace-kind">Gravação original</p>
+       <p class="trace-text trace-file">sincronizacao-semanal.mkv</p>
+       <p class="trace-meta"><span class="hash">sha256 3f9c…e1a0</span>conferido antes e depois do processamento</p>
+      </div>
+     </div>
+     <figcaption><span class="tag">Ilustração</span>Dados fictícios.</figcaption>
+    </figure>
+   </article>
+
+   <article class="feature" aria-labelledby="step-3">
+    <div class="feature-copy">
+     <p class="step"><span class="step-number">03</span>Revisar <span class="badge-new">Novo na alpha.11</span></p>
+     <h3 id="step-3">Revise sem apagar o original.</h3>
+     <p>Corrija trechos e nomes de falantes no Studio, gere um novo resumo com seu consentimento e exporte exatamente a versão que você conferiu.</p>
+     <ul class="checks">
+      <li>Histórico com desfazer; mídia, transcrição e falantes originais ficam preservados.</li>
+      <li>Um novo resumo local só roda depois que você vê modelo, destino e limites — e confirma.</li>
+      <li>Exportação em JSON, Markdown, SRT ou WebVTT a partir da prévia que você revisou.</li>
+     </ul>
+    </div>
+    <figure class="feature-visual">
+     <div class="review-mock" role="img" aria-label="Ilustração com dados fictícios: um trecho da transcrição em 12:48 foi corrigido de “sprint quarenta e dois” para “sprint 42”, marcado como revisado, com botão Desfazer e original preservado. Abaixo, a exportação da revisão 3 com os formatos JSON, Markdown, SRT e WebVTT.">
+      <div class="rv-card mock-surface">
+       <div class="rv-head"><span class="ts">12:48</span><strong>Marina</strong><span class="pill pill-ok">Revisado</span><span class="fake-btn fake-btn-ghost">Desfazer</span></div>
+       <p class="rv-text">Prefiro adiar para a <del>sprint quarenta e dois</del> <ins>sprint 42</ins> — o rollback ainda não está coberto.</p>
+       <p class="rv-meta">Original preservado · revisão 3</p>
+      </div>
+      <div class="rv-card mock-surface">
+       <p class="rv-title">Exportar revisão 3</p>
+       <div class="formats"><span class="is-on">JSON</span><span>Markdown</span><span>SRT</span><span>WebVTT</span></div>
+       <p class="rv-meta">Prévia conferida · trechos com palavras editadas saem em JSON ou Markdown</p>
+      </div>
+     </div>
+     <figcaption><span class="tag">Ilustração</span>Dados fictícios.</figcaption>
+    </figure>
+   </article>
+  </div>
  </section>
 
- <section id="status" class="wrap section">
-  <div class="section-heading"><div><p class="eyebrow">O que esperar hoje</p><h2>Usado na rotina.<br>Cobertura em expansão.</h2></div><p>O autor usa o núcleo de gravação e recuperação de contexto continuamente. Esse relato de uso e os testes offline são evidências diferentes: nenhum deles garante toda combinação de app, browser, desktop ou modelo.</p></div>
-  <p class="author-evidence"><strong>Experiência do autor:</strong> Caio relata que o projeto funciona bem na sua rotina e que consegue reencontrar informações nas gravações. Não há neste release uma medição publicada de taxa de falhas ou de compatibilidade universal.</p>
-  <div class="status-grid"><article class="status-card"><p class="eyebrow">Verificado offline</p><h3>Contratos e dados sintéticos.</h3><ul><li>Instalação com lock, configuração sem sobrescrita e desinstalação que preserva dados.</li><li>UI Qt, preview sintético, consentimento, cancelamento e descarte de respostas antigas.</li><li>Adapters de produção com transporte de teste e referências à fonte.</li></ul></article><article class="status-card limitations"><p class="eyebrow">Cobertura ainda não demonstrada</p><h3>Outros ambientes e novos fluxos de IA.</h3><ul><li>Detecção e captura em outros browsers, apps e ambientes Linux; reprodução por combinação de codecs e desktop.</li><li>Qualidade da análise visual e dos resumos novos, acesso a modelos e cobrança dos providers.</li><li>Leitores de tela, escalas de tela variadas, binários e outras plataformas.</li></ul></article></div>
-  <p><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.11/docs/ALPHA11.md">Escopo da alpha.11 <span aria-hidden="true">↗</span></a> <span class="link-divider">·</span> <a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.11/docs/ALPHA11.md#verification">Matriz de jornadas e limites <span aria-hidden="true">↗</span></a></p>
+ <section id="agentes" class="section section-tint" aria-labelledby="agents-title">
+  <div class="wrap">
+   <div class="section-head">
+    <p class="eyebrow">Para suas IAs</p>
+    <h2 id="agents-title">Contexto com fonte para os seus agentes.</h2>
+    <p>Agentes que rodam no seu computador — como Claude Code, Codex e Gemini CLI — consultam suas gravações pela CLI ou por um servidor MCP local. Recebem trechos limitados, com horário, origem e hash, e só dentro do que você autorizou.</p>
+   </div>
+   <div class="agents-grid">
+    <figure class="terminal">
+     <div class="term-bar"><span class="term-dots" aria-hidden="true"><i></i><i></i><i></i></span><span>falatrace · CLI</span></div>
+     <pre class="term-body" tabindex="0" role="region" aria-label="Exemplo de terminal com dados fictícios"><code><span class="p">$ </span>falatrace context search <span class="s">"migração do banco"</span> --limit 3
+{
+  <span class="k">"items"</span>: [{
+    <span class="k">"jobId"</span>: <span class="s">"7c1e…b42f"</span>,
+    <span class="k">"title"</span>: <span class="s">"Sincronização semanal"</span>,
+    <span class="k">"date"</span>: <span class="s">"2026-09-29"</span>,
+    <span class="k">"excerpt"</span>: <span class="s">"…prefiro adiar para a sprint 42 — o rollback…"</span>
+  }],
+  <span class="k">"trust"</span>: <span class="s">"untrusted-meeting-data"</span>
+}
+
+<span class="p">$ </span>falatrace context meeting 7c1e…b42f --query <span class="s">"migração"</span>
+{
+  <span class="k">"excerpts"</span>: [{
+    <span class="k">"timestamps"</span>: { <span class="k">"start"</span>: <span class="n">768.4</span>, <span class="k">"end"</span>: <span class="n">775.1</span> },
+    <span class="k">"timing"</span>: <span class="s">"segment"</span>,
+    <span class="k">"segmentIds"</span>: [<span class="s">"s000214"</span>],
+    <span class="k">"text"</span>: <span class="s">"Prefiro adiar para a sprint 42 — o rollback…"</span>
+  }],
+  <span class="k">"budget"</span>: { <span class="k">"maxCharacters"</span>: <span class="n">4096</span>, <span class="k">"truncated"</span>: <span class="n">false</span> },
+  <span class="k">"trust"</span>: <span class="s">"untrusted-meeting-data"</span>
+}</code></pre>
+     <figcaption><span class="tag">Exemplo</span>Saída abreviada com dados fictícios; os campos são os da CLI.</figcaption>
+    </figure>
+    <div class="agents-side">
+     <figure class="chat mock-surface">
+      <div class="chat-msg chat-user"><p class="chat-who">Você</p><p>Por que a migração do banco ficou para a sprint 42?</p></div>
+      <div class="chat-msg chat-agent"><p class="chat-who">Seu agente</p><p>Na sincronização semanal de 29/09, a Marina pediu para adiar porque o rollback ainda não estava coberto <span class="nowrap"><span class="ts">12:48</span>.</span> A Ana ficou de revisar o plano até sexta <span class="nowrap"><span class="ts">14:02</span>.</span></p></div>
+      <figcaption><span class="tag">Ilustração</span>Conversa fictícia. A qualidade das respostas depende do modelo e não foi validada.</figcaption>
+     </figure>
+     <ul class="points">
+      <li><span class="icon-box"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-terminal"/></svg></span><div><h3>Skill pronta</h3><p>Ensina o agente a buscar, citar a origem e respeitar limites — sem permissão para gravar, enviar ou apagar.</p></div></li>
+      <li><span class="icon-box"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-key"/></svg></span><div><h3>Acesso que você controla</h3><p>Autorização por gravação e destinatário, com pausa, revogação e um saldo que não renova ao reiniciar.</p></div></li>
+      <li><span class="icon-box"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-braces"/></svg></span><div><h3>Dados, não ordens</h3><p>O conteúdo das reuniões chega marcado como dado não confiável, nunca como instrução para o agente.</p></div></li>
+     </ul>
+    </div>
+   </div>
+   <p class="fine">Nenhum agente é conectado automaticamente: você configura cada cliente. Agentes com modelo na nuvem podem enviar ao provider deles o que receberem.</p>
+  </div>
  </section>
 
- <section id="candidate" class="wrap section candidate-section">
-  <p class="eyebrow">Acesso para IA · incluído na alpha.5</p>
-  <details><summary><span>Autorize sua IA, com limites visíveis</span><span class="details-hint" data-close="Fechar −" aria-hidden="true">Abrir +</span></summary>
-   <div class="candidate-content"><p class="lead">Acesso contínuo para sua IA, com limites visíveis.</p><p>A alpha.5 inclui autorização persistente por gravação e destinatário, pausa, revogação e preview opcional. Um opt-in separado permite acesso somente a frames de gravações atuais e futuras desta instalação para Codex/OpenAI, Claude/Anthropic ou Gemini/Google; ele não autoriza análise por API nem consulta de transcrições ou resumos. A conexão de cada cliente é configurada separadamente; não há filtro garantido de segredos. Consultar frames locais não executa um modelo. Os adapters de análise OpenAI/Google estão implementados, com envio desativado por padrão e sem validação ao vivo.</p>
-   <figure class="product-figure"><a class="image-link" href="assets/agent-access-alpha5.png" aria-label="Ampliar a tela real de acesso para IA com dados sintéticos"><img src="assets/agent-access-alpha5.png" width="1320" height="820" alt="Studio alpha.5: autorização explícita para um agente e preview de um frame sintético." loading="eager"></a><figcaption><span class="tag">UI real · alpha.5</span> Dados sintéticos; render offscreen. Nenhuma inferência real foi executada.</figcaption></figure>
-   <p class="small">Observações visuais são parciais. Memória visual durável continua sendo proposta, sem armazenamento ativado. Nenhum destinatário ou gravação recebe autorização automaticamente.</p></div>
-  </details>
+ <section id="studio" class="section" aria-labelledby="studio-title">
+  <div class="wrap">
+   <div class="section-head">
+    <p class="eyebrow">Studio</p>
+    <h2 id="studio-title">Um app desktop para revisar tudo no mesmo lugar.</h2>
+    <p>Biblioteca, vídeo, transcrição, resumo, falantes e contexto para IA. Estas são capturas reais da interface Qt, com dados sintéticos de teste — nenhuma pessoa foi gravada.</p>
+   </div>
+   <div class="gallery">
+    <figure class="shot shot-main">
+     <a href="assets/studio-alpha5.png" aria-label="Ampliar a tela real do Studio com biblioteca, vídeo e transcrição"><img src="assets/studio-alpha5.png" width="1320" height="820" loading="lazy" decoding="async" alt="Studio em português, tema claro: lista de gravações à esquerda, área do vídeo ao centro e transcrição à direita, com uma gravação sintética de exemplo."></a>
+     <figcaption><span class="tag tag-real">UI real · alpha.5</span>Biblioteca, vídeo e transcrição no tema claro.</figcaption>
+    </figure>
+    <figure class="shot">
+     <a href="assets/studio-consent.png" aria-label="Ampliar a tela real de confirmação antes de gravar"><img src="assets/studio-consent.png" width="1320" height="820" loading="lazy" decoding="async" alt="Studio no tema escuro com o diálogo “Antes de iniciar a gravação”, que pede a confirmação da permissão das pessoas envolvidas."></a>
+     <figcaption><span class="tag tag-real">UI real · alpha.1</span>Confirmação antes de gravar, no tema escuro.</figcaption>
+    </figure>
+    <figure class="shot">
+     <a href="assets/agent-access-alpha5.png" aria-label="Ampliar a tela real de acesso para IA"><img src="assets/agent-access-alpha5.png" width="1320" height="820" loading="lazy" decoding="async" alt="Diálogo “Acesso para IA” do Studio com saldo local de extrações e análises e o preview de um frame sintético de barras coloridas."></a>
+     <figcaption><span class="tag tag-real">UI real · alpha.5</span>Acesso para IA: autorização, saldo e preview de frame.</figcaption>
+    </figure>
+   </div>
+   <p class="fine">As capturas são de alphas anteriores; a alpha.11 acrescenta a aba Resumo com consentimento, a revisão e a exportação. Clique em uma imagem para ampliar.</p>
+  </div>
  </section>
 
- <section class="download-section section"><div class="wrap download-inner"><div><p class="eyebrow">Código próprio sob MIT</p><h2>Comece pela fonte.</h2><p>Leia os requisitos, configure conscientemente e valide seu ambiente antes de gravar. A distribuição atual é código-fonte para Linux.</p></div><div class="download-actions"><a class="button" href="https://github.com/caiolombello/falatrace/releases/tag/v0.2.0-alpha.11">Ver release alpha.11 <span aria-hidden="true">↗</span></a><a href="https://github.com/caiolombello/falatrace/releases/download/v0.2.0-alpha.11/falatrace-0.2.0-alpha.11-source.tar.gz">Baixar código-fonte (.tar.gz)</a><a href="https://github.com/caiolombello/falatrace/releases/download/v0.2.0-alpha.11/falatrace-0.2.0-alpha.11-source.sha256">Conferir SHA-256</a><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.11/skills/README.md">Instalar a skill nas suas ferramentas</a></div></div></section>
+ <section id="privacidade" class="section section-invert" aria-labelledby="privacy-title">
+  <div class="wrap">
+   <div class="section-head">
+    <p class="eyebrow">Privacidade e controle</p>
+    <h2 id="privacy-title">Seus dados ficam onde você decidir.</h2>
+    <p>Não existe conta nem serviço hospedado: o processamento acontece no seu computador ou nos destinos que você configurar.</p>
+   </div>
+   <ul class="privacy-grid">
+    <li><span class="icon-box"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-laptop"/></svg></span><h3>Local por padrão</h3><p>Uma configuração nova usa Whisper.cpp e Ollama no seu computador, com processamento automático desligado. Você instala os modelos.</p></li>
+    <li><span class="icon-box"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-send"/></svg></span><h3>Envio é escolha sua</h3><p>OpenAI, Gemini, workers remotos e backups só entram em ação se você configurar — e podem transmitir conteúdo. Confira destino e custo antes.</p></li>
+    <li><span class="icon-box"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-shield"/></svg></span><h3>Consentimento por etapa</h3><p>Gravar, gerar um resumo no Studio e liberar frames para um agente são autorizações separadas, com limites que persistem.</p></li>
+    <li><span class="icon-box"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-trash"/></svg></span><h3>Exclusão com escopo claro</h3><p>Remover localmente invalida a memória derivada antes de mexer nos arquivos. Cópias remotas ou já aceitas por um provider não somem com isso.</p></li>
+   </ul>
+  </div>
+ </section>
+
+ <section id="status" class="section" aria-labelledby="status-title">
+  <div class="wrap">
+   <div class="section-head">
+    <p class="eyebrow">Status honesto</p>
+    <h2 id="status-title">Usado na rotina do autor. Ainda uma alpha.</h2>
+    <p>Caio Barbieri criou o FalaTrace e usa continuamente o núcleo de gravação e recuperação de contexto. Esse relato não é uma medição de confiabilidade — veja o que já foi verificado e o que ainda falta demonstrar.</p>
+   </div>
+   <div class="status-cards">
+    <article class="status-card">
+     <h3><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check-circle"/></svg>Verificado offline</h3>
+     <ul>
+      <li><strong>759 testes</strong> sem falhas no candidato aprovado da alpha.11, com dados sintéticos.</li>
+      <li>Instalação com lockfile, configuração que não sobrescreve a sua e desinstalação que preserva dados.</li>
+      <li>Jornada de resumo do Studio aprovada em 8 de 8 casos com QML real em Qt offscreen.</li>
+     </ul>
+    </article>
+    <article class="status-card status-open">
+     <h3><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clock"/></svg>Ainda não demonstrado</h3>
+     <ul>
+      <li>Detecção e captura em outros browsers, apps e ambientes Linux.</li>
+      <li>Qualidade real de transcrição, falantes, resumos e análise visual com modelos instalados.</li>
+      <li>Leitores de tela, escalas de tela variadas, instalação em máquina sem cache de pacotes, binários e outras plataformas.</li>
+     </ul>
+    </article>
+   </div>
+   <div class="compat">
+    <table>
+     <caption>Compatibilidade na alpha.11</caption>
+     <thead><tr><th scope="col">Recurso</th><th scope="col">Situação</th></tr></thead>
+     <tbody>
+      <tr><th scope="row">Detecção automática no Slack, Zen e Helium<small>Por sinais locais de microfone ou câmera; não identifica o serviço da chamada.</small></th><td><span class="state state-ok"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check-circle"/></svg>Disponível</span></td></tr>
+      <tr><th scope="row">Chromium, Firefox, Zoom e outros apps<small>Por enquanto, use a gravação manual.</small></th><td><span class="state state-planned"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clock"/></svg>Planejado</span></td></tr>
+      <tr><th scope="row">Gravação manual (áudio via FFmpeg, OBS, GPU Screen Recorder)<small>Depende do backend e do desktop.</small></th><td><span class="state state-ok"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check-circle"/></svg>Disponível</span></td></tr>
+      <tr><th scope="row">Transcrição com Whisper.cpp local, OpenAI ou Gemini</th><td><span class="state state-ok"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check-circle"/></svg>Disponível</span></td></tr>
+      <tr><th scope="row">Resumos com Ollama local ou OpenAI<small>Qualidade dos modelos não validada.</small></th><td><span class="state state-ok"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check-circle"/></svg>Disponível</span></td></tr>
+      <tr><th scope="row">Studio desktop (Qt)<small>Interface em português.</small></th><td><span class="state state-ok"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check-circle"/></svg>Disponível</span></td></tr>
+      <tr><th scope="row">Windows e macOS</th><td><span class="state state-out"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-ban"/></svg>Fora do escopo</span></td></tr>
+     </tbody>
+    </table>
+   </div>
+   <ul class="doc-links">
+    <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.11/docs/ALPHA11.md">Escopo e verificação da alpha.11 <span aria-hidden="true">↗</span></a></li>
+    <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.11/docs/COMPATIBILITY.md">Matriz de compatibilidade <span aria-hidden="true">↗</span></a></li>
+    <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.11/docs/ROADMAP.md">Roadmap <span aria-hidden="true">↗</span></a></li>
+   </ul>
+  </div>
+ </section>
+
+ <section id="comecar" class="section section-tint" aria-labelledby="start-title">
+  <div class="wrap start-grid">
+   <div class="start-copy">
+    <div class="section-head">
+     <p class="eyebrow">Comece pelo código</p>
+     <h2 id="start-title">Instale a alpha.11 em poucos comandos.</h2>
+     <p>A alpha é distribuída como código-fonte para Linux. Nenhum destes comandos inicia uma gravação: a automação é ativada à parte, depois que você revisar regras e consentimento.</p>
+    </div>
+    <h3>Você vai precisar de</h3>
+    <ul class="reqs">
+     <li><strong>Linux</strong> com <strong>Bun 1.4</strong> e <strong>FFmpeg</strong></li>
+     <li>Opcional: <strong>Whisper.cpp</strong> e <strong>Ollama</strong> para processar localmente</li>
+     <li>Opcional: SDK <strong>Qt 6</strong> para o Studio, via <code>bun run desktop:setup</code></li>
+    </ul>
+    <ul class="start-links">
+     <li><a href="https://github.com/caiolombello/falatrace/releases/download/v0.2.0-alpha.11/falatrace-0.2.0-alpha.11-source.tar.gz">Baixar código-fonte (.tar.gz)</a></li>
+     <li><a href="https://github.com/caiolombello/falatrace/releases/download/v0.2.0-alpha.11/falatrace-0.2.0-alpha.11-source.sha256">Conferir SHA-256</a></li>
+     <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.11/skills/README.md">Instalar a skill nos seus agentes <span aria-hidden="true">↗</span></a></li>
+     <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.11/README.md">Guia completo no README <span aria-hidden="true">↗</span></a></li>
+    </ul>
+   </div>
+   <div>
+    <div class="code-card">
+     <div class="code-bar"><span>Terminal</span><span class="copy-status" id="install-status" role="status"></span><button class="copy-btn" type="button" data-copy-target="install-code" data-copy-status="install-status" data-copied="Copiado" data-failed="Não foi possível copiar" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-copy"/></svg>Copiar comandos</button></div>
+     <pre id="install-code" tabindex="0" role="region" aria-label="Comandos de instalação"><code><span class="c"># 1. Baixe o código e fixe a versão alpha.11</span>
+git clone https://github.com/caiolombello/falatrace.git
+cd falatrace
+git switch --detach v0.2.0-alpha.11
+
+<span class="c"># 2. Instale a CLI em ~/.local/bin</span>
+bun install --frozen-lockfile --ignore-scripts
+make install-cli INSTALL_PREFIX="$HOME/.local"
+
+<span class="c"># 3. Crie a configuração e confira o ambiente (não grava nada)</span>
+falatrace init
+falatrace record doctor</code></pre>
+    </div>
+    <p class="note-safe"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-shield"/></svg><span><code>init</code> só cria a configuração se ela não existir; configurações existentes são preservadas. <code>record doctor</code> apenas inspeciona os backends.</span></p>
+   </div>
+  </div>
+ </section>
+
+ <section id="faq" class="section" aria-labelledby="faq-title">
+  <div class="wrap faq-grid">
+   <div class="section-head">
+    <p class="eyebrow">FAQ</p>
+    <h2 id="faq-title">Perguntas frequentes</h2>
+    <p>Não achou sua resposta? <a href="https://github.com/caiolombello/falatrace/issues">Abra uma issue</a> — sem colar configurações nem dados privados.</p>
+   </div>
+   <div class="faq-list">
+    <details>
+     <summary>O FalaTrace começa a gravar sozinho depois de instalado?</summary>
+     <div class="faq-answer"><p>Não. Instalar e rodar <code>falatrace init</code> não inicia nenhuma captura. A detecção automática vem desligada; quando ativada, o modo inicial só notifica. Gravar automaticamente exige uma configuração explícita sua.</p></div>
+    </details>
+    <details>
+     <summary>Quais apps de chamada ele reconhece?</summary>
+     <div class="faq-answer"><p>Hoje, Slack, Zen e Helium, por sinais locais de uso de microfone ou câmera. Esse sinal não identifica o serviço (Meet, Teams, Zoom na web) nem a aba. Para outros apps, use a gravação manual; Chromium, Firefox e Zoom estão no roadmap.</p></div>
+    </details>
+    <details>
+     <summary>Minhas gravações vão para a nuvem?</summary>
+     <div class="faq-answer"><p>Só se você configurar. Uma configuração nova processa localmente com Whisper.cpp e Ollama. Providers como OpenAI e Gemini, workers remotos e backups são opcionais e podem transmitir conteúdo; o Studio mostra destino e limites antes de pedir seu consentimento para resumir.</p></div>
+    </details>
+    <details>
+     <summary>Quanto custa?</summary>
+     <div class="faq-answer"><p>O FalaTrace é gratuito e de código aberto (MIT). Providers externos cobram à parte, e uma assinatura de chat (ChatGPT, Claude, Gemini) não inclui uso de API.</p></div>
+    </details>
+    <details>
+     <summary>Funciona com o ChatGPT, o Claude ou o Gemini no navegador?</summary>
+     <div class="faq-answer"><p>Não diretamente. A integração é para agentes que rodam no seu computador e usam a CLI ou o servidor MCP local, como Claude Code, Codex e Gemini CLI. Os sites hospedados não acessam ferramentas locais por meio dela.</p></div>
+    </details>
+    <details>
+     <summary>Posso confiar nos resumos?</summary>
+     <div class="faq-answer"><p>Confira sempre. Os resumos apontam para trechos da transcrição e sinalizam horários aproximados e referências incertas. A validação garante que a referência existe — não que o modelo tenha interpretado corretamente.</p></div>
+    </details>
+    <details>
+     <summary>E o consentimento das outras pessoas na chamada?</summary>
+     <div class="faq-answer"><p>É responsabilidade de quem grava. O Studio pede confirmação antes de iniciar uma captura, e a detecção automática não estabelece consentimento. Siga as leis e as políticas que se aplicam a você.</p></div>
+    </details>
+    <details>
+     <summary>Tem versão para Windows ou macOS?</summary>
+     <div class="faq-answer"><p>Não. Esta alpha é exclusiva para Linux e distribuída como código-fonte.</p></div>
+    </details>
+    <details>
+     <summary>Em que idioma está a interface?</summary>
+     <div class="faq-answer"><p>A interface do Studio está em português. A CLI, a skill para agentes e a documentação técnica estão em inglês.</p></div>
+    </details>
+   </div>
+  </div>
+ </section>
+
+ <section class="cta" aria-labelledby="cta-title">
+  <div class="wrap">
+   <svg class="mark" aria-hidden="true" focusable="false"><use href="#mark"/></svg>
+   <h2 id="cta-title">Pare de procurar o que já foi dito.</h2>
+   <p>Instale a alpha.11, configure no seu ritmo e dê às suas IAs contexto com fonte.</p>
+   <div class="cta-row">
+    <a class="btn btn-lg" href="#comecar">Instalar a alpha.11</a>
+    <a class="btn btn-lg btn-ghost" href="https://github.com/caiolombello/falatrace/releases/tag/v0.2.0-alpha.11">Ver release no GitHub <span aria-hidden="true">↗</span></a>
+   </div>
+  </div>
+ </section>
 </main>
-<footer class="wrap"><a class="brand" href="#"><img src="assets/falatrace-mark-light.svg" width="32" height="32" alt=""><span>FalaTrace</span></a><p>Por Caio Barbieri · MIT para código próprio.<br>Sem analytics, fontes externas ou mídia privada.</p><a href="https://github.com/caiolombello/falatrace">Código e documentação <span aria-hidden="true">↗</span></a></footer>
-</body></html>
+
+<footer class="site-footer">
+ <div class="wrap footer-grid">
+  <div class="footer-brand">
+   <a class="brand" href="#" aria-label="FalaTrace, voltar ao início"><svg class="mark" aria-hidden="true" focusable="false"><use href="#mark"/></svg><span>FalaTrace</span></a>
+   <p>Gravações e contexto com origem para Linux. Criado e usado por Caio Barbieri.</p>
+  </div>
+  <nav aria-labelledby="footer-project">
+   <h2 id="footer-project">Projeto</h2>
+   <ul>
+    <li><a href="https://github.com/caiolombello/falatrace">Código no GitHub</a></li>
+    <li><a href="https://github.com/caiolombello/falatrace/releases/tag/v0.2.0-alpha.11">Release alpha.11</a></li>
+    <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.11/CHANGELOG.md">Changelog</a></li>
+    <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.11/docs/ROADMAP.md">Roadmap</a></li>
+   </ul>
+  </nav>
+  <nav aria-labelledby="footer-docs">
+   <h2 id="footer-docs">Documentação</h2>
+   <ul>
+    <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.11/README.md">README</a></li>
+    <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.11/docs/COMPATIBILITY.md">Compatibilidade</a></li>
+    <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.11/skills/README.md">Skill para agentes</a></li>
+    <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.11/SECURITY.md">Segurança</a></li>
+   </ul>
+  </nav>
+  <nav aria-labelledby="footer-legal">
+   <h2 id="footer-legal">Licença</h2>
+   <ul>
+    <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.11/LICENSE">MIT</a></li>
+    <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.11/THIRD-PARTY-NOTICES.md">Avisos de terceiros</a></li>
+   </ul>
+  </nav>
+ </div>
+ <div class="wrap footer-bottom">
+  <p>© 2026 Caio Barbieri · Código próprio sob MIT.</p>
+  <p>Esta página não usa analytics nem fontes externas e não contém mídia privada.</p>
+ </div>
+</footer>
+</body>
+</html>
