@@ -231,7 +231,9 @@ ApplicationWindow {
             return null
         }
     }
-    property var recentItems: items.slice().sort((a, b) => (Date.parse(b.modifiedAt) || 0) - (Date.parse(a.modifiedAt) || 0)).slice(0, 6)
+    // Bridge timestamps are epoch numbers; Date.parse on a number falls back to Qt's slow string parser for every comparison.
+    function timeValue(value) { return typeof value === "number" ? value : (Date.parse(value) || 0) }
+    property var recentItems: items.map(item => ({item: item, at: timeValue(item.modifiedAt)})).sort((a, b) => b.at - a.at).slice(0, 6).map(entry => entry.item)
     property var libraryStats: {
         let transcripts = 0, active = 0, attention = 0
         for (const item of items) {
@@ -1222,7 +1224,7 @@ ApplicationWindow {
         function onFailed(message) { summaryConnectionLost();revisionConnectionLost();onboardingConnectionLost();if(agentDialog.visible)agentError=message; captureKnown = false; pending = {}; errorText = message; loading = false; resolving = false; detailLoading = false; operationPolling = false; captureBusy = false; contextLoading = false }
         function onAvailabilityChanged() {
             if (!backend.available) { summaryConnectionLost();revisionConnectionLost();onboardingConnectionLost();if(agentDialog.visible)agentError="Serviço desconectado; dados preservados. Feche e reconecte para continuar."; captureKnown = false; pending = {}; loading = false; resolving = false; detailLoading = false; operationPolling = false; captureBusy = false; contextLoading = false; notice = "Serviço desconectado. Use Reconectar para continuar." }
-            else { errorText = ""; notice = "Serviço conectado."; send("capture-status", ""); send("jobs-list", ""); send("list", ""); send("ux-capabilities", "") }
+            else { errorText = ""; notice = "Serviço conectado."; if (!libraryFresh) send("list-cached", ""); send("capture-status", ""); send("jobs-list", ""); send("list", ""); send("ux-capabilities", "") }
         }
         function onResponse(message) {
             const request = pending[message.id]
@@ -1234,7 +1236,7 @@ ApplicationWindow {
             if (["detail","context-meeting","revision-save","revision-undo"].includes(request.op) && request.reviewGeneration !== reviewGeneration) return
             if(request.op.startsWith("export-") && request.exportGeneration!==exportGeneration)return
             if (request.op === "playback-status") operationPolling = false
-            if (request.op === "list") { loading = false; libraryRefreshing = false; libraryFresh = true }
+            if (request.op === "list") { loading = false; libraryRefreshing = false }
             if (request.op === "detail") detailLoading = false
             if (request.op.startsWith("frames-") && request.op !== "frames-cancel" && (request.generation !== generation || request.frameGeneration !== frameGeneration)) return
             if((request.op.startsWith("agent-")||request.op.startsWith("provider-")) && (request.generation !== generation || request.agentGeneration !== agentGeneration)) return
@@ -1270,8 +1272,9 @@ ApplicationWindow {
             } else if (request.op === "onboarding-read") { onboardingDraft = result;onboardingError="";onboardingNeedsReload=false;onboardingSaveUncertain=false
             } else if (request.op === "onboarding-save-local") { notice = result.cleanupPending?"Escolha local salva; uma cópia temporária privada pode permanecer na pasta da configuração. Nenhum serviço iniciado.":"Escolha local salva; nenhum serviço iniciado."; onboardingDialog.close()
             } else if (request.op === "list-cached") {
-                if (!libraryFresh && Array.isArray(result.items)) { items = result.items; loading = false; libraryRefreshing = true }
+                if (!libraryFresh && Array.isArray(result.items)) { items = result.items; loading = false; libraryRefreshing = hasPending("list") }
             } else if (request.op === "list") {
+                libraryFresh = true
                 items = result.items
                 if (selected.key) { const current = items.find(item => item.key === selected.key); if (current) { selected = current; detailLoading = true; send("detail", selected.key) } else backToLibrary() }
                 if (!selected.key && smokeKey) {

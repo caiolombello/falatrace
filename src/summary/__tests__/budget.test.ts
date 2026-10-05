@@ -36,6 +36,11 @@ test("OpenAI limit follows the chosen model in UTF-8 bytes; unknown models assum
     expect(large.max).toBeLessThan(1_050_000 - 16_384);
     expect(large.max).toBeLessThanOrEqual(MAX_SUMMARY_INPUT_CHARACTERS);
   }
+  // Verified long-context windows; near-miss IDs (e.g. chat aliases) keep the safe default.
+  const window = (model: string) => summaryInputLimit(config, "openai", model).max - small.max + 128_000;
+  for (const model of ["gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano", "gpt-4.1-2025-04-14"]) expect(window(model)).toBe(1_047_576);
+  for (const model of ["gpt-5", "gpt-5-mini", "gpt-5-nano", "gpt-5-mini-2025-08-07"]) expect(window(model)).toBe(400_000);
+  for (const model of ["gpt-5-chat-latest", "gpt-4.10", "gpt-50"]) expect(summaryInputLimit(config, "openai", model)).toEqual(small);
   config.summary.maxInputCharacters = 4096;
   expect(summaryInputLimit(config, "openai", "gpt-4o-mini")).toEqual(small);
   expect(summaryInputLimit(config, "ollama", "qwen3.5:9b")).toEqual({ max: 4096, unit: "characters" });

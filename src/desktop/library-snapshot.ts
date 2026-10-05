@@ -1,3 +1,4 @@
+import { promises as fs } from "node:fs";
 import { dirname, join } from "node:path";
 import { writePrivateArtifact } from "../jobs/artifacts";
 import { getDefaultJobStateDir } from "../jobs/store";
@@ -15,6 +16,8 @@ export const defaultLibrarySnapshotPath = (): string =>
 export const writeLibrarySnapshot = async (items: unknown[], path = defaultLibrarySnapshotPath()): Promise<void> => {
   const raw = JSON.stringify({ version: SNAPSHOT_VERSION, savedAt: new Date().toISOString(), items });
   if (Buffer.byteLength(raw, "utf8") > MAX_SNAPSHOT_BYTES) return;
+  // A fresh install may not have the state directory yet.
+  await fs.mkdir(dirname(path), { recursive: true, mode: 0o700 });
   await writePrivateArtifact(path, raw);
 };
 

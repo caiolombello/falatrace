@@ -11,6 +11,8 @@
 - Raise the OpenAI summary output cap to 16,384 tokens for reasoning models and report a truncated reply explicitly.
 - Default OpenAI summary and timesheet classification model: `gpt-6-luna` (was `gpt-4o-mini`). Existing configurations and recorded jobs keep their model.
 - The About dialog shows the installed release directory and commit from its manifest, so local builds with the same version are distinguishable.
+- Fix a Studio freeze of ~15–20 s after the library loads: recent recordings were sorted with `Date.parse` on numeric timestamps, which fell back to Qt's slow date parser for every comparison (and left the order wrong). The packaged Studio now also requests the saved library on connection, keeps it when a fresh list fails, and creates the snapshot directory when missing.
+- OpenAI summary limits recognise the verified `gpt-4.1` (1,047,576 tokens) and `gpt-5`/`gpt-5-mini`/`gpt-5-nano` (400,000) context windows.
 
 ## 0.2.0-alpha.11 — reviewed source, exports and Studio summary consent
 

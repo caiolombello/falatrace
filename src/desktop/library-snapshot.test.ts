@@ -20,6 +20,11 @@ test("library snapshot round-trips privately and rejects malformed or foreign co
     await fs.rm(path);
     await fs.symlink(join(root, "elsewhere"), path);
     expect(await readLibrarySnapshot(path)).toBeUndefined();
+    // A fresh install may not have the state directory yet.
+    const nested = join(root, "missing", "state", "snapshot.json");
+    await writeLibrarySnapshot([{ key: "/synthetic/b.mkv" }], nested);
+    expect((await readLibrarySnapshot(nested))?.items).toEqual([{ key: "/synthetic/b.mkv" }]);
+    expect((await fs.stat(join(root, "missing", "state"))).mode & 0o777).toBe(0o700);
   } finally { await fs.rm(root, { recursive: true, force: true }); }
 });
 

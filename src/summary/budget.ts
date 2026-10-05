@@ -13,7 +13,9 @@ export type SummaryInputLimit = { max: number; unit: SummaryInputUnit };
 // Unknown models assume 128k tokens, the smallest window among OpenAI chat models with
 // structured outputs, so a user's model choice never needs a code change to stay in bounds.
 const OPENAI_CONTEXT_TOKENS: ReadonlyArray<readonly [RegExp, number]> = [
-  [/^gpt-6([.-]|$)/, 1_050_000]
+  [/^gpt-6([.-]|$)/, 1_050_000],
+  [/^gpt-4\.1(-mini|-nano)?(-\d{4}-\d{2}-\d{2})?$/, 1_047_576],
+  [/^gpt-5(-mini|-nano)?(-\d{4}-\d{2}-\d{2})?$/, 400_000]
 ];
 const DEFAULT_OPENAI_CONTEXT_TOKENS = 128_000;
 // Byte-level BPE tokens each cover at least one UTF-8 byte, so a payload's byte length
