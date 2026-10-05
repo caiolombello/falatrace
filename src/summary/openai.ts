@@ -10,6 +10,7 @@ import {
   canonicalizeSummary
 } from "./context";
 import { SUMMARY_JSON_SCHEMA, SUMMARY_SYSTEM_PROMPT } from "./schema";
+import { OPENAI_SUMMARY_OUTPUT_TOKENS, summaryInputBudget } from "./budget";
 import type { SummaryInputEvidence } from "./evidence";
 
 export const summarizeWithOpenAI = async (
@@ -21,7 +22,7 @@ export const summarizeWithOpenAI = async (
   signal?: AbortSignal
 ): Promise<RecordingSummary> => {
   signal?.throwIfAborted();
-  const userContent = buildSummaryUserContent(transcript, context, evidence, config.summary.maxInputCharacters);
+  const userContent = buildSummaryUserContent(transcript, context, evidence, summaryInputBudget(config, "openai", model));
   const apiKey = process.env.OPENAI_API_KEY || config.openai.apiKey;
   if (!apiKey) {
     throw new Error("OPENAI_API_KEY is not configured");
@@ -29,7 +30,7 @@ export const summarizeWithOpenAI = async (
   const client = new OpenAI({ apiKey, maxRetries: 0, timeout: 120_000 });
   const response = await client.chat.completions.create({
     model,
-    max_completion_tokens: 4096,
+    max_completion_tokens: OPENAI_SUMMARY_OUTPUT_TOKENS,
     messages: [
       { role: "system", content: SUMMARY_SYSTEM_PROMPT },
       { role: "user", content: userContent }
@@ -43,7 +44,12 @@ export const summarizeWithOpenAI = async (
       }
     }
   }, { signal });
-  const content = response.choices[0]?.message.content;
+  const choice = response.choices[0];
+  // Reasoning tokens share the output cap; a truncated reply is never partial JSON to parse.
+  if (choice?.finish_reason === "length") {
+    throw new Error("OpenAI summary reached the output token limit before completing");
+  }
+  const content = choice?.message.content;
   if (!content) {
     throw new Error("OpenAI summary response was empty");
   }

@@ -30,7 +30,7 @@ test("private atomic artifact replacement fixes loose permissions and preserves 
 });
 test("summary OpenAI has one attempt and an explicit output budget",async()=>{
  const original=fetch;const config=structuredClone(DEFAULT_CONFIG);config.openai.apiKey="synthetic-not-a-real-key";let calls=0;
- globalThis.fetch=(async(_url:URL|RequestInfo,init?:RequestInit)=>{calls++;expect(JSON.parse(String(init?.body)).max_completion_tokens).toBe(4096);return Response.json({error:{message:"synthetic failure"}},{status:500});}) as unknown as typeof fetch;
+ globalThis.fetch=(async(_url:URL|RequestInfo,init?:RequestInit)=>{calls++;expect(JSON.parse(String(init?.body)).max_completion_tokens).toBe(16384);return Response.json({error:{message:"synthetic failure"}},{status:500});}) as unknown as typeof fetch;
  try{await expect(summarizeWithOpenAI(config,"Fixture.","fixture-model")).rejects.toThrow();expect(calls).toBe(1);}finally{globalThis.fetch=original;}
 });
 test("Gemini cancellation reaches the in-flight stub without retry",async()=>{

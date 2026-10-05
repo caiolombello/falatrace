@@ -7,6 +7,7 @@ import {
 import type { TimesheetContext } from "../timesheet/types";
 import type { SummaryProvider } from "../config/defaults";
 import type { SummaryInputEvidence } from "./evidence";
+import { MAX_SUMMARY_INPUT_CHARACTERS } from "./budget";
 
 const normalized = (value: string): string =>
   value
@@ -69,7 +70,7 @@ export const buildSummaryUserContent = (
     transcript,
     ...(evidence ? { evidence } : {})
   });
-  if (!Number.isSafeInteger(maxCharacters) || maxCharacters < 4096 || maxCharacters > 200_000 || content.length > maxCharacters) {
+  if (!Number.isSafeInteger(maxCharacters) || maxCharacters < 4096 || maxCharacters > MAX_SUMMARY_INPUT_CHARACTERS || content.length > maxCharacters) {
     throw new Error("Summary input exceeds the explicit character budget; chunking or an explicit larger budget is required");
   }
   return content;

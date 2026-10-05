@@ -13,6 +13,7 @@ import { runVisualSession, type LocalVisualAdapter, type ManualVisualConsent } f
 import {validatePipelineVisualReview,withPipelineVisualClaim,pipelineSessionIdentity,commitPipelineVisualReview} from '../visual/pipeline-review';
 import {VisualAppBudget} from "../visual/app-budget";
 import { summarizeInChunks } from "../summary/chunks";
+import { summaryInputBudget } from "../summary/budget";
 import { transcribeWithOpenAI } from "../transcription/openai";
 import { transcribeWithGemini } from "../transcription/gemini";
 import { transcribeWithWhisperCpp } from "../transcription/whisperCpp";
@@ -145,7 +146,7 @@ const processJobOwned = async (
     } : undefined;
     const summary = await summarizeInChunks({
       transcript, segmentIds:scoped?.scope.segments.map(s=>s.id), mediaHash: manifest.source.sha256, context: scoped?undefined:manifest.summary.context, visual: visualEvidence,
-      maxCharacters: config.summary.maxInputCharacters, provider: manifest.summary.provider,
+      maxCharacters: summaryInputBudget(config, manifest.summary.provider, manifest.summary.model), provider: manifest.summary.provider,
       model: manifest.summary.model, adapterIdentity: manifest.summary.provider === "ollama" ? config.summary.ollamaUrl : "openai-chat", cacheDir: join(outputDir, ".summary-chunks"), signal: options.signal,
       adapter: async(part, signal) => {
         await assertUnreviewedPublication(manifest.id);
