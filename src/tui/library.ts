@@ -22,6 +22,7 @@ import type { ReviewedView } from "../revisions";
 const MAX_LIBRARY_FILES = 100_000;
 const MAX_ARTIFACT_BYTES = 10 * 1024 * 1024;
 const MAX_SUMMARY_METADATA_BYTES = 2 * 1024 * 1024;
+const TITLE_CONCURRENCY = 8;
 const GENERATED_MEDIA_NAMES = new Set(["audio_fast.mp3"]);
 
 export type ArtifactKind = "transcript" | "summary";
@@ -202,17 +203,24 @@ export const buildLibrary = async (
     }
   }
 
-  for (const entry of entries.values()) {
-    entry.jobs.sort((left, right) => right.createdAt.localeCompare(left.createdAt));
-    for (const job of entry.jobs) {
-      if (job.state !== "completed") continue;
-      const title = await readMeetingTitle(job, store);
-      if (title) {
-        entry.meetingTitle = title;
-        break;
+  // Title reads are independent per entry; bound concurrency instead of reading
+  // hundreds of reviewed views one after another. Within an entry, the newest
+  // completed job with a title still wins.
+  const pending = [...entries.values()];
+  const workers = Array.from({ length: Math.min(TITLE_CONCURRENCY, pending.length) }, async () => {
+    for (let entry = pending.pop(); entry; entry = pending.pop()) {
+      entry.jobs.sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+      for (const job of entry.jobs) {
+        if (job.state !== "completed") continue;
+        const title = await readMeetingTitle(job, store);
+        if (title) {
+          entry.meetingTitle = title;
+          break;
+        }
       }
     }
-  }
+  });
+  await Promise.all(workers);
   return [...entries.values()].sort(
     (left, right) => right.modifiedAt - left.modifiedAt || left.relativePath.localeCompare(right.relativePath)
   );
@@ -373,8 +381,11 @@ export const readMeetingTitle = async (
     }
     if (view) {
       const current = await readCurrentReviewedSummary(job, view);
-      await assertCurrentReviewedView(job, view, store);
-      if (current || view.revision.humanReviewed) return current?.summary.title;
+      if (current || view.revision.humanReviewed) {
+        await assertCurrentReviewedView(job, view, store);
+        return current?.summary.title;
+      }
+      // Falling through, the final check below covers this whole read window.
     }
     if (job.state !== "completed") return undefined;
     const stat = await assertExistingJobArtifactPath(job, path);

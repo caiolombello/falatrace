@@ -64,6 +64,7 @@ type Response = { id: number; ok: true; result: unknown } | { id: number; ok: fa
 const MAX_LINE = 1024 * 1024;
 const UUID = /^[a-f0-9-]{36}$/i;
 let libraryCache: { at: number; config: Awaited<ReturnType<typeof loadConfig>>["config"]; entries: LibraryEntry[] } | undefined;
+let libraryLoad: Promise<NonNullable<typeof libraryCache>> | undefined;
 
 const emit = (response: Response): void => { process.stdout.write(`${JSON.stringify(response)}\n`); };
 const safeError = (op: string, error: unknown): string => {
@@ -127,12 +128,23 @@ const findEntry = async (key: string): Promise<{ config: Awaited<ReturnType<type
   if (!entry) throw new Error("Gravação não encontrada na biblioteca");
   return { config, entry };
 };
-const loadLibrary = async (force = false): Promise<{ config: Awaited<ReturnType<typeof loadConfig>>["config"]; entries: LibraryEntry[] }> => {
+/** Drop cached and in-flight reads; the next reader starts a fresh build. */
+const invalidateLibrary = (): void => { libraryCache = undefined; libraryLoad = undefined; };
+const loadLibrary = async (force = false): Promise<NonNullable<typeof libraryCache>> => {
   if (!force && libraryCache) return libraryCache;
-  const { config } = await loadConfig();
-  const entries = await buildLibrary(config, new JobStore());
-  libraryCache = { at: Date.now(), config, entries };
-  return libraryCache;
+  // Concurrent readers (e.g. list + jobs-list at startup) share one build.
+  // A forced refresh always starts its own; only the newest build is cached.
+  if (!force && libraryLoad) return libraryLoad;
+  const load = (async () => {
+    const { config } = await loadConfig();
+    return { at: Date.now(), config, entries: await buildLibrary(config, new JobStore()) };
+  })();
+  libraryLoad = load;
+  try {
+    const loaded = await load;
+    if (libraryLoad === load) libraryCache = loaded;
+    return loaded;
+  } finally { if (libraryLoad === load) libraryLoad = undefined; }
 };
 const readPlainArtifact = async (job: JobRecord, kind: "transcript" | "summary"): Promise<string> => {
   try { return await readArtifact(job, kind); } catch { return ""; }
@@ -382,19 +394,19 @@ const handle = async (request: Request): Promise<unknown> => {
       job:await new JobStore().get(request.key!),
       config:request.op==="summary-cancel" ? undefined : (await loadConfig()).config,
     }));
-    if (request.op==="summary-run") libraryCache=undefined;
+    if (request.op==="summary-run") invalidateLibrary();
     return result;
   }
   if(request.op.startsWith('provider-')){const p=request.payload||{},key=request.key||'';
    if(request.op==='provider-cancel')return providerStudio.cancel(p.grantId||'');
-   const resolveId=async()=>{libraryCache=undefined;const {entry}=await findEntry(key);const id=registeredAgentRecordingId(entry);if(!id)throw Error('Recording not registered');return id;};
+   const resolveId=async()=>{invalidateLibrary();const {entry}=await findEntry(key);const id=registeredAgentRecordingId(entry);if(!id)throw Error('Recording not registered');return id;};
    if(request.op==='provider-analyze')return providerStudio.run(resolveId,{grantId:p.grantId||'',requestId:p.requestId||'',question:p.question||'',timestamps:p.timestamps||[]});
    return providerStudio.authorize(await resolveId(),{provider:p.provider!,model:p.model||'',consent:p.consent===true,analysis:p.analysis!,context:p.context===true,maxFrames:p.maxFrames,maxBytes:p.maxBytes});
   }
   if(request.op.startsWith('agent-')){const key=request.key||'';const p=request.payload||{};
    if(request.op==='agent-cancel')return agentStudio.cancel(p.grantId||'');
-   if(request.op==='agent-frames')return agentStudio.frames(async()=>{libraryCache=undefined;const {entry}=await findEntry(key);const id=registeredAgentRecordingId(entry);if(!id)throw Error('Recording is not registered');return id;},p.grantId||'',p.timestamps||[]);
-   libraryCache=undefined;const {entry}=await findEntry(key);const recordingId=registeredAgentRecordingId(entry);if(!recordingId)throw Error('Recording is not registered; no agent opt-in available');
+   if(request.op==='agent-frames')return agentStudio.frames(async()=>{invalidateLibrary();const {entry}=await findEntry(key);const id=registeredAgentRecordingId(entry);if(!id)throw Error('Recording is not registered');return id;},p.grantId||'',p.timestamps||[]);
+   invalidateLibrary();const {entry}=await findEntry(key);const recordingId=registeredAgentRecordingId(entry);if(!recordingId)throw Error('Recording is not registered; no agent opt-in available');
    if(request.op==='agent-status')return agentStudio.status(recordingId);
    if(request.op==='agent-authorize')return agentStudio.authorize(recordingId,p.recipientId||'',p.data||[],p.consent===true);
    return agentStudio.change(recordingId,p.grantId||'',request.op.slice(6) as 'pause'|'resume'|'revoke');
@@ -402,13 +414,13 @@ const handle = async (request: Request): Promise<unknown> => {
   if(request.op === "processing-status") return readHeavyStatus();
   if (request.op === "ux-capabilities") return {mockFrames: process.env.FALATRACE_UX_MOCK_ONLY === "1",realFrames:true,productVersion};
   if (request.op === "onboarding-read") return readOnboarding();
-  if (request.op === "onboarding-save-local") { const result=await saveLocalOnboarding(request.payload?.revision || ""); libraryCache=undefined; return result; }
+  if (request.op === "onboarding-save-local") { const result=await saveLocalOnboarding(request.payload?.revision || ""); invalidateLibrary(); return result; }
   if (request.op.startsWith("frames-")) {
     const key=request.key || "";
     if(process.env.FALATRACE_UX_MOCK_ONLY !== "1"){
       if(request.op==='frames-cancel')return studioFrames.cancel(key,request.payload?.previewId||'',request.payload?.scopeId);
       const readSource=async():Promise<StudioSource>=>{
-        libraryCache=undefined;
+        invalidateLibrary();
         const {entry}=await findEntry(key);const {config}=await loadConfig();const candidate=completedJob(entry);
         if(!candidate)throw Error('A completed transcript is required');
         const job=await new JobStore().get(candidate.id);if(job.state!=='completed')throw Error('Completed job changed');
@@ -448,12 +460,12 @@ const handle = async (request: Request): Promise<unknown> => {
         try {
           if ((await readCaptureStatus(config)).active) throw new Error("Não altere o áudio durante uma captura ativa.");
           const configuration = await configureDefaultAudio();
-          libraryCache = undefined;
+          invalidateLibrary();
           return { ...await readCaptureStatus((await loadConfig()).config), configuration };
         } finally { await captureLease.release(); }
       }
       const stopped = await stopCapture(config, { recoverOnly: request.op === "capture-recover" });
-      libraryCache = undefined;
+      invalidateLibrary();
       return { ...await readCaptureStatus(config), outcome: stopped.state, jobId: stopped.job?.id };
     } finally { await lease.release(); }
   }
