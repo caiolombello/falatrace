@@ -1,6 +1,6 @@
 {
   "scope": "sanitized experimental Linux source alpha; no private history/config/media/dependencies/binaries",
-  "version": "0.2.0-alpha.12",
+  "version": "0.2.0-alpha.13",
   "selfExcluded": "SOURCE-MANIFEST.json; external release manifest includes this file",
   "files": [
     {
@@ -20,8 +20,8 @@
     },
     {
       "path": "CHANGELOG.md",
-      "sha256": "68f92778de779d431a45b8d86e4f718ae23a74cb2c29d8dbee53be2462ee8059",
-      "bytes": 11899
+      "sha256": "777df7de3b8319e3622e1d2e242b3a18a6f38fb19bd31665ef5be4a17f781627",
+      "bytes": 13235
     },
     {
       "path": "LICENSE",
@@ -35,8 +35,8 @@
     },
     {
       "path": "README.md",
-      "sha256": "e54f8a9a4bbbe731fb06941142f8e633c1a270ea8973c97f3e850e3990ee74ed",
-      "bytes": 15297
+      "sha256": "5bab6f16f58f664b80b5849f86b0011f6ee76b6fd05b86d8db7116f8e65d29c2",
+      "bytes": 15607
     },
     {
       "path": "SECURITY.md",
@@ -139,6 +139,11 @@
       "bytes": 4352
     },
     {
+      "path": "docs/ALPHA13.md",
+      "sha256": "fe5e6385493c3ab3a69304c5913e2ff9e3ea37acfd1bbd97b6034a4ff5e258ea",
+      "bytes": 3822
+    },
+    {
       "path": "docs/ALPHA2-LOCAL-REVIEW.md",
       "sha256": "ab91a67ce5c670b59c4cf92d26046a0c3a3aec1c179408dc264ad666627a15dd",
       "bytes": 11842
@@ -205,8 +210,8 @@
     },
     {
       "path": "docs/ONBOARDING.md",
-      "sha256": "9452767f86c34a80d2d0bf1206c80b0e23dc016d848b51e59f039fe8282d516c",
-      "bytes": 3815
+      "sha256": "aea544d3616e0f9bfc50405362d208cb88cacdf8855f9a8395c185c0a1a02395",
+      "bytes": 6256
     },
     {
       "path": "docs/OPUS-REVIEW-RESOLUTION.md",
@@ -220,8 +225,8 @@
     },
     {
       "path": "docs/ROADMAP.md",
-      "sha256": "c7fc4cf638ef687286534ffbb0cb1f68e1c3613a30dc35f347d2d455b231e731",
-      "bytes": 15583
+      "sha256": "32c87ac3cb0a0f117f504ba76c7e19e127228ef8566d9ea84db4ab60627c07c4",
+      "bytes": 15898
     },
     {
       "path": "docs/TIMESHEETS.md",
@@ -360,13 +365,13 @@
     },
     {
       "path": "docs/en/index.html",
-      "sha256": "fabb7be3b818037b76d93ce511a43bbb8f7a04282abb1c4890384a7bc967c925",
-      "bytes": 39407
+      "sha256": "8863bed38ecbe574a0a147206fa8d6ee8ee3147f63955ffde8622b50ab70c828",
+      "bytes": 39871
     },
     {
       "path": "docs/index.html",
-      "sha256": "314c0bb1481010a0081e82fb89232dd6d69630a2a3dbb8cc9ddcdc5893d274c7",
-      "bytes": 39967
+      "sha256": "e9c516a880258b10b6e88ddea27bdf45d8a42837cb22a3ac37e2f49b34f532ca",
+      "bytes": 40466
     },
     {
       "path": "docs/site.js",
@@ -380,7 +385,7 @@
     },
     {
       "path": "package.json",
-      "sha256": "dbc0124711764ffb22ccf9a8519dfdcc9d8861b2471880d89ace390d48576144",
+      "sha256": "c961f8272755144352f5d68873d427f70ef4cf5809cf56aefb123952b3374598",
       "bytes": 1339
     },
     {
@@ -439,8 +444,13 @@
       "bytes": 14163
     },
     {
+      "path": "scripts/test-settings-ux.py",
+      "sha256": "e7ef3e30959a7debd86b60fef724b455a9cecc55d875ad0eb42d46260179d9ef",
+      "bytes": 11902
+    },
+    {
       "path": "skills/README.md",
-      "sha256": "e14790120f52053c4512538d585b4e3d3092ed6cc1264498d0b00473aedc64f5",
+      "sha256": "868b924ac9fd096523b7d824019db212bd059fb6dc6106cc1949f1a65e843054",
       "bytes": 2147
     },
     {
@@ -450,7 +460,7 @@
     },
     {
       "path": "skills/falatrace/SKILL.md",
-      "sha256": "58dfed956d54e2a15d884a64976676e90233ca75301c075e6e85f2e803788edf",
+      "sha256": "dc01c8358f6a74ee3f6647d955db8e2b02625855d284d751a9703d9245142d77",
       "bytes": 7779
     },
     {
@@ -710,8 +720,8 @@
     },
     {
       "path": "src/calls/service.ts",
-      "sha256": "4bb1d8ed9d2327c2ec7740ff4ddb4b2585d2ab1ffbc1aeb3fa643d41122221b0",
-      "bytes": 4022
+      "sha256": "e1595eddb350a84f4734e333a3d3c8e1b4eec333f7ec2e7f1d9c6f57203b61fb",
+      "bytes": 3892
     },
     {
       "path": "src/calls/stateMachine.ts",
@@ -774,6 +784,16 @@
       "bytes": 14521
     },
     {
+      "path": "src/config/__tests__/settings.test.ts",
+      "sha256": "8387bb213da78ec02a8df6a443387837668e440ecb67ca4adad4850d447aa5b4",
+      "bytes": 6415
+    },
+    {
+      "path": "src/config/__tests__/setup-checks.test.ts",
+      "sha256": "f8bc1cb71e804b7d2dec5b33bbf8fca7d2ca78f385c04d8ffedc7c15c7163650",
+      "bytes": 6152
+    },
+    {
       "path": "src/config/audio.ts",
       "sha256": "f58b902e2ecd11baab9f430b4001623ed96a026a86f14b5cd2bf12a60fa8bedd",
       "bytes": 4248
@@ -790,13 +810,23 @@
     },
     {
       "path": "src/config/onboarding.ts",
-      "sha256": "38b50a98894bada7926e7c6b8c1e471998f6959dad0d1756567bb546502fa3fb",
-      "bytes": 7278
+      "sha256": "c947d955718c12251d520579ae7ee5a08fcf13353b63db38865a8edd7a9c44ad",
+      "bytes": 8142
+    },
+    {
+      "path": "src/config/settings.ts",
+      "sha256": "d976c31e1878902834df590969b58f2d5ced51f69bed73b7a5a40dd24a02f8d4",
+      "bytes": 7919
+    },
+    {
+      "path": "src/config/setup-checks.ts",
+      "sha256": "c5be3c1cdc851f8c55b0d518f22441b782337d4aadf0f38fb9b95b264a8cd9b7",
+      "bytes": 9888
     },
     {
       "path": "src/desktop/Main.qml",
-      "sha256": "2ea87b2b95bb48b3f540b64306660a42f559b61d011401e88314dc09396a8398",
-      "bytes": 212651
+      "sha256": "14f9db22af863580955ebdb3fc7a1b44d6c01edc956e36c6b32b704c6e26ca82",
+      "bytes": 241675
     },
     {
       "path": "src/desktop/__tests__/alpha6-build.test.ts",
@@ -814,6 +844,11 @@
       "bytes": 10023
     },
     {
+      "path": "src/desktop/__tests__/settings-bridge.test.ts",
+      "sha256": "eed7db9b3a6b13c2b312b0568135f39d8aad8d76692f18b1f55bf1c15f6114fc",
+      "bytes": 7555
+    },
+    {
       "path": "src/desktop/__tests__/studio-summary-bridge.test.ts",
       "sha256": "d0f0c4f1cc35429416e8c1eb78538503b7983e6d6dbbd111805f7bc83976ecd8",
       "bytes": 10360
@@ -825,8 +860,8 @@
     },
     {
       "path": "src/desktop/bridge.ts",
-      "sha256": "4a8b427527f8ff5487bdd083c9e04fd02412bffbef76965c436283b222a71e83",
-      "bytes": 49070
+      "sha256": "0b174443390a27dfe3ab9e37505e35360c15cf394886aa631d8e70f580c216d6",
+      "bytes": 50472
     },
     {
       "path": "src/desktop/diarization-view.test.ts",
@@ -877,6 +912,11 @@
       "path": "src/desktop/run.ts",
       "sha256": "f6554b6a68448cf7aa7bbbeccb2c227b913cd3b97b12e1b78c0e572ad854efdb",
       "bytes": 3494
+    },
+    {
+      "path": "src/desktop/settings-bridge.ts",
+      "sha256": "70d50e74090bb745d195cc525532ab16a30526c4a87a822eb056de92a6bcbfa9",
+      "bytes": 5111
     },
     {
       "path": "src/desktop/setup.ts",
@@ -1414,6 +1454,11 @@
       "bytes": 10671
     },
     {
+      "path": "src/runtime/launcher.ts",
+      "sha256": "7d6f6cc2f47260f99e32d3841b13cecabb8461e7d0e70c52e3b3485dfc2bc6e7",
+      "bytes": 1047
+    },
+    {
       "path": "src/runtime/singleton.ts",
       "sha256": "d7156c7a2d963dfc5c6b237c24cfc444e0097e91d2db010c7cdd86c13c2ef3e0",
       "bytes": 1823
@@ -1650,8 +1695,8 @@
     },
     {
       "path": "src/tray/service.ts",
-      "sha256": "778530b3e1de2d7660760eaf5d5a3338f63d83abb750828c22bf917fc6061e8d",
-      "bytes": 2302
+      "sha256": "8c67e047f6d8e3efbfca407f6c26a5d66ef17c9275b62777588e9b7725874c52",
+      "bytes": 2172
     },
     {
       "path": "src/tui/__tests__/app.test.ts",

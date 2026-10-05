@@ -1,4 +1,4 @@
-## Unreleased — Studio settings and first-use setup
+## 0.2.0-alpha.13 — Studio settings and first-use setup
 
 - Add a **Configurações** dialog to the Studio with four tabs: automatic recording (per-app switches, mode, timing), capture and audio (backend, devices listed from PipeWire/PulseAudio, encoder, profile, recordings folder), processing and AI (transcription/summary providers, models, Ollama URL, local/remote, automatic processing) and services and diagnostics. It opens once automatically when no configuration exists.
 - Saving publishes only the changed fields from an explicit allowlist, with the existing revision check, private backup and preservation of unknown keys and secrets. API keys are reported as present/absent with their source, never read or written by the Studio.

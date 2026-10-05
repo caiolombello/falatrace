@@ -1,5 +1,7 @@
 # Completion goal and finite roadmap
 
+Alpha.13 checkpoint, 2026-10-05: the Studio has a full settings dialog (automatic recording, capture and audio, processing and AI, services and diagnostics) with guided first use, closing the configuration part of the provider/privacy onboarding item. Native journey validation on a physical desktop remains open.
+
 Alpha.12 checkpoint, 2026-10-05: explicit Chromium, Chrome, Brave, Edge, Vivaldi, Opera, Firefox, native Zoom and Teams for Linux identities (Discord, Signal, Telegram and Element opt-in) are implemented with classifier fixtures, closing the identity part of gap-batch item 2. Native acceptance per app/desktop/backend tuple remains open; see [compatibility](COMPATIBILITY.md).
 
 Alpha.11 source checkpoint, 2026-10-03: the isolated G4/G5/G7 compatibility candidate adds
