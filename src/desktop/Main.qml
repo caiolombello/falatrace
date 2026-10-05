@@ -493,6 +493,7 @@ ApplicationWindow {
     function openAgentAccess() { agentDialog.open() }
     function closeAgentAccess() { cancelProvider(); if (activeGrant.id && hasPending("agent-frames")) send("agent-cancel", selected.key, {grantId:activeGrant.id}); agentDialog.close() }
     property string cliVersion: ""
+    property var releaseInfo: ({})
     property bool uxModal: aboutDialog.visible || captureConsent.visible || framesDialog.visible || onboardingDialog.visible || agentDialog.visible || recordingTools.visible || reviewDialog.visible || exportDialog.visible || summaryDialog.visible
     function summaryBusy() { return summaryRunning || hasPending("summary-plan") || hasPending("summary-run") }
     function summaryPlanText() {
@@ -1159,6 +1160,7 @@ ApplicationWindow {
             Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: divider }
             Label { objectName:"aboutVersion"; text: "Studio em execução: " + Qt.application.version; color: ink; Layout.fillWidth:true; wrapMode:Text.WordWrap }
             Label { text: "Build local: " + studioBuildId; color: muted; Layout.fillWidth:true; wrapMode:Text.WordWrap }
+            Label { objectName:"aboutRelease"; text: "Release instalada: " + (releaseInfo.name ? releaseInfo.name + " · commit " + releaseInfo.commit : backend.available && cliVersion ? "não identificada (execução pelo código-fonte)" : "indisponível"); color: muted; Layout.fillWidth:true; wrapMode:Text.WordWrap }
             Label { text: "CLI conectado: " + (backend.available && cliVersion ? cliVersion : "indisponível"); color: muted; Layout.fillWidth:true; wrapMode:Text.WordWrap }
             Label { text: cliVersion && cliVersion !== Qt.application.version ? "Studio e CLI têm versões diferentes. Feche e reabra o Studio após atualizar." : "Versão publicada: não consultada. Esta tela não verifica atualizações pela rede."; color: cliVersion && cliVersion !== Qt.application.version ? warningColor : muted; Layout.fillWidth:true; wrapMode:Text.WordWrap }
             Label { text: "No terminal: falatrace --version"; color: ink; Layout.fillWidth:true; wrapMode:Text.WordWrap }
@@ -1257,7 +1259,7 @@ ApplicationWindow {
             } else if(request.op === "agent-frames") { frameGrantPending="";agentResult=result; send("agent-status",selected.key)
             } else if(["agent-authorize","agent-pause","agent-resume","agent-revoke"].includes(request.op)) { if(request.op==="agent-authorize"){showAgentSetup=false;preferredGrantId=result.id;changeAgentGrant()}else send("agent-status",selected.key);agentConsent.checked=false; agentResult=({});
             } else if(request.op === "agent-cancel") { agentError="Consulta cancelada; autorização preservada."
-            } else if (request.op === "ux-capabilities") { cliVersion = result.productVersion || ""; mockFramesEnabled = !!result.mockFrames; realFramesEnabled = !!result.realFrames
+            } else if (request.op === "ux-capabilities") { cliVersion = result.productVersion || ""; releaseInfo = result.release || ({}); mockFramesEnabled = !!result.mockFrames; realFramesEnabled = !!result.realFrames
             } else if (request.op === "processing-status") { processingWait = result.waiting.length ? result.waiting[0].message : ""
             } else if (request.op === "frames-cancel") { send("processing-status", "")
             } else if (request.op === "frames-check-models") { frameCapability = result

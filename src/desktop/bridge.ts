@@ -25,6 +25,7 @@ import { runCommand } from "../../src/jobs/command";
 import { buildLibrary, readArtifact, assertExistingJobArtifactPath, assertExistingManagedPath, type LibraryEntry } from "../../src/tui/library";
 import { queuePlayback, readPlayback } from "./playback";
 import { readLibrarySnapshot, writeLibrarySnapshot } from "./library-snapshot";
+import { readReleaseInfo } from "./release-info";
 import { parsePlayerTranscript, type PlayerTranscript } from "../../src/player/transcript";
 import { findAlignedSubtitles } from "../../src/subtitles/aligned";
 import { queueAlignedSubtitles } from "../subtitles/service";
@@ -417,7 +418,7 @@ const handle = async (request: Request): Promise<unknown> => {
    return agentStudio.change(recordingId,p.grantId||'',request.op.slice(6) as 'pause'|'resume'|'revoke');
   }
   if(request.op === "processing-status") return readHeavyStatus();
-  if (request.op === "ux-capabilities") return {mockFrames: process.env.FALATRACE_UX_MOCK_ONLY === "1",realFrames:true,productVersion};
+  if (request.op === "ux-capabilities") return {mockFrames: process.env.FALATRACE_UX_MOCK_ONLY === "1",realFrames:true,productVersion,release:await readReleaseInfo()};
   if (request.op === "onboarding-read") return readOnboarding();
   if (request.op === "onboarding-save-local") { const result=await saveLocalOnboarding(request.payload?.revision || ""); invalidateLibrary(); return result; }
   if (request.op.startsWith("frames-")) {

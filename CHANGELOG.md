@@ -10,6 +10,7 @@
 - OpenAI summaries size their input to the chosen model's context window, measured in UTF-8 bytes so a single request cannot exceed it in any language (unknown models assume 128k tokens). Meetings longer than the 24k-character default no longer fail as a refused paid multi-request split; checkpoints saved under the earlier budget are reused. Ollama keeps the configured character budget; the explicit paid-budget guard is unchanged.
 - Raise the OpenAI summary output cap to 16,384 tokens for reasoning models and report a truncated reply explicitly.
 - Default OpenAI summary and timesheet classification model: `gpt-6-luna` (was `gpt-4o-mini`). Existing configurations and recorded jobs keep their model.
+- The About dialog shows the installed release directory and commit from its manifest, so local builds with the same version are distinguishable.
 
 ## 0.2.0-alpha.11 — reviewed source, exports and Studio summary consent
 
