@@ -1,19 +1,14 @@
 import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
-import { basename, join } from "node:path";
+import { join } from "node:path";
 import type { AppConfig } from "../config/defaults";
 import { runCommand } from "../jobs/command";
+import { getServiceLaunchCommand } from "../runtime/launcher";
 
 const quoteSystemd = (value: string): string =>
   `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
 
-const getLaunchCommand = (): string[] => {
-  const executableName = basename(process.execPath);
-  if (executableName === "bun" || executableName.startsWith("bun-")) {
-    return [process.execPath, process.argv[1]];
-  }
-  return [process.execPath];
-};
+const getLaunchCommand = (): string[] => getServiceLaunchCommand();
 
 const execStart = (args: string[]): string => args.map(quoteSystemd).join(" ");
 

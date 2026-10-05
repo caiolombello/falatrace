@@ -83,8 +83,12 @@ export async function readOnboarding(path = getConfigPath()) {
   path = resolve(path);
   return describeOnboarding(path, await raw(path));
 }
-/** Explicit local setup, preserves unknown keys; existing configuration requires revision check + backup. */
-export async function saveLocalOnboarding(revision: string, path = getConfigPath(), beforeCommit?: () => Promise<void>) {
+/**
+ * Publish a configuration derived from the current raw value. Requires the caller's revision,
+ * preserves unknown keys via `transform`, writes a private exact-byte backup and never overwrites
+ * a concurrent edit.
+ */
+export async function commitConfigChange(revision: string, path: string, transform: (value: Record<string, any>) => Record<string, any>, beforeCommit?: () => Promise<void>) {
   path = resolve(path);
   if (!/^[a-f0-9]{64}$/.test(revision))
     throw new Error('Revisão inválida. Reabra configurações.');
@@ -93,11 +97,9 @@ export async function saveLocalOnboarding(revision: string, path = getConfigPath
     const previous = await raw(path);
     if (revisionFor(path, previous) !== revision)
       throw new Error('Configuração mudou; reabra antes de salvar.');
-    const value = { ...previous.value, transcription: { ...previous.value.transcription, provider: 'whisper-cpp' }, summary: { ...previous.value.summary, provider: 'ollama', ollamaUrl: 'http://127.0.0.1:11434' }, processing: { ...previous.value.processing, defaultTarget: 'local', autoEnqueue: false } };
+    const value = transform(previous.value);
     validateConfig(mergeConfig(DEFAULT_CONFIG, value));
     const savedBytes = Buffer.from(JSON.stringify(value, null, 2) + '\n');
-    // Build the receipt before publication so a later read/cleanup error cannot report a saved choice as unchanged.
-    const savedSnapshot = describeOnboarding(path, { value, bytes: savedBytes, exists: true });
     await fs.mkdir(dirname(path), { recursive: true, mode: 0o700 });
     const dir = await fs.lstat(dirname(path));
     if (!dir.isDirectory() || dir.isSymbolicLink())
@@ -132,9 +134,21 @@ export async function saveLocalOnboarding(revision: string, path = getConfigPath
         cleanupPending = true;
       }
     }
-    return { ...savedSnapshot, saved: true, backupCreated: !!backup, cleanupPending };
+    return { path, value, bytes: savedBytes, backupCreated: !!backup, cleanupPending };
   }
   finally {
     await lease.release();
   }
+}
+/** Read the raw configuration with the same safety checks and revision used for saving. */
+export async function readConfigRevision(path = getConfigPath()) {
+  path = resolve(path);
+  const current = await raw(path);
+  return { path, value: current.value as Record<string, any>, exists: current.exists, revision: revisionFor(path, current) };
+}
+/** Explicit local setup, preserves unknown keys; existing configuration requires revision check + backup. */
+export async function saveLocalOnboarding(revision: string, path = getConfigPath(), beforeCommit?: () => Promise<void>) {
+  const result = await commitConfigChange(revision, path, (previous) => ({ ...previous, transcription: { ...previous.transcription, provider: 'whisper-cpp' }, summary: { ...previous.summary, provider: 'ollama', ollamaUrl: 'http://127.0.0.1:11434' }, processing: { ...previous.processing, defaultTarget: 'local', autoEnqueue: false } }), beforeCommit);
+  const savedSnapshot = describeOnboarding(result.path, { value: result.value, bytes: result.bytes, exists: true });
+  return { ...savedSnapshot, saved: true, backupCreated: result.backupCreated, cleanupPending: result.cleanupPending };
 }

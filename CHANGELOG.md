@@ -1,3 +1,11 @@
+## Unreleased — Studio settings and first-use setup
+
+- Add a **Configurações** dialog to the Studio with four tabs: automatic recording (per-app switches, mode, timing), capture and audio (backend, devices listed from PipeWire/PulseAudio, encoder, profile, recordings folder), processing and AI (transcription/summary providers, models, Ollama URL, local/remote, automatic processing) and services and diagnostics. It opens once automatically when no configuration exists.
+- Saving publishes only the changed fields from an explicit allowlist, with the existing revision check, private backup and preservation of unknown keys and secrets. API keys are reported as present/absent with their source, never read or written by the Studio.
+- Read-only diagnostics check FFmpeg, Whisper.cpp and its model file, Ollama on loopback with installed models, API key presence and the recording backend, without recording, transcribing or contacting external hosts.
+- Apply/restart or disable the call monitor and (re)install the tray from the Studio; refused during an active capture. Diagnostics flag a monitor running with an older configuration or a stale recordings folder. Generated units now prefer the stable `~/.local/bin` link of the running release.
+- The previous privacy screen remains available as **Rotas e privacidade…**.
+
 ## 0.2.0-alpha.12 — more call apps and a redesigned Studio
 
 - Rebuild the Studio presentation with a single-file component system (buttons, fields, chips, cards, dialogs and inline SVG icons) on the FalaTrace tokens; follow the desktop color scheme and keep the manual light/dark switch.

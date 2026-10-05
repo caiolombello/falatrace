@@ -1,6 +1,26 @@
 # Configuration and privacy
 
-Open **Configuração e privacidade…** in Studio to review the current configuration. Reading, closing, Escape and Cancel do not save it. This screen does not start recording, install models, execute providers or change running services.
+## Settings (Studio)
+
+Open **Configurações…** in the Studio sidebar. On a computer without a configuration file the Studio opens it once, on the first tab. Nothing is recorded, sent or installed until you save and, for the call monitor, apply.
+
+| Tab | What you can change |
+| --- | --- |
+| Gravação automática | Turn call detection on/off, notify-only or record, process on call end, entry/exit timing, and one switch per app (browsers; Slack, Zoom, Teams for Linux; Discord, Signal, Telegram and Element are opt-in). |
+| Captura e áudio | Backend (audio only, GPU Screen Recorder, OBS), audio sources, microphone and system-audio device (listed from PipeWire/PulseAudio), GPU encoder and video profile, recordings folder. |
+| Processamento e IA | Transcription (Whisper.cpp command/model, OpenAI or Gemini model, language), summary (Ollama URL/model or OpenAI model), local/remote execution, automatic processing. External destinations are flagged. |
+| Serviços e diagnóstico | Read-only checks (FFmpeg, Whisper.cpp and model file, Ollama on loopback and its installed models, API key presence, recording backend) and the call monitor/tray services: apply and restart, or disable. |
+
+Saving sends only the fields you changed. The bridge accepts an explicit allowlist of fields and values; anything else (archive, S3, Proton, remote worker, timesheet, secrets and unknown keys) is preserved. The same revision check, private exact-byte backup and non-overwriting publication described below apply. API keys are never read into or written by the Studio: it reports whether `OPENAI_API_KEY`/`GEMINI_API_KEY` is defined in the session environment, in `~/.config/recording-cli/calls.env` or in the configuration, never the value.
+
+The call monitor reads its configuration when it starts. After saving recording changes, use **Aplicar e reiniciar monitor**; the diagnostics flag a monitor still running with an older configuration or a unit whose writable recordings folder no longer matches. Service actions are refused while a capture is active and never start a recording themselves. Generated units point to the stable `~/.local/bin` link when it resolves to the running release, so they keep following updates.
+
+Diagnostics do not record, transcribe, download models or contact non-loopback hosts. A passing check is not proof of model quality or of a working real call.
+
+## Routes and local processing choice
+
+
+Open **Rotas e privacidade…** (in Configurações → Processamento e IA) to review the current routes. Reading, closing, Escape and Cancel do not save it. This screen does not start recording, install models, execute providers or change running services.
 
 The screen lists transcription, summary and local/remote execution separately. A loopback Ollama endpoint does not imply that transcription, archiving or other integrations are local. Archive, S3, Proton and external activity classification settings are disclosed without exposing their credentials, buckets, remote paths or worker names. Retention values are shown as configured, rather than as proof of deletion or a cleanup schedule.
 

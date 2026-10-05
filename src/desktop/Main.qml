@@ -175,6 +175,7 @@ ApplicationWindow {
         "spark": '<path d="M12 3.5l1.9 5.1 5.1 1.9-5.1 1.9-1.9 5.1-1.9-5.1-5.1-1.9 5.1-1.9z"/>',
         "stop": '<rect x="7" y="7" width="10" height="10" rx="1.5" fill="%C" stroke="none"/>',
         "sun": '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/>',
+        "settings": '<circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="6.5"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8"/>',
         "tools": '<path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/>',
         "transcript": '<path d="M5 6h14M5 10h14M5 14h9M5 18h6"/>',
         "undo": '<path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
@@ -467,6 +468,16 @@ ApplicationWindow {
     property bool showVisualSummary: false
     property real sourceReferenceSeconds: -1
     property int frameGeneration: 0
+    property var settingsData: ({})
+    property var settingsDraft: ({})
+    property var settingsDiag: ({})
+    property int settingsGeneration: 0
+    property string settingsError: ""
+    property string settingsNotice: ""
+    property bool settingsNeedsReload: false
+    property bool settingsFirstRun: false
+    property bool settingsFirstRunChecked: false
+    readonly property bool settingsEditable: backend.available && !!settingsData.revision && !hasSettingsPending("settings-read") && !hasSettingsPending("settings-save")
     property var onboardingDraft: ({})
     property int onboardingGeneration: 0
     property string onboardingError: ""
@@ -496,7 +507,7 @@ ApplicationWindow {
     function closeAgentAccess() { cancelProvider(); if (activeGrant.id && hasPending("agent-frames")) send("agent-cancel", selected.key, {grantId:activeGrant.id}); agentDialog.close() }
     property string cliVersion: ""
     property var releaseInfo: ({})
-    property bool uxModal: aboutDialog.visible || captureConsent.visible || framesDialog.visible || onboardingDialog.visible || agentDialog.visible || recordingTools.visible || reviewDialog.visible || exportDialog.visible || summaryDialog.visible
+    property bool uxModal: settingsDialog.visible || aboutDialog.visible || captureConsent.visible || framesDialog.visible || onboardingDialog.visible || agentDialog.visible || recordingTools.visible || reviewDialog.visible || exportDialog.visible || summaryDialog.visible
     function summaryBusy() { return summaryRunning || hasPending("summary-plan") || hasPending("summary-run") }
     function summaryPlanText() {
         const p=summaryPlan
@@ -810,12 +821,318 @@ ApplicationWindow {
         footer:Item { implicitHeight:64; FtButton { text:"Fechar"; anchors.right:parent.right; anchors.rightMargin:20; anchors.verticalCenter:parent.verticalCenter; onClicked:recordingTools.close() } }
     }
 
+    component SettingsSection: Label { color:ink; font.pixelSize:16; font.weight:Font.DemiBold; wrapMode:Text.WordWrap; Layout.fillWidth:true; Layout.topMargin:6 }
+    component SettingsHint: Label { color:muted; font.pixelSize:12; textFormat:Text.PlainText; wrapMode:Text.WordWrap; Layout.fillWidth:true }
+    component SettingsCheck: WrappedCheck {
+        property string field: ""
+        checked: settingsDraft[field] === true
+        enabled: settingsEditable
+        onToggled: setSettingsField(field, checked)
+        Accessible.name: text
+    }
+    component SettingsChoice: ColumnLayout {
+        id:choiceControl
+        property string field: ""
+        property string label: ""
+        property var options: []
+        Layout.fillWidth:true; spacing:4
+        Label { text:choiceControl.label; color:ink; font.pixelSize:13; wrapMode:Text.WordWrap; Layout.fillWidth:true }
+        FtComboBox {
+            Layout.fillWidth:true
+            textRole:"label"; valueRole:"value"
+            model:choiceControl.options
+            enabled:settingsEditable
+            currentIndex:choiceControl.options.findIndex(function(o){return o.value===settingsDraft[choiceControl.field]})
+            displayText:currentIndex<0 ? (settingsDraft[choiceControl.field]===undefined||settingsDraft[choiceControl.field]===null ? "—" : String(settingsDraft[choiceControl.field])+" (atual)") : currentText
+            onActivated:function(index){ setSettingsField(choiceControl.field, choiceControl.options[index].value) }
+            Accessible.name:choiceControl.label
+        }
+    }
+    component SettingsText: ColumnLayout {
+        id:textControl
+        property string field: ""
+        property string label: ""
+        property string placeholder: ""
+        Layout.fillWidth:true; spacing:4
+        Label { text:textControl.label; color:ink; font.pixelSize:13; wrapMode:Text.WordWrap; Layout.fillWidth:true }
+        FtTextField {
+            Layout.fillWidth:true; maximumLength:4096
+            text:settingsDraft[textControl.field]===undefined||settingsDraft[textControl.field]===null ? "" : String(settingsDraft[textControl.field])
+            placeholderText:textControl.placeholder
+            enabled:settingsEditable
+            onTextEdited:setSettingsField(textControl.field, text.trim())
+            Accessible.name:textControl.label
+        }
+    }
+    component SettingsNumber: RowLayout {
+        id:numberControl
+        property string field: ""
+        property string label: ""
+        property int from: 1
+        property int to: 300
+        Layout.fillWidth:true; spacing:10
+        Label { text:numberControl.label; color:ink; font.pixelSize:13; wrapMode:Text.WordWrap; Layout.fillWidth:true }
+        SpinBox {
+            from:numberControl.from; to:numberControl.to; editable:true
+            value:Number(settingsDraft[numberControl.field]) || numberControl.from
+            enabled:settingsEditable
+            onValueModified:setSettingsField(numberControl.field, value)
+            Accessible.name:numberControl.label
+        }
+    }
+    component SettingsCheckRow: RowLayout {
+        id:checkRow
+        property string label: ""
+        property string status: ""
+        property string detail: ""
+        Layout.fillWidth:true; spacing:10
+        FtChip { Layout.alignment:Qt.AlignTop; text:checkRow.status==="ok"?"OK":checkRow.status==="warning"?"Atenção":checkRow.status==="missing"?"Falta":"Não verificado"; kind:checkRow.status==="ok"?"accent":checkRow.status==="skipped"?"neutral":"warning"; iconName:checkRow.status==="ok"?"check":"" }
+        ColumnLayout { Layout.fillWidth:true; spacing:2
+            Label { text:checkRow.label; color:ink; font.weight:Font.DemiBold; wrapMode:Text.WordWrap; Layout.fillWidth:true }
+            SettingsHint { text:checkRow.detail }
+        }
+    }
+
+    FtDialog {
+        id:settingsDialog; objectName:"settingsDialog"; title:"Configurações"
+        anchors.centerIn:parent; width:Math.min(window.width-48,780); height:Math.min(window.height-48,760); modal:true
+        closePolicy:hasSettingsPending("settings-save")||hasSettingsPending("settings-service")?Popup.NoAutoClose:Popup.CloseOnEscape
+        onOpened:{settingsError="";settingsNotice="";settingsTabs.currentIndex=settingsFirstRun?0:settingsTabs.currentIndex;loadSettings(true);settingsTabs.forceActiveFocus(Qt.TabFocusReason)}
+        onClosed:{settingsGeneration+=1;settingsDraft=({});settingsData=({});settingsDiag=({});settingsFirstRun=false;onboardingButton.forceActiveFocus(Qt.TabFocusReason)}
+        contentItem:ColumnLayout { spacing:10
+         Label { objectName:"settingsFirstRun"; visible:settingsFirstRun; text:"Bem-vindo ao FalaTrace. Escolha quando gravar, o que capturar e onde processar. Nada é gravado ou enviado até você salvar e ativar."; textFormat:Text.PlainText; wrapMode:Text.WordWrap; color:accent; Layout.fillWidth:true }
+         Label { objectName:"settingsError"; visible:!!settingsError; text:settingsError; textFormat:Text.PlainText; wrapMode:Text.WordWrap; color:errorColor; Layout.fillWidth:true; Accessible.name:text }
+         Label { objectName:"settingsNotice"; visible:!!settingsNotice; text:settingsNotice; textFormat:Text.PlainText; wrapMode:Text.WordWrap; color:accent; Layout.fillWidth:true; Accessible.name:text }
+         TabBar {
+            id:settingsTabs; objectName:"settingsTabs"; Layout.fillWidth:true; spacing:4; padding:4
+            background: Rectangle { radius:10; color:surfaceAlt; border.width:1; border.color:divider }
+            Repeater {
+                model:["Gravação automática","Captura e áudio","Processamento e IA","Serviços e diagnóstico"]
+                TabButton {
+                    id:settingsTab
+                    required property var modelData
+                    required property int index
+                    text:modelData; implicitHeight:34; hoverEnabled:true; font.pixelSize:13
+                    contentItem: Label { text:settingsTab.text; font.pixelSize:compactLayout?12:13; font.weight:settingsTab.checked?Font.DemiBold:Font.Normal; color:settingsTab.checked?ink:muted; elide:Text.ElideRight; horizontalAlignment:Text.AlignHCenter; verticalAlignment:Text.AlignVCenter }
+                    background: Rectangle { radius:7; color:settingsTab.checked?surface:settingsTab.hovered?hoverSurface:"transparent"; border.width:settingsTab.visualFocus?2:settingsTab.checked?1:0; border.color:settingsTab.visualFocus?accent:divider }
+                    onClicked:if(index===3&&!hasSettingsPending("settings-diagnose"))runSettingsDiagnose()
+                }
+            }
+         }
+         Label { visible:!settingsData.revision; text:hasSettingsPending("settings-read")?"Lendo configuração…":"Releia a configuração para editar."; color:muted; Layout.fillWidth:true }
+         StackLayout {
+            visible:!!settingsData.revision
+            currentIndex:settingsTabs.currentIndex; Layout.fillWidth:true; Layout.fillHeight:true
+            // 1 · Gravação automática
+            ScrollView { id:settingsScrollCalls; clip:true; contentWidth:availableWidth
+             ColumnLayout { width:settingsScrollCalls.availableWidth; spacing:10
+              SettingsCheck { objectName:"settingsCallsEnabled"; field:"callDetection.enabled"; text:"Ativar a gravação automática de chamadas" }
+              SettingsHint { text:"Detecta quando um app usa o microfone ou a câmera. Não identifica o serviço, a aba nem quem participa; ditado ou teste de câmera também contam. Confirme a permissão das pessoas antes de gravar." }
+              SettingsChoice { field:"callDetection.mode"; label:"Quando detectar uma chamada"; options:[{label:"Só notificar",value:"notify-only"},{label:"Gravar automaticamente",value:"record"}].concat(settingsData.readOnly&&settingsData.readOnly.obsEnabled?[{label:"Controlar o OBS",value:"obs"}]:[]) }
+              SettingsCheck { field:"callDetection.enqueueOnStop"; text:"Processar a gravação quando a chamada terminar" }
+              SettingsSection { text:"Navegadores" }
+              GridLayout { columns:compactLayout?2:3; Layout.fillWidth:true; columnSpacing:12; rowSpacing:2
+               Repeater { model:(settingsData.apps||[]).filter(function(a){return a.kind==="browser"})
+                SettingsCheck { required property var modelData; field:"callDetection.apps."+modelData.id; text:modelData.label; Layout.fillWidth:true }
+               }
+              }
+              SettingsSection { text:"Apps de chamada" }
+              GridLayout { columns:compactLayout?2:3; Layout.fillWidth:true; columnSpacing:12; rowSpacing:2
+               Repeater { model:(settingsData.apps||[]).filter(function(a){return a.kind==="app"})
+                SettingsCheck { required property var modelData; field:"callDetection.apps."+modelData.id; text:modelData.label+(modelData.defaultEnabled?"":" · opcional"); Layout.fillWidth:true }
+               }
+              }
+              SettingsHint { text:"Apps marcados como opcionais também levam ligações pessoais e ficam desligados até você ativar. Zoom, Meet e Teams na web são detectados pelo navegador." }
+              SettingsSection { text:"Tempos" }
+              SettingsNumber { field:"callDetection.entryDebounceSeconds"; label:"Confirmar a chamada após (segundos)"; from:1; to:120 }
+              SettingsNumber { field:"callDetection.exitTimeoutSeconds"; label:"Encerrar após o app parar de usar o microfone (segundos)"; from:1; to:300 }
+             }
+            }
+            // 2 · Captura e áudio
+            ScrollView { id:settingsScrollCapture; clip:true; contentWidth:availableWidth
+             ColumnLayout { width:settingsScrollCapture.availableWidth; spacing:10
+              SettingsChoice { objectName:"settingsBackend"; field:"backend"; label:"O que gravar"; options:[{label:"Só áudio (FFmpeg)",value:"audio"},{label:"Tela e áudio (GPU Screen Recorder)",value:"gpu-screen-recorder"},{label:"OBS (cena configurada no OBS)",value:"obs"}] }
+              SettingsHint { visible:!!(settingsData.readOnly&&settingsData.readOnly.backendOutsideList); text:"O backend atual ("+(settingsData.readOnly?settingsData.readOnly.backendOutsideList:"")+") foi definido fora desta tela e continua valendo até você escolher outro." }
+              SettingsChoice { field:"capture.audioSource"; label:"Fontes de áudio"; options:[{label:"Microfone e áudio do sistema",value:"both"},{label:"Só microfone",value:"microphone"},{label:"Só áudio do sistema",value:"desktop"},{label:"Sem áudio",value:"none"}] }
+              SettingsChoice { field:"capture.microphone"; label:"Microfone"; options:settingsDeviceOptions(false) }
+              SettingsChoice { field:"capture.desktop"; label:"Áudio do sistema (monitor da saída)"; options:settingsDeviceOptions(true) }
+              RowLayout { Layout.fillWidth:true
+               SettingsHint { text:settingsDiag.audio?(settingsDiag.audio.devices||[]).length+" dispositivos encontrados.":(hasSettingsPending("settings-diagnose")?"Procurando dispositivos…":"Lista de dispositivos indisponível; “Padrão do sistema” segue o PipeWire.") }
+               FtButton { text:"Atualizar dispositivos"; variant:"outline"; compact:true; enabled:backend.available&&!hasSettingsPending("settings-diagnose"); onClicked:runSettingsDiagnose() }
+              }
+              SettingsChoice { visible:settingsDraft["backend"]==="gpu-screen-recorder"; field:"capture.encoder"; label:"Codificação de vídeo"; options:[{label:"GPU (recomendado)",value:"gpu"},{label:"CPU",value:"cpu"}] }
+              SettingsChoice { visible:settingsDraft["backend"]==="gpu-screen-recorder"; field:"capture.profile"; label:"Qualidade do vídeo"; options:[{label:"Padrão",value:"standard"},{label:"Leve para chamadas (menor resolução e fps)",value:"call-light"}] }
+              SettingsText { field:"recordingsDir"; label:"Pasta das gravações"; placeholder:"/home/voce/Videos/Recordings" }
+              SettingsHint { text:"Use um caminho absoluto. Se o monitor de chamadas estiver instalado, aplique-o de novo na aba Serviços para ele poder gravar na nova pasta." }
+             }
+            }
+            // 3 · Processamento e IA
+            ScrollView { id:settingsScrollProcessing; clip:true; contentWidth:availableWidth
+             ColumnLayout { width:settingsScrollProcessing.availableWidth; spacing:10
+              SettingsSection { text:"Transcrição" }
+              SettingsChoice { objectName:"settingsTranscription"; field:"transcription.provider"; label:"Quem transcreve"; options:[{label:"Whisper.cpp neste computador",value:"whisper-cpp"},{label:"OpenAI (serviço externo)",value:"openai"},{label:"Gemini (serviço externo)",value:"gemini"}] }
+              SettingsHint { visible:settingsDraft["transcription.provider"]!=="whisper-cpp"; color:warningColor; text:"O áudio das gravações é enviado para "+(settingsDraft["transcription.provider"]==="openai"?"a OpenAI":"o Google")+". Custos dependem da sua conta de API." }
+              SettingsText { visible:settingsDraft["transcription.provider"]==="whisper-cpp"; field:"transcription.whisperCpp.command"; label:"Comando do Whisper.cpp"; placeholder:"whisper-cli" }
+              SettingsText { visible:settingsDraft["transcription.provider"]==="whisper-cpp"; field:"transcription.whisperCpp.modelPath"; label:"Arquivo do modelo (ggml)"; placeholder:"/home/voce/.local/share/recording-cli/models/ggml-large-v3-turbo-q5_0.bin" }
+              SettingsText { visible:settingsDraft["transcription.provider"]==="openai"; field:"transcription.openaiModel"; label:"Modelo de transcrição da OpenAI" }
+              SettingsText { visible:settingsDraft["transcription.provider"]==="gemini"; field:"transcription.geminiModel"; label:"Modelo de transcrição do Gemini" }
+              SettingsChoice { field:"transcription.language"; label:"Idioma das chamadas"; options:[{label:"Detectar automaticamente",value:"auto"},{label:"Português",value:"pt"},{label:"Inglês",value:"en"},{label:"Espanhol",value:"es"}] }
+              SettingsSection { text:"Resumo" }
+              SettingsChoice { field:"summary.provider"; label:"Quem resume"; options:[{label:"Ollama",value:"ollama"},{label:"OpenAI (serviço externo)",value:"openai"}] }
+              SettingsText { visible:settingsDraft["summary.provider"]==="ollama"; field:"summary.ollamaUrl"; label:"Endereço do Ollama"; placeholder:"http://127.0.0.1:11434" }
+              SettingsHint { visible:settingsDraft["summary.provider"]==="ollama"&&!settingsLoopback(settingsDraft["summary.ollamaUrl"]); color:warningColor; text:"Esse endereço não é este computador: a transcrição será enviada para ele." }
+              SettingsText { visible:settingsDraft["summary.provider"]==="ollama"; field:"summary.ollamaModel"; label:"Modelo do Ollama"; placeholder:"qwen3.5:9b" }
+              SettingsText { visible:settingsDraft["summary.provider"]==="openai"; field:"summary.openaiModel"; label:"Modelo de resumo da OpenAI" }
+              SettingsSection { text:"Execução" }
+              SettingsChoice { field:"processing.defaultTarget"; label:"Onde processar"; options:[{label:"Neste computador",value:"local"}].concat(settingsData.readOnly&&settingsData.readOnly.remoteConfigured?[{label:"Worker remoto configurado",value:"remote"}]:[]) }
+              SettingsCheck { field:"processing.autoEnqueue"; text:"Processar automaticamente cada gravação nova" }
+              SettingsSection { text:"Chaves de API" }
+              SettingsHint { text:"OPENAI_API_KEY: "+settingsCredentialText(settingsData.credentials?settingsData.credentials.openai:"")+"\nGEMINI_API_KEY: "+settingsCredentialText(settingsData.credentials?settingsData.credentials.gemini:"")+"\nO Studio não lê nem guarda chaves. Defina-as no ambiente da sessão ou em ~/.config/recording-cli/calls.env (uma por linha, NOME=valor, arquivo com permissão 600)." }
+              FtButton { text:"Rotas e privacidade…"; iconName:"shield"; variant:"outline"; enabled:backend.available&&!settingsHasChanges(); onClicked:onboardingDialog.open() }
+              SettingsHint { text:settingsHasChanges()?"Salve ou descarte as alterações antes de abrir o resumo de rotas e privacidade.":"Mostra para onde vai cada etapa e permite escolher o processamento local com um clique." }
+             }
+            }
+            // 4 · Serviços e diagnóstico
+            ScrollView { id:settingsScrollServices; clip:true; contentWidth:availableWidth
+             ColumnLayout { width:settingsScrollServices.availableWidth; spacing:12
+              RowLayout { Layout.fillWidth:true
+               SettingsHint { text:"Verifica dependências e serviços sem gravar, transcrever nem contatar serviços externos." }
+               FtButton { objectName:"settingsDiagnose"; text:hasSettingsPending("settings-diagnose")?"Verificando…":"Verificar agora"; variant:"outline"; compact:true; enabled:backend.available&&!hasSettingsPending("settings-diagnose"); onClicked:runSettingsDiagnose() }
+              }
+              SettingsSection { text:"Processamento" }
+              Repeater { model:settingsDiag.checks||[]
+               SettingsCheckRow { required property var modelData; label:modelData.label; status:modelData.status; detail:modelData.detail }
+              }
+              SettingsSection { text:"Gravação" }
+              SettingsCheckRow {
+                visible:!!settingsDiag.recording
+                label:"Backend de gravação"
+                status:settingsDiag.recording&&settingsDiag.recording.selectedBackend?((settingsDiag.recording.warnings||[]).length?"warning":"ok"):"missing"
+                detail:settingsDiag.recording?(settingsDiag.recording.selectedBackend?"Vai usar: "+settingsDiag.recording.selectedBackend+".":(settingsDiag.recording.blockedReason||"Indisponível."))+((settingsDiag.recording.warnings||[]).length?"\n"+settingsDiag.recording.warnings.join("\n"):""):""
+              }
+              SettingsSection { text:"Monitor de chamadas" }
+              SettingsCheckRow {
+                visible:!!settingsDiag.services
+                label:"Serviço recording-cli-calls"
+                status:settingsServiceStatus("calls")
+                detail:settingsServiceText("calls")
+              }
+              Flow { Layout.fillWidth:true; spacing:8
+               FtButton { objectName:"settingsApplyCalls"; text:hasSettingsPending("settings-service")?"Aplicando…":"Aplicar e reiniciar monitor"; highlighted:enabled&&!!settingsDiag.services&&(settingsDiag.services.calls.staleConfig||settingsDiag.services.calls.outdated||!settingsDiag.services.calls.active); enabled:backend.available&&!settingsHasChanges()&&!!settingsData.values&&settingsData.values["callDetection.enabled"]===true&&!hasSettingsPending("settings-service"); onClicked:runSettingsService("calls-apply") }
+               FtButton { text:"Desativar monitor"; variant:"outline"; enabled:backend.available&&!!settingsDiag.services&&settingsDiag.services.calls.installed&&!hasSettingsPending("settings-service"); onClicked:runSettingsService("calls-disable") }
+              }
+              SettingsHint { text:settingsHasChanges()?"Salve as alterações antes de aplicar o monitor.":settingsData.values&&settingsData.values["callDetection.enabled"]!==true?"Ative a gravação automática e salve para poder aplicar o monitor.":"O monitor lê a configuração ao iniciar; aplique depois de salvar mudanças de gravação. Nunca é reiniciado durante uma gravação." }
+              SettingsSection { text:"Bandeja" }
+              SettingsCheckRow {
+                visible:!!settingsDiag.services
+                label:"Indicador na bandeja (REC, pausar, parar)"
+                status:settingsServiceStatus("tray")
+                detail:settingsServiceText("tray")
+              }
+              FtButton { text:"Instalar ou reiniciar a bandeja"; variant:"outline"; enabled:backend.available&&!hasSettingsPending("settings-service"); onClicked:runSettingsService("tray-apply") }
+             }
+            }
+         }
+        }
+        footer:Item { implicitHeight:60; RowLayout { anchors.fill:parent; anchors.margins:12; spacing:10
+         Label { text:settingsHasChanges()?Object.keys(settingsChanges()).length+" alteração(ões) não salva(s)":""; color:warningColor; Layout.fillWidth:true; elide:Text.ElideRight }
+         FtButton { objectName:"settingsCancel"; text:settingsHasChanges()?"Descartar e fechar":"Fechar"; enabled:!hasSettingsPending("settings-save")&&!hasSettingsPending("settings-service"); onClicked:settingsDialog.reject() }
+         FtButton { visible:settingsNeedsReload||!!settingsError; text:backend.available?"Reler configuração":"Reconectar"; enabled:!hasSettingsPending("settings-read")&&!hasSettingsPending("settings-save"); onClicked:{if(backend.available)loadSettings(false);else backend.reconnect()} }
+         FtButton { objectName:"settingsSave"; highlighted:enabled; text:hasSettingsPending("settings-save")?"Salvando…":"Salvar"; enabled:backend.available&&settingsEditable&&settingsHasChanges(); onClicked:saveSettingsDraft() }
+        } }
+    }
+
+    function handleSettingsResponse(request, message) {
+        if (request.settingsGeneration !== settingsGeneration) return
+        const result = message.result
+        if (request.op === "settings-read" && !settingsDialog.visible) {
+            // Startup probe: open the guided setup once when no configuration exists yet.
+            if (message.ok && result.exists === false && !settingsFirstRunChecked) { settingsFirstRun = true; settingsDialog.open() }
+            settingsFirstRunChecked = true
+            return
+        }
+        if (!settingsDialog.visible) return
+        if (!message.ok) {
+            if (request.op === "settings-diagnose") { settingsDiag = ({}); settingsNotice = ""; settingsError = message.error; return }
+            if (request.op === "settings-save") settingsNeedsReload = true
+            if (request.op === "settings-read") settingsNeedsReload = true
+            settingsError = message.error
+            return
+        }
+        if (request.op === "settings-read") {
+            settingsData = result; settingsDraft = Object.assign({}, result.values); settingsError = ""; settingsNeedsReload = false; settingsFirstRunChecked = true
+        } else if (request.op === "settings-diagnose") {
+            settingsDiag = result
+        } else if (request.op === "settings-save") {
+            if (result.needsReload) { settingsNeedsReload = true; settingsNotice = "Salvo. Releia a configuração para continuar editando."; settingsData = ({}); settingsDraft = ({}); return }
+            settingsData = result; settingsDraft = Object.assign({}, result.values); settingsNeedsReload = false; settingsFirstRun = false
+            const affectsMonitor = (result.changed || []).some(function(f){ return f.startsWith("callDetection.") || f === "backend" || f.startsWith("capture.") || f === "recordingsDir" })
+            settingsNotice = "Configuração salva" + (result.backupCreated ? " (com cópia de segurança da anterior)" : "") + "." + (affectsMonitor ? " Aplique o monitor na aba Serviços para valer nas próximas chamadas." : "") + (result.cleanupPending ? " Uma cópia temporária privada pode ter ficado na pasta da configuração." : "")
+            runSettingsDiagnose()
+        } else if (request.op === "settings-service") {
+            settingsDiag = Object.assign({}, settingsDiag, { services: result.services })
+            settingsNotice = result.action === "calls-apply" ? "Monitor de chamadas aplicado e reiniciado com a configuração atual." : result.action === "calls-disable" ? "Monitor de chamadas desativado. Nenhuma gravação automática será iniciada." : "Bandeja instalada e reiniciada."
+        }
+    }
+    function hasSettingsPending(op) {
+        return Object.keys(pending).some(id => pending[id].op===op && pending[id].settingsGeneration===settingsGeneration)
+    }
+    function loadSettings(withDiagnose) {
+        if(hasSettingsPending("settings-save")||hasSettingsPending("settings-read"))return
+        settingsGeneration+=1;settingsData=({});settingsDraft=({})
+        if(!backend.available){settingsNeedsReload=true;settingsError="Serviço indisponível. Reconecte e releia a configuração antes de salvar.";return}
+        settingsError="";settingsNeedsReload=false;send("settings-read","")
+        if(withDiagnose)send("settings-diagnose","")
+    }
+    function runSettingsDiagnose() { if(backend.available)send("settings-diagnose","") }
+    function runSettingsService(action) { settingsError="";settingsNotice="";send("settings-service","",{action:action}) }
+    function setSettingsField(field, value) { const next=Object.assign({},settingsDraft);next[field]=value;settingsDraft=next }
+    function settingsChanges() {
+        const values=settingsData.values||({}), changes={}
+        for(const field in settingsDraft) if(settingsDraft[field]!==values[field]&&settingsDraft[field]!==null&&settingsDraft[field]!=="") changes[field]=settingsDraft[field]
+        return changes
+    }
+    function settingsHasChanges() { return Object.keys(settingsChanges()).length>0 }
+    function saveSettingsDraft() {
+        const changes=settingsChanges()
+        if(!Object.keys(changes).length)return
+        settingsError="";settingsNotice="";send("settings-save","",{revision:settingsData.revision,changes:changes})
+    }
+    function settingsLoopback(url) { return /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d+)?\/?$/.test(String(url||"")) }
+    function settingsCredentialText(source) { return source==="environment"?"definida no ambiente":source==="calls.env"?"definida em calls.env":source==="config"?"definida na configuração":source==="missing"?"não encontrada":"—" }
+    function settingsDeviceOptions(monitor) {
+        const audio=settingsDiag.audio||({}), field=monitor?"capture.desktop":"capture.microphone", current=settingsDraft[field]
+        const fallback=monitor?audio.defaultDesktop:audio.defaultMicrophone
+        const options=[{label:"Padrão do sistema"+(fallback?" ("+fallback+")":""),value:"default"}]
+        for(const device of (audio.devices||[])) if(device.monitor===monitor) options.push({label:device.description+" · "+device.name,value:device.name})
+        if(current&&current!=="default"&&!options.some(function(o){return o.value===current})) options.push({label:current+" (não encontrado agora)",value:current})
+        return options
+    }
+    function settingsServiceStatus(name) {
+        const s=settingsDiag.services?settingsDiag.services[name]:null
+        if(!s)return "skipped"
+        if(!s.installed)return "missing"
+        return s.active&&!s.staleConfig&&!s.outdated?"ok":"warning"
+    }
+    function settingsServiceText(name) {
+        const s=settingsDiag.services?settingsDiag.services[name]:null
+        if(!s)return ""
+        if(!s.installed)return "Não instalado."
+        return (s.active?"Ativo":"Parado")+(s.enabled?", inicia com a sessão.":", não inicia com a sessão.")+(s.staleConfig?" Ainda usa a configuração anterior: aplique para valer.":"")+(s.outdated?" A pasta das gravações mudou: aplique de novo.":"")
+    }
+    function settingsConnectionLost() {
+        if(!settingsDialog.visible)return
+        const saving=hasSettingsPending("settings-save")||hasSettingsPending("settings-service")
+        settingsGeneration+=1;settingsNeedsReload=true
+        settingsError=saving?"Conexão perdida durante a operação; o resultado não foi confirmado. Reconecte e releia antes de tentar de novo.":"Serviço desconectado. Reconecte e releia a configuração antes de salvar."
+    }
+
     FtDialog {
         id:onboardingDialog; objectName:"onboardingDialog"; title:"Configuração e privacidade"
         anchors.centerIn:parent; width:Math.min(window.width-48,580); height:Math.min(window.height-64,600); modal:true
         closePolicy:hasOnboardingPending("onboarding-save-local")?Popup.NoAutoClose:Popup.CloseOnEscape
         onOpened:{onboardingError="";onboardingNeedsReload=false;onboardingSaveUncertain=false;loadOnboarding();onboardingCancel.forceActiveFocus(Qt.TabFocusReason)}
-        onClosed:{onboardingGeneration+=1;onboardingDraft=({});localChoice.checked=false;onboardingButton.forceActiveFocus(Qt.TabFocusReason)}
+        onClosed:{onboardingGeneration+=1;onboardingDraft=({});localChoice.checked=false;(settingsDialog.visible?settingsTabs:onboardingButton).forceActiveFocus(Qt.TabFocusReason)}
         contentItem:ColumnLayout { spacing:12
          Label { objectName:"onboardingError"; visible:!!onboardingError; text:onboardingError; textFormat:Text.PlainText; wrapMode:Text.WordWrap; color:errorColor; Layout.fillWidth:true; Accessible.name:text }
          ScrollView { id:onboardingScroll; objectName:"onboardingScroll"; clip:true; contentWidth:availableWidth; Layout.fillWidth:true; Layout.fillHeight:true
@@ -987,9 +1304,9 @@ ApplicationWindow {
     function send(op, key, payload) {
         if (["agent-authorize","provider-authorize","agent-frames","provider-analyze"].includes(op)) agentError=""
         const id = backend.request(op, key || "", payload || ({}))
-        if (id < 0) { if(op.startsWith("summary-"))summaryConnectionLost();if(op.startsWith("revision-")){reviewNeedsReload=true;reviewError="Pedido sem confirmação; reconecte e releia antes de tentar novamente."}if(op.startsWith("export-")){exportError="Pedido sem confirmação; atualize a prévia após reconectar.";exportResult=({})}if(op.startsWith("agent-")||op.startsWith("provider-"))agentError="Serviço indisponível; dados preservados. Feche e reconecte para continuar."; if(op.startsWith("frames-"))uxError="Serviço indisponível; dados preservados. Reabra após reconectar.";if(op.startsWith("onboarding-"))invalidateOnboarding("O serviço não recebeu este pedido. Reconecte e releia a configuração antes de salvar."); errorText = "O serviço da biblioteca está indisponível. Reabra esta janela."; return -1 }
+        if (id < 0) { if(op.startsWith("summary-"))summaryConnectionLost();if(op.startsWith("revision-")){reviewNeedsReload=true;reviewError="Pedido sem confirmação; reconecte e releia antes de tentar novamente."}if(op.startsWith("export-")){exportError="Pedido sem confirmação; atualize a prévia após reconectar.";exportResult=({})}if(op.startsWith("agent-")||op.startsWith("provider-"))agentError="Serviço indisponível; dados preservados. Feche e reconecte para continuar."; if(op.startsWith("frames-"))uxError="Serviço indisponível; dados preservados. Reabra após reconectar.";if(op.startsWith("onboarding-"))invalidateOnboarding("O serviço não recebeu este pedido. Reconecte e releia a configuração antes de salvar.");if(op.startsWith("settings-")&&settingsDialog.visible){settingsNeedsReload=true;settingsError="O serviço não recebeu este pedido. Reconecte e releia a configuração.";return -1} errorText = "O serviço da biblioteca está indisponível. Reabra esta janela."; return -1 }
         const next = Object.assign({}, pending)
-        next[id] = {op: op, key: key, generation: generation, frameGeneration: frameGeneration, onboardingGeneration: onboardingGeneration, agentGeneration:agentGeneration, reviewGeneration:reviewGeneration,exportGeneration:exportGeneration,summaryGeneration:summaryGeneration}
+        next[id] = {op: op, key: key, generation: generation, frameGeneration: frameGeneration, onboardingGeneration: onboardingGeneration, settingsGeneration: settingsGeneration, agentGeneration:agentGeneration, reviewGeneration:reviewGeneration,exportGeneration:exportGeneration,summaryGeneration:summaryGeneration}
         pending = next
         return id
     }
@@ -1218,13 +1535,13 @@ ApplicationWindow {
     Timer { interval: processingWait || summaryRunning || hasPending("frames-preview") || hasPending("frames-confirm") ? 500 : 2000; running: backend.available; repeat: true; onTriggered: { if (!hasPending("processing-status")) send("processing-status", "") } }
     Label { z: 100; anchors.bottom: parent.bottom; anchors.bottomMargin: 48; anchors.horizontalCenter: parent.horizontalCenter; width: Math.min(parent.width - 32, implicitWidth); visible: !!processingWait; text: processingWait; textFormat: Text.PlainText; wrapMode: Text.WordWrap; color: warningColor; padding: 10; leftPadding: 14; rightPadding: 14; background: Rectangle { color: surface; radius: 10; border.width: 1; border.color: warningColor } }
     Timer { interval: 1000; running: captureStatus.active; repeat: true; onTriggered: statusNow = Date.now() }
-    Component.onCompleted: if (backend.available) { send("list-cached", ""); send("list", ""); send("capture-status", ""); send("jobs-list", ""); send("ux-capabilities", "") }
+    Component.onCompleted: if (backend.available) { send("list-cached", ""); send("list", ""); send("capture-status", ""); send("jobs-list", ""); send("ux-capabilities", ""); send("settings-read", "") }
     Connections {
         target: backend
-        function onFailed(message) { summaryConnectionLost();revisionConnectionLost();onboardingConnectionLost();if(agentDialog.visible)agentError=message; captureKnown = false; pending = {}; errorText = message; loading = false; resolving = false; detailLoading = false; operationPolling = false; captureBusy = false; contextLoading = false }
+        function onFailed(message) { summaryConnectionLost();revisionConnectionLost();onboardingConnectionLost();settingsConnectionLost();if(agentDialog.visible)agentError=message; captureKnown = false; pending = {}; errorText = message; loading = false; resolving = false; detailLoading = false; operationPolling = false; captureBusy = false; contextLoading = false }
         function onAvailabilityChanged() {
-            if (!backend.available) { summaryConnectionLost();revisionConnectionLost();onboardingConnectionLost();if(agentDialog.visible)agentError="Serviço desconectado; dados preservados. Feche e reconecte para continuar."; captureKnown = false; pending = {}; loading = false; resolving = false; detailLoading = false; operationPolling = false; captureBusy = false; contextLoading = false; notice = "Serviço desconectado. Use Reconectar para continuar." }
-            else { errorText = ""; notice = "Serviço conectado."; if (!libraryFresh) send("list-cached", ""); send("capture-status", ""); send("jobs-list", ""); send("list", ""); send("ux-capabilities", "") }
+            if (!backend.available) { summaryConnectionLost();revisionConnectionLost();onboardingConnectionLost();settingsConnectionLost();if(agentDialog.visible)agentError="Serviço desconectado; dados preservados. Feche e reconecte para continuar."; captureKnown = false; pending = {}; loading = false; resolving = false; detailLoading = false; operationPolling = false; captureBusy = false; contextLoading = false; notice = "Serviço desconectado. Use Reconectar para continuar." }
+            else { errorText = ""; notice = "Serviço conectado."; if (!libraryFresh) send("list-cached", ""); send("capture-status", ""); send("jobs-list", ""); send("list", ""); send("ux-capabilities", ""); if (!settingsFirstRunChecked && !hasSettingsPending("settings-read")) send("settings-read", "") }
         }
         function onResponse(message) {
             const request = pending[message.id]
@@ -1242,6 +1559,7 @@ ApplicationWindow {
             if((request.op.startsWith("agent-")||request.op.startsWith("provider-")) && (request.generation !== generation || request.agentGeneration !== agentGeneration)) return
             if (request.op.startsWith("summary-") && request.op!=="summary-cancel" && (request.generation!==generation || request.summaryGeneration!==summaryGeneration))return
             if (request.op.startsWith("onboarding-") && request.onboardingGeneration !== onboardingGeneration) return
+            if (request.op.startsWith("settings-")) { handleSettingsResponse(request, message); return }
             if (!message.ok && (request.op.startsWith("agent-")||request.op.startsWith("provider-"))) { agentError=message.error; return }
             if (!message.ok && request.op === "processing-status") { processingWait = "Estado do processamento indisponível; nenhuma alteração na captura."; return }
             if (!message.ok && request.op.startsWith("onboarding-")) { if(request.op==="onboarding-save-local")onboardingSaveUncertain=true;invalidateOnboarding(message.error+" Releia a configuração e confirme sua escolha antes de salvar novamente.");return }
@@ -1270,7 +1588,7 @@ ApplicationWindow {
             } else if (request.op === "frames-preview" || request.op === "frames-preview-plan") { framePreview = result
             } else if (request.op === "frames-confirm") { frameResult = result; showVisualSummary=false; if (!result.synthetic && result.summaryMarkdown) { const updated=Object.assign({},detail); updated.visualReview=result; detail=updated }
             } else if (request.op === "onboarding-read") { onboardingDraft = result;onboardingError="";onboardingNeedsReload=false;onboardingSaveUncertain=false
-            } else if (request.op === "onboarding-save-local") { notice = result.cleanupPending?"Escolha local salva; uma cópia temporária privada pode permanecer na pasta da configuração. Nenhum serviço iniciado.":"Escolha local salva; nenhum serviço iniciado."; onboardingDialog.close()
+            } else if (request.op === "onboarding-save-local") { if(settingsDialog.visible)loadSettings(false); notice = result.cleanupPending?"Escolha local salva; uma cópia temporária privada pode permanecer na pasta da configuração. Nenhum serviço iniciado.":"Escolha local salva; nenhum serviço iniciado."; onboardingDialog.close()
             } else if (request.op === "list-cached") {
                 if (!libraryFresh && Array.isArray(result.items)) { items = result.items; loading = false; libraryRefreshing = hasPending("list") }
             } else if (request.op === "list") {
@@ -1527,7 +1845,7 @@ ApplicationWindow {
                     }
                     Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: divider }
                     FtNavButton { objectName: "recordingControlsButton"; iconName: "tools"; text: "Gravação e tarefas…"; onClicked: recordingTools.open() }
-                    FtNavButton { id: onboardingButton; objectName: "onboardingButton"; iconName: "shield"; text: "Configuração e privacidade…"; enabled: backend.available; onClicked: onboardingDialog.open() }
+                    FtNavButton { id: onboardingButton; objectName: "onboardingButton"; iconName: "settings"; text: "Configurações…"; enabled: backend.available; onClicked: settingsDialog.open() }
                     FtNavButton { id: aboutButton; objectName: "aboutButton"; iconName: "info"; text: "Sobre o FalaTrace"; onClicked: aboutDialog.open() }
                 }
             }
@@ -1596,7 +1914,7 @@ ApplicationWindow {
                                     Layout.alignment: Qt.AlignHCenter
                                     spacing: 10
                                     FtButton { text: "Gravação e tarefas…"; iconName: "tools"; onClicked: recordingTools.open() }
-                                    FtButton { text: "Configuração e privacidade…"; iconName: "shield"; variant: "outline"; enabled: backend.available; onClicked: onboardingDialog.open() }
+                                    FtButton { text: "Configurações…"; iconName: "settings"; variant: "outline"; enabled: backend.available; onClicked: settingsDialog.open() }
                                 }
                             }
                         }
@@ -1695,7 +2013,7 @@ ApplicationWindow {
                                     Layout.fillWidth: true
                                     spacing: 8
                                     FtButton { text: "Gravação e tarefas…"; iconName: "tools"; onClicked: recordingTools.open() }
-                                    FtButton { text: "Configuração e privacidade…"; iconName: "shield"; variant: "outline"; onClicked: onboardingDialog.open() }
+                                    FtButton { text: "Configurações…"; iconName: "settings"; variant: "outline"; onClicked: settingsDialog.open() }
                                 }
                             }
                         }
