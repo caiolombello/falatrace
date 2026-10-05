@@ -50,6 +50,9 @@ ApplicationWindow {
     property var pending: ({})
     property int generation: 0
     property bool loading: true
+    // The last saved list is shown at startup until the fresh list replaces it.
+    property bool libraryRefreshing: false
+    property bool libraryFresh: false
     property bool resolving: false
     property bool detailLoading: false
     property bool paused: true
@@ -1211,7 +1214,7 @@ ApplicationWindow {
     Timer { interval: processingWait || summaryRunning || hasPending("frames-preview") || hasPending("frames-confirm") ? 500 : 2000; running: backend.available; repeat: true; onTriggered: { if (!hasPending("processing-status")) send("processing-status", "") } }
     Label { z: 100; anchors.bottom: parent.bottom; anchors.bottomMargin: 48; anchors.horizontalCenter: parent.horizontalCenter; width: Math.min(parent.width - 32, implicitWidth); visible: !!processingWait; text: processingWait; textFormat: Text.PlainText; wrapMode: Text.WordWrap; color: warningColor; padding: 10; leftPadding: 14; rightPadding: 14; background: Rectangle { color: surface; radius: 10; border.width: 1; border.color: warningColor } }
     Timer { interval: 1000; running: captureStatus.active; repeat: true; onTriggered: statusNow = Date.now() }
-    Component.onCompleted: if (backend.available) { send("list", ""); send("capture-status", ""); send("jobs-list", ""); send("ux-capabilities", "") }
+    Component.onCompleted: if (backend.available) { send("list-cached", ""); send("list", ""); send("capture-status", ""); send("jobs-list", ""); send("ux-capabilities", "") }
     Connections {
         target: backend
         function onFailed(message) { summaryConnectionLost();revisionConnectionLost();onboardingConnectionLost();if(agentDialog.visible)agentError=message; captureKnown = false; pending = {}; errorText = message; loading = false; resolving = false; detailLoading = false; operationPolling = false; captureBusy = false; contextLoading = false }
@@ -1229,7 +1232,7 @@ ApplicationWindow {
             if (["detail","context-meeting","revision-save","revision-undo"].includes(request.op) && request.reviewGeneration !== reviewGeneration) return
             if(request.op.startsWith("export-") && request.exportGeneration!==exportGeneration)return
             if (request.op === "playback-status") operationPolling = false
-            if (request.op === "list") loading = false
+            if (request.op === "list") { loading = false; libraryRefreshing = false; libraryFresh = true }
             if (request.op === "detail") detailLoading = false
             if (request.op.startsWith("frames-") && request.op !== "frames-cancel" && (request.generation !== generation || request.frameGeneration !== frameGeneration)) return
             if((request.op.startsWith("agent-")||request.op.startsWith("provider-")) && (request.generation !== generation || request.agentGeneration !== agentGeneration)) return
@@ -1264,6 +1267,8 @@ ApplicationWindow {
             } else if (request.op === "frames-confirm") { frameResult = result; showVisualSummary=false; if (!result.synthetic && result.summaryMarkdown) { const updated=Object.assign({},detail); updated.visualReview=result; detail=updated }
             } else if (request.op === "onboarding-read") { onboardingDraft = result;onboardingError="";onboardingNeedsReload=false;onboardingSaveUncertain=false
             } else if (request.op === "onboarding-save-local") { notice = result.cleanupPending?"Escolha local salva; uma cópia temporária privada pode permanecer na pasta da configuração. Nenhum serviço iniciado.":"Escolha local salva; nenhum serviço iniciado."; onboardingDialog.close()
+            } else if (request.op === "list-cached") {
+                if (!libraryFresh && Array.isArray(result.items)) { items = result.items; loading = false; libraryRefreshing = true }
             } else if (request.op === "list") {
                 items = result.items
                 if (selected.key) { const current = items.find(item => item.key === selected.key); if (current) { selected = current; detailLoading = true; send("detail", selected.key) } else backToLibrary() }
@@ -1440,7 +1445,7 @@ ApplicationWindow {
                     enabled: backend.available && !captureBusy
                     onClicked: { if (captureStatus.paused) { captureConsent.intent = "resume"; captureConsent.open() } else { captureBusy = true; if (send("automation-pause", "") < 0) captureBusy = false } }
                 }
-                FtButton { iconOnly: true; variant: "ghost"; iconName: "refresh"; text: "Atualizar biblioteca"; Accessible.name: "Atualizar biblioteca"; enabled: backend.available && !loading; onClicked: { loading = true; send("list", "") } }
+                FtButton { iconOnly: true; variant: "ghost"; iconName: "refresh"; text: "Atualizar biblioteca"; Accessible.name: "Atualizar biblioteca"; enabled: backend.available && !loading && !libraryRefreshing; onClicked: { loading = true; send("list", "") } }
                 FtButton { iconOnly: true; variant: "ghost"; iconName: lightTheme ? "moon" : "sun"; text: lightTheme ? "Tema escuro" : "Tema claro"; Accessible.name: text; onClicked: lightTheme = !lightTheme }
             }
         }
@@ -1464,7 +1469,7 @@ ApplicationWindow {
                     RowLayout {
                         Layout.fillWidth: true
                         Label { text: "Biblioteca"; color: ink; font.pixelSize: 15; font.weight: Font.DemiBold; Layout.fillWidth: true }
-                        FtChip { visible: !loading; text: items.length === 1 ? "1 gravação" : items.length + " gravações" }
+                        FtChip { visible: !loading; text: (items.length === 1 ? "1 gravação" : items.length + " gravações") + (libraryRefreshing ? " · atualizando…" : "") }
                     }
                     FtTextField { id: search; Layout.fillWidth: true; leadingIcon: "search"; placeholderText: "Buscar gravação…"; Accessible.name: "Buscar gravação" }
                     BusyIndicator { Layout.alignment: Qt.AlignHCenter; running: loading && backend.available; visible: running }

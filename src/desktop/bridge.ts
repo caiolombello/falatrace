@@ -24,6 +24,7 @@ import type { JobRecord, Transcript } from "../../src/jobs/types";
 import { runCommand } from "../../src/jobs/command";
 import { buildLibrary, readArtifact, assertExistingJobArtifactPath, assertExistingManagedPath, type LibraryEntry } from "../../src/tui/library";
 import { queuePlayback, readPlayback } from "./playback";
+import { readLibrarySnapshot, writeLibrarySnapshot } from "./library-snapshot";
 import { parsePlayerTranscript, type PlayerTranscript } from "../../src/player/transcript";
 import { findAlignedSubtitles } from "../../src/subtitles/aligned";
 import { queueAlignedSubtitles } from "../subtitles/service";
@@ -58,7 +59,7 @@ export const handleRealFrameOperation=async(flow:StudioVisualFlow,request:Reques
 
 import { setAutomationPaused } from "../calls/control";
 
-const OPERATIONS = ["summary-plan", "summary-run", "summary-cancel","provider-authorize","provider-analyze","provider-cancel","agent-cancel","agent-status","agent-authorize","agent-pause","agent-resume","agent-revoke","agent-frames","processing-status", "ux-capabilities", "onboarding-read", "onboarding-save-local", "frames-check-models", "frames-scope", "frames-plan", "frames-preview-plan", "frames-preview", "frames-confirm", "frames-cancel", "list", "detail", "resolve", "playback-status", "subtitles", "diarization", "automation-pause", "automation-resume", "capture-status", "capture-start", "capture-stop", "capture-recover", "audio-defaults", "jobs-list", "job-process", "job-retry", "diarization-name", "context-meeting", "revision-save", "revision-undo", "export-preview", "export-save"] as const;
+const OPERATIONS = ["summary-plan", "summary-run", "summary-cancel","provider-authorize","provider-analyze","provider-cancel","agent-cancel","agent-status","agent-authorize","agent-pause","agent-resume","agent-revoke","agent-frames","processing-status", "ux-capabilities", "list-cached", "onboarding-read", "onboarding-save-local", "frames-check-models", "frames-scope", "frames-plan", "frames-preview-plan", "frames-preview", "frames-confirm", "frames-cancel", "list", "detail", "resolve", "playback-status", "subtitles", "diarization", "automation-pause", "automation-resume", "capture-status", "capture-start", "capture-stop", "capture-recover", "audio-defaults", "jobs-list", "job-process", "job-retry", "diarization-name", "context-meeting", "revision-save", "revision-undo", "export-preview", "export-save"] as const;
 export type Request = { id: number; op: typeof OPERATIONS[number]; key?: string; payload?: {maxRequests?:number;expectedRevision?:number;expectedSnapshotSha256?:string;base?:RevisionBase;expectedBase?:RevisionBase;operations?:RevisionOperation[];format?:"json"|"markdown"|"srt"|"vtt";track?:"transcript"|"diarization";provider?:'openai'|'google';model?:string;analysis?:import('../provider-analysis/contracts').AnalysisOptions;context?:boolean;maxFrames?:number;maxBytes?:number;requestId?:string;grantId?:string;recipientId?:string;data?:Array<'context'|'frames'>;timestamps?:number[]; title?: string; speakerId?: string; label?: string; maxCharacters?: number; query?: string; offset?: number; question?: string; seconds?: number; previewId?: string; consent?: boolean; revision?: string; visionModel?: string; summaryModel?: string; capabilityId?: string; consentKey?: string; planId?:string; consentTranscript?:boolean; scopeId?:string; startSeconds?:number; endSeconds?:number } };
 type Response = { id: number; ok: true; result: unknown } | { id: number; ok: false; error: string };
 const MAX_LINE = 1024 * 1024;
@@ -132,9 +133,10 @@ const findEntry = async (key: string): Promise<{ config: Awaited<ReturnType<type
 const invalidateLibrary = (): void => { libraryCache = undefined; libraryLoad = undefined; };
 const loadLibrary = async (force = false): Promise<NonNullable<typeof libraryCache>> => {
   if (!force && libraryCache) return libraryCache;
-  // Concurrent readers (e.g. list + jobs-list at startup) share one build.
-  // A forced refresh always starts its own; only the newest build is cached.
-  if (!force && libraryLoad) return libraryLoad;
+  // Concurrent readers (e.g. list + jobs-list at startup or reconnect) share one build,
+  // forced or not. Invalidation drops the in-flight build, so anything still registered
+  // started after the last known change.
+  if (libraryLoad) return libraryLoad;
   const load = (async () => {
     const { config } = await loadConfig();
     return { at: Date.now(), config, entries: await buildLibrary(config, new JobStore()) };
@@ -237,8 +239,11 @@ export const assertCurrentSummaryPresentation = async (job: JobRecord, expected:
   if (current?.raw !== expected?.raw) throw new RevisionConflictError("Summary result changed during Studio read; reread before presenting it");
 };
 const list = async (): Promise<unknown> => {
-  const { entries: items } = await loadLibrary(true);
-  return { items: await Promise.all(items.map(async (entry) => ({ key: entry.sourcePath, recordingId:registeredAgentRecordingId(entry), ...recordingPresentation(entry, entry.jobs[0] ? await readArtifactStates(entry.jobs[0]) : undefined), fileName: basename(entry.sourcePath), modifiedAt: entry.modifiedAt, sourceExists: entry.sourceExists, location: locationOf(entry), status: statusOf(entry), backup: backupOf(entry) }))) };
+  const { entries } = await loadLibrary(true);
+  const items = await Promise.all(entries.map(async (entry) => ({ key: entry.sourcePath, recordingId:registeredAgentRecordingId(entry), ...recordingPresentation(entry, entry.jobs[0] ? await readArtifactStates(entry.jobs[0]) : undefined), fileName: basename(entry.sourcePath), modifiedAt: entry.modifiedAt, sourceExists: entry.sourceExists, location: locationOf(entry), status: statusOf(entry), backup: backupOf(entry) })));
+  // Presentation cache only; a failed write never fails the fresh list.
+  await writeLibrarySnapshot(items).catch(() => undefined);
+  return { items };
 };
 const detail = async (key: string): Promise<unknown> => {
   const { entry } = await findEntry(key);
@@ -445,6 +450,7 @@ const handle = async (request: Request): Promise<unknown> => {
     return prepareMockFramePreview(frameReview,key,entry.sourcePath,job.source.sha256,transcript,request.payload?.question || "",request.payload?.seconds ?? NaN);
   }
   if (request.op === "list") return list();
+  if (request.op === "list-cached") return { cached: true, ...(await readLibrarySnapshot() || { items: null }) };
   if (request.op === "automation-pause" || request.op === "automation-resume") {
     await setAutomationPaused(request.op === "automation-pause");
     return readCaptureStatus((await loadConfig()).config);
