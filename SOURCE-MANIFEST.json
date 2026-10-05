@@ -20,8 +20,8 @@
     },
     {
       "path": "CHANGELOG.md",
-      "sha256": "74b8702d333f078a4ec8214056e372931f1d052c4be3e17c0ecb3e56a0660911",
-      "bytes": 8120
+      "sha256": "fc000996076524352ac4e43871059af427b9a9a53a7d1a4f0dafb033c9f27bcb",
+      "bytes": 9398
     },
     {
       "path": "LICENSE",
@@ -35,8 +35,8 @@
     },
     {
       "path": "README.md",
-      "sha256": "121933485210e067be72a79a4fecc47f6d4391b59d402750590b8d52632cc730",
-      "bytes": 14797
+      "sha256": "562b06f4f41c020fad8fa0197fa65f33d15ed0744794b4676d6865c1b1370af0",
+      "bytes": 14962
     },
     {
       "path": "SECURITY.md",
@@ -225,8 +225,8 @@
     },
     {
       "path": "docs/UX-VERIFICATION.md",
-      "sha256": "a38160dd501e6276590dd171b82c842ea3a7740b5a3bd8b47557ce7acfa01aff",
-      "bytes": 6934
+      "sha256": "e7f6f228c95dd49d412e24dbf854c3b2fe30f7db44c25a84ab4881810ed9e351",
+      "bytes": 9004
     },
     {
       "path": "docs/assets/agent-access-alpha5.png",
@@ -780,8 +780,8 @@
     },
     {
       "path": "src/desktop/Main.qml",
-      "sha256": "1c78826e08f45935aff8ad612dedb36f8e909368d0d274fed9104a559bc40334",
-      "bytes": 145107
+      "sha256": "9bea62db59e390e3a58f5e7b512723147deb451e0e1494aca49d1bbafcf7a54c",
+      "bytes": 211430
     },
     {
       "path": "src/desktop/__tests__/alpha6-build.test.ts",

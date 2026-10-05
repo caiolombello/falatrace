@@ -46,3 +46,16 @@ Public screenshots are curated output from that fixture. Workflow illustrations 
 The Studio confirmation uses the production Ollama visual/summary adapters; verification replaced HTTP transport with fixtures. Explicit model capability checks and bound consent precede inference. Persistent root limits are 24 inference attempts and 16 previews; plan/window checkpoints support different questions and fresh consent after TTL without resetting the root counter. Historical notes remain readable with expired-evidence warnings. Onboarding read/cancel/save preserves unknown config keys and writes only on deliberate save.
 
 Final validation: 362 offline tests, zero failures, 1657 assertions; 18 Qt synthetic renders and 43 checks. Actual installed-model quality, native capture/playback, physical keyboard/touch/Orca, retention automation and complete provider onboarding remain unvalidated/incomplete. See ALPHA2-LOCAL-REVIEW.md for detailed evidence and OPUS-REVIEW-RESOLUTION.md for findings.
+
+## Studio redesign — unreleased
+
+Presentation-only rebuild of `src/desktop/Main.qml`, still a single file so the build fingerprint, fixtures and packaging keep loading one QML document. The logic layer (state, consent, budgets, generation/stale guards, bridge protocol, `captionTextAt`/`captionHasFocus`, the subtitle-status line and every ID/function used by tests or `main.cpp`) was copied unchanged; presentation blocks were replaced.
+
+Verification on a Fedora host without the Ubuntu Qt SDK:
+
+- Offline suite: 732 of 759 tests passed. The same 27 tests failed with the unchanged QML on this host, because its FFmpeg lacks the `libx264` encoder and `strace` is absent; no new failure. Typecheck and `desktop:check` passed. The QML-reading tests (captions, caption focus, subtitle status) and the desktop bridge tests passed 48/48.
+- Native UX scripts (`test-desktop-ui`, `test-local-ux`, `test-heavy-ux`, `test-planner-ux`, `test-scope-ux`) ran their unmodified fixtures and production modules through a local PySide6 port of `main.cpp` (same argv, JSONL validation, timeouts and snapshot receipts), not through the shipped binary: 84 of 85 assertions passed. The failing `invalid config visible and saving blocked` assertion fails identically with the unchanged QML: since alpha.11 onboarding read errors are reported in `onboardingError`, while the script still expects `uxError`.
+- `qmllint` reports the same five warnings as the unchanged QML, all caused by the native `Recording` module being unavailable to the linter.
+- Rendered checks with a synthetic backend: light/dark, 1320×820 and 900×640, library overview, empty, loading, error, disconnected, recording, paused, missing media, block timing, every dialog; no horizontal overflow at either size; keyboard Tab order walked with real Qt key events.
+
+Limits: MpvQt video decoding and playback, the compiled `recording-studio` binary, real capture, physical keyboard/touch, screen readers (Orca), fractional scaling and high-contrast themes were not exercised. Model and user content remain plain text.

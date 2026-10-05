@@ -1,3 +1,12 @@
+## Unreleased — Studio interface redesign
+
+- Rebuild the Studio presentation with a single-file component system (buttons, fields, chips, cards, dialogs and inline SVG icons) on the FalaTrace tokens; follow the desktop color scheme and keep the manual light/dark switch.
+- Open on a library overview with counts, recent recordings and first-use guidance; empty, loading, error and disconnected states explain what happened and offer the next action.
+- Keep capture state, **Gravar…**/**Parar captura** and **Pausar novas gravações**/**Retomar automação…** in the header; capture consent keeps Cancel focused by default.
+- Recording view: metadata chips, recording actions in the header, a wider tabbed panel, transcript segments with inline review, a plain-text structured summary with source-time buttons and a structured AI-context view (copying still exports the original JSON). Model and user text are never rendered as rich text.
+- Keyboard: the library list joins the Tab order (arrows move, Enter/Space open) and recent-recording cards are focusable.
+- Consent, budgets, stale-response guards, the bridge protocol and test-referenced IDs/functions are unchanged. Verification and limits: [UX verification](docs/UX-VERIFICATION.md#studio-redesign--unreleased).
+
 ## 0.2.0-alpha.11 — reviewed source, exports and Studio summary consent
 
 - Add revision-bound transcript/speaker corrections and undo, reviewed consumers and snapshot-bound JSON/Markdown/SRT/WebVTT export.
