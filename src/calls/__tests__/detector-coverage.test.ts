@@ -47,7 +47,24 @@ describe("synthetic application attribution coverage", () => {
     expect(classifyCall([stream(2, { "application.id": "helium" })], apps).app).toBe("helium");
   });
 
-  for (const unsupported of ["firefox", "chromium", "google-chrome", "teams", "zoom", "discord", "obs"]) {
+  for (const [supported, app] of [
+    ["firefox", "firefox"],
+    ["chromium", "chromium"],
+    ["google-chrome", "chrome"],
+    ["zoom", "zoom"],
+    ["teams-for-linux", "teams"]
+  ] as const) {
+    test(`${supported}: explicit identity is attributed to ${app}`, () => {
+      expect(classifyCall([stream(1, binary(supported))], apps).app).toBe(app);
+    });
+  }
+
+  test("personal messengers are recognized only after an explicit opt-in", () => {
+    expect(classifyCall([stream(1, binary("discord"))], apps).active).toBe(false);
+    expect(classifyCall([stream(1, binary("discord"))], { ...apps, discord: true }).app).toBe("discord");
+  });
+
+  for (const unsupported of ["teams", "skype", "webex", "chromium-helper", "obs"]) {
     test(`${unsupported}: unsupported binary is ignored rather than guessed`, () => {
       expect(classifyCall([stream(1, binary(unsupported))], apps).active).toBe(false);
     });
@@ -55,7 +72,7 @@ describe("synthetic application attribution coverage", () => {
 
   test("unrecognized IDs, PID alone and substring names do not authorize attribution", () => {
     for (const identity of [
-      { "application.id": "org.mozilla.firefox" },
+      { "application.id": "org.mozilla.thunderbird" },
       { "application.id": "com.slack.Slack" },
       { "application.process.id": 3210 },
       binary("slack-helper"),
@@ -153,7 +170,7 @@ describe("synthetic PipeWire graph delta and state coverage", () => {
       graph.apply([stream(1, binary("zen"))]);
       expect(graph.apply([removal])).toBe(true);
       expect(graph.values()).toEqual([]);
-      graph.apply([stream(1, binary("firefox"))]);
+      graph.apply([stream(1, binary("skype"))]);
       expect(classifyCall(graph.values(), apps).active).toBe(false);
     }
   });

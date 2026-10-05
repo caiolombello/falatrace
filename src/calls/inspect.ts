@@ -1,5 +1,6 @@
 import type { AppConfig } from "../config/defaults";
 import { runCommand } from "../jobs/command";
+import { CALL_APPLICATIONS, callApplicationForProcessName } from "./apps";
 import { classifyCall, sanitizePipeWireNodes } from "./classifier";
 import { collectNetworkTelemetry } from "./network";
 import { CallObsController } from "./obs";
@@ -22,12 +23,14 @@ export const inspectCallEnvironment = async (config: AppConfig): Promise<Record<
     runCommand("ps", ["-eo", "comm="], { timeoutMs: 3_000 })
       .then(({ stdout }) => {
         const names = stdout.split("\n").map((value) => value.trim());
-        return {
-          slack: names.filter((name) => name === "slack").length,
-          zen: names.filter((name) => name === "zen").length,
-          helium: names.filter((name) => name === "helium").length,
-          obs: names.filter((name) => name === "obs").length
-        };
+        const counts: Record<string, number> = Object.fromEntries(
+          CALL_APPLICATIONS.map((app) => [app, 0])
+        );
+        for (const name of names) {
+          const app = callApplicationForProcessName(name);
+          if (app) counts[app] += 1;
+        }
+        return { ...counts, obs: names.filter((name) => name === "obs").length };
       })
       .catch(() => null),
     Promise.all([

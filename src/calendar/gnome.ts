@@ -1,3 +1,4 @@
+import type { CallApplication } from "../calls/apps";
 import { spawn, type ChildProcess } from "node:child_process";
 import { runCommand } from "../jobs/command";
 import type { MeetingContext } from "../jobs/types";
@@ -218,7 +219,7 @@ const scoreEvent = (
 export const findGnomeCalendarMeeting = async (
   startAt: string,
   endAt: string,
-  app?: "slack" | "zen" | "helium",
+  app?: CallApplication,
   query: CalendarQuery = queryGnomeCalendarEvents
 ): Promise<MeetingContext | undefined> => {
   const callStartMs = Date.parse(startAt);

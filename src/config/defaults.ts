@@ -1,5 +1,6 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { defaultCallApplications, type CallApplication } from "../calls/apps";
 
 export type RecordingBackend =
   | "audio"
@@ -134,11 +135,7 @@ export type AppConfig = {
     exitTimeoutSeconds: number;
     networkSampleSeconds: number;
     enqueueOnStop: boolean;
-    apps: {
-      slack: boolean;
-      zen: boolean;
-      helium: boolean;
-    };
+    apps: Record<CallApplication, boolean>;
   };
   timesheet: {
     enabled: boolean;
@@ -263,11 +260,7 @@ export const DEFAULT_CONFIG: AppConfig = {
     exitTimeoutSeconds: 15,
     networkSampleSeconds: 5,
     enqueueOnStop: true,
-    apps: {
-      slack: true,
-      zen: true,
-      helium: true
-    }
+    apps: defaultCallApplications()
   },
   timesheet: {
     enabled: false,

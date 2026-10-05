@@ -1,4 +1,5 @@
 import { basename, extname } from "node:path";
+import { isCallApplication, type CallApplication } from "../calls/apps";
 import type {
   ExecutionTarget,
   SummaryProvider,
@@ -37,7 +38,7 @@ export type MeetingContext = {
   endAt: string;
   recurring: boolean;
   confidence: number;
-  app?: "slack" | "zen" | "helium";
+  app?: CallApplication;
 };
 
 export type SummaryClientHint = {
@@ -320,7 +321,7 @@ const parseSummaryContext = (value: unknown): SummaryContext => {
       value.meeting.confidence < 0 ||
       value.meeting.confidence > 1 ||
       (value.meeting.app !== undefined &&
-        !["slack", "zen", "helium"].includes(String(value.meeting.app)))
+        !isCallApplication(value.meeting.app))
     ) {
       throw new Error("summary.context.meeting is invalid");
     }
@@ -331,7 +332,7 @@ const parseSummaryContext = (value: unknown): SummaryContext => {
       endAt,
       recurring: value.meeting.recurring,
       confidence: value.meeting.confidence,
-      app: value.meeting.app as "slack" | "zen" | "helium" | undefined
+      app: value.meeting.app as CallApplication | undefined
     };
   }
 

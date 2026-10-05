@@ -1,3 +1,4 @@
+import type { CallApplication } from "../calls/apps";
 import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
@@ -100,7 +101,7 @@ export class TimeEntryStore {
 
   async startCall(
     sessionId: string,
-    app: "slack" | "zen" | "helium" | undefined,
+    app: CallApplication | undefined,
     startAt: string
   ): Promise<TimeEntry> {
     const existing = (await this.list()).find(

@@ -1,3 +1,4 @@
+import type { CallApplication } from "../calls/apps";
 import { promises as fs } from "node:fs";
 import { findGnomeCalendarMeeting } from "../calendar/gnome";
 import type { AppConfig } from "../config/defaults";
@@ -9,7 +10,7 @@ export type EnqueueRecordingOptions = {
   recordingId?: string;
   startedAt?: string;
   endedAt?: string;
-  app?: "slack" | "zen" | "helium";
+  app?: CallApplication;
 };
 
 const waitForStableFile = async (filePath: string): Promise<void> => {

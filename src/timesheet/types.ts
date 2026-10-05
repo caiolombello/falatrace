@@ -1,3 +1,4 @@
+import { isCallApplication, type CallApplication } from "../calls/apps";
 export const TIME_ENTRY_VERSION = 1 as const;
 
 // New installations supply their own catalog; existing persisted numeric IDs remain unchanged.
@@ -22,7 +23,7 @@ export type TimeEntryEditableField =
 
 export type TimeEntrySource = {
   kind: TimeEntrySourceKind;
-  app?: "slack" | "zen" | "helium";
+  app?: CallApplication;
   sessionId?: string;
   recordingPath?: string;
   jobId?: string;
@@ -368,7 +369,7 @@ export const validateTimeEntry = (value: unknown): TimeEntry => {
   const sourceApp = value.source.app;
   if (
     sourceApp !== undefined &&
-    !["slack", "zen", "helium"].includes(String(sourceApp))
+    !isCallApplication(sourceApp)
   ) {
     throw new Error("Invalid call application");
   }

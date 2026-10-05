@@ -198,7 +198,13 @@ describe("network metadata", () => {
       zen: { tcpSockets: 5, udpSockets: 6, tcpBytesSent: 7, tcpBytesReceived: 8 },
       helium: { tcpSockets: 9, udpSockets: 10, tcpBytesSent: 11, tcpBytesReceived: 12 }
     };
-    expect(parseNetworkProbeResponse(JSON.stringify(telemetry))).toEqual(telemetry);
+    // Older probes only report the original identities; newer ones default to empty.
+    const parsed = parseNetworkProbeResponse(JSON.stringify(telemetry));
+    expect(parsed).toMatchObject(telemetry);
+    expect(parsed.zoom).toEqual({ tcpSockets: 0, udpSockets: 0, tcpBytesSent: 0, tcpBytesReceived: 0 });
+    expect(() => parseNetworkProbeResponse(JSON.stringify({ ...telemetry, zoom: { tcpSockets: -1 } }))).toThrow(
+      "Invalid network probe response"
+    );
     expect(() => parseNetworkProbeResponse('{"zen":{"tcpSockets":-1}}')).toThrow(
       "Invalid network probe response"
     );

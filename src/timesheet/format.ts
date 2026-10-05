@@ -1,4 +1,5 @@
 import type { TimeEntry, TimesheetContext } from "./types";
+import { callApplicationLabel } from "../calls/apps";
 
 const pad = (value: number): string => String(value).padStart(2, "0");
 export const sanitizeTimeEntryText = (value: string): string =>
@@ -73,7 +74,7 @@ export const formatTimeEntry = (
     "?";
   const source =
     entry.source.kind === "call"
-      ? `chamada ${entry.source.app === "slack" ? "Slack" : entry.source.app === "zen" ? "Zen" : entry.source.app === "helium" ? "Helium" : ""}`.trim()
+      ? `chamada ${callApplicationLabel(entry.source.app) || ""}`.trim()
       : entry.source.kind === "timer"
         ? "timer manual"
         : "registro manual";

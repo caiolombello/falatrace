@@ -1,4 +1,6 @@
-export type CallApplication = "slack" | "zen" | "helium";
+import type { CallApplication } from "./apps";
+
+export type { CallApplication };
 
 export type CallMonitorState = "IDLE" | "CANDIDATE" | "IN_CALL" | "ENDING";
 

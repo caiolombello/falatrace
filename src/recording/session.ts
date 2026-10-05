@@ -1,3 +1,4 @@
+import type { CallApplication } from "../calls/apps";
 import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join } from "node:path";
@@ -29,7 +30,7 @@ export type RecordingSession = {
   audioSelection?: AudioSelection;
   /** Historical startup observations; current health checks refresh these observations. */
   audioWarnings?: string[];
-  app?: "slack" | "zen" | "helium";
+  app?: CallApplication;
   flatpak?: boolean;
   captureProfile?: "standard"|"call-light";
 };

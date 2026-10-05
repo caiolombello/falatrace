@@ -1,8 +1,8 @@
 import { runCommand } from "../jobs/command";
+import { callApplicationLabel } from "./apps";
 import type { CallApplication } from "./types";
 
-const appLabel = (app?: CallApplication): string =>
-  app === "slack" ? "Slack" : app === "zen" ? "Zen" : app === "helium" ? "Helium" : "aplicativo";
+const appLabel = (app?: CallApplication): string => callApplicationLabel(app) || "aplicativo";
 
 let notificationSequence = 0;
 

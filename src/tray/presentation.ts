@@ -1,4 +1,5 @@
 import type { CallMonitorStatus } from "../calls/status";
+import { callApplicationLabel } from "../calls/apps";
 import type { RecordingSession } from "../recording/session";
 import type { TimeEntryCounts } from "../timesheet/store";
 
@@ -95,10 +96,7 @@ const processingText = (counts: TrayProcessingCounts): string => {
 };
 
 const appLabel = (status: CallMonitorStatus): string => {
-  if (status.app === "slack") return "Slack";
-  if (status.app === "zen") return "Zen";
-  if (status.app === "helium") return "Helium";
-  return "aplicativo desconhecido";
+  return callApplicationLabel(status.app) || "aplicativo desconhecido";
 };
 
 const recordingSourceText = (session: RecordingSession): Pick<

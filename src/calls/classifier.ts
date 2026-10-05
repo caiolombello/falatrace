@@ -1,4 +1,8 @@
-import type { AppConfig } from "../config/defaults";
+import {
+  CALL_APPLICATIONS,
+  CALL_APPLICATION_IDENTITIES,
+  matchCallApplication
+} from "./apps";
 import type {
   CallApplication,
   DetectionObservation,
@@ -49,26 +53,16 @@ export const mergePipeWireNode = (
 
 const identifyApplication = (
   props: Record<string, unknown>,
-  enabledApps: AppConfig["callDetection"]["apps"]
-): CallApplication | null => {
-  const binary = optionalString(props["application.process.binary"]).toLowerCase();
-  const name = optionalString(props["application.name"]).toLowerCase();
-  const id = optionalString(props["application.id"]).toLowerCase();
-  if (enabledApps.slack && (binary === "slack" || name === "slack")) return "slack";
-  if (
-    enabledApps.zen &&
-    (binary === "zen" || name === "zen" || id === "app.zen_browser.zen")
-  ) {
-    return "zen";
-  }
-  if (
-    enabledApps.helium &&
-    (binary === "helium" || name === "helium" || id === "helium")
-  ) {
-    return "helium";
-  }
-  return null;
-};
+  enabledApps: Partial<Record<CallApplication, boolean>>
+): CallApplication | null =>
+  matchCallApplication(
+    {
+      binary: optionalString(props["application.process.binary"]),
+      name: optionalString(props["application.name"]),
+      id: optionalString(props["application.id"])
+    },
+    enabledApps
+  );
 
 type ApplicationSignals = {
   inputAudio: number[];
@@ -86,13 +80,11 @@ const emptySignals = (): ApplicationSignals => ({
 
 export const classifyCall = (
   nodes: Iterable<PipeWireNodeRecord>,
-  enabledApps: AppConfig["callDetection"]["apps"]
+  enabledApps: Partial<Record<CallApplication, boolean>>
 ): DetectionObservation => {
-  const byApp: Record<CallApplication, ApplicationSignals> = {
-    slack: emptySignals(),
-    zen: emptySignals(),
-    helium: emptySignals()
-  };
+  const byApp = Object.fromEntries(
+    CALL_APPLICATIONS.map((app) => [app, emptySignals()])
+  ) as Record<CallApplication, ApplicationSignals>;
 
   for (const node of nodes) {
     const props = node.info.props;
@@ -107,7 +99,7 @@ export const classifyCall = (
     }
   }
 
-  const candidates = (["slack", "zen", "helium"] as const).flatMap((app) => {
+  const candidates = CALL_APPLICATIONS.flatMap((app) => {
     const signals = byApp[app];
     if (signals.inputAudio.length === 0 && signals.inputVideo.length === 0) return [];
     const reasons: string[] = [];
@@ -115,7 +107,7 @@ export const classifyCall = (
     if (signals.inputVideo.length > 0) reasons.push("capture-video-running");
     if (signals.outputAudio.length > 0) reasons.push("playback-audio-running");
     if (signals.communicationRole) reasons.push("media-role-communication");
-    const isBrowser = app === "zen" || app === "helium";
+    const isBrowser = CALL_APPLICATION_IDENTITIES[app].kind === "browser";
     let confidence = signals.inputAudio.length > 0
       ? isBrowser ? 0.9 : 0.72
       : isBrowser ? 0.78 : 0.7;
@@ -141,7 +133,7 @@ export const classifyCall = (
 
 export const sanitizePipeWireNodes = (
   nodes: Iterable<PipeWireNodeRecord>,
-  enabledApps: AppConfig["callDetection"]["apps"]
+  enabledApps: Partial<Record<CallApplication, boolean>>
 ): Array<Record<string, unknown>> => {
   const sanitized: Array<Record<string, unknown>> = [];
   for (const node of nodes) {

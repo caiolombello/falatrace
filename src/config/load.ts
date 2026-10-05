@@ -2,6 +2,7 @@ import { existsSync, lstatSync, promises as fs } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import { join,dirname,resolve } from "node:path";
+import { CALL_APPLICATIONS } from "../calls/apps";
 import {
   DEFAULT_CONFIG,
   TRANSCRIPTION_PROMPT_MAX_LENGTH,
@@ -290,9 +291,7 @@ export const validateConfig = (config: AppConfig): void => {
     enabled: config.callDetection.enabled,
     dryRun: config.callDetection.dryRun,
     enqueueOnStop: config.callDetection.enqueueOnStop,
-    slack: config.callDetection.apps.slack,
-    zen: config.callDetection.apps.zen,
-    helium: config.callDetection.apps.helium
+    ...Object.fromEntries(CALL_APPLICATIONS.map((app) => [app, config.callDetection.apps[app]]))
   })) {
     if (typeof value !== "boolean") {
       throw new Error(`callDetection.${field} must be a boolean`);

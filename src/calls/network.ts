@@ -1,5 +1,6 @@
 import { createConnection } from "node:net";
 import { runCommand } from "../jobs/command";
+import { CALL_APPLICATIONS, callApplicationForProcessName } from "./apps";
 import type {
   CallApplication,
   NetworkTelemetry,
@@ -13,11 +14,10 @@ const emptyProcessTelemetry = (): ProcessNetworkTelemetry => ({
   tcpBytesReceived: 0
 });
 
-const emptyTelemetry = (): NetworkTelemetry => ({
-  slack: emptyProcessTelemetry(),
-  zen: emptyProcessTelemetry(),
-  helium: emptyProcessTelemetry()
-});
+const emptyTelemetry = (): NetworkTelemetry =>
+  Object.fromEntries(
+    CALL_APPLICATIONS.map((app) => [app, emptyProcessTelemetry()])
+  ) as NetworkTelemetry;
 
 export const getNetworkProbeSocketName = (): string => {
   const userId = typeof process.getuid === "function" ? process.getuid() : "user";
@@ -26,9 +26,7 @@ export const getNetworkProbeSocketName = (): string => {
 
 const parseApplication = (record: string): CallApplication | null => {
   const match = record.match(/users:\(\(\"([^\"]+)\",pid=\d+/);
-  return match?.[1] === "slack" || match?.[1] === "zen" || match?.[1] === "helium"
-    ? match[1]
-    : null;
+  return match ? callApplicationForProcessName(match[1]) : null;
 };
 
 const splitSocketRecords = (output: string): string[] => {
@@ -78,18 +76,17 @@ export const parseNetworkProbeResponse = (value: string): NetworkTelemetry => {
     throw new Error("Invalid network probe response");
   }
   const response = parsed as Record<string, unknown>;
-  if (
-    !isProcessTelemetry(response.slack) ||
-    !isProcessTelemetry(response.zen) ||
-    !isProcessTelemetry(response.helium)
-  ) {
-    throw new Error("Invalid network probe response");
+  // Probes started by an older release only report the original identities.
+  // Those remain mandatory; newer identities default to empty when absent.
+  const telemetry = emptyTelemetry();
+  for (const app of CALL_APPLICATIONS) {
+    const value = response[app];
+    const required = app === "slack" || app === "zen" || app === "helium";
+    if (value === undefined && !required) continue;
+    if (!isProcessTelemetry(value)) throw new Error("Invalid network probe response");
+    telemetry[app] = value;
   }
-  return {
-    slack: response.slack,
-    zen: response.zen,
-    helium: response.helium
-  };
+  return telemetry;
 };
 
 export const collectNetworkTelemetryDirect = async (): Promise<NetworkTelemetry> => {

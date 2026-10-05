@@ -1,4 +1,5 @@
 import { promises as fs } from "node:fs";
+import { callApplicationLabel } from "../calls/apps";
 import { resolve } from "node:path";
 import * as readline from "node:readline";
 import { createInterface as createPrompt } from "node:readline/promises";
@@ -351,14 +352,7 @@ const formatCallStatus = (status: CallMonitorStatus | null): string => {
   if (!status) return "chamada: estado indisponível";
   if (status.recordingWarning) return `chamada: atenção · ${status.recordingWarning}`;
   if (status.recordingOwned) return `chamada: gravando${status.recordingBackend === "audio" ? " áudio" : status.recordingBackend === "gpu-screen-recorder" ? " tela e áudio" : " no OBS"}`;
-  const application =
-    status.app === "slack"
-      ? "Slack"
-      : status.app === "zen"
-        ? "Zen"
-        : status.app === "helium"
-          ? "Helium"
-          : "";
+  const application = callApplicationLabel(status.app) || "";
   if (status.state === "IN_CALL") return `chamada: em andamento${application ? ` · ${application}` : ""}`;
   if (status.state === "CANDIDATE") return `chamada: confirmando${application ? ` · ${application}` : ""}`;
   if (status.state === "ENDING") return "chamada: encerrando";
@@ -1704,13 +1698,7 @@ class RecordingTui {
         selectedRow ? `${REVERSE}${line}${RESET}` : line;
       const source =
         entry.source.kind === "call"
-          ? entry.source.app === "slack"
-            ? "Chamada Slack"
-            : entry.source.app === "zen"
-              ? "Chamada Zen"
-              : entry.source.app === "helium"
-                ? "Chamada Helium"
-                : "Chamada"
+          ? `Chamada ${callApplicationLabel(entry.source.app) || ""}`.trim()
           : entry.source.kind === "timer"
             ? "Timer"
             : "Manual";
