@@ -1,5 +1,7 @@
 # Completion goal and finite roadmap
 
+Alpha.12 checkpoint, 2026-10-05: explicit Chromium, Chrome, Brave, Edge, Vivaldi, Opera, Firefox, native Zoom and Teams for Linux identities (Discord, Signal, Telegram and Element opt-in) are implemented with classifier fixtures, closing the identity part of gap-batch item 2. Native acceptance per app/desktop/backend tuple remains open; see [compatibility](COMPATIBILITY.md).
+
 Alpha.11 source checkpoint, 2026-10-03: the isolated G4/G5/G7 compatibility candidate adds
 reviewed-view consumers, explicit revision-bound local summary regeneration,
 frame consent/result revision binding and non-executable removal planning.

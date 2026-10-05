@@ -1,4 +1,4 @@
-## Unreleased — Studio interface redesign
+## 0.2.0-alpha.12 — more call apps and a redesigned Studio
 
 - Rebuild the Studio presentation with a single-file component system (buttons, fields, chips, cards, dialogs and inline SVG icons) on the FalaTrace tokens; follow the desktop color scheme and keep the manual light/dark switch.
 - Open on a library overview with counts, recent recordings and first-use guidance; empty, loading, error and disconnected states explain what happened and offer the next action.

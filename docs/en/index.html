@@ -27,7 +27,7 @@
 <link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
 <link rel="stylesheet" href="../style.css">
 <script src="../site.js" defer></script>
-<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"FalaTrace","description":"Call recordings on Linux, summaries that point to the source and bounded context for AI agents.","applicationCategory":"MultimediaApplication","operatingSystem":"Linux","softwareVersion":"0.2.0-alpha.11","license":"https://opensource.org/licenses/MIT","url":"https://caiolombello.github.io/falatrace/en/","downloadUrl":"https://github.com/caiolombello/falatrace/releases/tag/v0.2.0-alpha.11","sameAs":"https://github.com/caiolombello/falatrace","inLanguage":"en","author":{"@type":"Person","name":"Caio Barbieri"},"offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"FalaTrace","description":"Call recordings on Linux, summaries that point to the source and bounded context for AI agents.","applicationCategory":"MultimediaApplication","operatingSystem":"Linux","softwareVersion":"0.2.0-alpha.12","license":"https://opensource.org/licenses/MIT","url":"https://caiolombello.github.io/falatrace/en/","downloadUrl":"https://github.com/caiolombello/falatrace/releases/tag/v0.2.0-alpha.12","sameAs":"https://github.com/caiolombello/falatrace","inLanguage":"en","author":{"@type":"Person","name":"Caio Barbieri"},"offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}</script>
 </head>
 <body>
 <a class="skip-link" href="#main">Skip to content</a>
@@ -53,8 +53,8 @@
 <div class="announce">
  <div class="wrap announce-inner">
   <span class="announce-badge">New</span>
-  <p>Alpha.11: review transcripts and speakers, export to SRT, WebVTT, Markdown or JSON, and generate local summaries with consent in the Studio.</p>
-  <a href="https://github.com/caiolombello/falatrace/releases/tag/v0.2.0-alpha.11">See what’s new <span aria-hidden="true">↗</span></a>
+  <p>Alpha.12: automatic detection in native Zoom, Chromium, Firefox and other apps, and a redesigned Studio.</p>
+  <a href="https://github.com/caiolombello/falatrace/releases/tag/v0.2.0-alpha.12">See what’s new <span aria-hidden="true">↗</span></a>
  </div>
 </div>
 
@@ -84,7 +84,7 @@
    <h1 id="hero-title">Remember what was decided.<br><em>Check where it was said.</em></h1>
    <p class="hero-lead">FalaTrace records the calls you configure, transcribes with local processing by default and links summaries and notes to the moment in the recording. When your AI needs context, it retrieves only what it needs — with a timestamp and source you can check.</p>
    <div class="cta-row">
-    <a class="btn btn-lg" href="#install">Install alpha.11 <span aria-hidden="true">↓</span></a>
+    <a class="btn btn-lg" href="#install">Install alpha.12 <span aria-hidden="true">↓</span></a>
     <a class="btn btn-lg btn-ghost" href="https://github.com/caiolombello/falatrace">View code on GitHub <span aria-hidden="true">↗</span></a>
    </div>
    <ul class="hero-facts">
@@ -161,7 +161,7 @@
 
    <article class="feature" aria-labelledby="step-1">
     <div class="feature-copy">
-     <p class="step"><span class="step-number">01</span>Record</p>
+     <p class="step"><span class="step-number">01</span>Record <span class="badge-new">New in alpha.12</span></p>
      <h3 id="step-1">Records the calls you choose.</h3>
      <p>Turn on rules to record when Slack, Zoom, Chromium, Firefox, Zen, Helium and other apps use the microphone or camera — or start capture manually. Recording state is always visible.</p>
      <ul class="checks">
@@ -229,7 +229,7 @@
 
    <article class="feature" aria-labelledby="step-3">
     <div class="feature-copy">
-     <p class="step"><span class="step-number">03</span>Review <span class="badge-new">New in alpha.11</span></p>
+     <p class="step"><span class="step-number">03</span>Review</p>
      <h3 id="step-3">Review without erasing the original.</h3>
      <p>Fix segments and speaker names in the Studio, generate a new summary with your consent and export exactly the version you checked.</p>
      <ul class="checks">
@@ -329,7 +329,7 @@
      <figcaption><span class="tag tag-real">Real UI · alpha.5</span>AI access: grant, budget and frame preview.</figcaption>
     </figure>
    </div>
-   <p class="fine">These captures come from earlier alphas; alpha.11 adds the Summary tab with consent, review and export. Click an image to enlarge it.</p>
+   <p class="fine">These captures come from earlier alphas; alpha.12 redesigns the Studio, so it looks different today. Click an image to enlarge it.</p>
   </div>
  </section>
 
@@ -360,15 +360,15 @@
     <article class="status-card">
      <h3><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check-circle"/></svg>Verified offline</h3>
      <ul>
-      <li><strong>759 tests</strong> with no failures in the approved alpha.11 candidate, using synthetic data.</li>
+      <li><strong>784 tests</strong> with no failures in alpha.12, using synthetic data.</li>
       <li>Locked installation, configuration that doesn’t overwrite yours and uninstall that preserves data.</li>
-      <li>The Studio summary journey passed 8 of 8 cases with real QML in offscreen Qt.</li>
+      <li>The Studio summary journey passed 8 of 8 cases with real QML in offscreen Qt (alpha.11).</li>
      </ul>
     </article>
     <article class="status-card status-open">
      <h3><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clock"/></svg>Not yet demonstrated</h3>
      <ul>
-      <li>Detection and capture in other browsers, apps and Linux environments.</li>
+      <li>Detection of the new apps in real calls and capture in other Linux environments.</li>
       <li>Real-world quality of transcription, speakers, summaries and visual analysis with installed models.</li>
       <li>Screen readers, varied display scaling, installing on a machine without a package cache, binaries and other platforms.</li>
      </ul>
@@ -376,11 +376,11 @@
    </div>
    <div class="compat">
     <table>
-     <caption>Compatibility in alpha.11</caption>
+     <caption>Compatibility in alpha.12</caption>
      <thead><tr><th scope="col">Capability</th><th scope="col">Status</th></tr></thead>
      <tbody>
-      <tr><th scope="row">Automatic detection in Slack, Zen and Helium<small>Via local microphone or camera signals; it doesn’t identify the calling service.</small></th><td><span class="state state-ok"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check-circle"/></svg>Available</span></td></tr>
-      <tr><th scope="row">Native Zoom, Chromium, Chrome, Brave, Edge, Vivaldi, Opera, Firefox and Teams for Linux<small>Already in the <code>main</code> source, shipping in the next release. Tested with synthetic data; Discord, Signal, Telegram and Element are turned on one by one.</small></th><td><span class="state state-planned"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clock"/></svg>Next release</span></td></tr>
+      <tr><th scope="row">Automatic detection in Slack, Zoom, Teams for Linux, Chromium, Chrome, Brave, Edge, Vivaldi, Opera, Firefox, Zen and Helium<small>Via local microphone or camera signals; it doesn’t identify the calling service. The apps new in alpha.12 were tested with synthetic data.</small></th><td><span class="state state-ok"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check-circle"/></svg>Available</span></td></tr>
+      <tr><th scope="row">Discord, Signal, Telegram and Element<small>Off by default because they also carry personal calls; turn each one on in the configuration.</small></th><td><span class="state state-ok"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check-circle"/></svg>Optional</span></td></tr>
       <tr><th scope="row">Manual recording (FFmpeg audio, OBS, GPU Screen Recorder)<small>Depends on the backend and desktop.</small></th><td><span class="state state-ok"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check-circle"/></svg>Available</span></td></tr>
       <tr><th scope="row">Transcription with local Whisper.cpp, OpenAI or Gemini</th><td><span class="state state-ok"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check-circle"/></svg>Available</span></td></tr>
       <tr><th scope="row">Summaries with local Ollama or OpenAI<small>Model quality not validated.</small></th><td><span class="state state-ok"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check-circle"/></svg>Available</span></td></tr>
@@ -390,9 +390,9 @@
     </table>
    </div>
    <ul class="doc-links">
-    <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.11/docs/ALPHA11.md">Alpha.11 scope and verification <span aria-hidden="true">↗</span></a></li>
-    <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.11/docs/COMPATIBILITY.md">Compatibility matrix <span aria-hidden="true">↗</span></a></li>
-    <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.11/docs/ROADMAP.md">Roadmap <span aria-hidden="true">↗</span></a></li>
+    <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.12/docs/ALPHA12.md">Alpha.12 scope and verification <span aria-hidden="true">↗</span></a></li>
+    <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.12/docs/COMPATIBILITY.md">Compatibility matrix <span aria-hidden="true">↗</span></a></li>
+    <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.12/docs/ROADMAP.md">Roadmap <span aria-hidden="true">↗</span></a></li>
    </ul>
   </div>
  </section>
@@ -402,7 +402,7 @@
    <div class="start-copy">
     <div class="section-head">
      <p class="eyebrow">Start from source</p>
-     <h2 id="start-title">Install alpha.11 in a few commands.</h2>
+     <h2 id="start-title">Install alpha.12 in a few commands.</h2>
      <p>The alpha ships as source code for Linux. None of these commands starts a recording: automation is enabled separately, after you review rules and consent.</p>
     </div>
     <h3>You’ll need</h3>
@@ -412,19 +412,19 @@
      <li>Optional: the <strong>Qt 6</strong> SDK for the Studio, via <code>bun run desktop:setup</code></li>
     </ul>
     <ul class="start-links">
-     <li><a href="https://github.com/caiolombello/falatrace/releases/download/v0.2.0-alpha.11/falatrace-0.2.0-alpha.11-source.tar.gz">Download source code (.tar.gz)</a></li>
-     <li><a href="https://github.com/caiolombello/falatrace/releases/download/v0.2.0-alpha.11/falatrace-0.2.0-alpha.11-source.sha256">Check SHA-256</a></li>
-     <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.11/skills/README.md">Install the skill in your agents <span aria-hidden="true">↗</span></a></li>
-     <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.11/README.md">Full guide in the README <span aria-hidden="true">↗</span></a></li>
+     <li><a href="https://github.com/caiolombello/falatrace/releases/download/v0.2.0-alpha.12/falatrace-0.2.0-alpha.12-source.tar.gz">Download source code (.tar.gz)</a></li>
+     <li><a href="https://github.com/caiolombello/falatrace/releases/download/v0.2.0-alpha.12/falatrace-0.2.0-alpha.12-source.sha256">Check SHA-256</a></li>
+     <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.12/skills/README.md">Install the skill in your agents <span aria-hidden="true">↗</span></a></li>
+     <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.12/README.md">Full guide in the README <span aria-hidden="true">↗</span></a></li>
     </ul>
    </div>
    <div>
     <div class="code-card">
      <div class="code-bar"><span>Terminal</span><span class="copy-status" id="install-status" role="status"></span><button class="copy-btn" type="button" data-copy-target="install-code" data-copy-status="install-status" data-copied="Copied" data-failed="Couldn’t copy" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-copy"/></svg>Copy commands</button></div>
-     <pre id="install-code" tabindex="0" role="region" aria-label="Installation commands"><code><span class="c"># 1. Get the code and pin alpha.11</span>
+     <pre id="install-code" tabindex="0" role="region" aria-label="Installation commands"><code><span class="c"># 1. Get the code and pin alpha.12</span>
 git clone https://github.com/caiolombello/falatrace.git
 cd falatrace
-git switch --detach v0.2.0-alpha.11
+git switch --detach v0.2.0-alpha.12
 
 <span class="c"># 2. Install the CLI into ~/.local/bin</span>
 bun install --frozen-lockfile --ignore-scripts
@@ -453,7 +453,7 @@ falatrace record doctor</code></pre>
     </details>
     <details>
      <summary>Which calling apps does it recognize?</summary>
-     <div class="faq-answer"><p>In alpha.11, Slack, Zen and Helium, via local microphone or camera signals — Zoom web, Meet and Teams web in those browsers are recorded too. The <code>main</code> source (next release) adds native Zoom, Teams for Linux, Chromium, Chrome, Brave, Edge, Vivaldi, Opera and Firefox; Discord, Signal, Telegram and Element can be turned on individually. That signal doesn’t identify the service (Meet, Teams, Zoom on the web) or the tab. For other apps, use manual recording.</p></div>
+     <div class="faq-answer"><p>Slack, Zoom (native app), Teams for Linux, Chromium, Chrome, Brave, Edge, Vivaldi, Opera, Firefox, Zen and Helium, via local microphone or camera signals — plus Zoom web, Meet and Teams web inside those browsers. Discord, Signal, Telegram and Element can be turned on individually. The apps new in alpha.12 were tested with synthetic data, not yet in real calls of each app. That signal doesn’t identify the service (Meet, Teams, Zoom on the web) or the tab. For other apps, use manual recording.</p></div>
     </details>
     <details>
      <summary>Do my recordings go to the cloud?</summary>
@@ -491,10 +491,10 @@ falatrace record doctor</code></pre>
   <div class="wrap">
    <svg class="mark" aria-hidden="true" focusable="false"><use href="#mark"/></svg>
    <h2 id="cta-title">Stop hunting for what was already said.</h2>
-   <p>Install alpha.11, configure it at your own pace and give your AI context with a source.</p>
+   <p>Install alpha.12, configure it at your own pace and give your AI context with a source.</p>
    <div class="cta-row">
-    <a class="btn btn-lg" href="#install">Install alpha.11</a>
-    <a class="btn btn-lg btn-ghost" href="https://github.com/caiolombello/falatrace/releases/tag/v0.2.0-alpha.11">View the release on GitHub <span aria-hidden="true">↗</span></a>
+    <a class="btn btn-lg" href="#install">Install alpha.12</a>
+    <a class="btn btn-lg btn-ghost" href="https://github.com/caiolombello/falatrace/releases/tag/v0.2.0-alpha.12">View the release on GitHub <span aria-hidden="true">↗</span></a>
    </div>
   </div>
  </section>
@@ -510,25 +510,25 @@ falatrace record doctor</code></pre>
    <h2 id="footer-project">Project</h2>
    <ul>
     <li><a href="https://github.com/caiolombello/falatrace">Code on GitHub</a></li>
-    <li><a href="https://github.com/caiolombello/falatrace/releases/tag/v0.2.0-alpha.11">Alpha.11 release</a></li>
-    <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.11/CHANGELOG.md">Changelog</a></li>
-    <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.11/docs/ROADMAP.md">Roadmap</a></li>
+    <li><a href="https://github.com/caiolombello/falatrace/releases/tag/v0.2.0-alpha.12">Alpha.12 release</a></li>
+    <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.12/CHANGELOG.md">Changelog</a></li>
+    <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.12/docs/ROADMAP.md">Roadmap</a></li>
    </ul>
   </nav>
   <nav aria-labelledby="footer-docs">
    <h2 id="footer-docs">Documentation</h2>
    <ul>
-    <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.11/README.md">README</a></li>
-    <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.11/docs/COMPATIBILITY.md">Compatibility</a></li>
-    <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.11/skills/README.md">Agent skill</a></li>
-    <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.11/SECURITY.md">Security</a></li>
+    <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.12/README.md">README</a></li>
+    <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.12/docs/COMPATIBILITY.md">Compatibility</a></li>
+    <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.12/skills/README.md">Agent skill</a></li>
+    <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.12/SECURITY.md">Security</a></li>
    </ul>
   </nav>
   <nav aria-labelledby="footer-legal">
    <h2 id="footer-legal">License</h2>
    <ul>
-    <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.11/LICENSE">MIT</a></li>
-    <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.11/THIRD-PARTY-NOTICES.md">Third-party notices</a></li>
+    <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.12/LICENSE">MIT</a></li>
+    <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.12/THIRD-PARTY-NOTICES.md">Third-party notices</a></li>
    </ul>
   </nav>
  </div>

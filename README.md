@@ -5,11 +5,13 @@
 
 # FalaTrace — experimental Linux source alpha
 
-Linux tools for authorized recording, meeting search and notes linked to source timestamps. FalaTrace 0.2.0-alpha.11 is an experimental source alpha. General native capture, desktop compatibility, model quality and redistributed binaries remain unqualified; specific synthetic checks are listed in the release notes.
+Linux tools for authorized recording, meeting search and notes linked to source timestamps. FalaTrace 0.2.0-alpha.12 is an experimental source alpha. General native capture, desktop compatibility, model quality and redistributed binaries remain unqualified; specific synthetic checks are listed in the release notes.
 
 ## Current verification
 
-Alpha.11 adds human transcript/speaker corrections and undo, revised consumers and snapshot-bound exports, explicit local summary regeneration in the Studio, and safer onboarding save/cancel/recovery. Original artifacts, explicit provider settings and persistent limits are preserved. Removal planning is a non-executable dry-run; unified deletion, real-model quality and physical UX remain open. Headset/default-follow is not implemented. See [alpha.11 scope and verification](docs/ALPHA11.md).
+Alpha.12 extends automatic call detection to native Zoom, Teams for Linux, Chromium, Chrome, Brave, Edge, Vivaldi, Opera and Firefox (Discord, Signal, Telegram and Element are opt-in) and redesigns the Studio; the new app identities are fixture-tested, not natively validated. See [alpha.12 scope and verification](docs/ALPHA12.md).
+
+Alpha.11 added human transcript/speaker corrections and undo, revised consumers and snapshot-bound exports, explicit local summary regeneration in the Studio, and safer onboarding save/cancel/recovery. Original artifacts, explicit provider settings and persistent limits are preserved. Removal planning is a non-executable dry-run; unified deletion, real-model quality and physical UX remain open. Headset/default-follow is not implemented. See [alpha.11 scope and verification](docs/ALPHA11.md).
 
 Landing: [Português](https://caiolombello.github.io/falatrace/) · [English](https://caiolombello.github.io/falatrace/en/). The Studio interface is currently Portuguese.
 
