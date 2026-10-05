@@ -7,7 +7,7 @@ import {
 import type { TimesheetContext } from "../timesheet/types";
 import type { SummaryProvider } from "../config/defaults";
 import type { SummaryInputEvidence } from "./evidence";
-import { MAX_SUMMARY_INPUT_CHARACTERS } from "./budget";
+import { MAX_SUMMARY_INPUT_CHARACTERS, summaryInputSize, type SummaryInputUnit } from "./budget";
 
 const normalized = (value: string): string =>
   value
@@ -62,7 +62,8 @@ export const buildSummaryUserContent = (
   transcript: string,
   context?: SummaryContext,
   evidence?: SummaryInputEvidence,
-  maxCharacters = 24_000
+  maxCharacters = 24_000,
+  unit: SummaryInputUnit = "characters"
 ): string => {
   const content = JSON.stringify({
     meeting: context?.meeting,
@@ -70,7 +71,7 @@ export const buildSummaryUserContent = (
     transcript,
     ...(evidence ? { evidence } : {})
   });
-  if (!Number.isSafeInteger(maxCharacters) || maxCharacters < 4096 || maxCharacters > MAX_SUMMARY_INPUT_CHARACTERS || content.length > maxCharacters) {
+  if (!Number.isSafeInteger(maxCharacters) || maxCharacters < 4096 || maxCharacters > MAX_SUMMARY_INPUT_CHARACTERS || summaryInputSize(content, unit) > maxCharacters) {
     throw new Error("Summary input exceeds the explicit character budget; chunking or an explicit larger budget is required");
   }
   return content;

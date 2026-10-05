@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_CONFIG } from "../../config/defaults";
 import type { Transcript } from "../../jobs/types";
-import { MAX_SUMMARY_INPUT_CHARACTERS, summaryInputBudget } from "../budget";
+import { MAX_SUMMARY_INPUT_CHARACTERS, summaryInputLimit } from "../budget";
+import { buildSummaryUserContent } from "../context";
 import { planSummaryChunks, summarizeInChunks } from "../chunks";
 import { summarizeWithOpenAI } from "../openai";
 
@@ -20,14 +21,32 @@ const withFetch = async (stub: (body: Record<string, unknown>) => Response, run:
   try { await run(); } finally { globalThis.fetch = original; }
 };
 
-test("OpenAI budget follows the chosen model; unknown models assume a 128k window; Ollama keeps its configured budget", () => {
+test("OpenAI limit follows the chosen model in UTF-8 bytes; unknown models assume a 128k window; Ollama keeps its configured budget", () => {
   const config = structuredClone(DEFAULT_CONFIG);
-  expect(summaryInputBudget(config, "ollama", "qwen3.5:9b")).toBe(24_000);
-  for (const model of ["gpt-4o-mini", "future-unknown-model"]) expect(summaryInputBudget(config, "openai", model)).toBe(215_232);
-  for (const model of ["gpt-6-luna", "gpt-6.1-sol", "gpt-6-astra", "gpt-6-luna-2026-09-01"]) expect(summaryInputBudget(config, "openai", model)).toBe(MAX_SUMMARY_INPUT_CHARACTERS);
+  expect(summaryInputLimit(config, "ollama", "qwen3.5:9b")).toEqual({ max: 24_000, unit: "characters" });
+  const small = summaryInputLimit(config, "openai", "gpt-4o-mini");
+  expect(summaryInputLimit(config, "openai", "future-unknown-model")).toEqual(small);
+  // Each token covers at least one byte, so the limit stays under the window minus the output cap.
+  expect(small.unit).toBe("utf8-bytes");
+  expect(small.max).toBeLessThan(128_000 - 16_384);
+  expect(small.max).toBeGreaterThan(90_000);
+  for (const model of ["gpt-6-luna", "gpt-6.1-sol", "gpt-6-astra", "gpt-6-luna-2026-09-01"]) {
+    const large = summaryInputLimit(config, "openai", model);
+    expect(large.unit).toBe("utf8-bytes");
+    expect(large.max).toBeLessThan(1_050_000 - 16_384);
+    expect(large.max).toBeLessThanOrEqual(MAX_SUMMARY_INPUT_CHARACTERS);
+  }
   config.summary.maxInputCharacters = 4096;
-  expect(summaryInputBudget(config, "openai", "gpt-4o-mini")).toBe(215_232);
-  expect(summaryInputBudget(config, "ollama", "qwen3.5:9b")).toBe(4096);
+  expect(summaryInputLimit(config, "openai", "gpt-4o-mini")).toEqual(small);
+  expect(summaryInputLimit(config, "ollama", "qwen3.5:9b")).toEqual({ max: 4096, unit: "characters" });
+});
+
+test("token-dense text is measured in bytes, so a payload under the character count cannot exceed the window", () => {
+  const limit = summaryInputLimit(structuredClone(DEFAULT_CONFIG), "openai", "gpt-4o-mini");
+  const dense = "会议记录".repeat(10_000);
+  expect(dense.length).toBeLessThan(limit.max);
+  expect(() => buildSummaryUserContent(dense, undefined, undefined, limit.max, limit.unit)).toThrow("budget");
+  expect(buildSummaryUserContent(dense, undefined, undefined, limit.max, "characters").length).toBeGreaterThan(0);
 });
 
 test("a meeting over the configured budget is one OpenAI request instead of a refused paid split", async () => {
@@ -37,11 +56,12 @@ test("a meeting over the configured budget is one OpenAI request instead of a re
   const root = await fs.mkdtemp(join(tmpdir(), "summary-budget-"));
   let calls = 0;
   try {
-    const options = { transcript, mediaHash, maxCharacters: summaryInputBudget(config, "openai", "gpt-4o-mini"), provider: "openai" as const, model: "gpt-4o-mini",
+    const limit = summaryInputLimit(config, "openai", "gpt-4o-mini");
+    const options = { transcript, mediaHash, maxCharacters: limit.max, inputUnit: limit.unit, provider: "openai" as const, model: "gpt-4o-mini",
       adapterIdentity: "fixture", cacheDir: root, adapter: async () => { calls++; return { version: 1 as const, provider: "openai" as const, model: "gpt-4o-mini", title: "Revisão", overview: "Resumo.", topics: [], decisions: [], actionItems: [] }; } };
     await summarizeInChunks(options);
     expect(calls).toBe(1);
-    await expect(summarizeInChunks({ ...options, maxCharacters: config.summary.maxInputCharacters, cacheDir: join(root, "small") })).rejects.toThrow("paid-budget");
+    await expect(summarizeInChunks({ ...options, maxCharacters: config.summary.maxInputCharacters, inputUnit: "characters" as const, cacheDir: join(root, "small") })).rejects.toThrow("paid-budget");
     expect(calls).toBe(1);
   } finally { await fs.rm(root, { recursive: true, force: true }); }
 });
@@ -59,4 +79,22 @@ test("OpenAI adapter accepts model-sized input and rejects a truncated reply wit
   await withFetch(() => completion(summaryJson.slice(0, 20), "length"), async () => {
     await expect(summarizeWithOpenAI(config, "Fixture.", "gpt-6-luna")).rejects.toThrow("output token limit");
   });
+});
+
+test("a checkpoint saved under the earlier character budget is reused instead of paying again", async () => {
+  const config = structuredClone(DEFAULT_CONFIG);
+  const short: Transcript = { ...transcript, segments: transcript.segments.slice(0, 1).map(segment => ({ ...segment, text: "Revisar proposta sintética." })) };
+  const root = await fs.mkdtemp(join(tmpdir(), "summary-legacy-"));
+  let calls = 0;
+  const adapter = async () => { calls++; return { version: 1 as const, provider: "openai" as const, model: "gpt-4o-mini", title: "Revisão", overview: "Resumo.", topics: [], decisions: [], actionItems: [] }; };
+  const base = { transcript: short, mediaHash: "a".repeat(64), provider: "openai" as const, model: "gpt-4o-mini", adapterIdentity: "openai-chat", cacheDir: root, adapter };
+  try {
+    await summarizeInChunks({ ...base, maxCharacters: config.summary.maxInputCharacters });
+    expect(calls).toBe(1);
+    const limit = summaryInputLimit(config, "openai", "gpt-4o-mini");
+    await summarizeInChunks({ ...base, maxCharacters: limit.max, inputUnit: limit.unit, legacyMaxCharacters: config.summary.maxInputCharacters });
+    expect(calls).toBe(1);
+    await summarizeInChunks({ ...base, maxCharacters: limit.max, inputUnit: limit.unit });
+    expect(calls).toBe(2);
+  } finally { await fs.rm(root, { recursive: true, force: true }); }
 });
