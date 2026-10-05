@@ -143,7 +143,7 @@
 
   <div class="works">
    <dl class="wrap works-grid">
-    <div><dt>Automatic detection in</dt><dd>Slack · Zen · Helium</dd></div>
+    <div><dt>Automatic detection in</dt><dd>Slack · Zoom · Chromium · Firefox · Zen · Helium and more</dd></div>
     <div><dt>Processes locally with</dt><dd>Whisper.cpp · Ollama</dd></div>
     <div><dt>Or, if you choose</dt><dd>OpenAI · Gemini</dd></div>
     <div><dt>Context for agents like</dt><dd>Claude Code · Codex · Gemini CLI</dd></div>
@@ -163,7 +163,7 @@
     <div class="feature-copy">
      <p class="step"><span class="step-number">01</span>Record</p>
      <h3 id="step-1">Records the calls you choose.</h3>
-     <p>Turn on rules to record when Slack, Zen or Helium use the microphone or camera — or start capture manually. Recording state is always visible.</p>
+     <p>Turn on rules to record when Slack, Zoom, Chromium, Firefox, Zen, Helium and other apps use the microphone or camera — or start capture manually. Recording state is always visible.</p>
      <ul class="checks">
       <li>Detection stays off until you enable it; the initial mode only notifies.</li>
       <li>“Pause new recordings” and “Stop” are separate actions.</li>
@@ -380,7 +380,7 @@
      <thead><tr><th scope="col">Capability</th><th scope="col">Status</th></tr></thead>
      <tbody>
       <tr><th scope="row">Automatic detection in Slack, Zen and Helium<small>Via local microphone or camera signals; it doesn’t identify the calling service.</small></th><td><span class="state state-ok"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check-circle"/></svg>Available</span></td></tr>
-      <tr><th scope="row">Chromium, Firefox, Zoom and other apps<small>Use manual recording for now.</small></th><td><span class="state state-planned"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clock"/></svg>Planned</span></td></tr>
+      <tr><th scope="row">Native Zoom, Chromium, Chrome, Brave, Edge, Vivaldi, Opera, Firefox and Teams for Linux<small>Already in the <code>main</code> source, shipping in the next release. Tested with synthetic data; Discord, Signal, Telegram and Element are turned on one by one.</small></th><td><span class="state state-planned"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clock"/></svg>Next release</span></td></tr>
       <tr><th scope="row">Manual recording (FFmpeg audio, OBS, GPU Screen Recorder)<small>Depends on the backend and desktop.</small></th><td><span class="state state-ok"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check-circle"/></svg>Available</span></td></tr>
       <tr><th scope="row">Transcription with local Whisper.cpp, OpenAI or Gemini</th><td><span class="state state-ok"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check-circle"/></svg>Available</span></td></tr>
       <tr><th scope="row">Summaries with local Ollama or OpenAI<small>Model quality not validated.</small></th><td><span class="state state-ok"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check-circle"/></svg>Available</span></td></tr>
@@ -453,7 +453,7 @@ falatrace record doctor</code></pre>
     </details>
     <details>
      <summary>Which calling apps does it recognize?</summary>
-     <div class="faq-answer"><p>Today, Slack, Zen and Helium, via local microphone or camera signals. That signal doesn’t identify the service (Meet, Teams, Zoom on the web) or the tab. For other apps, use manual recording; Chromium, Firefox and Zoom are on the roadmap.</p></div>
+     <div class="faq-answer"><p>In alpha.11, Slack, Zen and Helium, via local microphone or camera signals — Zoom web, Meet and Teams web in those browsers are recorded too. The <code>main</code> source (next release) adds native Zoom, Teams for Linux, Chromium, Chrome, Brave, Edge, Vivaldi, Opera and Firefox; Discord, Signal, Telegram and Element can be turned on individually. That signal doesn’t identify the service (Meet, Teams, Zoom on the web) or the tab. For other apps, use manual recording.</p></div>
     </details>
     <details>
      <summary>Do my recordings go to the cloud?</summary>

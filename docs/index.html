@@ -143,7 +143,7 @@
 
   <div class="works">
    <dl class="wrap works-grid">
-    <div><dt>Detecção automática no</dt><dd>Slack · Zen · Helium</dd></div>
+    <div><dt>Detecção automática no</dt><dd>Slack · Zoom · Chromium · Firefox · Zen · Helium e outros</dd></div>
     <div><dt>Processa localmente com</dt><dd>Whisper.cpp · Ollama</dd></div>
     <div><dt>Ou, se você escolher</dt><dd>OpenAI · Gemini</dd></div>
     <div><dt>Contexto para agentes como</dt><dd>Claude Code · Codex · Gemini CLI</dd></div>
@@ -163,7 +163,7 @@
     <div class="feature-copy">
      <p class="step"><span class="step-number">01</span>Gravar</p>
      <h3 id="step-1">Grava as chamadas que você escolher.</h3>
-     <p>Ative regras para gravar quando Slack, Zen ou Helium usarem microfone ou câmera — ou inicie a captura manualmente. O estado da gravação fica sempre visível.</p>
+     <p>Ative regras para gravar quando Slack, Zoom, Chromium, Firefox, Zen, Helium e outros apps usarem microfone ou câmera — ou inicie a captura manualmente. O estado da gravação fica sempre visível.</p>
      <ul class="checks">
       <li>A detecção fica desligada até você ativar; o modo inicial só notifica.</li>
       <li>“Pausar novas gravações” e “Parar” são ações separadas.</li>
@@ -380,7 +380,7 @@
      <thead><tr><th scope="col">Recurso</th><th scope="col">Situação</th></tr></thead>
      <tbody>
       <tr><th scope="row">Detecção automática no Slack, Zen e Helium<small>Por sinais locais de microfone ou câmera; não identifica o serviço da chamada.</small></th><td><span class="state state-ok"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check-circle"/></svg>Disponível</span></td></tr>
-      <tr><th scope="row">Chromium, Firefox, Zoom e outros apps<small>Por enquanto, use a gravação manual.</small></th><td><span class="state state-planned"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clock"/></svg>Planejado</span></td></tr>
+      <tr><th scope="row">Zoom nativo, Chromium, Chrome, Brave, Edge, Vivaldi, Opera, Firefox e Teams for Linux<small>Já no código da <code>main</code>, entra na próxima versão. Testado com dados sintéticos; Discord, Signal, Telegram e Element são ativados um a um.</small></th><td><span class="state state-planned"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clock"/></svg>Próxima versão</span></td></tr>
       <tr><th scope="row">Gravação manual (áudio via FFmpeg, OBS, GPU Screen Recorder)<small>Depende do backend e do desktop.</small></th><td><span class="state state-ok"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check-circle"/></svg>Disponível</span></td></tr>
       <tr><th scope="row">Transcrição com Whisper.cpp local, OpenAI ou Gemini</th><td><span class="state state-ok"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check-circle"/></svg>Disponível</span></td></tr>
       <tr><th scope="row">Resumos com Ollama local ou OpenAI<small>Qualidade dos modelos não validada.</small></th><td><span class="state state-ok"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check-circle"/></svg>Disponível</span></td></tr>
@@ -453,7 +453,7 @@ falatrace record doctor</code></pre>
     </details>
     <details>
      <summary>Quais apps de chamada ele reconhece?</summary>
-     <div class="faq-answer"><p>Hoje, Slack, Zen e Helium, por sinais locais de uso de microfone ou câmera. Esse sinal não identifica o serviço (Meet, Teams, Zoom na web) nem a aba. Para outros apps, use a gravação manual; Chromium, Firefox e Zoom estão no roadmap.</p></div>
+     <div class="faq-answer"><p>Na alpha.11, Slack, Zen e Helium, por sinais locais de uso de microfone ou câmera — o Zoom web, o Meet e o Teams web nesses navegadores também são gravados. No código da <code>main</code> (próxima versão) entram o Zoom nativo, Teams for Linux, Chromium, Chrome, Brave, Edge, Vivaldi, Opera e Firefox; Discord, Signal, Telegram e Element podem ser ativados individualmente. Esse sinal não identifica o serviço (Meet, Teams, Zoom na web) nem a aba. Para outros apps, use a gravação manual.</p></div>
     </details>
     <details>
      <summary>Minhas gravações vão para a nuvem?</summary>
