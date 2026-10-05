@@ -6,6 +6,10 @@
 - Recording view: metadata chips, recording actions in the header, a wider tabbed panel, transcript segments with inline review, a plain-text structured summary with source-time buttons and a structured AI-context view (copying still exports the original JSON). Model and user text are never rendered as rich text.
 - Keyboard: the library list joins the Tab order (arrows move, Enter/Space open) and recent-recording cards are focusable.
 - Consent, budgets, stale-response guards, the bridge protocol and test-referenced IDs/functions are unchanged. Verification and limits: [UX verification](docs/UX-VERIFICATION.md#studio-redesign--unreleased).
+- Load the Studio library faster: meeting titles are read with bounded concurrency, concurrent library reads share one build and a redundant revision check was removed (283 recordings: ~5.5 s → ~1.65 s; identical output).
+- OpenAI summaries size their input to the chosen model's context window (unknown models assume 128k tokens), so meetings longer than the 24k-character default no longer fail as a refused paid multi-request split. Ollama keeps the configured budget; the explicit paid-budget guard is unchanged.
+- Raise the OpenAI summary output cap to 16,384 tokens for reasoning models and report a truncated reply explicitly.
+- Default OpenAI summary and timesheet classification model: `gpt-6-luna` (was `gpt-4o-mini`). Existing configurations and recorded jobs keep their model.
 
 ## 0.2.0-alpha.11 — reviewed source, exports and Studio summary consent
 

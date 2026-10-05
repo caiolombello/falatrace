@@ -248,7 +248,7 @@ export const DEFAULT_CONFIG: AppConfig = {
   summary: {
     provider: "ollama",
     maxInputCharacters: 24_000,
-    openaiModel: "gpt-4o-mini",
+    openaiModel: "gpt-6-luna",
     ollamaUrl: "http://127.0.0.1:11434",
     ollamaModel: "qwen3.5:9b"
   },
@@ -273,7 +273,7 @@ export const DEFAULT_CONFIG: AppConfig = {
     enabled: false,
     automaticFromCalls: false,
     aiClassification: false,
-    aiModel: "gpt-4o-mini",
+    aiModel: "gpt-6-luna",
     readyConfidence: 0.8,
     contextPath: join(homedir(), ".config", "recording-cli", "timesheet-context.json")
   },
