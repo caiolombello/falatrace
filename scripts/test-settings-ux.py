@@ -49,7 +49,9 @@ values = {'callDetection.enabled': not first, 'callDetection.mode':'record', 'ca
           'studio.language':'en' if mode in ('english', 'wizard-english') else 'auto',
           'retention.localCompletedWorkDays':7,'retention.remoteIncomingDays':2,'retention.remoteResultsDays':30,'retention.remoteFailuresDays':30}
 revision = 'a' * 64
-details = [{'name':'OPENAI_API_KEY','source':'missing','sessionOnly':mode == 'keys','shadowsStudioKey':False,'savedInStudio':False},
+# Assistant modes on an existing OpenAI setup that already has its key; wizard-key-required has none.
+key_present = mode in ('wizard-disable-monitor', 'wizard-disable-unknown', 'wizard-download-finish', 'wizard-download-pending')
+details = [{'name':'OPENAI_API_KEY','source':'secrets.env' if key_present else 'missing','sessionOnly':mode == 'keys','shadowsStudioKey':False,'savedInStudio':key_present},
            {'name':'GEMINI_API_KEY','source':'missing','sessionOnly':False,'shadowsStudioKey':False,'savedInStudio':False},
            {'name':'RECORDING_CLI_OBS_PASSWORD','source':'missing','sessionOnly':False,'shadowsStudioKey':False,'savedInStudio':False}]
 def credentials(): return {'openai':details[0]['source'],'gemini':'missing','details':details,'files':[],'managerEnvironment':'unavailable'}
@@ -170,6 +172,10 @@ MODES = {
                                'check("once the download stops, Finish is available again", !setupWizard.whisperDownloadRunning()); setupWizard.finish()'),
     'keys-lost': ('settingsDialog.open(); settingsTabs.currentIndex=3', 'settingsDialog.saveSecret("OPENAI_API_KEY","sk-synthetic-lost-key"); check("a key save in flight locks the key fields", settingsDialog.secretBusy)',
                   'settingsConnectionLost(); check("a lost connection unlocks the key fields", !settingsDialog.secretBusy)', ''),
+    'wizard-key-required': ('setupWizard.open(); setupWizard.consentAck=true; setupWizard.applyMonitor=false; setupWizard.applyTimer=false',
+                            'setupWizard.step=4; setupWizard.finish(); check("Finish waits for the OpenAI key the reviewed setup needs", setupWizard.missingRequiredKey() && setupWizard.step===4 && setupWizard.error!=="" && !setupWizard.hasPending("settings-save") && !setupWizard.hasPending("settings-secret-set"))',
+                            'setupWizard.useKey("sk-synthetic-wizard-key"); setupWizard.finish()',
+                            'check("with the key typed, Finish writes it and completes", setupWizard.step===5 && setupWizard.results.some(function(r){return r.label==="Chave da OpenAI" && r.ok}))'),
     'wizard-key-fail': ('setupWizard.open(); setupWizard.consentAck=true',
                         'setupWizard.applyPreset("cloud"); setupWizard.useKey("sk-synthetic-wizard-key"); setupWizard.step=4; setupWizard.finish()',
                         'check("a failed key write keeps the assistant on review with the key and applies no service", setupWizard.step===4 && setupWizard.error!=="" && setupWizard.pendingKey!=="" && !setupWizard.hasPending("settings-service"))', ''),
@@ -207,7 +213,7 @@ SIDE_EFFECTS = {'save': {'settings-save'}, 'services': {'settings-service'}, 'wi
                 'keys': {'settings-secret-set'}, 'models': {'settings-model-download'}, 'models-two': {'settings-model-download'},
                 'keys-refresh': {'settings-secret-set'}, 'wizard-download-finish': {'settings-model-download', 'settings-save'},
                 'wizard-key-fail': {'settings-save', 'settings-secret-set'}, 'wizard-download-pending': {'settings-model-download'},
-                'keys-lost': {'settings-secret-set'}}
+                'keys-lost': {'settings-secret-set'}, 'wizard-key-required': {'settings-save', 'settings-secret-set'}}
 GUARDED = {'settings-save', 'settings-service', 'settings-secret-set', 'settings-secret-remove', 'settings-model-download', 'settings-restore'}
 
 checks = []; screens = []

@@ -94,6 +94,8 @@ FtDialog {
     function downloadBlocksFinish() { return hasPending("settings-model-download") || whisperDownloadRunning() }
     function useKey(text) { pendingKey = String(text || "").trim() }
     function keyReady() { const source = credential("OPENAI_API_KEY").source; return pendingKey !== "" || (!!source && source !== "missing") }
+    // Local processing that sends audio or text to OpenAI cannot run without a key background jobs can read.
+    function missingRequiredKey() { return value("processing.defaultTarget") !== "remote" && needsKey("OPENAI_API_KEY") && !keyReady() }
     function serviceActions() {
         const actions = []
         const monitor = diag.services && diag.services.calls
@@ -107,6 +109,7 @@ FtDialog {
     }
     function finish() {
         if (downloadBlocksFinish()) { error = t("Aguarde o download do modelo terminar, ou cancele-o, antes de concluir."); return }
+        if (missingRequiredKey()) { error = t("Cole a chave da OpenAI no passo Processamento, ou escolha tudo neste computador, antes de concluir."); return }
         error = ""; notice = ""; results = []
         // Decided from what the person reviewed: the save clears the draft and may not return the new values.
         plannedActions = serviceActions()
@@ -344,6 +347,7 @@ FtDialog {
           WrappedCheck { text:t("Instalar o indicador na bandeja (REC, pausar, parar)"); checked:setupWizard.applyTray; onToggled:setupWizard.applyTray=checked }
           Label { text:setupWizard.fresh?t("Concluir cria a configuração. Você pode mudar tudo depois em Configurações."):t("Concluir salva só o que você mudou, com cópia de segurança da configuração atual."); color:muted; font.pixelSize:12; wrapMode:Text.WordWrap; Layout.fillWidth:true }
           Label { visible:setupWizard.downloadBlocksFinish(); text:t("O download do modelo ainda está em andamento. Concluir fica disponível quando ele terminar ou for cancelado."); color:warningColor; font.pixelSize:12; wrapMode:Text.WordWrap; Layout.fillWidth:true }
+          Label { visible:setupWizard.missingRequiredKey(); text:t("Falta a chave da OpenAI que este processamento usa: cole-a no passo Processamento, ou escolha tudo neste computador."); color:warningColor; font.pixelSize:12; wrapMode:Text.WordWrap; Layout.fillWidth:true }
          }
         }
 
@@ -366,7 +370,7 @@ FtDialog {
         visible:setupWizard.step<5
         highlighted:enabled
         text:setupWizard.step===4?(setupWizard.busy?t("Concluindo…"):t("Concluir")):setupWizard.step===0?t("Configurar passo a passo"):t("Continuar")
-        enabled:backend.available&&!!setupWizard.data.revision&&!setupWizard.busy&&(setupWizard.step!==0||setupWizard.consentAck)&&(setupWizard.step!==4||!setupWizard.downloadBlocksFinish())
+        enabled:backend.available&&!!setupWizard.data.revision&&!setupWizard.busy&&(setupWizard.step!==0||setupWizard.consentAck)&&(setupWizard.step!==4||(!setupWizard.downloadBlocksFinish()&&!setupWizard.missingRequiredKey()))
         onClicked:if (setupWizard.step===4) setupWizard.finish(); else setupWizard.step+=1
       }
     } }
