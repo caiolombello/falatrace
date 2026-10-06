@@ -1235,6 +1235,8 @@ var EN = {
     "O backup no Proton Drive está ativado, mas o timer de backup está desativado ou parado. Aplique-o em Serviços.": "Proton Drive backup is on, but the backup timer is disabled or stopped. Apply it in Services.",
     "Estado do timer do arquivo de originais indisponível.": "Originals archive timer state unavailable.",
     "Estado do timer de backup indisponível.": "Backup timer state unavailable.",
+    "Aguarde o download do modelo terminar, ou cancele-o, antes de concluir.": "Wait for the model download to finish, or cancel it, before finishing.",
+    "O download do modelo ainda está em andamento. Concluir fica disponível quando ele terminar ou for cancelado.": "The model download is still running. Finish becomes available when it ends or is cancelled.",
     "Chave aceita pelo provedor. O teste não envia áudio nem texto.": "Key accepted by the provider. The test sends no audio or text.",
     "O provedor recusou a chave. Confira se ela está ativa e se foi copiada inteira.": "The provider refused the key. Check that it is active and was copied in full.",
     "A chave existe, mas a conta está sem créditos ou no limite de uso. Confira o faturamento da API.": "The key exists, but the account has no credits or hit its usage limit. Check the API billing.",

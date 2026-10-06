@@ -157,6 +157,10 @@ MODES = {
                        'setSettingsField("summary.ollamaModel",""); check("a cleared required field stays an unfinished edit", !Object.prototype.hasOwnProperty.call(settingsChanges(),"summary.ollamaModel"))', '', ''),
     'keys': ('settingsDialog.open(); settingsTabs.currentIndex=3', 'check("session-only key explained", settingsDialog.secretSourceText(settingsData.credentials.details[0]).indexOf("só no ambiente desta sessão")>=0); settingsDialog.saveSecret("OPENAI_API_KEY","sk-synthetic-ui-key")',
              'check("saved key reported by source only", settingsData.credentials.details[0].savedInStudio===true && settingsNotice.indexOf("arquivo privado")>=0); settingsDialog.testSecret("openai")', 'check("key test result shown", !!settingsDialog.keyTests.openai && settingsDialog.keyTests.openai.status==="ok")'),
+    'wizard-download-finish': ('setupWizard.open(); setupWizard.consentAck=true; setupWizard.applyMonitor=false; setupWizard.applyTimer=false',
+                               'setupWizard.request("settings-model-download",{kind:"whisper",model:"large-v3-turbo-q5_0",consent:true})',
+                               'setupWizard.set("processing.notifyOnCompletion", false); setupWizard.step=4; setupWizard.finish(); check("Finish waits while a model download runs", setupWizard.whisperDownloadRunning() && setupWizard.step===4 && !setupWizard.hasPending("settings-save") && setupWizard.error!==""); setupWizard.cancelDownload("whisper","large-v3-turbo-q5_0")',
+                               'check("once the download stops, Finish is available again", !setupWizard.whisperDownloadRunning()); setupWizard.finish()'),
     'models': ('settingsDialog.open(); settingsDialog.goToSection(4)', 'check("catalog loaded on demand", !!settingsDialog.catalog.whisper && settingsDialog.catalog.whisper.models.length===2); settingsDialog.confirmDownload="whisper:tiny"; settingsDialog.startDownload("whisper","tiny")',
                'check("download progress tracked", !!settingsDialog.downloads["whisper:tiny"] && settingsDialog.downloads["whisper:tiny"].state==="running"); settingsDialog.cancelDownload("whisper","tiny")',
                'check("cancelling refreshes the stopped download without an error", settingsError==="" && settingsDialog.downloads["whisper:tiny"].state==="failed")'),
@@ -186,7 +190,8 @@ SIDE_EFFECTS = {'save': {'settings-save'}, 'services': {'settings-service'}, 'wi
                 'wizard-key-finish': {'settings-save', 'settings-secret-set'}, 'wizard-download-cancel': {'settings-model-download'},
                 'wizard-reload': {'settings-save', 'settings-service'}, 'wizard-disable-monitor': {'settings-save', 'settings-service'},
                 'wizard-disable-unknown': {'settings-save', 'settings-service'},
-                'keys': {'settings-secret-set'}, 'models': {'settings-model-download'}, 'models-two': {'settings-model-download'}}
+                'keys': {'settings-secret-set'}, 'models': {'settings-model-download'}, 'models-two': {'settings-model-download'},
+                'wizard-download-finish': {'settings-model-download', 'settings-save'}}
 GUARDED = {'settings-save', 'settings-service', 'settings-secret-set', 'settings-secret-remove', 'settings-model-download', 'settings-restore'}
 
 checks = []; screens = []
@@ -231,6 +236,9 @@ with tempfile.TemporaryDirectory(dir='/tmp', prefix='falatrace-settings-fixture-
             sets = [q for q in requests if q['op'] == 'settings-secret-set']
             checks.append({'name': 'keys: the key went to the bridge once', 'pass': len(sets) == 1 and sets[0]['payload']['name'] == 'OPENAI_API_KEY' and sets[0]['payload']['value'] == 'sha256:' + hashlib.sha256(b'sk-synthetic-ui-key').hexdigest()})
             checks.append({'name': 'keys: the key never appears in Studio output', 'pass': 'sk-synthetic-ui-key' not in r.stderr})
+        if mode == 'wizard-download-finish':
+            ops = [q['op'] for q in requests]
+            checks.append({'name': 'wizard-download-finish: nothing is saved until the download stops', 'pass': 'settings-save' in ops and 'settings-model-cancel' in ops and ops.index('settings-save') > ops.index('settings-model-cancel')})
         if mode == 'wizard-key-finish':
             ops = [q['op'] for q in requests if q['op'] in ('settings-save', 'settings-secret-set')]
             sets = [q for q in requests if q['op'] == 'settings-secret-set']
