@@ -58,8 +58,8 @@ export const handleModelOperation = async (
   payload: Record<string, unknown>,
   deps: ModelDeps = defaultModelDeps
 ): Promise<unknown> => {
-  const { config } = await deps.loadConfig();
   if (op === "settings-model-catalog") {
+    const { config } = await deps.loadConfig();
     const directory = deps.directory();
     const whisper = await Promise.all(WHISPER_MODELS.map(async (model) => {
       const path = join(directory, model.file);
@@ -73,6 +73,7 @@ export const handleModelOperation = async (
       ollama: { url: config.summary.ollamaUrl, loopback, reachable: installed !== null, installed: installed || [], configured: config.summary.ollamaModel }
     };
   }
+  // Status and cancel need only the model and its unit: a broken configuration never strands a download.
   const target = parseTarget(payload);
   const unit = modelUnitName(target.kind, target.id);
   if (op === "settings-model-status") {
@@ -86,6 +87,7 @@ export const handleModelOperation = async (
     return { kind: target.kind, id: target.id, cancelled: true };
   }
   if (payload.consent !== true) throw new Error("Confirme o download antes de começar.");
+  const { config } = await deps.loadConfig();
   if (target.kind === "ollama" && !isLoopbackOllama(config.summary.ollamaUrl)) {
     throw new Error("O download pelo Ollama só é feito para um Ollama neste computador.");
   }

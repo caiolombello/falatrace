@@ -56,6 +56,19 @@ test("a download whose unit ended without a final state is reported as interrupt
   expect(await handleModelOperation("settings-model-status", { kind: "whisper", model: "small" }, value)).toMatchObject({ state: "idle" });
 });
 
+test("status and cancel keep working while the configuration cannot be loaded", async () => {
+  const { value, runs } = deps("/synthetic/models", { loadConfig: async () => { throw new Error("config.json inválido"); } });
+  await writeDownloadState({ kind: "whisper", id: "small", state: "running", receivedBytes: 5, totalBytes: 100 });
+  // The unit is still running: polling reports progress and Cancel stops it.
+  value.run = async (command, args) => { runs.push([command, ...args]); return { stdout: "ActiveState=active\n", stderr: "" }; };
+  expect(await handleModelOperation("settings-model-status", { kind: "whisper", model: "small" }, value)).toMatchObject({ state: "running", receivedBytes: 5 });
+  expect(await handleModelOperation("settings-model-cancel", { kind: "whisper", model: "small" }, value)).toEqual({ kind: "whisper", id: "small", cancelled: true });
+  expect(runs).toContainEqual(["systemctl", "--user", "stop", `${modelUnitName("whisper", "small")}.service`]);
+  // Starting a download or listing the catalog still needs a valid configuration.
+  await expect(handleModelOperation("settings-model-catalog", {}, value)).rejects.toThrow("inválido");
+  await expect(handleModelOperation("settings-model-download", { kind: "whisper", model: "small", consent: true }, value)).rejects.toThrow("inválido");
+});
+
 test("a Whisper model counts as installed only when a SHA-256 check accepted that exact file", async () => {
   const directory = await fs.mkdtemp(join(tmpdir(), "falatrace-model-verified-"));
   const model = findWhisperModel("tiny");
