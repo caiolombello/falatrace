@@ -151,3 +151,16 @@ test("a local job whose original is gone is not offered again; a remote one keep
     expect((await planRecordingProcessing(config, { sourcePath: gone, sourceExists: false, jobs: [remote] }, fakeDeps(remote).deps)).action).toBe("retry");
   });
 });
+
+test("a malformed Ollama address from an older configuration is named and blocks the plan", async () => {
+  await withRecording(async (path) => {
+    const config = structuredClone(DEFAULT_CONFIG);
+    config.summary.provider = "ollama";
+    config.summary.ollamaUrl = "http://[ollama";
+    const { deps, calls } = fakeDeps();
+    const plan = await planRecordingProcessing(config, { sourcePath: path, sourceExists: true, jobs: [] }, deps);
+    expect(plan).toMatchObject({ action: "none", reason: expect.stringContaining("Ollama na configuração é inválido") });
+    expect(plan.summary).toMatchObject({ where: "Endereço do Ollama inválido", external: true });
+    expect(calls).toEqual([]);
+  });
+});

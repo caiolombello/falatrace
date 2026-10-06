@@ -42,6 +42,15 @@ const isLoopbackUrl = (value: string): boolean => {
   }
 };
 
+/** The host of an Ollama address; null when an older configuration holds one that does not parse. */
+const ollamaHost = (url: string): string | null => {
+  try {
+    return new URL(url).host || null;
+  } catch {
+    return null;
+  }
+};
+
 export const describeDestinations = (
   target: "local" | "remote",
   transcription: { provider: string; model: string },
@@ -53,9 +62,10 @@ export const describeDestinations = (
     ? (remote ? "Whisper.cpp no worker remoto" : "Whisper.cpp neste computador")
     : transcription.provider === "openai" ? "OpenAI, serviço externo" : "Google Gemini, serviço externo";
   // A remote job runs with the worker's own configuration: its Ollama address is not known here.
+  const host = ollamaHost(config.summary.ollamaUrl);
   const summaryWhere = summary.provider === "openai" ? "OpenAI, serviço externo"
     : remote ? "Ollama configurado no worker remoto, em endereço não verificado daqui"
-      : isLoopbackUrl(config.summary.ollamaUrl) ? "Ollama neste computador" : `Ollama em ${new URL(config.summary.ollamaUrl).host}`;
+      : isLoopbackUrl(config.summary.ollamaUrl) ? "Ollama neste computador" : host ? `Ollama em ${host}` : "Endereço do Ollama inválido";
   return {
     transcription: { ...transcription, where: transcriptionWhere, external: transcription.provider !== "whisper-cpp" || remote },
     summary: { ...summary, where: summaryWhere, external: summary.provider === "openai" || remote || !isLoopbackUrl(config.summary.ollamaUrl) }
@@ -117,6 +127,11 @@ export const planRecordingProcessing = async (
     ? { provider: latest.summary.provider, model: latest.summary.model }
     : { provider: config.summary.provider, model: modelFor(config, config.summary.provider, "summary") };
   const destinations = describeDestinations(target, transcription, summary, config);
+  // Run here, the summary goes to the configured Ollama: an address that does not parse would only fail the job.
+  if (action !== "none" && target === "local" && summary.provider === "ollama" && !ollamaHost(config.summary.ollamaUrl)) {
+    action = "none";
+    reason = "O endereço do Ollama na configuração é inválido. Corrija-o em Configurações, em Processamento e IA.";
+  }
   const stat = entry.sourceExists ? await fs.stat(entry.sourcePath).catch(() => null) : null;
   // The bytes themselves, not only metadata that a rewrite can put back within the clock's
   // resolution. Hashing reads the whole file once per plan; it only runs on an explicit request.

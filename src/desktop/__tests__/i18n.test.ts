@@ -139,6 +139,7 @@ test("capture, queue, model, key-test and destination messages are translated", 
     }
   }
   english(describeDestinations("local", { provider: "openai", model: "m" }, { provider: "ollama", model: "m" }, config((c) => { c.summary.ollamaUrl = "http://worker.lan:11434"; })).summary.where);
+  english(describeDestinations("local", { provider: "openai", model: "m" }, { provider: "ollama", model: "m" }, config((c) => { c.summary.ollamaUrl = "http://[ollama"; })).summary.where);
   const statuses = [200, 401, 429, 503];
   for (const status of statuses) {
     const result = await testProviderKey("gemini", {
