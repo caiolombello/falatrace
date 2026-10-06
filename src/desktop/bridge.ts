@@ -74,7 +74,8 @@ let libraryLoad: Promise<NonNullable<typeof libraryCache>> | undefined;
 const PROCESS_KNOWN_ERRORS = [
   "Confirme o destino antes de processar.", "A gravação ou as configurações mudaram. Revise o destino de novo.",
   "Esta gravação já foi processada.", "O processamento já está em andamento.", "O arquivo original não está neste computador.",
-  "O processamento está marcado como remoto, mas nenhum worker foi configurado."
+  "O processamento está marcado como remoto, mas nenhum worker foi configurado.",
+  "Não foi possível ler a gravação. Confira a permissão do arquivo e tente de novo."
 ];
 const emit = (response: Response): void => { process.stdout.write(`${JSON.stringify(response)}\n`); };
 const safeError = (op: string, error: unknown): string => {

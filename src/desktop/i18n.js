@@ -1094,6 +1094,7 @@ var EN = {
     "O processamento já está em andamento.": "Processing is already in progress.",
     "O arquivo original não está neste computador.": "The original file is not on this computer.",
     "O processamento está marcado como remoto, mas nenhum worker foi configurado.": "Processing is set to remote, but no worker was configured.",
+    "Não foi possível ler a gravação. Confira a permissão do arquivo e tente de novo.": "Could not read the recording. Check the file's permissions and try again.",
     "key é obrigatório para esta operação": "key is required for this operation",
     "Gravação não encontrada na biblioteca": "Recording not found in the library",
     "Outra resolução de reprodução está em andamento": "Another playback resolution is in progress",

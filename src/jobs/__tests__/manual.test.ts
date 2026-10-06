@@ -95,6 +95,26 @@ test("running needs the consent of the exact plan, then creates and queues the j
   });
 });
 
+test("a new job is never planned for bytes that could not be hashed", async () => {
+  await withRecording(async (path) => {
+    const config = structuredClone(DEFAULT_CONFIG);
+    const { deps, calls } = fakeDeps();
+    // Listed as present, gone by the time of the plan: there are no bytes to bind a job to.
+    const gone = await planRecordingProcessing(config, { sourcePath: `${path}.gone`, sourceExists: true, jobs: [] }, deps);
+    expect(gone).toMatchObject({ action: "none", reason: "O arquivo original não está neste computador." });
+    expect(gone.sourceSha256).toBeUndefined();
+    // stat succeeds but reading fails; a directory stands in for an unreadable file, even for root.
+    const unreadable = join(path, "..", "unreadable.mka");
+    await fs.mkdir(unreadable);
+    const entry = { sourcePath: unreadable, sourceExists: true, jobs: [] };
+    const plan = await planRecordingProcessing(config, entry, deps);
+    expect(plan).toMatchObject({ action: "none", reason: "Não foi possível ler a gravação. Confira a permissão do arquivo e tente de novo." });
+    expect(plan.sourceSha256).toBeUndefined();
+    await expect(runRecordingProcessing(config, entry, { consent: true, consentKey: plan.consentKey }, deps)).rejects.toThrow("Não foi possível ler");
+    expect(calls).toEqual([]);
+  });
+});
+
 test("remote processing names the worker and asks again when the worker changes", async () => {
   await withRecording(async (path) => {
     const config = structuredClone(DEFAULT_CONFIG);

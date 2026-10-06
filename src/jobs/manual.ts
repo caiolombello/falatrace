@@ -118,12 +118,17 @@ export const planRecordingProcessing = async (
     : { provider: config.summary.provider, model: modelFor(config, config.summary.provider, "summary") };
   const destinations = describeDestinations(target, transcription, summary, config);
   const stat = entry.sourceExists ? await fs.stat(entry.sourcePath).catch(() => null) : null;
-  const durationSeconds = stat && action !== "none" ? await deps.duration(entry.sourcePath).catch(() => null) : null;
-  // The worker is part of what the user approves: another host, user, port or identity asks again.
-  const remote = target === "remote" ? { destination: getSshDestination(config), port: config.remote.port } : undefined;
   // The bytes themselves, not only metadata that a rewrite can put back within the clock's
   // resolution. Hashing reads the whole file once per plan; it only runs on an explicit request.
   const sha256 = stat && action !== "none" ? await hashFile(entry.sourcePath).catch(() => null) : null;
+  // A new job is bound to the bytes the user approved: without their hash there is nothing to bind it to.
+  if (action === "create" && !sha256) {
+    action = "none";
+    reason = stat ? "Não foi possível ler a gravação. Confira a permissão do arquivo e tente de novo." : "O arquivo original não está neste computador.";
+  }
+  const durationSeconds = stat && action !== "none" ? await deps.duration(entry.sourcePath).catch(() => null) : null;
+  // The worker is part of what the user approves: another host, user, port or identity asks again.
+  const remote = target === "remote" ? { destination: getSshDestination(config), port: config.remote.port } : undefined;
   const consentKey = createHash("sha256").update(JSON.stringify([
     entry.sourcePath, stat?.size ?? null, stat?.mtimeMs ?? null, sha256, action, latest?.id ?? null, target,
     destinations.transcription, destinations.summary, config.summary.ollamaUrl,
@@ -146,6 +151,7 @@ export const runRecordingProcessing = async (
   if (plan.consentKey !== consent.consentKey) throw new Error("A gravação ou as configurações mudaram. Revise o destino de novo.");
   if (plan.action === "none") throw new Error(plan.reason);
   const created = plan.action === "create";
+  if (created && !plan.sourceSha256) throw new Error("Não foi possível ler a gravação. Confira a permissão do arquivo e tente de novo.");
   // The bytes can still change between this check and the job: the job is bound to the consented hash.
   const jobId = created ? (await deps.store.enqueue(config, entry.sourcePath, { expectedSha256: plan.sourceSha256 })).id : plan.jobId;
   if (!jobId) throw new Error(plan.reason);
