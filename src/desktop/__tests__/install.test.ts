@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { desktopEntry, installPaths, installStudio, MARKER, uninstallStudio } from "../install";
+import { desktopEntry, installPaths, installStudio, MARKER, swapInto, uninstallStudio } from "../install";
 
 const repo = resolve(import.meta.dir, "../../..");
 
@@ -101,6 +101,31 @@ test("uninstall removes only what the installer created", async () => {
     expect(removed.sort()).toEqual([paths.alias, paths.icon, paths.launcher, paths.studioDir].sort());
     expect(await fs.readFile(paths.desktopEntry, "utf8")).toContain("Custom");
     expect(await Bun.file(paths.cli).exists()).toBe(true);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a swap that fails halfway puts the previous Studio back", async () => {
+  const root = await fs.mkdtemp(join(tmpdir(), "falatrace-swap-"));
+  try {
+    const target = join(root, "studio");
+    const staging = join(root, "studio.new");
+    await fs.mkdir(target);
+    await fs.writeFile(join(target, "old"), "old");
+    await fs.mkdir(staging);
+    await fs.writeFile(join(staging, "new"), "new");
+    let calls = 0;
+    const failing = (async (from: string, to: string) => {
+      calls += 1;
+      if (calls === 2) throw new Error("rename failed halfway");
+      return fs.rename(from, to);
+    }) as typeof fs.rename;
+    await expect(swapInto(staging, target, failing)).rejects.toThrow("rename failed halfway");
+    expect(await fs.readdir(target)).toEqual(["old"]);
+    await swapInto(staging, target);
+    expect(await fs.readdir(target)).toEqual(["new"]);
+    expect(await fs.readdir(root)).toEqual(["studio"]);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }

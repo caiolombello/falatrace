@@ -87,6 +87,25 @@ const writeFileAtomic = async (path: string, contents: string | Uint8Array, mode
   await fs.rename(temporary, path);
 };
 
+/**
+ * Replace `target` with `staging`. When the swap fails halfway the previous copy is put back,
+ * so the launcher keeps pointing at a working Studio.
+ */
+export const swapInto = async (staging: string, target: string, rename: typeof fs.rename = fs.rename): Promise<void> => {
+  const previous = `${target}.old-${process.pid}`;
+  const hadPrevious = await exists(target);
+  if (hadPrevious) await rename(target, previous);
+  try {
+    await rename(staging, target);
+  } catch (error) {
+    if (hadPrevious && !(await rename(previous, target).then(() => true, () => false))) {
+      throw new Error(`A instalação falhou; a cópia anterior do Studio ficou em ${previous}.`, { cause: error });
+    }
+    throw error;
+  }
+  await fs.rm(previous, { recursive: true, force: true });
+};
+
 export type InstallOptions = {
   paths?: InstallPaths;
   /** Source checkout root (contains src/desktop and docs/assets). */
@@ -148,10 +167,7 @@ export const installStudio = async (options: InstallOptions = {}): Promise<Insta
     await fs.chmod(join(staging, "recording-studio"), 0o755);
     for (const name of files) await fs.copyFile(join(source, name), join(staging, "qml", name));
     await fs.writeFile(join(staging, STUDIO_MARKER_FILE), `${MARKER}\n`);
-    const previous = `${paths.studioDir}.old-${process.pid}`;
-    if (studioStat) await fs.rename(paths.studioDir, previous);
-    await fs.rename(staging, paths.studioDir);
-    await fs.rm(previous, { recursive: true, force: true });
+    await swapInto(staging, paths.studioDir);
   } catch (error) {
     await fs.rm(staging, { recursive: true, force: true });
     throw error;
