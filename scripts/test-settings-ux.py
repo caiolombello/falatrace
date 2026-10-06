@@ -51,7 +51,7 @@ values = {'callDetection.enabled': not first, 'callDetection.mode':'record', 'ca
 revision = 'a' * 64
 # Assistant modes on an existing OpenAI setup that already has its key; wizard-key-required has none.
 key_present = mode in ('wizard-disable-monitor', 'wizard-disable-unknown', 'wizard-download-finish', 'wizard-download-pending', 'wizard-gemini-key', 'wizard-lost', 'wizard-ffmpeg-review', 'wizard-automation-review',
-                       'wizard-skip-services', 'wizard-monitor-stale', 'wizard-reread-fail')
+                       'wizard-skip-services', 'wizard-monitor-stale', 'wizard-reread-fail', 'wizard-unknown-services')
 details = [{'name':'OPENAI_API_KEY','source':'secrets.env' if key_present else 'missing','sessionOnly':mode == 'keys','shadowsStudioKey':False,'savedInStudio':key_present},
            {'name':'GEMINI_API_KEY','source':'missing','sessionOnly':False,'shadowsStudioKey':False,'savedInStudio':False},
            {'name':'RECORDING_CLI_OBS_PASSWORD','source':'missing','sessionOnly':False,'shadowsStudioKey':False,'savedInStudio':False}]
@@ -93,11 +93,13 @@ for line in sys.stdin:
                           [{'id':'automatic-backend','label':'Gravação automática','status':'missing','action':'capture','detail':'O modo “Controlar o OBS” exige o OBS ativado em Integrações.'},
                            {'id':'remote-worker','label':'Worker remoto','status':'missing','action':'remote','detail':'O processamento está marcado como remoto, mas nenhum worker foi configurado. Configure-o em Integrações ou volte para “Neste computador”.'}] if mode == 'wizard-automation-review' else
                           [{'id':'automatic-backend','label':'Gravação automática','status':'warning','action':'calls-apply','detail':'O monitor de chamadas não está rodando: nada será gravado automaticamente. Aplique o monitor em Serviços.'},
-                           {'id':'processing-timer','label':'Processamento automático','status':'warning','action':'sync-apply','detail':'Gravações novas entram na fila, mas ficam pendentes até você processá-las: ative o processamento em segundo plano em Serviços.'}] if mode == 'wizard-skip-services' else [],
+                           {'id':'processing-timer','label':'Processamento automático','status':'warning','action':'sync-apply','detail':'Gravações novas entram na fila, mas ficam pendentes até você processá-las: ative o processamento em segundo plano em Serviços.'}] if mode == 'wizard-skip-services' else
+                          [{'id':'automatic-backend','label':'Gravação automática','status':'skipped','detail':'Estado do monitor de chamadas indisponível; não dá para confirmar que as chamadas serão gravadas.'},
+                           {'id':'processing-timer','label':'Processamento automático','status':'skipped','detail':'Estado do timer de processamento indisponível.'}] if mode == 'wizard-unknown-services' else [],
              'audio':{'devices':[{'name':'alsa_input.synthetic-mic','description':'Microfone sintético','monitor':False},
                                  {'name':'alsa_output.synthetic.monitor','description':'Monitor sintético','monitor':True}],
                       'defaultMicrophone':'alsa_input.synthetic-mic','defaultDesktop':'alsa_output.synthetic.monitor'},
-             'services':None if mode in ('wizard-disable-unknown', 'services-unknown') else services,'recording':{'selectedBackend':'gpu-screen-recorder','blockedReason':None,'warnings':[],'session':None,'capabilities':{'gpuRecorder':True,'ffmpeg':True,'obsLauncher':False,'sessionType':'wayland'}},
+             'services':None if mode in ('wizard-disable-unknown', 'services-unknown', 'wizard-unknown-services') else services,'recording':{'selectedBackend':'gpu-screen-recorder','blockedReason':None,'warnings':[],'session':None,'capabilities':{'gpuRecorder':True,'ffmpeg':True,'obsLauncher':False,'sessionType':'wayland'}},
              'automatic':None,'credentials':credentials()}
     elif op == 'settings-save':
         values.update(p['changes']); revision = 'b' * 64
@@ -256,6 +258,11 @@ MODES = {
                              'check("a running monitor left with the previous configuration is pending", stale()); setupWizard.applyMonitor=true; check("applying the monitor clears it", !stale()); '
                              'setupWizard.applyMonitor=false; setupWizard.finish()',
                              'const title = findObject(setupWizard.contentItem, "wizardDoneTitle"); check("after saving, the last page still names the monitor left on the previous configuration", setupWizard.step===5 && !!title && title.text!=="Tudo pronto" && setupWizard.pendingIssues().some(function(issue){ return issue.detail.indexOf("configuração anterior")>=0 }))', ''),
+    'wizard-unknown-services': ('setupWizard.open(); setupWizard.consentAck=true',
+                                'setupWizard.step=4; const labels = function(){ return setupWizard.pendingIssues().map(function(issue){ return issue.label }) }; '
+                                'check("unknown services that Finish applies are not pending", labels().indexOf("Gravação automática")<0 && labels().indexOf("Processamento automático")<0); '
+                                'setupWizard.applyMonitor=false; setupWizard.applyTimer=false; check("unknown services left off are pending", labels().indexOf("Gravação automática")>=0 && labels().indexOf("Processamento automático")>=0); setupWizard.finish()',
+                                'const title = findObject(setupWizard.contentItem, "wizardDoneTitle"); check("the last page does not say all set while those services cannot be confirmed", setupWizard.step===5 && !!title && title.text!=="Tudo pronto")', ''),
     'diagnose-draft': ('settingsDialog.open()',
                        'setSettingsField("transcription.provider", "whisper-cpp"); settingsTabs.currentIndex=8; runSettingsDiagnose()',
                        'const outdated = findObject(settingsDialog.contentItem, "settingsDiagOutdated"); check("a diagnostic of the current draft is not flagged", !!outdated && !outdated.visible); '
@@ -297,7 +304,8 @@ SIDE_EFFECTS = {'save': {'settings-save'}, 'services': {'settings-service'}, 'wi
                 'keys-lost': {'settings-secret-set'}, 'wizard-key-required': {'settings-save', 'settings-secret-set'},
                 'models-cloud': {'settings-model-download'}, 'wizard-gemini-key': {'settings-save'}, 'wizard-recommended-review': {'settings-save'},
                 'wizard-lost': {'settings-save'}, 'restore-pending': {'settings-restore'}, 'wizard-ffmpeg-review': {'settings-save'}, 'models-ollama-draft': {'settings-model-download'}, 'wizard-automation-review': {'settings-save'},
-                'wizard-skip-services': {'settings-save'}, 'wizard-monitor-stale': {'settings-save'}}
+                'wizard-skip-services': {'settings-save'}, 'wizard-monitor-stale': {'settings-save'},
+                'wizard-unknown-services': {'settings-save'}}
 GUARDED = {'settings-save', 'settings-service', 'settings-secret-set', 'settings-secret-remove', 'settings-model-download', 'settings-restore'}
 
 checks = []; screens = []

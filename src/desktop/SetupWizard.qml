@@ -132,7 +132,8 @@ FtDialog {
     function automationProblems() {
         if (step === 5) return plannedProblems
         const applied = serviceActions()
-        const problems = (diag.automation || []).filter(function(item){ return item.id !== "remote-worker" && (item.status === "missing" || item.status === "warning") && applied.indexOf(item.action) < 0 })
+        // A state that cannot be read counts too: nothing confirms that a service Finish leaves alone will run.
+        const problems = (diag.automation || []).filter(function(item){ return item.id !== "remote-worker" && ["missing", "warning", "skipped"].indexOf(item.status) >= 0 && applied.indexOf(item.action || automationActions[item.id]) < 0 })
         // The monitor reads the configuration when it starts: one left running keeps an earlier configuration.
         const monitor = diag.services && diag.services.calls
         if (value("callDetection.enabled") === true && applied.indexOf("calls-apply") < 0 && !!monitor && monitor.active
@@ -140,6 +141,8 @@ FtDialog {
             problems.push({ id: "monitor-stale", label: "Gravação automática", status: "warning", detail: t("O monitor de chamadas segue com uma configuração anterior: aplique-o em Serviços para usar a atual.") })
         return problems
     }
+    // The service each automation check depends on; Finish applies only the monitor and the processing timer.
+    readonly property var automationActions: ({ "automatic-backend": "calls-apply", "call-notifications": "calls-apply", "processing-timer": "sync-apply", "archive-timer": "archive-apply", "backup-timer": "backup-apply" })
     function recordingProblem(item) { return ["automatic-backend", "call-notifications", "monitor-stale"].indexOf(item.id) >= 0 }
     // What will not run yet: the capture, processing and automatic recording. Empty until the choices are diagnosed.
     function pendingIssues() {
