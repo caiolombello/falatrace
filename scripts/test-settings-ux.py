@@ -170,6 +170,8 @@ MODES = {
     'wizard-key-fail': ('setupWizard.open(); setupWizard.consentAck=true',
                         'setupWizard.applyPreset("cloud"); setupWizard.useKey("sk-synthetic-wizard-key"); setupWizard.step=4; setupWizard.finish()',
                         'check("a failed key write keeps the assistant on review with the key and applies no service", setupWizard.step===4 && setupWizard.error!=="" && setupWizard.pendingKey!=="" && !setupWizard.hasPending("settings-service"))', ''),
+    'wizard-download-pending': ('setupWizard.open(); setupWizard.consentAck=true; setupWizard.applyMonitor=false; setupWizard.applyTimer=false',
+                                'setupWizard.set("processing.notifyOnCompletion", false); setupWizard.step=4; setupWizard.request("settings-model-download",{kind:"whisper",model:"large-v3-turbo-q5_0",consent:true}); setupWizard.finish(); check("Finish waits for a download request that has not been answered", setupWizard.step===4 && setupWizard.error!=="" && !setupWizard.hasPending("settings-save"))', '', ''),
     'models': ('settingsDialog.open(); settingsDialog.goToSection(4)', 'check("catalog loaded on demand", !!settingsDialog.catalog.whisper && settingsDialog.catalog.whisper.models.length===2); settingsDialog.confirmDownload="whisper:tiny"; settingsDialog.startDownload("whisper","tiny")',
                'check("download progress tracked", !!settingsDialog.downloads["whisper:tiny"] && settingsDialog.downloads["whisper:tiny"].state==="running"); settingsDialog.cancelDownload("whisper","tiny")',
                'check("cancelling refreshes the stopped download without an error", settingsError==="" && settingsDialog.downloads["whisper:tiny"].state==="failed")'),
@@ -201,7 +203,7 @@ SIDE_EFFECTS = {'save': {'settings-save'}, 'services': {'settings-service'}, 'wi
                 'wizard-disable-unknown': {'settings-save', 'settings-service'},
                 'keys': {'settings-secret-set'}, 'models': {'settings-model-download'}, 'models-two': {'settings-model-download'},
                 'keys-refresh': {'settings-secret-set'}, 'wizard-download-finish': {'settings-model-download', 'settings-save'},
-                'wizard-key-fail': {'settings-save', 'settings-secret-set'}}
+                'wizard-key-fail': {'settings-save', 'settings-secret-set'}, 'wizard-download-pending': {'settings-model-download'}}
 GUARDED = {'settings-save', 'settings-service', 'settings-secret-set', 'settings-secret-remove', 'settings-model-download', 'settings-restore'}
 
 checks = []; screens = []
