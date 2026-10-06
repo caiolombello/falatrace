@@ -12,7 +12,7 @@ Everything below can be changed in the Studio under **Settings** (Configuraçõe
 | Configuration backups | `config.json.bak-<id>` next to the configuration | One per save; the 20 most recent are kept. |
 | Whisper models | `~/.local/share/recording-cli/models/` | Downloads are verified by size and SHA-256. |
 | Installed Studio (from source) | `~/.local/share/falatrace/studio/`, `~/.local/bin/recording-studio` | Created by `make install-studio`. |
-| Background services | `~/.config/systemd/user/recording-cli-*` | Or wherever the systemd user manager loads units from, when its `XDG_CONFIG_HOME` differs. Each unit carries the XDG directories of the process that installed it, and installing creates every folder the unit may write. |
+| Background services | `~/.config/systemd/user/recording-cli-*` | Or wherever the systemd user manager loads units from, when its `XDG_CONFIG_HOME` differs. Each unit carries the XDG directories of the process that installed it, the defaults it falls back to included, and installing creates every folder the unit may write. |
 
 A copy of a working setup is in [`config.example.json`](config.example.json). Missing keys take the defaults listed below, and keys the Studio does not edit are always preserved.
 

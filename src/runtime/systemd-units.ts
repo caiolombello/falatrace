@@ -64,24 +64,42 @@ export const serviceLaunchCommand = (): string[] => getServiceLaunchCommand();
 /** The user manager may not share this process's XDG directories, so transient units get them explicitly. */
 const XDG_DIRECTORIES = ["XDG_CONFIG_HOME", "XDG_STATE_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME"] as const;
 
-/**
- * `systemd-run --setenv` arguments for a transient unit that must read the same configuration and
- * write the same state as this process: its PATH and the XDG directories it was started with.
- */
+/** The defaults under the home directory this process falls back to when a variable is not set. */
+const XDG_DEFAULTS: Record<typeof XDG_DIRECTORIES[number], string> = {
+  XDG_CONFIG_HOME: ".config", XDG_STATE_HOME: ".local/state", XDG_DATA_HOME: ".local/share", XDG_CACHE_HOME: ".cache"
+};
+
+/** The XDG directories this process was started with: only those set to an absolute path. */
 const xdgDirectories = (env: NodeJS.ProcessEnv): Array<[string, string]> =>
   XDG_DIRECTORIES.flatMap((name) => {
     const value = env[name];
     return value && isAbsolute(value) && !/\p{Cc}/u.test(value) ? [[name, value] as [string, string]] : [];
   });
 
-export const transientUnitEnvironment = (env: NodeJS.ProcessEnv = process.env): string[] => [
+/**
+ * The XDG directories this process uses, including the defaults it falls back to. Units get all four:
+ * one left out would come from the user manager's environment, which may name other directories.
+ */
+const usedXdgDirectories = (env: NodeJS.ProcessEnv, home: string): Array<[string, string]> => {
+  const set = Object.fromEntries(xdgDirectories(env));
+  return XDG_DIRECTORIES.flatMap((name) => {
+    const value = set[name] ?? join(home, XDG_DEFAULTS[name]);
+    return /\p{Cc}/u.test(value) ? [] : [[name, value] as [string, string]];
+  });
+};
+
+/**
+ * `systemd-run --setenv` arguments for a transient unit that must read the same configuration and
+ * write the same state as this process: its PATH and the XDG directories it uses.
+ */
+export const transientUnitEnvironment = (env: NodeJS.ProcessEnv = process.env, home = homedir()): string[] => [
   `--setenv=PATH=${env.PATH || ""}`,
-  ...xdgDirectories(env).map(([name, value]) => `--setenv=${name}=${value}`)
+  ...usedXdgDirectories(env, home).map(([name, value]) => `--setenv=${name}=${value}`)
 ];
 
 /** `Environment=` lines that give an installed unit the XDG directories of the process installing it. */
-export const persistentUnitEnvironment = (env: NodeJS.ProcessEnv = process.env): string =>
-  xdgDirectories(env).map(([name, value]) => `Environment=${quoteSystemd(`${name}=${value}`)}\n`).join("");
+export const persistentUnitEnvironment = (env: NodeJS.ProcessEnv = process.env, home = homedir()): string =>
+  usedXdgDirectories(env, home).map(([name, value]) => `Environment=${quoteSystemd(`${name}=${value}`)}\n`).join("");
 
 /**
  * Writable paths a sandboxed unit needs when the state or data directory is not the default one:

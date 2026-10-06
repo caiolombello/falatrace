@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { promises as fs } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import type { CallMonitorStatus } from "../../calls/status";
 import { presentTrayStatus } from "../presentation";
@@ -16,6 +16,10 @@ import {
   trayActionIsAllowed
 } from "../runtime";
 import { buildTrayUnit } from "../service";
+
+// Launches name every XDG directory, the defaults included, so the user manager's own values never apply.
+const XDG_DEFAULTS = [["XDG_CONFIG_HOME", ".config"], ["XDG_STATE_HOME", ".local/state"], ["XDG_DATA_HOME", ".local/share"], ["XDG_CACHE_HOME", ".cache"]]
+  .map(([name, folder]) => `--setenv=${name}=${join(homedir(), folder)}`);
 
 const status = (overrides: Partial<CallMonitorStatus> = {}): CallMonitorStatus => ({
   version: 1,
@@ -240,6 +244,7 @@ describe("tray integration", () => {
       "--pipe",
       "--unit=recording-cli-tray-action-123-456",
       "--setenv=PATH=/usr/bin",
+      ...XDG_DEFAULTS,
       "--",
       "/home/user/.local/bin/recording-cli",
       "record",
@@ -273,6 +278,7 @@ describe("tray integration", () => {
       "--property=Type=exec",
       "--unit=recording-cli-studio-123-456",
       "--setenv=PATH=/usr/bin",
+      ...XDG_DEFAULTS,
       "--",
       "/home/user/.local/bin/recording-studio"
     ]);
@@ -337,6 +343,7 @@ describe("tray integration", () => {
       "--collect",
       "--unit=recording-cli-terminal-123-456",
       "--setenv=PATH=/usr/bin",
+      ...XDG_DEFAULTS,
       "--",
       "/usr/bin/konsole",
       "-e",

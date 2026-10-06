@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { promises as fs } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_CONFIG } from "../../config/defaults";
 import { buildArchiveUnits, uninstallArchiveTimer } from "../../archive/service";
@@ -11,7 +11,7 @@ import { buildTrayUnit, uninstallTrayService } from "../../tray/service";
 import { queueAlignedSubtitles } from "../../subtitles/service";
 import { playbackRunArgs } from "../../desktop/playback";
 import { cliEntryForBun, getServiceLaunchCommand } from "../launcher";
-import { execStart, quoteSystemd, quoteSystemdPath, removeUserUnits, transientCommand, unitWritablePaths, userUnitDir } from "../systemd-units";
+import { execStart, quoteSystemd, quoteSystemdPath, removeUserUnits, transientCommand, transientUnitEnvironment, unitWritablePaths, userUnitDir } from "../systemd-units";
 
 test("command arguments never expand environment variables in units or transient commands", () => {
   // systemd expands $NAME and the braced form in command lines, even quoted; "$$" is a literal dollar sign.
@@ -53,8 +53,8 @@ test("installed units carry the installer's XDG directories and may write the cu
     sync: buildSyncUnits(config, launch, env).service, backup: buildProtonBackupUnits(config, launch, env).service, archive: buildArchiveUnits(config, launch, env).service
   };
   for (const unit of Object.values(units)) {
-    expect(unit).toContain('Environment="XDG_CONFIG_HOME=/custom/con fig"\nEnvironment="XDG_STATE_HOME=/custom/st%%ate"\nEnvironment="XDG_DATA_HOME=/custom/data"\n');
-    expect(unit).not.toContain("XDG_CACHE_HOME");
+    // A relative value is not usable: the unit gets the default this process falls back to.
+    expect(unit).toContain(`Environment="XDG_CONFIG_HOME=/custom/con fig"\nEnvironment="XDG_STATE_HOME=/custom/st%%ate"\nEnvironment="XDG_DATA_HOME=/custom/data"\nEnvironment="XDG_CACHE_HOME=${homedir()}/.cache"\n`);
   }
   const writable = (unit: string) => unit.split("\n").find((line) => line.startsWith("ReadWritePaths="));
   expect(writable(units.sync)).toEndWith(' "-/custom/st%%ate/recording-cli" "-/custom/data/recording-cli"');
@@ -62,8 +62,13 @@ test("installed units carry the installer's XDG directories and may write the cu
   expect(writable(units.archive)).toEndWith(' "-/custom/st%%ate/recording-cli" "-/custom/data/recording-cli"');
   expect(writable(units.calls)).toEndWith(' "-/custom/st%%ate/recording-cli" "-/custom/data/recording-cli/jobs"');
   expect(writable(units.worker)).toEndWith(' "-/custom/data/recording-cli"');
-  // Without custom directories the units are what they were.
-  expect(buildSyncUnits(config, launch, {}).service).not.toContain("XDG_");
+  // Without custom directories the units still name the defaults, so the user manager's own values never apply.
+  expect(buildSyncUnits(config, launch, {}).service).toContain(["config", "local/state", "local/share", "cache"]
+    .map((folder, index) => `Environment="${["XDG_CONFIG_HOME", "XDG_STATE_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME"][index]}=${homedir()}/.${folder}"\n`).join(""));
+  expect(transientUnitEnvironment({ PATH: "/usr/bin" }, "/home/u")).toEqual([
+    "--setenv=PATH=/usr/bin", "--setenv=XDG_CONFIG_HOME=/home/u/.config", "--setenv=XDG_STATE_HOME=/home/u/.local/state",
+    "--setenv=XDG_DATA_HOME=/home/u/.local/share", "--setenv=XDG_CACHE_HOME=/home/u/.cache"
+  ]);
   // The paths created before installing are exactly the ones the unit grants, quoting undone.
   config.recordingsDir = '/media/Gravações "%u" \\ x';
   expect(unitWritablePaths(buildCallMonitorUnit(config, launch, env), "/home/u")).toEqual([
