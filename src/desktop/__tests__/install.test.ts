@@ -20,6 +20,23 @@ const fixture = async () => {
   return { root, paths, output, options };
 };
 
+test("make install-studio replaces another installer's files only with REPLACE=1", async () => {
+  const command = async (...variables: string[]) => {
+    const child = Bun.spawn(["make", "-n", "-C", repo, "install-studio", ...variables], {
+      env: { PATH: process.env.PATH, HOME: process.env.HOME }, stdout: "pipe", stderr: "pipe"
+    });
+    const [code, stdout] = await Promise.all([child.exited, new Response(child.stdout).text()]);
+    expect(code).toBe(0);
+    return stdout.split("\n").find((line) => line.includes("src/desktop/install.ts")) ?? "";
+  };
+  for (const variables of [[], ["REPLACE=0"], ["REPLACE="], ["REPLACE=no"]]) {
+    const line = await command(...variables);
+    expect(line).toContain("src/desktop/install.ts");
+    expect(line).not.toContain("--replace");
+  }
+  expect(await command("REPLACE=1")).toContain("--replace");
+});
+
 test("a percent sign in the install path is escaped in the menu entry", () => {
   const paths = installPaths({ INSTALL_PREFIX: "/opt/fala%trace", XDG_DATA_HOME: "/home/u/.local/share" }, "/home/u");
   expect(desktopEntry(paths)).toContain('Exec="/opt/fala%%trace/bin/recording-studio"\n');

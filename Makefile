@@ -44,7 +44,7 @@ uninstall:
 # Qt headers: system packages (qt6-base-dev, qt6-base-dev-tools, qt6-declarative-dev,
 # libmpvqt-dev) or the SDK from `bun run desktop:setup`. No sudo, no downloads.
 install-studio: install-cli
-	INSTALL_PREFIX="$(INSTALL_PREFIX)" bun run src/desktop/install.ts $(if $(REPLACE),--replace,)
+	INSTALL_PREFIX="$(INSTALL_PREFIX)" bun run src/desktop/install.ts $(if $(filter 1,$(REPLACE)),--replace,)
 
 uninstall-studio:
 	INSTALL_PREFIX="$(INSTALL_PREFIX)" bun run src/desktop/install.ts --uninstall
