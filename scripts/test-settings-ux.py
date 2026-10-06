@@ -33,7 +33,7 @@ values = {'callDetection.enabled': not first, 'callDetection.mode':'record', 'ca
           'capture.microphone':'default','capture.desktop':'default','capture.profile':'standard','capture.encoder':'gpu','capture.framerate':30,
           'capture.startupTimeoutSeconds':90,'features.namingTemplate':'YYYY-MM-DD_HH-mm_[title]',
           'obs.enabled':False,'obs.autoLaunch':False,'obs.host':'127.0.0.1','obs.port':4455,
-          'transcription.provider':'whisper-cpp' if first else 'openai','transcription.language':'auto','transcription.expectedLanguages':[],'transcription.openaiPrompt':'Termos: FalaTrace' if mode == 'tab-processing' else '',
+          'transcription.provider':'whisper-cpp' if first else 'gemini' if mode == 'wizard-gemini-key' else 'openai','transcription.language':'auto','transcription.expectedLanguages':[],'transcription.openaiPrompt':'Termos: FalaTrace' if mode == 'tab-processing' else '',
           'transcription.openaiModel':'gpt-transcribe','transcription.geminiModel':'gemini-3.5-transcribe','transcription.whisperCpp.command':'whisper-cli',
           'transcription.whisperCpp.modelPath':'/home/synthetic/model.bin','transcription.whisperCpp.threads':8,
           'summary.provider':'ollama' if first else 'openai','summary.ollamaUrl':'http://127.0.0.1:11434','summary.ollamaModel':'qwen3.5:9b','summary.openaiModel':'gpt-6-luna',
@@ -50,7 +50,7 @@ values = {'callDetection.enabled': not first, 'callDetection.mode':'record', 'ca
           'retention.localCompletedWorkDays':7,'retention.remoteIncomingDays':2,'retention.remoteResultsDays':30,'retention.remoteFailuresDays':30}
 revision = 'a' * 64
 # Assistant modes on an existing OpenAI setup that already has its key; wizard-key-required has none.
-key_present = mode in ('wizard-disable-monitor', 'wizard-disable-unknown', 'wizard-download-finish', 'wizard-download-pending')
+key_present = mode in ('wizard-disable-monitor', 'wizard-disable-unknown', 'wizard-download-finish', 'wizard-download-pending', 'wizard-gemini-key')
 details = [{'name':'OPENAI_API_KEY','source':'secrets.env' if key_present else 'missing','sessionOnly':mode == 'keys','shadowsStudioKey':False,'savedInStudio':key_present},
            {'name':'GEMINI_API_KEY','source':'missing','sessionOnly':False,'shadowsStudioKey':False,'savedInStudio':False},
            {'name':'RECORDING_CLI_OBS_PASSWORD','source':'missing','sessionOnly':False,'shadowsStudioKey':False,'savedInStudio':False}]
@@ -191,6 +191,10 @@ MODES = {
                      'send("settings-model-status", "", { kind: "whisper", model: "tiny" })',
                      'check("a model downloaded while transcription uses OpenAI is not marked in use", !Object.prototype.hasOwnProperty.call(settingsChanges(), "transcription.whisperCpp.modelPath") && settingsDraft["transcription.provider"]==="openai" && settingsNotice.indexOf("Usar este modelo")>=0 && !settingsDialog.modelInUse("/home/synthetic/models/ggml-tiny.bin")); '
                      'setSettingsField("transcription.whisperCpp.modelPath", "/home/synthetic/models/ggml-tiny.bin"); setSettingsField("transcription.provider", "whisper-cpp"); check("using the model switches transcription to this computer", settingsDialog.modelInUse("/home/synthetic/models/ggml-tiny.bin"))'),
+    'wizard-gemini-key': ('setupWizard.open(); setupWizard.consentAck=true; setupWizard.applyMonitor=false; setupWizard.applyTimer=false',
+                          'setupWizard.step=4; setupWizard.finish(); check("Finish waits for the Gemini key the reviewed transcription needs", setupWizard.missingRequiredKey() && setupWizard.step===4 && setupWizard.error!=="" && !setupWizard.hasPending("settings-save"))',
+                          'setupWizard.applyPreset("cloud"); setupWizard.finish()',
+                          'check("a preset the saved keys cover lets Finish complete", setupWizard.step===5 && !setupWizard.missingRequiredKey())'),
     'models-two': ('settingsDialog.open(); settingsDialog.goToSection(4)', 'settingsDialog.startDownload("whisper","tiny"); settingsDialog.startDownload("whisper","large-v3-turbo-q5_0")',
                    'settingsDialog.pollDownloads(); check("two downloads are tracked", !!settingsDialog.downloads["whisper:tiny"] && !!settingsDialog.downloads["whisper:large-v3-turbo-q5_0"])', ''),
     'integrations': ('settingsDialog.open(); settingsDialog.goToSection(5)', 'check("remote check available once configured", settingsData.readOnly.remoteConfigured); send("settings-remote-check",""); setSettingsField("remote.user", null); check("cleared optional field becomes a null change", settingsChanges()["remote.user"]===null)',
@@ -221,7 +225,7 @@ SIDE_EFFECTS = {'save': {'settings-save'}, 'services': {'settings-service'}, 'wi
                 'keys-refresh': {'settings-secret-set'}, 'wizard-download-finish': {'settings-model-download', 'settings-save'},
                 'wizard-key-fail': {'settings-save', 'settings-secret-set'}, 'wizard-download-pending': {'settings-model-download'},
                 'keys-lost': {'settings-secret-set'}, 'wizard-key-required': {'settings-save', 'settings-secret-set'},
-                'models-cloud': {'settings-model-download'}}
+                'models-cloud': {'settings-model-download'}, 'wizard-gemini-key': {'settings-save'}}
 GUARDED = {'settings-save', 'settings-service', 'settings-secret-set', 'settings-secret-remove', 'settings-model-download', 'settings-restore'}
 
 checks = []; screens = []
@@ -285,6 +289,9 @@ with tempfile.TemporaryDirectory(dir='/tmp', prefix='falatrace-settings-fixture-
         if mode in ('wizard-disable-monitor', 'wizard-disable-unknown'):
             applied = [q['payload'] for q in requests if q['op'] == 'settings-service']
             checks.append({'name': f'{mode}: only the monitor is disabled', 'pass': applied == [{'action': 'calls-disable'}]})
+        if mode == 'wizard-gemini-key':
+            saves = [q['payload'] for q in requests if q['op'] == 'settings-save']
+            checks.append({'name': 'wizard-gemini-key: nothing is saved until the setup no longer needs the missing key', 'pass': len(saves) == 1 and saves[0]['changes'].get('transcription.provider') == 'openai'})
         if mode == 'wizard-draft-ollama':
             diagnoses = [q['payload'] for q in requests if q['op'] == 'settings-diagnose']
             checks.append({'name': 'wizard-draft-ollama: the preset is diagnosed as a draft, not saved', 'pass': len(diagnoses) >= 2 and 'changes' not in diagnoses[0]

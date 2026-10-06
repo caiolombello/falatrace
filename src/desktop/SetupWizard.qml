@@ -93,9 +93,15 @@ FtDialog {
     function whisperDownloadRunning() { return Object.keys(downloads).some(function(key){ return downloads[key].kind === "whisper" && downloads[key].state === "running" }) }
     function downloadBlocksFinish() { return hasPending("settings-model-download") || whisperDownloadRunning() }
     function useKey(text) { pendingKey = String(text || "").trim() }
-    function keyReady() { const source = credential("OPENAI_API_KEY").source; return pendingKey !== "" || (!!source && source !== "missing") }
-    // Local processing that sends audio or text to OpenAI cannot run without a key background jobs can read.
-    function missingRequiredKey() { return value("processing.defaultTarget") !== "remote" && needsKey("OPENAI_API_KEY") && !keyReady() }
+    function savedKey(name) { const source = credential(name).source; return !!source && source !== "missing" }
+    function keyReady() { return pendingKey !== "" || savedKey("OPENAI_API_KEY") }
+    // Local processing that sends audio or text out cannot run without a key background jobs can read. The OpenAI
+    // key can be typed here; the Gemini key is saved in Settings, so Finish waits for it there.
+    function missingKeys() {
+        if (value("processing.defaultTarget") === "remote") return []
+        return ["OPENAI_API_KEY", "GEMINI_API_KEY"].filter(function(name){ return needsKey(name) && !(name === "OPENAI_API_KEY" ? keyReady() : savedKey(name)) })
+    }
+    function missingRequiredKey() { return missingKeys().length > 0 }
     function serviceActions() {
         const actions = []
         const monitor = diag.services && diag.services.calls
@@ -109,7 +115,7 @@ FtDialog {
     }
     function finish() {
         if (downloadBlocksFinish()) { error = t("Aguarde o download do modelo terminar, ou cancele-o, antes de concluir."); return }
-        if (missingRequiredKey()) { error = t("Cole a chave da OpenAI no passo Processamento, ou escolha tudo neste computador, antes de concluir."); return }
+        if (missingRequiredKey()) { error = missingKeys().indexOf("OPENAI_API_KEY") >= 0 ? t("Cole a chave da OpenAI no passo Processamento, ou escolha tudo neste computador, antes de concluir.") : t("Salve a chave do Gemini em Configurações, em Chaves de API, ou escolha outra opção no passo Processamento, antes de concluir."); return }
         error = ""; notice = ""; results = []
         // Decided from what the person reviewed: the save clears the draft and may not return the new values.
         plannedActions = serviceActions()
@@ -316,6 +322,7 @@ FtDialog {
               FtButton { text:t("Usar esta chave"); compact:true; enabled:wizardKey.text.trim().length>0; onClicked:{ setupWizard.useKey(wizardKey.text); wizardKey.text="" } }
             }
           }
+          Status { visible:setupWizard.needsKey("GEMINI_API_KEY"); label:t("Chave do Gemini"); status:setupWizard.savedKey("GEMINI_API_KEY")?"ok":"warning"; detail:setupWizard.savedKey("GEMINI_API_KEY")?t("Configurada."):t("A transcrição usa o Gemini. Salve a chave dele em Configurações, em Chaves de API, ou escolha uma das opções acima.") }
           Label { text:t("Dá para trocar cada escolha depois em Configurações, em Processamento e IA."); color:muted; font.pixelSize:12; wrapMode:Text.WordWrap; Layout.fillWidth:true }
          }
         }
@@ -347,7 +354,8 @@ FtDialog {
           WrappedCheck { text:t("Instalar o indicador na bandeja (REC, pausar, parar)"); checked:setupWizard.applyTray; onToggled:setupWizard.applyTray=checked }
           Label { text:setupWizard.fresh?t("Concluir cria a configuração. Você pode mudar tudo depois em Configurações."):t("Concluir salva só o que você mudou, com cópia de segurança da configuração atual."); color:muted; font.pixelSize:12; wrapMode:Text.WordWrap; Layout.fillWidth:true }
           Label { visible:setupWizard.downloadBlocksFinish(); text:t("O download do modelo ainda está em andamento. Concluir fica disponível quando ele terminar ou for cancelado."); color:warningColor; font.pixelSize:12; wrapMode:Text.WordWrap; Layout.fillWidth:true }
-          Label { visible:setupWizard.missingRequiredKey(); text:t("Falta a chave da OpenAI que este processamento usa: cole-a no passo Processamento, ou escolha tudo neste computador."); color:warningColor; font.pixelSize:12; wrapMode:Text.WordWrap; Layout.fillWidth:true }
+          Label { visible:setupWizard.missingKeys().indexOf("OPENAI_API_KEY")>=0; text:t("Falta a chave da OpenAI que este processamento usa: cole-a no passo Processamento, ou escolha tudo neste computador."); color:warningColor; font.pixelSize:12; wrapMode:Text.WordWrap; Layout.fillWidth:true }
+          Label { visible:setupWizard.missingKeys().indexOf("GEMINI_API_KEY")>=0; text:t("Falta a chave do Gemini que esta transcrição usa: salve-a em Configurações, em Chaves de API, ou escolha outra opção no passo Processamento."); color:warningColor; font.pixelSize:12; wrapMode:Text.WordWrap; Layout.fillWidth:true }
          }
         }
 
