@@ -43,9 +43,13 @@ export const defaultModelDeps: ModelDeps = {
 export const modelUnitName = (kind: DownloadKind, id: string): string =>
   `recording-cli-model-${kind}-${createHash("sha256").update(id).digest("hex").slice(0, 12)}`;
 
-/** Whether the download unit runs; null when the user manager could not be asked. */
+/**
+ * Whether the download unit runs; null when the user manager could not be asked. A unit systemd no longer
+ * knows, such as one collected after it ended, is not running.
+ */
 const unitActive = async (run: typeof runCommand, unit: string): Promise<boolean | null> => {
-  const result = await run("systemctl", ["--user", "show", `${unit}.service`, "--property=ActiveState"], { timeoutMs: 5_000 }).catch(() => null);
+  const result = await run("systemctl", ["--user", "show", `${unit}.service`, "--property=ActiveState"], { timeoutMs: 5_000 })
+    .catch((error: unknown) => isMissingUnitError(error) ? { stdout: "ActiveState=inactive\n", stderr: "" } : null);
   return result === null ? null : /^ActiveState=(active|activating)$/m.test(result.stdout);
 };
 

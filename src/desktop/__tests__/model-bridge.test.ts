@@ -126,6 +126,20 @@ test("a cancel systemd refuses is reported, and an unreachable systemd changes n
   expect(runs.some((run) => run[0] === "systemd-run")).toBe(false);
 });
 
+test("a download unit systemd no longer knows reads as ended, not as an unreachable systemd", async () => {
+  const { value, runs } = deps("/synthetic/models");
+  // Launched with --collect, an ended unit is unloaded; asking about it may then fail as not found.
+  value.run = async (command, args) => {
+    runs.push([command, ...args]);
+    if (args[1] === "show") throw new Error(`systemctl failed with code 1: Unit ${modelUnitName("whisper", "base")}.service not found.`);
+    return { stdout: "", stderr: "" };
+  };
+  await writeDownloadState({ kind: "whisper", id: "base", state: "running", receivedBytes: 7, totalBytes: 100 });
+  expect(await handleModelOperation("settings-model-status", { kind: "whisper", model: "base" }, value)).toMatchObject({ state: "failed", error: expect.stringContaining("interrompido") });
+  expect(await handleModelOperation("settings-model-download", { kind: "whisper", model: "base", consent: true }, value)).toMatchObject({ state: "running" });
+  expect(runs.some((run) => run[0] === "systemd-run")).toBe(true);
+});
+
 test("a Whisper model counts as installed only when a SHA-256 check accepted that exact file", async () => {
   const directory = await fs.mkdtemp(join(tmpdir(), "falatrace-model-verified-"));
   const model = findWhisperModel("tiny");
