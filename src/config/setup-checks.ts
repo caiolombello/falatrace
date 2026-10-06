@@ -1,12 +1,11 @@
 import { constants, promises as fs } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
 import type { AppConfig } from "./defaults";
 import { runCommand } from "../jobs/command";
 import { resolveExecutable } from "../recording/obsLauncher";
 import { automaticRecordingBackend } from "../recording/capabilities";
 import { buildCallMonitorUnit } from "../calls/service";
-import { quoteSystemd } from "../runtime/systemd-units";
+import { quoteSystemd, userUnitDir } from "../runtime/systemd-units";
 import { isPlaceholderRemoteHost } from "./settings";
 import type { CredentialReport, SecretFileName, SecretSource } from "./secrets";
 
@@ -239,9 +238,10 @@ export const readServiceStatus = async (
   config: AppConfig,
   configPath: string,
   run: typeof runCommand = runCommand,
-  unitDir = join(homedir(), ".config", "systemd", "user")
+  unitDir?: string
 ): Promise<{ calls: ServiceStatus; tray: ServiceStatus; sync: TimerStatus; archive: TimerStatus; backup: TimerStatus }> => {
-  const read = (name: string) => fs.readFile(join(unitDir, name), "utf8").catch(() => null);
+  const directory = unitDir ?? await userUnitDir(run);
+  const read = (name: string) => fs.readFile(join(directory, name), "utf8").catch(() => null);
   const [callsUnit, trayUnit] = await Promise.all([read("recording-cli-calls.service"), read("recording-cli-tray.service")]);
   const [callsEnabled, callsActive, trayEnabled, trayActive] = await Promise.all([
     unitState(run, "is-enabled", "recording-cli-calls.service"), unitState(run, "is-active", "recording-cli-calls.service"),
@@ -253,7 +253,7 @@ export const readServiceStatus = async (
   const configChangedAt = await fs.stat(configPath).then((stat) => stat.mtimeMs, () => null);
   const callsStartedAt = callsActive ? await showMillis(run, "recording-cli-calls.service", "ActiveEnterTimestamp") : null;
   const staleConfig = callsStartedAt !== null && configChangedAt !== null && Math.floor(configChangedAt) > callsStartedAt;
-  const [sync, archive, backup] = await Promise.all((["sync", "archive", "backup"] as const).map((name) => readTimer(name, config, run, unitDir)));
+  const [sync, archive, backup] = await Promise.all((["sync", "archive", "backup"] as const).map((name) => readTimer(name, config, run, directory)));
   return {
     calls: { installed: callsUnit !== null, enabled: callsEnabled, active: callsActive, outdated: callsOutdated, staleConfig },
     tray: { installed: trayUnit !== null, enabled: trayEnabled, active: trayActive, outdated: false, staleConfig: false },

@@ -3,15 +3,12 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { AppConfig } from "../config/defaults";
 import { runCommand } from "../jobs/command";
-import { execStart, isMissingUnitError, persistentUnitEnvironment, persistentUnitWritablePaths, quoteSystemd, serviceLaunchCommand } from "../runtime/systemd-units";
+import { execStart, isMissingUnitError, persistentUnitEnvironment, persistentUnitWritablePaths, quoteSystemd, serviceLaunchCommand, userUnitDir } from "../runtime/systemd-units";
 
 const getLaunchCommand = (): string[] => serviceLaunchCommand();
 
-const getUnitPath = (): string =>
-  join(homedir(), ".config", "systemd", "user", "recording-cli-calls.service");
-
-const getNetworkProbeUnitPath = (): string =>
-  join(homedir(), ".config", "systemd", "user", "recording-cli-network-probe.service");
+const CALLS_UNIT = "recording-cli-calls.service";
+const NETWORK_PROBE_UNIT = "recording-cli-network-probe.service";
 
 export const buildNetworkProbeUnit = (launchCommand = getLaunchCommand(), env: NodeJS.ProcessEnv = process.env): string =>
   `[Unit]\nDescription=FalaTrace aggregate network metadata probe\nPartOf=recording-cli-calls.service\n\n[Service]\nType=simple\nExecStart=${execStart([...launchCommand, "calls", "network-probe"])}\nRestart=on-failure\nRestartSec=5\nNoNewPrivileges=yes\nRestrictNamespaces=yes\nRestrictSUIDSGID=yes\nLockPersonality=yes\nRestrictRealtime=yes\nRestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK\nUMask=0077\n${persistentUnitEnvironment(env)}# Mount namespace directives are intentionally omitted because ss -p needs the desktop namespace for process attribution.\n`;
@@ -27,8 +24,9 @@ export const installCallMonitorService = async (config: AppConfig): Promise<stri
   if (!config.callDetection.enabled) {
     throw new Error("Set callDetection.enabled=true before installing the call monitor service");
   }
-  const unitPath = getUnitPath();
-  await fs.mkdir(join(homedir(), ".config", "systemd", "user"), {
+  const unitDir = await userUnitDir();
+  const unitPath = join(unitDir, CALLS_UNIT);
+  await fs.mkdir(unitDir, {
     recursive: true,
     mode: 0o700
   });
@@ -38,7 +36,7 @@ export const installCallMonitorService = async (config: AppConfig): Promise<stri
   });
   await fs.mkdir(config.recordingsDir, { recursive: true, mode: 0o700 });
   await fs.writeFile(unitPath, buildCallMonitorUnit(config), { mode: 0o600 });
-  await fs.writeFile(getNetworkProbeUnitPath(), buildNetworkProbeUnit(), { mode: 0o600 });
+  await fs.writeFile(join(unitDir, NETWORK_PROBE_UNIT), buildNetworkProbeUnit(), { mode: 0o600 });
   await runCommand("systemctl", ["--user", "daemon-reload"]);
   await runCommand("systemctl", ["--user", "enable", "recording-cli-calls.service"]);
   await runCommand("systemctl", ["--user", "restart", "recording-cli-calls.service"]);
@@ -51,12 +49,13 @@ export const installCallMonitorService = async (config: AppConfig): Promise<stri
  * here, before the files are removed and the monitor reported disabled.
  */
 export const uninstallCallMonitorService = async (run: typeof runCommand = runCommand): Promise<string> => {
-  const unitPath = getUnitPath();
   const unlessMissing = (error: unknown): void => { if (!isMissingUnitError(error)) throw error; };
-  await run("systemctl", ["--user", "disable", "--now", "recording-cli-calls.service"]).catch(unlessMissing);
-  await run("systemctl", ["--user", "stop", "recording-cli-network-probe.service"]).catch(unlessMissing);
+  await run("systemctl", ["--user", "disable", "--now", CALLS_UNIT]).catch(unlessMissing);
+  await run("systemctl", ["--user", "stop", NETWORK_PROBE_UNIT]).catch(unlessMissing);
+  const unitDir = await userUnitDir(run);
+  const unitPath = join(unitDir, CALLS_UNIT);
   await fs.rm(unitPath, { force: true });
-  await fs.rm(getNetworkProbeUnitPath(), { force: true });
+  await fs.rm(join(unitDir, NETWORK_PROBE_UNIT), { force: true });
   await run("systemctl", ["--user", "daemon-reload"]);
   return unitPath;
 };

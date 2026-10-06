@@ -14,7 +14,7 @@ export const buildArchiveUnits = (config: AppConfig, command: string[], env: Nod
 export const installArchiveTimer = async (config: AppConfig): Promise<string[]> => {
   if (!config.archive.enabled || (!config.archive.vaio && !config.archive.proton)) throw new Error("Habilite ao menos um destino em archive antes de instalar o timer");
   const units = buildArchiveUnits(config, serviceLaunchCommand());
-  const unitDir = userUnitDir();
+  const unitDir = await userUnitDir();
   for (const directory of [unitDir, getArchiveStateDir(), getArchiveDataDir()]) await fs.mkdir(directory, { recursive: true, mode: 0o700 });
   const paths: string[] = [];
   for (const [kind, content] of Object.entries(units)) {

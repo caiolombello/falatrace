@@ -10,7 +10,7 @@ export const buildProtonBackupUnits = (config: AppConfig, launchCommand = servic
 });
 
 export const installProtonBackupTimer = async (config: AppConfig): Promise<string[]> => {
-  const unitDir = userUnitDir();
+  const unitDir = await userUnitDir();
   const servicePath = join(unitDir, "recording-cli-proton-backup.service");
   const timerPath = join(unitDir, "recording-cli-proton-backup.timer");
   const units = buildProtonBackupUnits(config);

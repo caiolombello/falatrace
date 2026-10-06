@@ -76,6 +76,28 @@ test("audio devices are listed with safe names and descriptions only", async () 
   });
 });
 
+test("service status reads the unit files from the directory the user manager loads", async () => {
+  const root = await fs.mkdtemp(join(tmpdir(), "falatrace-service-status-"));
+  try {
+    const config = structuredClone(DEFAULT_CONFIG);
+    const configPath = join(root, "config.json");
+    await fs.writeFile(configPath, "{}");
+    // The manager's XDG_CONFIG_HOME is not this process's: its unit directory is the one it reports.
+    const unitDir = join(root, "manager-config", "systemd", "user");
+    await fs.mkdir(unitDir, { recursive: true });
+    await fs.writeFile(join(unitDir, "recording-cli-tray.service"), "x");
+    const run = async (_command: string, args: string[]) => {
+      if (args.includes("--property=UnitPath")) return { stdout: `${unitDir}.control /run/user/1000/systemd/user.control ${unitDir} /etc/systemd/user\n`, stderr: "" };
+      return { stdout: args[1] === "is-enabled" ? "enabled\n" : "active\n", stderr: "" };
+    };
+    const status = await readServiceStatus(config, configPath, run as never);
+    expect(status.tray.installed).toBe(true);
+    expect(status.calls.installed).toBe(false);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
 test("service status flags a unit with stale paths and a config newer than the running monitor", async () => {
   const root = await fs.mkdtemp(join(tmpdir(), "falatrace-service-status-"));
   try {

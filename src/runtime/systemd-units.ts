@@ -24,7 +24,31 @@ export const quoteSystemdPath = (path: string): string =>
 
 export const execStart = (args: string[]): string => args.map(quoteSystemd).join(" ");
 
-export const userUnitDir = (): string => join(homedir(), ".config", "systemd", "user");
+/** The unit directory systemd derives from an environment: $XDG_CONFIG_HOME/systemd/user, else ~/.config/systemd/user. */
+const configUnitDir = (env: NodeJS.ProcessEnv, home: string): string => {
+  const configHome = env.XDG_CONFIG_HOME;
+  return join(configHome && isAbsolute(configHome) ? configHome : join(home, ".config"), "systemd", "user");
+};
+
+/**
+ * Where the user manager loads unit files from. The manager derives it from its own environment,
+ * which need not match this process's, so the directory comes from the manager's search path: this
+ * process's configuration directory or ~/.config/systemd/user when the manager lists it, otherwise
+ * the configuration directory it lists with its ".control" twin, ahead of the runtime one. When the
+ * manager cannot be asked, this process's environment decides, as systemd's own client tools do.
+ */
+export const userUnitDir = async (
+  run: typeof runCommand = runCommand,
+  env: NodeJS.ProcessEnv = process.env,
+  home = homedir()
+): Promise<string> => {
+  const own = configUnitDir(env, home);
+  const output = await run("systemctl", ["--user", "show", "--property=UnitPath", "--value"]).then((result) => result.stdout.trim(), () => "");
+  const listed = (dir: string): boolean => ` ${output} `.includes(` ${dir} `);
+  return [own, join(home, ".config", "systemd", "user")].find(listed)
+    ?? output.split(/\s+/).find((entry) => entry.endsWith("/systemd/user") && listed(`${entry}.control`))
+    ?? own;
+};
 
 export const serviceLaunchCommand = (): string[] => getServiceLaunchCommand();
 
@@ -84,7 +108,7 @@ export const removeUserUnits = async (
   unitFiles: string[],
   stopUnits: string[],
   run: typeof runCommand = runCommand,
-  unitDir = userUnitDir()
+  unitDir?: string
 ): Promise<string[]> => {
   for (const unit of stopUnits) {
     const args = unit.endsWith(".timer") ? ["--user", "disable", "--now", unit] : ["--user", "stop", unit];
@@ -92,9 +116,10 @@ export const removeUserUnits = async (
       if (!isMissingUnitError(error)) throw error;
     });
   }
+  const directory = unitDir ?? await userUnitDir(run);
   const removed: string[] = [];
   for (const name of unitFiles) {
-    const path = join(unitDir, name);
+    const path = join(directory, name);
     await fs.rm(path, { force: true });
     removed.push(path);
   }

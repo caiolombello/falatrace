@@ -10,7 +10,7 @@ export const buildWorkerUnit = (config: AppConfig, launchCommand = serviceLaunch
   `[Unit]\nDescription=FalaTrace processing worker\nAfter=network-online.target\n\n[Service]\nType=simple\nExecStart=${execStart([...launchCommand, "worker", "run"])}\nEnvironmentFile=-%h/.config/recording-cli/worker.env\n${persistentUnitEnvironment(env)}Restart=on-failure\nRestartSec=10\nNoNewPrivileges=yes\nPrivateTmp=yes\nProtectSystem=strict\nProtectHome=read-only\nReadWritePaths=%h/.local/share/recording-cli ${quoteSystemdPath(config.remote.archiveDir)}${persistentUnitWritablePaths(["data"], env)}\n\n[Install]\nWantedBy=default.target\n`;
 
 export const installWorkerService = async (config: AppConfig): Promise<string> => {
-  const unitDir = userUnitDir();
+  const unitDir = await userUnitDir();
   const unitPath = join(unitDir, "recording-cli-worker.service");
   await fs.mkdir(unitDir, { recursive: true, mode: 0o700 });
   await fs.writeFile(unitPath, buildWorkerUnit(config), { mode: 0o600 });
@@ -27,7 +27,7 @@ export const buildSyncUnits = (config: AppConfig, launchCommand = serviceLaunchC
 
 /** Process queued jobs (local and remote) periodically; the service exits after each run. */
 export const installSyncTimer = async (config: AppConfig): Promise<string[]> => {
-  const unitDir = userUnitDir();
+  const unitDir = await userUnitDir();
   const servicePath = join(unitDir, "recording-cli-sync.service");
   const timerPath = join(unitDir, "recording-cli-sync.timer");
   const units = buildSyncUnits(config);

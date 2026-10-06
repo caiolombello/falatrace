@@ -2,23 +2,21 @@ import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { runCommand } from "../jobs/command";
-import { execStart, isMissingUnitError, persistentUnitEnvironment, serviceLaunchCommand } from "../runtime/systemd-units";
+import { execStart, isMissingUnitError, persistentUnitEnvironment, serviceLaunchCommand, userUnitDir } from "../runtime/systemd-units";
 import { checkTrayDependencies } from "./runtime";
 
 const SERVICE_NAME = "recording-cli-tray.service";
 
 const getLaunchCommand = (): string[] => serviceLaunchCommand();
 
-const getUnitPath = (): string =>
-  join(homedir(), ".config", "systemd", "user", SERVICE_NAME);
-
 export const buildTrayUnit = (launchCommand = getLaunchCommand(), env: NodeJS.ProcessEnv = process.env): string =>
   `[Unit]\nDescription=FalaTrace tray indicator\nAfter=graphical-session.target recording-cli-calls.service\nPartOf=graphical-session.target\n\n[Service]\nType=simple\nExecStart=${execStart([...launchCommand, "tray", "run"])}\n${persistentUnitEnvironment(env)}Restart=on-failure\nRestartSec=5\nNoNewPrivileges=yes\nPrivateTmp=yes\nProtectSystem=strict\nProtectHome=read-only\nRestrictAddressFamilies=AF_UNIX\nUMask=0077\n\n[Install]\nWantedBy=default.target\n`;
 
 export const installTrayService = async (): Promise<string> => {
   await checkTrayDependencies();
-  const unitPath = getUnitPath();
-  await fs.mkdir(join(homedir(), ".config", "systemd", "user"), {
+  const unitDir = await userUnitDir();
+  const unitPath = join(unitDir, SERVICE_NAME);
+  await fs.mkdir(unitDir, {
     recursive: true,
     mode: 0o700
   });
@@ -35,10 +33,10 @@ export const installTrayService = async (): Promise<string> => {
 
 /** Like the call monitor: only a unit that is already gone lets removal go on after a failed stop. */
 export const uninstallTrayService = async (run: typeof runCommand = runCommand): Promise<string> => {
-  const unitPath = getUnitPath();
   await run("systemctl", ["--user", "disable", "--now", SERVICE_NAME]).catch((error: unknown) => {
     if (!isMissingUnitError(error)) throw error;
   });
+  const unitPath = join(await userUnitDir(run), SERVICE_NAME);
   await fs.rm(unitPath, { force: true });
   await run("systemctl", ["--user", "daemon-reload"]);
   return unitPath;

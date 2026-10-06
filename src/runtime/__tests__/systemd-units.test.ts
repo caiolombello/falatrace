@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { promises as fs } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_CONFIG } from "../../config/defaults";
 import { buildArchiveUnits, uninstallArchiveTimer } from "../../archive/service";
@@ -9,7 +9,7 @@ import { buildProtonBackupUnits, uninstallProtonBackupTimer } from "../../proton
 import { buildCallMonitorUnit, uninstallCallMonitorService } from "../../calls/service";
 import { buildTrayUnit, uninstallTrayService } from "../../tray/service";
 import { cliEntryForBun, getServiceLaunchCommand } from "../launcher";
-import { execStart, quoteSystemd, quoteSystemdPath, removeUserUnits } from "../systemd-units";
+import { execStart, quoteSystemd, quoteSystemdPath, removeUserUnits, userUnitDir } from "../systemd-units";
 
 test("unit arguments are quoted and never act as systemd specifiers", () => {
   expect(quoteSystemd('/a b/"c"\\d%h')).toBe('"/a b/\\"c\\"\\\\d%%h"');
@@ -55,6 +55,52 @@ test("every generated unit uses the same launch command", () => {
     buildSyncUnits(config, launch).service, buildProtonBackupUnits(config, launch).service, buildArchiveUnits(config, launch).service
   ];
   for (const unit of units) expect(unit).toContain('ExecStart="/home/u/.local/bin/falatrace" ');
+});
+
+/** The user manager's UnitPath for a configuration directory, in systemd's order. */
+const unitPath = (config: string, home = "/home/u"): string[] => [
+  `${config}/systemd/user.control`, "/run/user/1000/systemd/user.control", "/run/user/1000/systemd/transient",
+  "/run/user/1000/systemd/generator.early", `${config}/systemd/user`, "/etc/xdg/systemd/user", "/etc/systemd/user",
+  "/run/user/1000/systemd/user", "/run/systemd/user", "/run/user/1000/systemd/generator", `${home}/.local/share/systemd/user`,
+  "/usr/local/lib/systemd/user", "/usr/lib/systemd/user", "/run/user/1000/systemd/generator.late"
+];
+/** A systemctl that reports `listing` as the manager's UnitPath and accepts everything else. */
+const managerListing = (listing: string[], runs: string[][] = []) => async (command: string, args: string[]) => {
+  runs.push([command, ...args]);
+  return { stdout: args.includes("--property=UnitPath") ? `${listing.join(" ")}\n` : "", stderr: "" };
+};
+
+test("units go where the user manager loads them, even when its XDG_CONFIG_HOME differs from this process's", async () => {
+  const home = "/home/u";
+  const runs: string[][] = [];
+  // The manager shares this process's custom configuration directory.
+  expect(await userUnitDir(managerListing(unitPath("/custom/config"), runs), { XDG_CONFIG_HOME: "/custom/config" }, home)).toBe("/custom/config/systemd/user");
+  expect(runs).toEqual([["systemctl", "--user", "show", "--property=UnitPath", "--value"]]);
+  // Only this process has one: the manager still loads ~/.config/systemd/user.
+  expect(await userUnitDir(managerListing(unitPath(`${home}/.config`)), { XDG_CONFIG_HOME: "/custom/config" }, home)).toBe(`${home}/.config/systemd/user`);
+  // Only the manager has one.
+  expect(await userUnitDir(managerListing(unitPath("/manager/config")), {}, home)).toBe("/manager/config/systemd/user");
+  // Older managers list only directories that exist.
+  expect(await userUnitDir(managerListing([`${home}/.config/systemd/user`, "/etc/systemd/user", "/usr/lib/systemd/user"]), { XDG_CONFIG_HOME: "/custom/config" }, home)).toBe(`${home}/.config/systemd/user`);
+  // The manager cannot be asked: this process's environment decides, as systemd's client tools do.
+  const noBus = async () => { throw new Error("systemctl failed with code 1: Failed to connect to bus: No such file or directory"); };
+  expect(await userUnitDir(noBus, { XDG_CONFIG_HOME: "/custom/config" }, home)).toBe("/custom/config/systemd/user");
+  expect(await userUnitDir(noBus, { XDG_CONFIG_HOME: "relative/config" }, home)).toBe(`${home}/.config/systemd/user`);
+});
+
+test("removal deletes the unit files from the directory the user manager loads", async () => {
+  const root = await fs.mkdtemp(join(tmpdir(), "falatrace-units-"));
+  try {
+    const unitDir = join(root, "manager-config", "systemd", "user");
+    await fs.mkdir(unitDir, { recursive: true });
+    for (const name of ["recording-cli-sync.timer", "recording-cli-sync.service"]) await fs.writeFile(join(unitDir, name), "x");
+    expect(await uninstallSyncTimer(managerListing(unitPath(join(root, "manager-config"))))).toEqual([
+      join(unitDir, "recording-cli-sync.timer"), join(unitDir, "recording-cli-sync.service")
+    ]);
+    expect(await fs.readdir(unitDir)).toEqual([]);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
 });
 
 test("removing units disables them, deletes their files and reloads", async () => {
@@ -117,24 +163,30 @@ test("disabling a timer also stops a run of its service that is in progress", as
 });
 
 test("the call monitor and tray are not reported removed while systemd cannot stop them", async () => {
-  const unitDir = join(homedir(), ".config", "systemd", "user");
-  const units = ["recording-cli-calls.service", "recording-cli-tray.service"].map((name) => join(unitDir, name));
-  await fs.mkdir(unitDir, { recursive: true });
-  for (const unit of units) await fs.writeFile(unit, "x");
-  const refusing = (message: string) => async (_command: string, args: string[]) => {
-    if (args.includes("disable") || args.includes("stop")) throw new Error(`systemctl failed with code 1: ${message}`);
-    return { stdout: "", stderr: "" };
-  };
-  // A monitor that keeps running would keep recording: its files stay and the failure is reported.
-  const noBus = refusing("Failed to connect to bus: No such file or directory");
-  await expect(uninstallCallMonitorService(noBus)).rejects.toThrow("Failed to connect to bus");
-  await expect(uninstallTrayService(noBus)).rejects.toThrow("Failed to connect to bus");
-  for (const unit of units) expect(await Bun.file(unit).exists()).toBe(true);
-  // Units that are already gone do not block removal.
-  const gone = refusing("Unit recording-cli-calls.service not loaded.");
-  expect(await uninstallCallMonitorService(gone)).toBe(units[0]);
-  expect(await uninstallTrayService(gone)).toBe(units[1]);
-  for (const unit of units) expect(await Bun.file(unit).exists()).toBe(false);
+  const root = await fs.mkdtemp(join(tmpdir(), "falatrace-units-"));
+  try {
+    const unitDir = join(root, "config", "systemd", "user");
+    const units = ["recording-cli-calls.service", "recording-cli-network-probe.service", "recording-cli-tray.service"].map((name) => join(unitDir, name));
+    await fs.mkdir(unitDir, { recursive: true });
+    for (const unit of units) await fs.writeFile(unit, "x");
+    const listed = managerListing(unitPath(join(root, "config")));
+    const refusing = (message: string) => async (command: string, args: string[]) => {
+      if (args.includes("disable") || args.includes("stop")) throw new Error(`systemctl failed with code 1: ${message}`);
+      return listed(command, args);
+    };
+    // A monitor that keeps running would keep recording: its files stay and the failure is reported.
+    const noBus = refusing("Failed to connect to bus: No such file or directory");
+    await expect(uninstallCallMonitorService(noBus)).rejects.toThrow("Failed to connect to bus");
+    await expect(uninstallTrayService(noBus)).rejects.toThrow("Failed to connect to bus");
+    for (const unit of units) expect(await Bun.file(unit).exists()).toBe(true);
+    // Units that are already gone do not block removal, which deletes them where the manager loads them.
+    const gone = refusing("Unit recording-cli-calls.service not loaded.");
+    expect(await uninstallCallMonitorService(gone)).toBe(units[0]);
+    expect(await uninstallTrayService(gone)).toBe(units[2]);
+    for (const unit of units) expect(await Bun.file(unit).exists()).toBe(false);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
 });
 
 test("uninstall commands still run while the configuration is broken", async () => {
