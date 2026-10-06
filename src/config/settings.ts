@@ -416,12 +416,9 @@ export async function readImportFile(target: unknown) {
   const values: Record<string, unknown> = {};
   const rejected: string[] = [];
   for (const field of Object.keys(SETTINGS_FIELDS)) {
-    if (field.startsWith("visualReview.")) {
-      if (value.visualReview) values[field] = getPath(merged, field);
-      continue;
-    }
     if (getPath(value, field) === undefined) continue;
-    const candidate = getPath(merged, field);
+    // Visual limits are not part of the merged defaults: check the imported member itself.
+    const candidate = field.startsWith("visualReview.") ? getPath(value, field) : getPath(merged, field);
     if (SETTINGS_FIELDS[field](candidate)) values[field] = candidate;
     else rejected.push(field);
   }

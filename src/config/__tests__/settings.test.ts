@@ -205,6 +205,16 @@ test("visual limits are written as a complete lifetime policy and optional keys 
   });
 });
 
+test("an audio device name the Studio lists can be saved", async () => {
+  await withRoot(async (root) => {
+    const path = join(root, "config.json");
+    await fs.writeFile(path, "{}");
+    const draft = await readSettings(path, {});
+    await saveSettings(draft.revision, { "capture.microphone": "alsa_input.usb-Mic+Line.analog-stereo" }, path);
+    expect(JSON.parse(await fs.readFile(path, "utf8")).capture.microphone).toBe("alsa_input.usb-Mic+Line.analog-stereo");
+  });
+});
+
 test("editing a visual limit keeps unknown keys next to it", async () => {
   await withRoot(async (root) => {
     const path = join(root, "config.json");
@@ -278,6 +288,12 @@ test("export omits credentials and import returns only allowlisted, valid fields
     const imported = await readImportFile(incoming);
     expect(imported.values).toMatchObject({ "callDetection.enabled": false, "callDetection.entryDebounceSeconds": 7, backend: "audio", "visualReview.maxInferences": 5, "visualReview.maxPreviews": 6 });
     expect(imported.ignored).toEqual(["future"]);
+    // A bad visual limit is rejected on its own instead of blocking the whole save later.
+    await fs.writeFile(incoming, JSON.stringify({ callDetection: { enabled: false }, visualReview: { maxInferences: "many", maxPreviews: 6 } }));
+    const partial = await readImportFile(incoming);
+    expect(partial.rejected).toEqual(["visualReview.maxInferences"]);
+    expect(partial.values).toEqual({ "callDetection.enabled": false, "visualReview.maxPreviews": 6 });
+    expect(() => validateSettingsPatch(partial.values)).not.toThrow();
     expect(imported.credentialsIgnored).toBe(true);
     expect(JSON.stringify(imported)).not.toContain('"k"');
   });

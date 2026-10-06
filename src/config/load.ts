@@ -155,7 +155,8 @@ export const validateConfig = (config: AppConfig): void => {
     throw new Error("capture.audioSource must be none, microphone, desktop or both");
   }
   for (const field of ["microphone", "desktop"] as const) {
-    if (!/^[A-Za-z0-9_.@:-]{1,300}$/.test(config.capture[field])) {
+    // Same characters the Studio lists and accepts (PipeWire/PulseAudio node names may contain +).
+    if (!/^[A-Za-z0-9_.@:+-]{1,300}$/.test(config.capture[field])) {
       throw new Error(`capture.${field} must be a single audio device name`);
     }
   }
