@@ -40,6 +40,7 @@ FtDialog {
         const minutes = Math.max(1, Math.round(plan.durationSeconds / 60))
         return t("Duração: cerca de ") + minutes + (minutes === 1 ? t(" minuto.") : t(" minutos."))
     }
+    function remoteText() { return plan.remote ? tf("Worker remoto: %1, porta %2", plan.remote.destination, plan.remote.port) : "" }
     function destinationText(destination) { return destination ? t(destination.where) + " · " + destination.provider + "/" + destination.model : "" }
     function resultNotice(result) {
         if (result.warning) return result.warning
@@ -71,6 +72,7 @@ FtDialog {
         ColumnLayout {
             visible:!!processDialog.plan.transcription; spacing:8; Layout.fillWidth:true
             Label { text:processDialog.actionText() + (processDialog.plan.target === "remote" ? t(", no worker remoto.") : t(", neste computador.")); visible:processDialog.ready; textFormat:Text.PlainText; wrapMode:Text.WordWrap; color:muted; Layout.fillWidth:true }
+            Label { objectName:"processRemote"; text:processDialog.remoteText(); visible:processDialog.ready && text !== ""; textFormat:Text.PlainText; wrapMode:Text.WrapAnywhere; color:muted; Layout.fillWidth:true }
             Label { text:processDialog.durationText(); visible:text !== ""; textFormat:Text.PlainText; color:muted; Layout.fillWidth:true }
             Repeater {
                 model:[{ label:t("Transcrição"), destination:processDialog.plan.transcription }, { label:t("Resumo"), destination:processDialog.plan.summary }]

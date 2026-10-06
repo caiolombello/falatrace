@@ -4,6 +4,7 @@ import type { AppConfig } from "../config/defaults";
 import { isPlaceholderRemoteHost } from "../config/settings";
 import { probeMedia } from "./media";
 import { queueSelectedJob, type QueueSelectedJobResult } from "./queue";
+import { getSshDestination } from "./remote";
 import { JobStore } from "./store";
 import type { JobRecord } from "./types";
 
@@ -24,6 +25,8 @@ export type ProcessPlan = {
   jobState?: string;
   durationSeconds: number | null;
   target: "local" | "remote";
+  /** The worker that receives the audio when the target is remote. */
+  remote?: { destination: string; port: number };
   transcription: Destination;
   summary: Destination;
   consentKey: string;
@@ -107,13 +110,16 @@ export const planRecordingProcessing = async (
   const destinations = describeDestinations(target, transcription, summary, config);
   const stat = entry.sourceExists ? await fs.stat(entry.sourcePath).catch(() => null) : null;
   const durationSeconds = stat && action !== "none" ? await deps.duration(entry.sourcePath).catch(() => null) : null;
+  // The worker is part of what the user approves: another host, user, port or identity asks again.
+  const remote = target === "remote" ? { destination: getSshDestination(config), port: config.remote.port } : undefined;
   const consentKey = createHash("sha256").update(JSON.stringify([
     entry.sourcePath, stat?.size ?? null, stat?.mtimeMs ?? null, action, latest?.id ?? null, target,
-    destinations.transcription, destinations.summary, config.summary.ollamaUrl
+    destinations.transcription, destinations.summary, config.summary.ollamaUrl,
+    remote ? [remote.destination, remote.port, config.remote.identityFile ?? null] : null
   ])).digest("hex");
   return {
     key: entry.sourcePath, action, reason, ...(latest ? { jobId: latest.id, jobState: latest.state } : {}),
-    durationSeconds, target, ...destinations, consentKey
+    durationSeconds, target, ...(remote ? { remote } : {}), ...destinations, consentKey
   };
 };
 

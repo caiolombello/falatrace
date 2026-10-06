@@ -9,6 +9,7 @@ var EN = {
     "Gravações e contexto com origem para Linux · experimental": "Recordings and traceable context for Linux · experimental",
     "Studio em execução: ": "Running Studio: ",
     "Build local: ": "Local build: ",
+    "Worker remoto: %1, porta %2": "Remote worker: %1, port %2",
     "Release instalada: ": "Installed release: ",
     " · commit ": " · commit ",
     "não identificada (execução pelo código-fonte)": "unidentified (running from source)",

@@ -26,6 +26,7 @@ item = {'key':'/synthetic/Recordings/demo.mkv','title':'Gravação sintética','
 local = lambda kind: {'provider':'whisper-cpp' if kind == 't' else 'ollama','model':'ggml-large-v3-turbo-q5_0.bin' if kind == 't' else 'qwen3.5:9b',
                       'where':'Whisper.cpp neste computador' if kind == 't' else 'Ollama neste computador','external':False}
 external = {'provider':'openai','model':'gpt-transcribe','where':'OpenAI, serviço externo','external':True}
+worker = lambda kind: {**local(kind), 'where':'Whisper.cpp no worker remoto' if kind == 't' else 'Ollama no worker remoto', 'external':True}
 plans = 0; log = []
 for line in sys.stdin:
     r = json.loads(line); op = r['op']; p = r.get('payload', {})
@@ -38,6 +39,8 @@ for line in sys.stdin:
         v = {'key':item['key'],'action':action,'reason':'O arquivo original não está neste computador.' if mode == 'none' else 'Esta gravação ainda não foi processada.',
              'durationSeconds':None if mode == 'none' else 1830,'target':'local','transcription':external if mode == 'external' else local('t'),'summary':local('s'),
              'consentKey':('c' if plans == 1 else 'd') * 64}
+        if mode == 'remote':
+            v.update({'target':'remote','remote':{'destination':'ana@gpu.lan','port':2222},'transcription':worker('t'),'summary':worker('s')})
     elif op == 'recording-process':
         if mode == 'changed':
             print(json.dumps({'id':r['id'],'ok':False,'error':'A gravação ou as configurações mudaram. Revise o destino de novo.'}), flush=True); continue
@@ -57,6 +60,7 @@ SELECT = 'selectRecording(items[0])'
 MODES = {
     'local': (SELECT, 'check("button offered for an unprocessed recording", processButton.visible && processButton.enabled); processDialog.open()',
               'check("plan shows local destinations", processDialog.ready && !processDialog.external && processDialog.plan.transcription.where.indexOf("neste computador")>=0); '
+              'check("a local plan names no worker", processDialog.remoteText()===""); '
               'check("running needs the consent box", !processDialog.processRun.enabled && processDialog.processConsent.visible); processDialog.processConsent.checked=true; '
               'check("consent enables running", processDialog.processRun.enabled); processDialog.run()',
               'check("dialog closes after queueing", !processDialog.visible); check("notice confirms the job", notice.indexOf("Processamento criado")>=0)'),
@@ -64,6 +68,10 @@ MODES = {
                  'check("external destination is disclosed", processDialog.external && processDialog.plan.transcription.external); '
                  'check("warning names the external send", processDialog.ready); processDialog.close()',
                  'check("closing sends nothing", !processDialog.visible && !hasPending("recording-process"))'),
+    'remote': (SELECT, 'processDialog.open()',
+               'check("remote plan names the worker that receives the audio", processDialog.ready && processDialog.remoteText()==="Worker remoto: ana@gpu.lan, porta 2222"); '
+               'check("a remote worker is marked as leaving the computer", processDialog.external && processDialog.plan.transcription.external && processDialog.plan.summary.external); processDialog.close()',
+               'check("closing sends nothing", !processDialog.visible && !hasPending("recording-process"))'),
     'changed': (SELECT, 'processDialog.open()', 'processDialog.processConsent.checked=true; processDialog.run()',
                 'check("changed plan keeps the dialog open with the reason", processDialog.visible && processDialog.error.indexOf("mudaram")>=0 && !processDialog.processConsent.checked && !processDialog.processRun.enabled); processDialog.load()'),
     'retry': (SELECT, 'check("button offered after a failure", processButton.visible); processDialog.open()',

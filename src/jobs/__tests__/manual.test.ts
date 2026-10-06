@@ -82,3 +82,23 @@ test("running needs the consent of the exact plan, then creates and queues the j
     expect(retry.calls).toEqual([`queue:${failed.id}:retry`]);
   });
 });
+
+test("remote processing names the worker and asks again when the worker changes", async () => {
+  await withRecording(async (path) => {
+    const config = structuredClone(DEFAULT_CONFIG);
+    config.processing.defaultTarget = "remote";
+    config.remote = { ...config.remote, host: "gpu.lan", user: "ana", port: 2222 };
+    const entry = { sourcePath: path, sourceExists: true, jobs: [] };
+    const { deps, calls } = fakeDeps();
+    const plan = await planRecordingProcessing(config, entry, deps);
+    expect(plan).toMatchObject({ action: "create", target: "remote", remote: { destination: "ana@gpu.lan", port: 2222 } });
+    expect(plan.transcription).toMatchObject({ where: "Whisper.cpp no worker remoto", external: true });
+    for (const change of [{ host: "other.lan" }, { user: "bia" }, { port: 22 }, { identityFile: "/home/u/.ssh/other" }]) {
+      const changed = structuredClone(config);
+      changed.remote = { ...changed.remote, ...change };
+      await expect(runRecordingProcessing(changed, entry, { consent: true, consentKey: plan.consentKey }, deps)).rejects.toThrow("mudaram");
+    }
+    expect(calls).toEqual([]);
+    expect((await planRecordingProcessing({ ...config, processing: { ...config.processing, defaultTarget: "local" } }, entry, deps)).remote).toBeUndefined();
+  });
+});
