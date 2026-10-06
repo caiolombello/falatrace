@@ -2,10 +2,10 @@ import { promises as fs } from "node:fs";
 import { join } from "node:path";
 import type { AppConfig } from "../config/defaults";
 import { runCommand } from "./command";
-import { execStart, quoteSystemd, removeUserUnits, serviceLaunchCommand, systemdPath, userUnitDir } from "../runtime/systemd-units";
+import { execStart, quoteSystemd, quoteSystemdPath, removeUserUnits, serviceLaunchCommand, userUnitDir } from "../runtime/systemd-units";
 
 export const buildWorkerUnit = (config: AppConfig, launchCommand = serviceLaunchCommand()): string =>
-  `[Unit]\nDescription=FalaTrace processing worker\nAfter=network-online.target\n\n[Service]\nType=simple\nExecStart=${execStart([...launchCommand, "worker", "run"])}\nEnvironmentFile=-%h/.config/recording-cli/worker.env\nRestart=on-failure\nRestartSec=10\nNoNewPrivileges=yes\nPrivateTmp=yes\nProtectSystem=strict\nProtectHome=read-only\nReadWritePaths=%h/.local/share/recording-cli ${quoteSystemd(systemdPath(config.remote.archiveDir))}\n\n[Install]\nWantedBy=default.target\n`;
+  `[Unit]\nDescription=FalaTrace processing worker\nAfter=network-online.target\n\n[Service]\nType=simple\nExecStart=${execStart([...launchCommand, "worker", "run"])}\nEnvironmentFile=-%h/.config/recording-cli/worker.env\nRestart=on-failure\nRestartSec=10\nNoNewPrivileges=yes\nPrivateTmp=yes\nProtectSystem=strict\nProtectHome=read-only\nReadWritePaths=%h/.local/share/recording-cli ${quoteSystemdPath(config.remote.archiveDir)}\n\n[Install]\nWantedBy=default.target\n`;
 
 export const installWorkerService = async (config: AppConfig): Promise<string> => {
   const unitDir = userUnitDir();

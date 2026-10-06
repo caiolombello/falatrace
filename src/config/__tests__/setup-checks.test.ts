@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { DEFAULT_CONFIG } from "../defaults";
 import { checkAutomation, checkProcessing, listAudioDevices, readServiceStatus, type SetupProbe } from "../setup-checks";
 import { buildSyncUnits } from "../../jobs/service";
+import { buildProtonBackupUnits } from "../../proton/service";
 import { buildCallMonitorUnit } from "../../calls/service";
 import { getServiceLaunchCommand } from "../../runtime/launcher";
 
@@ -154,6 +155,18 @@ test("timer status reports drift in the interval or the recordings folder baked 
     config.processing.syncIntervalMinutes = DEFAULT_CONFIG.processing.syncIntervalMinutes;
     config.recordingsDir = "/elsewhere";
     expect((await readServiceStatus(config, configPath, run as never, root)).sync.outdated).toBe(true);
+    config.recordingsDir = "/rec/100%";
+    const percent = buildSyncUnits(config, ["/x/falatrace"]);
+    await fs.writeFile(join(root, "recording-cli-sync.service"), percent.service);
+    expect((await readServiceStatus(config, configPath, run as never, root)).sync.outdated).toBe(false);
+
+    // The Proton backup timer runs on the processing interval too.
+    const backup = buildProtonBackupUnits(config, ["/x/falatrace"]);
+    await fs.writeFile(join(root, "recording-cli-proton-backup.service"), backup.service);
+    await fs.writeFile(join(root, "recording-cli-proton-backup.timer"), backup.timer);
+    expect((await readServiceStatus(config, configPath, run as never, root)).backup).toMatchObject({ installed: true, outdated: false });
+    config.processing.syncIntervalMinutes = 7;
+    expect((await readServiceStatus(config, configPath, run as never, root)).backup.outdated).toBe(true);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }

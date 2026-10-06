@@ -6,6 +6,7 @@ import { runCommand } from "../jobs/command";
 import { resolveExecutable } from "../recording/obsLauncher";
 import { automaticRecordingBackend } from "../recording/capabilities";
 import { buildCallMonitorUnit } from "../calls/service";
+import { quoteSystemd } from "../runtime/systemd-units";
 import { isPlaceholderRemoteHost } from "./settings";
 import type { CredentialReport, SecretFileName, SecretSource } from "./secrets";
 
@@ -185,8 +186,6 @@ const showValue = async (run: typeof runCommand, unit: string, property: string)
   run("systemctl", ["--user", "show", unit, "-p", property, "--value"], { timeoutMs: 5_000 })
     .then(({ stdout }) => stdout.trim().slice(0, 80) || null, () => null);
 
-const quoteForUnit = (value: string): string => `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
-
 const readTimer = async (
   name: TimerName,
   config: AppConfig,
@@ -207,10 +206,11 @@ const readTimer = async (
     showUnix(run, `${base}.timer`, "NextElapseUSecRealtime"),
     showValue(run, `${base}.service`, "Result")
   ]);
-  // Only the values written into the unit can drift: the interval and, for job sync, the recordings folder.
-  const interval = name === "sync" ? config.processing.syncIntervalMinutes : name === "archive" ? config.archive.syncIntervalMinutes : null;
-  const intervalOutdated = interval !== null && !new RegExp(`^On(?:UnitActive|UnitInactive)Sec=${interval}min$`, "m").test(timer);
-  const pathOutdated = name === "sync" && !service.includes(quoteForUnit(config.recordingsDir));
+  // Only the values written into the unit can drift: the interval and, for job sync, the recordings
+  // folder. The sync and Proton backup timers both use the processing interval.
+  const interval = name === "archive" ? config.archive.syncIntervalMinutes : config.processing.syncIntervalMinutes;
+  const intervalOutdated = !new RegExp(`^On(?:UnitActive|UnitInactive)Sec=${interval}min$`, "m").test(timer);
+  const pathOutdated = name === "sync" && !service.includes(quoteSystemd(config.recordingsDir));
   return {
     installed: true, enabled, active, outdated: intervalOutdated || pathOutdated,
     nextRunAt: nextRun ? new Date(nextRun).toISOString() : null, lastResult

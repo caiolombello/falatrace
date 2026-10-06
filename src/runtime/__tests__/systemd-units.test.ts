@@ -9,13 +9,19 @@ import { buildProtonBackupUnits } from "../../proton/service";
 import { buildCallMonitorUnit } from "../../calls/service";
 import { buildTrayUnit } from "../../tray/service";
 import { cliEntryForBun, getServiceLaunchCommand } from "../launcher";
-import { execStart, quoteSystemd, removeUserUnits, systemdPath } from "../systemd-units";
+import { execStart, quoteSystemd, quoteSystemdPath, removeUserUnits } from "../systemd-units";
 
 test("unit arguments are quoted and never act as systemd specifiers", () => {
   expect(quoteSystemd('/a b/"c"\\d%h')).toBe('"/a b/\\"c\\"\\\\d%%h"');
   expect(execStart(["/x/falatrace", "calls", "run"])).toBe('"/x/falatrace" "calls" "run"');
-  expect(systemdPath("~/Videos")).toBe("%h/Videos");
-  expect(systemdPath("/abs")).toBe("/abs");
+  expect(quoteSystemdPath("~/Videos/A%B")).toBe('"%h/Videos/A%%B"');
+  expect(quoteSystemdPath("/abs/A%B")).toBe('"/abs/A%%B"');
+});
+
+test("the worker keeps %h live in its writable archive path", () => {
+  const unit = buildWorkerUnit(DEFAULT_CONFIG, ["/bin/falatrace"]);
+  expect(unit).toContain('ReadWritePaths=%h/.local/share/recording-cli "%h/Videos/RecordingArchive"\n');
+  expect(unit).not.toContain("%%h");
 });
 
 test("every generated unit uses the same launch command", () => {
@@ -39,6 +45,28 @@ test("removing units disables them, deletes their files and reloads", async () =
     expect(removed).toEqual([join(root, "recording-cli-sync.timer"), join(root, "recording-cli-sync.service")]);
     expect(await fs.readdir(root)).toEqual([]);
     expect(runs).toEqual([["systemctl", "--user", "disable", "--now", "recording-cli-sync.timer"], ["systemctl", "--user", "daemon-reload"]]);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a unit that fails to stop keeps its files; one that is already gone does not block removal", async () => {
+  const root = await fs.mkdtemp(join(tmpdir(), "falatrace-units-"));
+  try {
+    await fs.writeFile(join(root, "recording-cli-sync.timer"), "x");
+    const failing = async (_command: string, args: string[]) => {
+      if (args.includes("disable")) throw new Error("systemctl failed with code 1: Failed to disable unit: Access denied");
+      return { stdout: "", stderr: "" };
+    };
+    await expect(removeUserUnits(["recording-cli-sync.timer"], ["recording-cli-sync.timer"], failing, root)).rejects.toThrow("Access denied");
+    expect(await fs.readdir(root)).toEqual(["recording-cli-sync.timer"]);
+
+    const missing = async (_command: string, args: string[]) => {
+      if (args.includes("disable")) throw new Error("systemctl failed with code 1: Failed to disable unit: Unit file recording-cli-sync.timer does not exist.");
+      return { stdout: "", stderr: "" };
+    };
+    expect(await removeUserUnits(["recording-cli-sync.timer"], ["recording-cli-sync.timer"], missing, root)).toEqual([join(root, "recording-cli-sync.timer")]);
+    expect(await fs.readdir(root)).toEqual([]);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }
