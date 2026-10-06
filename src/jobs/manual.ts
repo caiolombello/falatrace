@@ -5,7 +5,7 @@ import { isPlaceholderRemoteHost } from "../config/settings";
 import { probeMedia } from "./media";
 import { queueSelectedJob, type QueueSelectedJobResult } from "./queue";
 import { getSshDestination } from "./remote";
-import { JobStore } from "./store";
+import { hashFile, JobStore } from "./store";
 import type { JobRecord } from "./types";
 
 /**
@@ -50,9 +50,10 @@ export const describeDestinations = (
   const transcriptionWhere = transcription.provider === "whisper-cpp"
     ? (remote ? "Whisper.cpp no worker remoto" : "Whisper.cpp neste computador")
     : transcription.provider === "openai" ? "OpenAI, serviço externo" : "Google Gemini, serviço externo";
+  // A remote job runs with the worker's own configuration: its Ollama address is not known here.
   const summaryWhere = summary.provider === "openai" ? "OpenAI, serviço externo"
-    : isLoopbackUrl(config.summary.ollamaUrl) ? (remote ? "Ollama no worker remoto" : "Ollama neste computador")
-      : `Ollama em ${new URL(config.summary.ollamaUrl).host}`;
+    : remote ? "Ollama configurado no worker remoto, em endereço não verificado daqui"
+      : isLoopbackUrl(config.summary.ollamaUrl) ? "Ollama neste computador" : `Ollama em ${new URL(config.summary.ollamaUrl).host}`;
   return {
     transcription: { ...transcription, where: transcriptionWhere, external: transcription.provider !== "whisper-cpp" || remote },
     summary: { ...summary, where: summaryWhere, external: summary.provider === "openai" || remote || !isLoopbackUrl(config.summary.ollamaUrl) }
@@ -118,9 +119,11 @@ export const planRecordingProcessing = async (
   const durationSeconds = stat && action !== "none" ? await deps.duration(entry.sourcePath).catch(() => null) : null;
   // The worker is part of what the user approves: another host, user, port or identity asks again.
   const remote = target === "remote" ? { destination: getSshDestination(config), port: config.remote.port } : undefined;
-  // ctime and inode change on any write or replacement, even when size and mtime are put back.
+  // The bytes themselves, not only metadata that a rewrite can put back within the clock's
+  // resolution. Hashing reads the whole file once per plan; it only runs on an explicit request.
+  const sha256 = stat && action !== "none" ? await hashFile(entry.sourcePath).catch(() => null) : null;
   const consentKey = createHash("sha256").update(JSON.stringify([
-    entry.sourcePath, stat?.size ?? null, stat?.mtimeMs ?? null, stat?.ctimeMs ?? null, stat?.ino ?? null, action, latest?.id ?? null, target,
+    entry.sourcePath, stat?.size ?? null, stat?.mtimeMs ?? null, sha256, action, latest?.id ?? null, target,
     destinations.transcription, destinations.summary, config.summary.ollamaUrl,
     remote ? [remote.destination, remote.port, config.remote.identityFile ?? null] : null
   ])).digest("hex");

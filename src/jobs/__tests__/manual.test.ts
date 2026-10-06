@@ -101,6 +101,8 @@ test("remote processing names the worker and asks again when the worker changes"
     const plan = await planRecordingProcessing(config, entry, deps);
     expect(plan).toMatchObject({ action: "create", target: "remote", remote: { destination: "ana@gpu.lan", port: 2222 } });
     expect(plan.transcription).toMatchObject({ where: "Whisper.cpp no worker remoto", external: true });
+    // The worker summarizes with its own configuration: its Ollama address is disclosed as unchecked.
+    expect(plan.summary).toMatchObject({ where: "Ollama configurado no worker remoto, em endereço não verificado daqui", external: true });
     for (const change of [{ host: "other.lan" }, { user: "bia" }, { port: 22 }, { identityFile: "/home/u/.ssh/other" }]) {
       const changed = structuredClone(config);
       changed.remote = { ...changed.remote, ...change };

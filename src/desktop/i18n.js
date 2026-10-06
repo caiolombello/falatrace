@@ -10,6 +10,7 @@ var EN = {
     "Studio em execução: ": "Running Studio: ",
     "Build local: ": "Local build: ",
     "Captura parada, com aviso: ": "Capture stopped, with a warning: ",
+    "Ollama configurado no worker remoto, em endereço não verificado daqui": "Ollama configured on the remote worker, at an address not checked from here",
     "Roda no worker remoto, com a configuração, as chaves e os modelos de lá; não verificado neste computador. Use Testar conexão em Integrações.": "Runs on the remote worker, with its own configuration, keys and models; not checked on this computer. Use Test connection in Integrations.",
     "Todas as fontes de áudio selecionadas estão mutadas ou com volume zero; habilite uma origem de áudio e tente novamente.": "All selected audio sources are muted or at zero volume; enable an audio source and try again.",
     "O GNOME informou falha ao parar; o estado foi limpo.": "GNOME reported that it could not stop; the state was cleared.",

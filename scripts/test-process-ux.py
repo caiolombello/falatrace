@@ -26,7 +26,7 @@ item = {'key':'/synthetic/Recordings/demo.mkv','title':'Gravação sintética','
 local = lambda kind: {'provider':'whisper-cpp' if kind == 't' else 'ollama','model':'ggml-large-v3-turbo-q5_0.bin' if kind == 't' else 'qwen3.5:9b',
                       'where':'Whisper.cpp neste computador' if kind == 't' else 'Ollama neste computador','external':False}
 external = {'provider':'openai','model':'gpt-transcribe','where':'OpenAI, serviço externo','external':True}
-worker = lambda kind: {**local(kind), 'where':'Whisper.cpp no worker remoto' if kind == 't' else 'Ollama no worker remoto', 'external':True}
+worker = lambda kind: {**local(kind), 'where':'Whisper.cpp no worker remoto' if kind == 't' else 'Ollama configurado no worker remoto, em endereço não verificado daqui', 'external':True}
 plans = 0; log = []
 for line in sys.stdin:
     r = json.loads(line); op = r['op']; p = r.get('payload', {})
