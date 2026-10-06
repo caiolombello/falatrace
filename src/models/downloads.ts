@@ -213,6 +213,20 @@ export const pullOllamaModel = async (
   const decoder = new TextDecoder();
   let buffer = "";
   let last = 0;
+  let succeeded = false;
+  const handle = async (line: string) => {
+    if (!line) return;
+    const event = JSON.parse(line) as { status?: unknown; completed?: unknown; total?: unknown; error?: unknown };
+    if (typeof event.error === "string") throw new Error(`Ollama: ${event.error.slice(0, 200)}`);
+    const completed = typeof event.completed === "number" ? event.completed : 0;
+    const total = typeof event.total === "number" ? event.total : null;
+    const status = typeof event.status === "string" ? event.status.slice(0, 120) : "";
+    if (status === "success") succeeded = true;
+    if (status === "success" || Date.now() - last > 1000) {
+      last = Date.now();
+      await deps.onProgress(completed, total, status);
+    }
+  };
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -221,16 +235,10 @@ export const pullOllamaModel = async (
     for (let index = buffer.indexOf("\n"); index >= 0; index = buffer.indexOf("\n")) {
       const line = buffer.slice(0, index).trim();
       buffer = buffer.slice(index + 1);
-      if (!line) continue;
-      const event = JSON.parse(line) as { status?: unknown; completed?: unknown; total?: unknown; error?: unknown };
-      if (typeof event.error === "string") throw new Error(`Ollama: ${event.error.slice(0, 200)}`);
-      const completed = typeof event.completed === "number" ? event.completed : 0;
-      const total = typeof event.total === "number" ? event.total : null;
-      const status = typeof event.status === "string" ? event.status.slice(0, 120) : "";
-      if (status === "success" || Date.now() - last > 1000) {
-        last = Date.now();
-        await deps.onProgress(completed, total, status);
-      }
+      await handle(line);
     }
   }
+  // The last event may come without a trailing newline, and only a success event completes a pull.
+  await handle((buffer + decoder.decode()).trim());
+  if (!succeeded) throw new Error("O Ollama terminou sem confirmar o download.");
 };

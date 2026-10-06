@@ -92,6 +92,11 @@ test("Ollama pulls only go to loopback servers and report progress and errors", 
     fetch: (async () => new Response(`${JSON.stringify({ error: "pull model manifest: file does not exist" })}\n`)) as unknown as typeof fetch,
     onProgress: () => undefined
   })).rejects.toThrow("Ollama: pull model manifest");
+  // A final event without a newline still counts, and a stream that never says success fails.
+  const ollama = (body: string) => ({ fetch: (async () => new Response(body)) as unknown as typeof fetch, onProgress: () => undefined });
+  await expect(pullOllamaModel("http://127.0.0.1:11434", "qwen3.5:9b", ollama(`${JSON.stringify({ status: "downloading" })}\n${JSON.stringify({ error: "disk full" })}`))).rejects.toThrow("Ollama: disk full");
+  await expect(pullOllamaModel("http://127.0.0.1:11434", "qwen3.5:9b", ollama(`${JSON.stringify({ status: "downloading" })}\n`))).rejects.toThrow("sem confirmar");
+  await pullOllamaModel("http://127.0.0.1:11434", "qwen3.5:9b", ollama(JSON.stringify({ status: "success" })));
 });
 
 test("download state files round-trip and are private", async () => {
