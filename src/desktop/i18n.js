@@ -1262,6 +1262,7 @@ var EN = {
     "Não foi possível ler o ambiente dos serviços do usuário, então não dá para saber qual chave o processamento usa. Tente de novo.": "The user services' environment could not be read, so the key background processing uses is unknown. Try again.",
     "Não foi possível ler o ambiente dos serviços do usuário, então não dá para saber qual senha o monitor de chamadas usa. Tente de novo.": "The user services' environment could not be read, so the password the call monitor uses is unknown. Try again.",
     "O ambiente dos serviços do usuário não pôde ser lido: uma chave definida nele não aparece aqui e teria prioridade.": "The user services' environment could not be read: a key set there is not shown here and would take precedence.",
+    "O monitor de chamadas segue com uma configuração anterior: aplique-o em Serviços para usar a atual.": "The call monitor keeps an earlier configuration: apply it in Services to use the current one.",
     "Aviso de chamadas": "Call notifications",
     "Estado do monitor de chamadas indisponível; não dá para confirmar que as chamadas serão avisadas.": "The call monitor's state is unavailable; it cannot be confirmed that calls will be announced.",
     "O monitor de chamadas não está rodando: nenhuma chamada será avisada. Aplique o monitor em Serviços.": "The call monitor is not running: no call will be announced. Apply the monitor in Services.",

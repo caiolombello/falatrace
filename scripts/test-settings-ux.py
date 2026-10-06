@@ -51,7 +51,7 @@ values = {'callDetection.enabled': not first, 'callDetection.mode':'record', 'ca
 revision = 'a' * 64
 # Assistant modes on an existing OpenAI setup that already has its key; wizard-key-required has none.
 key_present = mode in ('wizard-disable-monitor', 'wizard-disable-unknown', 'wizard-download-finish', 'wizard-download-pending', 'wizard-gemini-key', 'wizard-lost', 'wizard-ffmpeg-review', 'wizard-automation-review',
-                       'wizard-skip-services')
+                       'wizard-skip-services', 'wizard-monitor-stale')
 details = [{'name':'OPENAI_API_KEY','source':'secrets.env' if key_present else 'missing','sessionOnly':mode == 'keys','shadowsStudioKey':False,'savedInStudio':key_present},
            {'name':'GEMINI_API_KEY','source':'missing','sessionOnly':False,'shadowsStudioKey':False,'savedInStudio':False},
            {'name':'RECORDING_CLI_OBS_PASSWORD','source':'missing','sessionOnly':False,'shadowsStudioKey':False,'savedInStudio':False}]
@@ -243,6 +243,12 @@ MODES = {
                              'check("review flags the monitor and the processing timer left off", !!row && row.status==="warning" && row.detail.indexOf("não está rodando")>=0 && !!timer && timer.visible); setupWizard.finish()',
                              'const title = findObject(setupWizard.contentItem, "wizardDoneTitle"), labels = setupWizard.pendingIssues().map(function(issue){ return issue.label }); '
                              'check("the last page lists the monitor and the timer that were not applied", setupWizard.step===5 && !!title && title.text!=="Tudo pronto" && labels.indexOf("Gravação automática")>=0 && labels.indexOf("Processamento automático")>=0)', ''),
+    'wizard-monitor-stale': ('setupWizard.open(); setupWizard.consentAck=true; setupWizard.applyTimer=false',
+                             'setupWizard.step=4; const stale = function(){ return setupWizard.pendingIssues().some(function(issue){ return issue.detail.indexOf("configuração anterior")>=0 }) }; '
+                             'check("a running monitor with nothing changed is not pending", !stale()); setupWizard.applyMonitor=false; setupWizard.set("callDetection.mode", "notify-only"); '
+                             'check("a running monitor left with the previous configuration is pending", stale()); setupWizard.applyMonitor=true; check("applying the monitor clears it", !stale()); '
+                             'setupWizard.applyMonitor=false; setupWizard.finish()',
+                             'const title = findObject(setupWizard.contentItem, "wizardDoneTitle"); check("after saving, the last page still names the monitor left on the previous configuration", setupWizard.step===5 && !!title && title.text!=="Tudo pronto" && setupWizard.pendingIssues().some(function(issue){ return issue.detail.indexOf("configuração anterior")>=0 }))', ''),
     'models-ollama-draft': ('settingsDialog.open()',
                             'setSettingsField("summary.provider", "ollama"); setSettingsField("summary.ollamaUrl", "http://127.0.0.1:11435"); setSettingsField("summary.ollamaModel", "llama4:8b"); settingsDialog.goToSection(4)',
                             'check("the list shows the Ollama at the unsaved address", !!settingsDialog.catalog.ollama && settingsDialog.catalog.ollama.url==="http://127.0.0.1:11435"); settingsDialog.startDownload("ollama", "llama4:8b"); '
@@ -280,7 +286,7 @@ SIDE_EFFECTS = {'save': {'settings-save'}, 'services': {'settings-service'}, 'wi
                 'keys-lost': {'settings-secret-set'}, 'wizard-key-required': {'settings-save', 'settings-secret-set'},
                 'models-cloud': {'settings-model-download'}, 'wizard-gemini-key': {'settings-save'}, 'wizard-recommended-review': {'settings-save'},
                 'wizard-lost': {'settings-save'}, 'restore-pending': {'settings-restore'}, 'wizard-ffmpeg-review': {'settings-save'}, 'models-ollama-draft': {'settings-model-download'}, 'wizard-automation-review': {'settings-save'},
-                'wizard-skip-services': {'settings-save'}}
+                'wizard-skip-services': {'settings-save'}, 'wizard-monitor-stale': {'settings-save'}}
 GUARDED = {'settings-save', 'settings-service', 'settings-secret-set', 'settings-secret-remove', 'settings-model-download', 'settings-restore'}
 
 checks = []; screens = []

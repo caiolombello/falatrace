@@ -132,9 +132,14 @@ FtDialog {
         if (step === 5) return plannedProblems
         const applied = serviceActions()
         const problems = (diag.automation || []).filter(function(item){ return item.id !== "remote-worker" && (item.status === "missing" || item.status === "warning") && applied.indexOf(item.action) < 0 })
+        // The monitor reads the configuration when it starts: one left running keeps an earlier configuration.
+        const monitor = diag.services && diag.services.calls
+        if (value("callDetection.enabled") === true && applied.indexOf("calls-apply") < 0 && !!monitor && monitor.active
+                && (monitor.staleConfig || monitor.outdated || fresh || Object.keys(changes()).length > 0))
+            problems.push({ id: "monitor-stale", label: "Gravação automática", status: "warning", detail: t("O monitor de chamadas segue com uma configuração anterior: aplique-o em Serviços para usar a atual.") })
         return problems
     }
-    function recordingProblem(item) { return ["automatic-backend", "call-notifications"].indexOf(item.id) >= 0 }
+    function recordingProblem(item) { return ["automatic-backend", "call-notifications", "monitor-stale"].indexOf(item.id) >= 0 }
     // What will not run yet: the capture, processing and automatic recording. Empty until the choices are diagnosed.
     function pendingIssues() {
         const issues = []
