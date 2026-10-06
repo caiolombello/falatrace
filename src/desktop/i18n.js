@@ -716,6 +716,7 @@ var EN = {
     " Chaves no arquivo foram ignoradas.": " Keys in the file were ignored.",
     " Revise e salve.": " Review and save.",
     "Modelo baixado e conferido. Salve para usá-lo na transcrição.": "Model downloaded and verified. Save to use it for transcription.",
+    "Modelo baixado e conferido. Para transcrever neste computador com ele, use “Usar este modelo” e salve.": "Model downloaded and verified. To transcribe on this computer with it, use “Use this model” and save.",
     "Bem-vindo ao FalaTrace. Escolha quando gravar, o que capturar e onde processar. Nada é gravado ou enviado até você salvar e ativar.": "Welcome to FalaTrace. Choose when to record, what to capture and where to process. Nothing is recorded or sent until you save and turn it on.",
     "Seção das configurações": "Settings section",
     "Seções das configurações": "Settings sections",

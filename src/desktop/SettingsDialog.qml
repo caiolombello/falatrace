@@ -67,6 +67,8 @@ FtDialog {
     // Stops the transient unit; the status poll that follows uses the model the bridge echoes back.
     function cancelDownload(kind, id) { send("settings-model-cancel", "", { kind: kind, model: id }) }
     function downloadKey(kind, id) { return kind + ":" + id }
+    // A Whisper model is in use only while transcription runs on this computer.
+    function modelInUse(path) { return path === settingsDraft["transcription.whisperCpp.modelPath"] && settingsDraft["transcription.provider"] === "whisper-cpp" }
     function startDownload(kind, id) { confirmDownload = ""; settingsError = ""; send("settings-model-download", "", { kind: kind, model: id, consent: true }) }
     // One status request in flight per download, so concurrent downloads all progress.
     function statusPending(key) { return Object.keys(pending).some(function(id){ return pending[id].op === "settings-model-status" && pending[id].downloadKey === key && pending[id].settingsGeneration === settingsGeneration }) }
@@ -186,8 +188,12 @@ FtDialog {
             downloads = next
             if (result.state === "completed" || result.state === "failed") send("settings-model-catalog", "")
             if (result.state === "completed" && result.kind === "whisper" && result.path) {
-                setSettingsField("transcription.whisperCpp.modelPath", result.path)
-                settingsNotice = t("Modelo baixado e conferido. Salve para usá-lo na transcrição.")
+                // Only local transcription takes the new model at once; with an external provider the audio
+                // would still go there, so "Usar este modelo" switches both.
+                if (settingsDraft["transcription.provider"] === "whisper-cpp") {
+                    setSettingsField("transcription.whisperCpp.modelPath", result.path)
+                    settingsNotice = t("Modelo baixado e conferido. Salve para usá-lo na transcrição.")
+                } else settingsNotice = t("Modelo baixado e conferido. Para transcrever neste computador com ele, use “Usar este modelo” e salve.")
             }
         } else if (request.op === "settings-model-cancel") {
             // The pending entry holds no payload: poll the model the bridge reports as cancelled.
@@ -392,14 +398,14 @@ FtDialog {
              Label { text:modelData.id; color:ink; font.weight:Font.DemiBold }
              FtChip { visible:!!modelData.recommended; text:t("Recomendado"); kind:"accent" }
              FtChip { visible:modelData.installed; text:t("Instalado"); kind:"accent"; iconName:"check" }
-             FtChip { visible:modelData.path===settingsDraft["transcription.whisperCpp.modelPath"]; text:t("Em uso"); kind:"neutral" }
+             FtChip { visible:settingsDialog.modelInUse(modelData.path); text:t("Em uso"); kind:"neutral" }
              Item { Layout.fillWidth:true }
              Label { text:settingsDialog.mib(modelData.bytes); color:muted }
             }
             SettingsHint { text:t(modelData.quality) }
             RowLayout { Layout.fillWidth:true; spacing:8
              FtButton { visible:!modelData.installed&&!(parent.parent.download&&parent.parent.download.state==="running"); text:t("Baixar"); compact:true; variant:"outline"; enabled:backend.available; onClicked:settingsDialog.confirmDownload=settingsDialog.downloadKey("whisper",modelData.id) }
-             FtButton { visible:modelData.installed&&modelData.path!==settingsDraft["transcription.whisperCpp.modelPath"]; text:t("Usar este modelo"); compact:true; variant:"outline"; enabled:settingsEditable; onClicked:{ setSettingsField("transcription.whisperCpp.modelPath", modelData.path); if (settingsDraft["transcription.provider"]!=="whisper-cpp") setSettingsField("transcription.provider","whisper-cpp") } }
+             FtButton { visible:modelData.installed&&!settingsDialog.modelInUse(modelData.path); text:t("Usar este modelo"); compact:true; variant:"outline"; enabled:settingsEditable; onClicked:{ setSettingsField("transcription.whisperCpp.modelPath", modelData.path); if (settingsDraft["transcription.provider"]!=="whisper-cpp") setSettingsField("transcription.provider","whisper-cpp") } }
              FtButton { visible:!!(parent.parent.download&&parent.parent.download.state==="running"); text:t("Cancelar"); compact:true; variant:"outline"; onClicked:settingsDialog.cancelDownload("whisper",modelData.id) }
              StatusLine { visible:!!parent.parent.download; good:!!(parent.parent.download&&parent.parent.download.state!=="failed"); text:!parent.parent.download?"":parent.parent.download.state==="running"?settingsDialog.downloadProgress(parent.parent.download):parent.parent.download.state==="failed"?(t(parent.parent.download.error)||t("O download falhou.")):parent.parent.download.state==="completed"?t("Baixado e conferido."):"" }
             }

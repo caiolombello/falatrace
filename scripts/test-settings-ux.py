@@ -111,6 +111,9 @@ for line in sys.stdin:
     elif op in ('settings-model-download', 'settings-model-status'):
         v = {'kind':p['kind'],'id':p['model'],'state':'running','receivedBytes':1048576,'totalBytes':77691713}
         if cancelled: v.update({'state':'failed','error':'O download foi interrompido. Tente novamente.'})
+        # The model finishes downloading while transcription still goes to OpenAI.
+        if mode == 'models-cloud' and op == 'settings-model-status':
+            v.update({'state':'completed','receivedBytes':77691713,'path':'/home/synthetic/models/ggml-tiny.bin'}); catalog['whisper']['models'][0]['installed'] = True
     elif op == 'settings-model-cancel': cancelled = True; v = {'kind':p['kind'],'id':p['model'],'cancelled':True}
     elif op == 'settings-backups': v = {'backups':[{'name':'config.json.bak-0b8c3a0e-1f2a-4b3c-8d4e-5f6a7b8c9d0e','modifiedAt':'2026-10-04T10:00:00.000Z','bytes':2048,'valid':True}]}
     elif op == 'settings-restore':
@@ -184,6 +187,10 @@ MODES = {
     'models': ('settingsDialog.open(); settingsDialog.goToSection(4)', 'check("catalog loaded on demand", !!settingsDialog.catalog.whisper && settingsDialog.catalog.whisper.models.length===2); settingsDialog.confirmDownload="whisper:tiny"; settingsDialog.startDownload("whisper","tiny")',
                'check("download progress tracked", !!settingsDialog.downloads["whisper:tiny"] && settingsDialog.downloads["whisper:tiny"].state==="running"); settingsDialog.cancelDownload("whisper","tiny")',
                'check("cancelling refreshes the stopped download without an error", settingsError==="" && settingsDialog.downloads["whisper:tiny"].state==="failed")'),
+    'models-cloud': ('settingsDialog.open(); settingsDialog.goToSection(4)', 'settingsDialog.startDownload("whisper","tiny")',
+                     'send("settings-model-status", "", { kind: "whisper", model: "tiny" })',
+                     'check("a model downloaded while transcription uses OpenAI is not marked in use", !Object.prototype.hasOwnProperty.call(settingsChanges(), "transcription.whisperCpp.modelPath") && settingsDraft["transcription.provider"]==="openai" && settingsNotice.indexOf("Usar este modelo")>=0 && !settingsDialog.modelInUse("/home/synthetic/models/ggml-tiny.bin")); '
+                     'setSettingsField("transcription.whisperCpp.modelPath", "/home/synthetic/models/ggml-tiny.bin"); setSettingsField("transcription.provider", "whisper-cpp"); check("using the model switches transcription to this computer", settingsDialog.modelInUse("/home/synthetic/models/ggml-tiny.bin"))'),
     'models-two': ('settingsDialog.open(); settingsDialog.goToSection(4)', 'settingsDialog.startDownload("whisper","tiny"); settingsDialog.startDownload("whisper","large-v3-turbo-q5_0")',
                    'settingsDialog.pollDownloads(); check("two downloads are tracked", !!settingsDialog.downloads["whisper:tiny"] && !!settingsDialog.downloads["whisper:large-v3-turbo-q5_0"])', ''),
     'integrations': ('settingsDialog.open(); settingsDialog.goToSection(5)', 'check("remote check available once configured", settingsData.readOnly.remoteConfigured); send("settings-remote-check",""); setSettingsField("remote.user", null); check("cleared optional field becomes a null change", settingsChanges()["remote.user"]===null)',
@@ -213,7 +220,8 @@ SIDE_EFFECTS = {'save': {'settings-save'}, 'services': {'settings-service'}, 'wi
                 'keys': {'settings-secret-set'}, 'models': {'settings-model-download'}, 'models-two': {'settings-model-download'},
                 'keys-refresh': {'settings-secret-set'}, 'wizard-download-finish': {'settings-model-download', 'settings-save'},
                 'wizard-key-fail': {'settings-save', 'settings-secret-set'}, 'wizard-download-pending': {'settings-model-download'},
-                'keys-lost': {'settings-secret-set'}, 'wizard-key-required': {'settings-save', 'settings-secret-set'}}
+                'keys-lost': {'settings-secret-set'}, 'wizard-key-required': {'settings-save', 'settings-secret-set'},
+                'models-cloud': {'settings-model-download'}}
 GUARDED = {'settings-save', 'settings-service', 'settings-secret-set', 'settings-secret-remove', 'settings-model-download', 'settings-restore'}
 
 checks = []; screens = []
