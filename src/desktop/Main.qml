@@ -455,13 +455,14 @@ ApplicationWindow {
         } else if (request.op === "settings-diagnose") {
             settingsDiag = result
         } else if (request.op === "settings-save") {
-            if (result.needsReload) { settingsNeedsReload = true; settingsNotice = t("Salvo. Releia a configuração para continuar editando."); settingsData = ({}); settingsDraft = ({}); return }
+            if (result.needsReload) { settingsNeedsReload = true; settingsNotice = t("Salvo. Releia a configuração para continuar editando."); settingsData = ({}); settingsDraft = ({}); refreshLibraryAfterSettings(); return }
             settingsData = result; settingsDraft = Object.assign({}, result.values); settingsNeedsReload = false; settingsFirstRun = false
             const changed = result.changed || []
             const affectsMonitor = changed.some(function(f){ return f.startsWith("callDetection.") || f === "backend" || f.startsWith("capture.") || f === "recordingsDir" || f.startsWith("obs.") })
             const affectsTimers = changed.some(function(f){ return f === "recordingsDir" || f === "processing.syncIntervalMinutes" || f === "archive.syncIntervalMinutes" })
             settingsNotice = t("Configuração salva") + (result.backupCreated ? t(" (com cópia de segurança da anterior)") : "") + "." + (affectsMonitor ? t(" Aplique o monitor em Serviços e diagnóstico para valer nas próximas chamadas.") : "") + (affectsTimers ? t(" Reaplique os timers em Serviços e diagnóstico.") : "") + (result.cleanupPending ? t(" Uma cópia temporária privada pode ter ficado na pasta da configuração.") : "")
             runSettingsDiagnose()
+            refreshLibraryAfterSettings()
         } else if (request.op === "settings-service") {
             settingsDiag = Object.assign({}, settingsDiag, { services: result.services })
             settingsNotice = ({
@@ -534,6 +535,8 @@ ApplicationWindow {
         if(!s.installed)return t("Não instalado.")
         return (s.active?t("Ativo"):t("Parado"))+(s.enabled?t(", inicia com a sessão."):t(", não inicia com a sessão."))+(s.staleConfig?t(" Ainda usa a configuração anterior: aplique para valer."):"")+(s.outdated?t(" A pasta das gravações mudou: aplique de novo."):"")
     }
+    // A committed save or restore can move the recordings folder: the library list is read again.
+    function refreshLibraryAfterSettings() { if (!backend.available || hasPending("list")) return; libraryRefreshing = true; send("list", "") }
     function settingsConnectionLost() {
         setupWizard.connectionLost()
         if(!settingsDialog.visible)return

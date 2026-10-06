@@ -304,6 +304,10 @@ with tempfile.TemporaryDirectory(dir='/tmp', prefix='falatrace-settings-fixture-
         if mode in ('wizard-disable-monitor', 'wizard-disable-unknown'):
             applied = [q['payload'] for q in requests if q['op'] == 'settings-service']
             checks.append({'name': f'{mode}: only the monitor is disabled', 'pass': applied == [{'action': 'calls-disable'}]})
+        if mode in ('save', 'backups'):
+            ops = [q['op'] for q in requests]
+            change = 'settings-save' if mode == 'save' else 'settings-restore'
+            checks.append({'name': f'{mode}: the library is listed again after the committed change', 'pass': change in ops and 'list' in ops[ops.index(change) + 1:]})
         if mode == 'wizard-lost':
             ops = [q['op'] for q in requests]
             checks.append({'name': 'wizard-lost: the configuration is read again after reconnecting', 'pass': 'settings-save' in ops and 'settings-read' in ops[ops.index('settings-save') + 1:]})

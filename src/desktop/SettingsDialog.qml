@@ -170,7 +170,7 @@ FtDialog {
             if (result.settings) { settingsData = result.settings; settingsDraft = Object.assign({}, result.settings.values) }
             else loadSettings(false)
             settingsNotice = t("Configuração restaurada. A anterior também foi guardada como cópia de segurança. Aplique os serviços para valer.")
-            send("settings-backups", ""); runSettingsDiagnose()
+            send("settings-backups", ""); runSettingsDiagnose(); refreshLibraryAfterSettings()
         } else if (request.op === "settings-export") {
             settingsNotice = message.ok ? t("Configuração exportada sem chaves para ") + result.exported + "." : ""
             if (!message.ok) settingsError = message.error
