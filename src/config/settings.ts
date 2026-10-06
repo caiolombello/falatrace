@@ -155,6 +155,9 @@ export const SETTINGS_FIELDS: Record<string, FieldRule> = {
   "visualReview.maxPreviews": intBetween(1, 1000)
 };
 
+/** Fields whose rule accepts empty text: clearing them is an edit (a vocabulary, an S3 prefix), not an unfinished one. */
+export const EMPTY_ALLOWED_FIELDS = Object.keys(SETTINGS_FIELDS).filter((field) => SETTINGS_FIELDS[field](""));
+
 /** Fields whose value may be null to remove an optional key from the file. */
 export const NULLABLE_FIELDS = new Set(["remote.user", "remote.identityFile", "s3.profile"]);
 
@@ -238,6 +241,7 @@ const describeSettings = (value: Record<string, unknown>) => {
     values: valuesOf(config),
     defaults: DEFAULT_VALUES,
     nullable: [...NULLABLE_FIELDS],
+    emptyAllowed: [...EMPTY_ALLOWED_FIELDS],
     apps: CALL_APPLICATIONS.map((id) => ({
       id,
       label: CALL_APPLICATION_IDENTITIES[id].label,
@@ -273,8 +277,10 @@ export const applySettingsPatch = (previous: JsonObject, fields: SettingsPatch):
     if (!field.startsWith("visualReview.")) setPath(next, field, value);
   }
   if (visual) {
-    const current = (next.visualReview && typeof next.visualReview === "object" ? next.visualReview : {}) as { maxInferences?: number; maxPreviews?: number };
+    const current = (next.visualReview && typeof next.visualReview === "object" && !Array.isArray(next.visualReview) ? next.visualReview : {}) as JsonObject & { maxInferences?: number; maxPreviews?: number };
+    // Only the three controlled fields are written; unknown keys next to them are kept.
     next.visualReview = {
+      ...current,
       maxInferences: fields["visualReview.maxInferences"] ?? current.maxInferences ?? VISUAL_REVIEW_DEFAULTS.maxInferences,
       maxPreviews: fields["visualReview.maxPreviews"] ?? current.maxPreviews ?? VISUAL_REVIEW_DEFAULTS.maxPreviews,
       period: "lifetime"

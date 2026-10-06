@@ -205,6 +205,29 @@ test("visual limits are written as a complete lifetime policy and optional keys 
   });
 });
 
+test("editing a visual limit keeps unknown keys next to it", async () => {
+  await withRoot(async (root) => {
+    const path = join(root, "config.json");
+    await fs.writeFile(path, JSON.stringify({ visualReview: { maxInferences: 3, maxPreviews: 2, period: "lifetime", future: { keep: true } } }));
+    const draft = await readSettings(path, {});
+    await saveSettings(draft.revision, { "visualReview.maxInferences": 5 }, path);
+    expect(JSON.parse(await fs.readFile(path, "utf8")).visualReview).toEqual({ maxInferences: 5, maxPreviews: 2, period: "lifetime", future: { keep: true } });
+  });
+});
+
+test("empty text is an edit only for fields that accept it", async () => {
+  await withRoot(async (root) => {
+    const path = join(root, "config.json");
+    await fs.writeFile(path, JSON.stringify({ transcription: { openaiPrompt: "FalaTrace, Proton" }, s3: { bucket: "my-bucket", prefix: "recordings/" } }));
+    const draft = await readSettings(path, {});
+    expect([...draft.emptyAllowed].sort()).toEqual(["s3.bucket", "s3.prefix", "transcription.openaiPrompt"]);
+    await saveSettings(draft.revision, { "transcription.openaiPrompt": "", "s3.bucket": "", "s3.prefix": "" }, path);
+    const written = JSON.parse(await fs.readFile(path, "utf8"));
+    expect([written.transcription.openaiPrompt, written.s3.bucket, written.s3.prefix]).toEqual(["", "", ""]);
+    expect(() => validateSettingsPatch({ "summary.ollamaModel": "" })).toThrow();
+  });
+});
+
 test("backups are listed, restored with a backup of the current file and rotated", async () => {
   await withRoot(async (root) => {
     const path = join(root, "config.json");

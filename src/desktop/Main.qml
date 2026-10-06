@@ -494,11 +494,13 @@ ApplicationWindow {
     function setSettingsField(field, value) { const next=Object.assign({},settingsDraft);next[field]=value;settingsDraft=next;if(field==="studio.language")languagePreview=value }
     function settingsSame(left, right) { return JSON.stringify(left === undefined ? null : left) === JSON.stringify(right === undefined ? null : right) }
     function settingsChanges() {
-        const values=settingsData.values||({}), nullable=settingsData.nullable||[], changes={}
+        const values=settingsData.values||({}), nullable=settingsData.nullable||[], emptyAllowed=settingsData.emptyAllowed||[], changes={}
         for(const field in settingsDraft) {
             const value=settingsDraft[field]
-            if(settingsSame(value, values[field])||value==="")continue
-            // Cleared optional fields become null (the key is removed); other empty fields are ignored.
+            if(settingsSame(value, values[field]))continue
+            // Cleared text is an edit only where empty text is valid (vocabulary, S3 bucket or prefix);
+            // cleared optional fields become null (the key is removed); other empty fields are ignored.
+            if(value===""&&emptyAllowed.indexOf(field)<0)continue
             if(value===null&&nullable.indexOf(field)<0)continue
             changes[field]=value
         }

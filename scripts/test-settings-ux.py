@@ -33,7 +33,7 @@ values = {'callDetection.enabled': not first, 'callDetection.mode':'record', 'ca
           'capture.microphone':'default','capture.desktop':'default','capture.profile':'standard','capture.encoder':'gpu','capture.framerate':30,
           'capture.startupTimeoutSeconds':90,'features.namingTemplate':'YYYY-MM-DD_HH-mm_[title]',
           'obs.enabled':False,'obs.autoLaunch':False,'obs.host':'127.0.0.1','obs.port':4455,
-          'transcription.provider':'whisper-cpp' if first else 'openai','transcription.language':'auto','transcription.expectedLanguages':[],'transcription.openaiPrompt':'',
+          'transcription.provider':'whisper-cpp' if first else 'openai','transcription.language':'auto','transcription.expectedLanguages':[],'transcription.openaiPrompt':'Termos: FalaTrace' if mode == 'tab-processing' else '',
           'transcription.openaiModel':'gpt-transcribe','transcription.geminiModel':'gemini-3.5-transcribe','transcription.whisperCpp.command':'whisper-cli',
           'transcription.whisperCpp.modelPath':'/home/synthetic/model.bin','transcription.whisperCpp.threads':8,
           'summary.provider':'ollama' if first else 'openai','summary.ollamaUrl':'http://127.0.0.1:11434','summary.ollamaModel':'qwen3.5:9b','summary.openaiModel':'gpt-6-luna',
@@ -54,6 +54,7 @@ details = [{'name':'OPENAI_API_KEY','source':'missing','sessionOnly':mode == 'ke
            {'name':'RECORDING_CLI_OBS_PASSWORD','source':'missing','sessionOnly':False,'shadowsStudioKey':False,'savedInStudio':False}]
 def credentials(): return {'openai':details[0]['source'],'gemini':'missing','details':details,'files':[],'managerEnvironment':'unavailable'}
 def settings(): return {'revision':revision,'exists':not first,'values':values,'apps':apps,'nullable':['remote.user','remote.identityFile','s3.profile'],
+    'emptyAllowed':['transcription.openaiPrompt','s3.bucket','s3.prefix'],
     'readOnly':{'backendOutsideList':'simple' if values['backend'] == 'simple' else None,'backendExplicit':not first,'obsEnabled':False,
                 'remoteConfigured':mode == 'integrations','summaryLocal':True,'visualPolicyDeclared':False,'legacyApiKeyInConfig':False,'obsPasswordInConfig':False},
     'credentials':credentials()}
@@ -64,7 +65,7 @@ catalog = {'whisper':{'directory':'/home/synthetic/models','source':'https://hug
     {'id':'tiny','file':'ggml-tiny.bin','bytes':77691713,'sha256':'0'*64,'quality':'Muito rápido.','installed':False,'selected':False,'path':'/home/synthetic/models/ggml-tiny.bin'},
     {'id':'large-v3-turbo-q5_0','file':'ggml-large-v3-turbo-q5_0.bin','bytes':574041195,'sha256':'1'*64,'quality':'Padrão.','recommended':True,'installed':False,'selected':False,'path':'/home/synthetic/models/ggml-large-v3-turbo-q5_0.bin'}]},
     'ollama':{'url':'http://127.0.0.1:11434','loopback':True,'reachable':True,'installed':['qwen3.5:9b'],'configured':'qwen3.5:9b'}}
-log = []
+log = []; cancelled = False
 for line in sys.stdin:
     r = json.loads(line); op = r['op']; p = r.get('payload', {})
     logged = dict(p)
@@ -94,7 +95,10 @@ for line in sys.stdin:
         details[0].update({'source':'missing','savedInStudio':False}); v = {'name':p['name'],'removed':True,'credentials':credentials()}
     elif op == 'settings-secret-test': v = {'provider':p['service'],'status':'ok','source':'secrets.env','detail':'Chave aceita pelo provedor. O teste não envia áudio nem texto.'}
     elif op == 'settings-model-catalog': v = catalog
-    elif op in ('settings-model-download', 'settings-model-status'): v = {'kind':p['kind'],'id':p['model'],'state':'running','receivedBytes':1048576,'totalBytes':77691713}
+    elif op in ('settings-model-download', 'settings-model-status'):
+        v = {'kind':p['kind'],'id':p['model'],'state':'running','receivedBytes':1048576,'totalBytes':77691713}
+        if cancelled: v.update({'state':'failed','error':'O download foi interrompido. Tente novamente.'})
+    elif op == 'settings-model-cancel': cancelled = True; v = {'kind':p['kind'],'id':p['model'],'cancelled':True}
     elif op == 'settings-backups': v = {'backups':[{'name':'config.json.bak-0b8c3a0e-1f2a-4b3c-8d4e-5f6a7b8c9d0e','modifiedAt':'2026-10-04T10:00:00.000Z','bytes':2048,'valid':True}]}
     elif op == 'settings-restore': v = {'restored':p['backup'],'backupCreated':True,'prunedBackups':0,'settings':settings()}
     elif op == 'settings-remote-check': v = {'ok':True,'host':'worker','commands':[{'name':'ffmpeg','ok':True},{'name':'whisper-cli','ok':False}],'disk':'/dev/sda1 100G 10G 90G 10% /home'}
@@ -124,11 +128,14 @@ MODES = {
     'tab-calls': ('settingsDialog.open()', 'check("settings loaded", !!settingsData.revision && !settingsHasChanges()); check("ten sections", settingsDialog.sections.length===10); check("automatic backend status follows the draft", settingsDialog.automaticBackendText().indexOf("tela e áudio")>=0)', '', ''),
     'tab-capture': ('settingsDialog.open(); settingsTabs.currentIndex=1', 'check("devices listed from diagnose", settingsDeviceOptions(false).some(function(o){return o.value==="alsa_input.synthetic-mic"}) && settingsDeviceOptions(true).length===2)', '', ''),
     'legacy': ('settingsDialog.open(); settingsTabs.currentIndex=0', 'check("legacy backend explained as OBS for automatic recording", settingsDialog.automaticBackendText().indexOf("OBS")>=0 && !settingsDialog.automaticBackendOk())', '', ''),
-    'tab-processing': ('settingsDialog.open(); settingsTabs.currentIndex=2', 'settingsDialog.applyPreset("local"); check("preset changes providers in the draft", settingsChanges()["transcription.provider"]==="whisper-cpp" && settingsChanges()["summary.provider"]==="ollama")', '', ''),
+    'tab-processing': ('settingsDialog.open(); settingsTabs.currentIndex=2', 'settingsDialog.applyPreset("local"); check("preset changes providers in the draft", settingsChanges()["transcription.provider"]==="whisper-cpp" && settingsChanges()["summary.provider"]==="ollama"); '
+                       'setSettingsField("transcription.openaiPrompt",""); check("a cleared vocabulary is saved as empty text", settingsChanges()["transcription.openaiPrompt"]===""); '
+                       'setSettingsField("summary.ollamaModel",""); check("a cleared required field stays an unfinished edit", !Object.prototype.hasOwnProperty.call(settingsChanges(),"summary.ollamaModel"))', '', ''),
     'keys': ('settingsDialog.open(); settingsTabs.currentIndex=3', 'check("session-only key explained", settingsDialog.secretSourceText(settingsData.credentials.details[0]).indexOf("só no ambiente desta sessão")>=0); settingsDialog.saveSecret("OPENAI_API_KEY","sk-synthetic-ui-key")',
              'check("saved key reported by source only", settingsData.credentials.details[0].savedInStudio===true && settingsNotice.indexOf("arquivo privado")>=0); settingsDialog.testSecret("openai")', 'check("key test result shown", !!settingsDialog.keyTests.openai && settingsDialog.keyTests.openai.status==="ok")'),
     'models': ('settingsDialog.open(); settingsDialog.goToSection(4)', 'check("catalog loaded on demand", !!settingsDialog.catalog.whisper && settingsDialog.catalog.whisper.models.length===2); settingsDialog.confirmDownload="whisper:tiny"; settingsDialog.startDownload("whisper","tiny")',
-               'check("download progress tracked", !!settingsDialog.downloads["whisper:tiny"] && settingsDialog.downloads["whisper:tiny"].state==="running")', ''),
+               'check("download progress tracked", !!settingsDialog.downloads["whisper:tiny"] && settingsDialog.downloads["whisper:tiny"].state==="running"); send("settings-model-cancel","",{kind:"whisper",model:"tiny"})',
+               'check("cancelling refreshes the stopped download without an error", settingsError==="" && settingsDialog.downloads["whisper:tiny"].state==="failed")'),
     'integrations': ('settingsDialog.open(); settingsDialog.goToSection(5)', 'check("remote check available once configured", settingsData.readOnly.remoteConfigured); send("settings-remote-check",""); setSettingsField("remote.user", null); check("cleared optional field becomes a null change", settingsChanges()["remote.user"]===null)',
                      'check("remote check result shown", !!settingsDialog.remoteCheck && settingsDialog.remoteCheck.ok)', ''),
     'services': ('settingsDialog.open(); settingsTabs.currentIndex=8', 'check("stale monitor flagged", settingsServiceStatus("calls")==="warning" && settingsServiceText("calls").indexOf("configuração anterior")>=0); check("automation check offers a fix", settingsDiag.automation.length===1 && settingsDialog.checkActionLabel("capture")!=="")', 'runSettingsService("calls-apply"); runSettingsService("sync-apply")',
@@ -202,6 +209,10 @@ with tempfile.TemporaryDirectory(dir='/tmp', prefix='falatrace-settings-fixture-
         if mode == 'models':
             downloads = [q for q in requests if q['op'] == 'settings-model-download']
             checks.append({'name': 'models: download carries explicit consent', 'pass': len(downloads) == 1 and downloads[0]['payload'] == {'kind': 'whisper', 'model': 'tiny', 'consent': True}})
+            ops = [q['op'] for q in requests]
+            after = requests[ops.index('settings-model-cancel') + 1:] if 'settings-model-cancel' in ops else []
+            statuses = [q for q in after if q['op'] == 'settings-model-status']
+            checks.append({'name': 'models: the status poll after a cancel names the model', 'pass': bool(statuses) and all(q['payload'] == {'kind': 'whisper', 'model': 'tiny'} for q in statuses)})
         unexpected = sorted({q['op'] for q in requests if q['op'] in GUARDED} - SIDE_EFFECTS.get(mode, set()))
         checks.append({'name': f'{mode}: no unexpected save, service, key, download or restore', 'pass': not unexpected, **({'unexpected': unexpected} if unexpected else {})})
         screens.append({'mode': mode, 'file': image.name, 'sha256': hashlib.sha256(image.read_bytes()).hexdigest()})

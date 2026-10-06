@@ -178,7 +178,9 @@ FtDialog {
                 settingsNotice = t("Modelo baixado e conferido. Salve para usá-lo na transcrição.")
             }
         } else if (request.op === "settings-model-cancel") {
-            send("settings-model-status", "", { kind: request.kind, model: request.model })
+            // The pending entry holds no payload: poll the model the bridge reports as cancelled.
+            if (!message.ok) { settingsError = message.error; return }
+            send("settings-model-status", "", { kind: result.kind, model: result.id })
         }
     }
 
