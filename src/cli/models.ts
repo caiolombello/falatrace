@@ -1,6 +1,6 @@
 import { loadConfig } from "../config/load";
 import {
-  WHISPER_MODELS, downloadWhisperModel, fileIdentity, findWhisperModel, isVerifiedWhisperModel, pullOllamaModel,
+  WHISPER_MODELS, downloadWhisperModel, findWhisperModel, isVerifiedWhisperModel, pullOllamaModel,
   whisperModelsDir, writeDownloadState
 } from "../models/downloads";
 
@@ -34,7 +34,7 @@ export const runModelsCli = async (args: string[]): Promise<void> => {
     process.once("SIGTERM", stop);
     process.once("SIGINT", stop);
     try {
-      const path = await downloadWhisperModel(model.id, {
+      const { path, verified } = await downloadWhisperModel(model.id, {
         fetch,
         directory,
         signal: controller.signal,
@@ -46,7 +46,7 @@ export const runModelsCli = async (args: string[]): Promise<void> => {
           }
         }
       });
-      await writeDownloadState({ kind: "whisper", id: model.id, state: "completed", receivedBytes: model.bytes, totalBytes: model.bytes, path, verified: await fileIdentity(path) });
+      await writeDownloadState({ kind: "whisper", id: model.id, state: "completed", receivedBytes: model.bytes, totalBytes: model.bytes, path, verified });
       if (process.stderr.isTTY) process.stderr.write("\n");
       console.log(JSON.stringify({ id: model.id, path, verified: true }));
     } catch (error) {

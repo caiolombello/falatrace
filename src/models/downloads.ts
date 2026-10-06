@@ -48,7 +48,8 @@ export const modelStateDir = (): string =>
 
 export type DownloadKind = "whisper" | "ollama";
 /** The file a SHA-256 check accepted; a file with another identity has to be checked again. */
-export type VerifiedFile = { size: number; mtimeMs: number; ino: number };
+/** What a later check compares against. ctime moves on any rewrite, even one that puts mtime back. */
+export type VerifiedFile = { size: number; mtimeMs: number; ctimeMs: number; ino: number };
 export type DownloadState = {
   kind: DownloadKind;
   id: string;
@@ -86,7 +87,7 @@ export const readDownloadState = async (kind: DownloadKind, id: string): Promise
 
 export const fileIdentity = async (path: string): Promise<VerifiedFile> => {
   const stat = await fs.lstat(path);
-  return { size: stat.size, mtimeMs: stat.mtimeMs, ino: stat.ino };
+  return { size: stat.size, mtimeMs: stat.mtimeMs, ctimeMs: stat.ctimeMs, ino: stat.ino };
 };
 
 /**
@@ -97,7 +98,7 @@ export const isVerifiedWhisperModel = async (model: WhisperModel, path: string):
   const [stat, state] = await Promise.all([fs.lstat(path).catch(() => null), readDownloadState("whisper", model.id)]);
   const receipt = state?.state === "completed" && state.path === path ? state.verified : undefined;
   return !!stat?.isFile() && !!receipt && stat.size === model.bytes &&
-    receipt.size === stat.size && receipt.mtimeMs === stat.mtimeMs && receipt.ino === stat.ino;
+    receipt.size === stat.size && receipt.mtimeMs === stat.mtimeMs && receipt.ctimeMs === stat.ctimeMs && receipt.ino === stat.ino;
 };
 
 export type WhisperDownloadDeps = {
@@ -109,15 +110,20 @@ export type WhisperDownloadDeps = {
   open?: (path: string) => Promise<FileHandle>;
 };
 
-/** Download, verify and publish one Whisper model. An existing verified file is reused. */
-export const downloadWhisperModel = async (id: string, deps: WhisperDownloadDeps): Promise<string> => {
+/**
+ * Download, verify and publish one Whisper model. An existing verified file is reused. The
+ * identity returned is the one the SHA-256 check covered, for the receipt to compare against.
+ */
+export const downloadWhisperModel = async (id: string, deps: WhisperDownloadDeps): Promise<{ path: string; verified: VerifiedFile }> => {
   const model = findWhisperModel(id);
   await fs.mkdir(deps.directory, { recursive: true, mode: 0o700 });
   const destination = join(deps.directory, model.file);
   const existing = await fs.lstat(destination).catch(() => null);
   if (existing) {
     if (!existing.isFile() || existing.isSymbolicLink()) throw new Error("O destino do modelo não é um arquivo comum.");
-    if (existing.size === model.bytes && await sha256File(destination) === model.sha256) return destination;
+    // Taken before hashing: a change during or after the check leaves the receipt unmatched.
+    const verified = await fileIdentity(destination);
+    if (existing.size === model.bytes && await sha256File(destination) === model.sha256) return { path: destination, verified };
     throw new Error("Já existe um arquivo diferente com o nome deste modelo; ele foi preservado.");
   }
   // One unit per model: partial files left by a cancelled or killed attempt are stale now.
@@ -158,10 +164,11 @@ export const downloadWhisperModel = async (id: string, deps: WhisperDownloadDeps
     await fs.chmod(partial, 0o644);
     await fs.link(partial, destination);
     await deps.onProgress(received);
-    return destination;
   } finally {
     await fs.rm(partial, { force: true }).catch(() => undefined);
   }
+  // Read once the partial name is gone: removing that link moves ctime as well.
+  return { path: destination, verified: await fileIdentity(destination) };
 };
 
 export const sha256File = async (path: string): Promise<string> => {

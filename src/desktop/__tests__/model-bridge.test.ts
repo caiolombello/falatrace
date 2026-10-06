@@ -71,7 +71,27 @@ test("a Whisper model counts as installed only when a SHA-256 check accepted tha
     expect(await installed()).toBe(false);
     await writeDownloadState({ kind: "whisper", id: "tiny", state: "completed", receivedBytes: payload.length, totalBytes: payload.length, path, verified: await fileIdentity(path) });
     expect(await installed()).toBe(true);
+    // Rewritten in place: same inode, same size and the old mtime put back. Only ctime moves.
+    const pinned = 1_700_000_000;
+    await fs.utimes(path, pinned, pinned);
+    const receipt = await fileIdentity(path);
+    await writeDownloadState({ kind: "whisper", id: "tiny", state: "completed", receivedBytes: payload.length, totalBytes: payload.length, path, verified: receipt });
+    expect(await installed()).toBe(true);
+    const handle = await fs.open(path, "r+");
+    await handle.write(Buffer.alloc(16, 7), 0, 16, 0);
+    await handle.close();
+    await fs.utimes(path, pinned, pinned);
+    // On a coarse clock the rewrite can share the receipt's tick; touch until ctime moves.
+    for (let tries = 0; (await fs.stat(path)).ctimeMs === receipt.ctimeMs && tries < 100; tries++) {
+      await Bun.sleep(10);
+      await fs.utimes(path, pinned, pinned);
+    }
+    const rewritten = await fs.stat(path);
+    expect([rewritten.ino, rewritten.size, rewritten.mtimeMs]).toEqual([receipt.ino, receipt.size, receipt.mtimeMs]);
+    expect(await installed()).toBe(false);
     // Another file of the same size put in its place is not trusted until it is checked again.
+    await writeDownloadState({ kind: "whisper", id: "tiny", state: "completed", receivedBytes: payload.length, totalBytes: payload.length, path, verified: await fileIdentity(path) });
+    expect(await installed()).toBe(true);
     await fs.writeFile(join(directory, "replacement"), Buffer.alloc(payload.length, 1));
     await fs.rename(join(directory, "replacement"), path);
     expect(await installed()).toBe(false);

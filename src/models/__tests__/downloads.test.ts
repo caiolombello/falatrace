@@ -4,7 +4,7 @@ import { promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  WHISPER_MODELS, downloadWhisperModel, findWhisperModel, pullOllamaModel, readDownloadState, validateOllamaModelName, writeDownloadState
+  WHISPER_MODELS, downloadWhisperModel, fileIdentity, findWhisperModel, pullOllamaModel, readDownloadState, validateOllamaModelName, writeDownloadState
 } from "../downloads";
 
 const withDir = async (run: (dir: string) => Promise<void>) => {
@@ -44,15 +44,29 @@ test("a verified download is published atomically and reused afterwards", async 
     await withSyntheticModel(payload, async () => {
       const seen: string[] = [];
       const progress: number[] = [];
-      const path = await downloadWhisperModel("tiny", { fetch: serve(payload, seen), directory: dir, onProgress: (bytes) => { progress.push(bytes); } });
+      const { path, verified } = await downloadWhisperModel("tiny", { fetch: serve(payload, seen), directory: dir, onProgress: (bytes) => { progress.push(bytes); } });
       expect(path).toBe(join(dir, "ggml-tiny.bin"));
+      expect(verified).toEqual(await fileIdentity(path));
       expect(await fs.readFile(path)).toEqual(payload);
       expect(seen).toEqual(["https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin"]);
       expect(progress[progress.length - 1]).toBe(payload.length);
       expect((await fs.readdir(dir)).filter((name) => name.includes("partial"))).toEqual([]);
       const again: string[] = [];
-      expect(await downloadWhisperModel("tiny", { fetch: serve(payload, again), directory: dir, onProgress: () => undefined })).toBe(path);
+      expect(await downloadWhisperModel("tiny", { fetch: serve(payload, again), directory: dir, onProgress: () => undefined })).toEqual({ path, verified: await fileIdentity(path) });
       expect(again).toEqual([]);
+    });
+  });
+});
+
+test("an existing file is recorded as it was before its hash was checked", async () => {
+  await withDir(async (dir) => {
+    const payload = Buffer.from("synthetic ggml payload ".repeat(1000));
+    await withSyntheticModel(payload, async () => {
+      const path = join(dir, "ggml-tiny.bin");
+      await fs.writeFile(path, payload);
+      const before = await fileIdentity(path);
+      const { verified } = await downloadWhisperModel("tiny", { fetch: serve(payload), directory: dir, onProgress: () => undefined });
+      expect(verified).toEqual(before);
     });
   });
 });
