@@ -2,9 +2,9 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-// Guided first use. Nothing is saved, recorded or installed until "Concluir"; the audio
-// test and model downloads only run on their own explicit buttons. Saving goes through
-// the same allowlist, revision check and backup as the settings dialog.
+// Guided first use. Nothing is saved or installed until "Concluir", the OpenAI key included;
+// the audio test and model downloads only run on their own explicit buttons. Saving goes
+// through the same allowlist, revision check and backup as the settings dialog.
 FtDialog {
     id:setupWizard; objectName:"setupWizard"; title:t("Configurar o FalaTrace")
     anchors.centerIn:parent; width:Math.min(window.width-48,760); height:Math.min(window.height-48,720); modal:true
@@ -23,13 +23,15 @@ FtDialog {
     property bool applyTimer: true
     property bool applyTray: false
     property var results: []
+    // The OpenAI key typed here stays in memory and is written only by Finish, after the configuration.
+    property string pendingKey: ""
     property string error: ""
     property string notice: ""
-    property bool busy: hasPending("settings-save") || hasPending("settings-service")
+    property bool busy: hasPending("settings-save") || hasPending("settings-secret-set") || hasPending("settings-service")
     readonly property bool fresh: data.exists === false
 
-    onOpened:{ generation += 1; step = 0; data = ({}); draft = ({}); diag = ({}); audioTest = null; catalog = ({}); downloads = ({}); consentAck = false; results = []; error = ""; notice = ""; applyTray = false; load(); wizardNext.forceActiveFocus(Qt.TabFocusReason) }
-    onClosed:{ languagePreview = ""; generation += 1; data = ({}); draft = ({}); onboardingButton.forceActiveFocus(Qt.TabFocusReason) }
+    onOpened:{ generation += 1; step = 0; data = ({}); draft = ({}); diag = ({}); audioTest = null; catalog = ({}); downloads = ({}); consentAck = false; results = []; pendingKey = ""; error = ""; notice = ""; applyTray = false; load(); wizardNext.forceActiveFocus(Qt.TabFocusReason) }
+    onClosed:{ languagePreview = ""; generation += 1; data = ({}); draft = ({}); pendingKey = ""; onboardingButton.forceActiveFocus(Qt.TabFocusReason) }
 
     function request(op, payload, extra) { return send(op, "", payload || ({}), Object.assign({ origin: "wizard", wizardGeneration: generation }, extra || ({}))) }
     function hasPending(op) { return Object.keys(pending).some(function(id){ return pending[id].origin === "wizard" && pending[id].op === op && pending[id].wizardGeneration === generation }) }
@@ -76,11 +78,19 @@ FtDialog {
     }
     function recommendedModel() { return ((catalog.whisper && catalog.whisper.models) || []).find(function(model){ return model.recommended }) || null }
     function downloadState(kind, id) { return downloads[kind + ":" + id] || null }
+    function useKey(text) { pendingKey = String(text || "").trim() }
+    function keyReady() { const source = credential("OPENAI_API_KEY").source; return pendingKey !== "" || (!!source && source !== "missing") }
     function finish() {
         error = ""; notice = ""; results = []
-        // An existing configuration with nothing changed only needs the services step.
-        if (!fresh && !Object.keys(changes()).length) { addResult(t("Configuração"), true, t("Sem alterações.")); runServices(); return }
+        // An existing configuration with nothing changed only needs the key and services steps.
+        if (!fresh && !Object.keys(changes()).length) { addResult(t("Configuração"), true, t("Sem alterações.")); saveKey(); return }
         request("settings-save", { revision: data.revision, changes: changes(), initialize: fresh })
+    }
+    function saveKey() {
+        if (!pendingKey) { runServices(); return }
+        const key = pendingKey
+        pendingKey = ""
+        request("settings-secret-set", { name: "OPENAI_API_KEY", value: key })
     }
     function runServices() {
         const actions = []
@@ -114,9 +124,9 @@ FtDialog {
         } else if (req.op === "settings-audio-test") {
             audioTest = message.ok ? result : { error: message.error }
         } else if (req.op === "settings-secret-set") {
-            if (!message.ok) { error = message.error; return }
-            data = Object.assign({}, data, { credentials: result.credentials }); notice = t("Chave salva em arquivo privado.")
-            request("settings-diagnose")
+            addResult(t("Chave da OpenAI"), message.ok, message.ok ? t("Salva em arquivo privado.") : message.error)
+            if (message.ok) data = Object.assign({}, data, { credentials: result.credentials })
+            runServices()
         } else if (req.op === "settings-model-download" || req.op === "settings-model-status") {
             if (!message.ok) { error = message.error; return }
             const next = Object.assign({}, downloads); next[result.kind + ":" + result.id] = result; downloads = next
@@ -129,7 +139,7 @@ FtDialog {
             addResult(t("Configuração"), true, result.backupCreated ? t("Salva, com cópia de segurança da anterior.") : t("Salva."))
             if (result.values) data = result
             draft = ({})
-            runServices()
+            saveKey()
         } else if (req.op === "settings-service") {
             addResult(serviceLabel(req.action), message.ok, message.ok ? t("Aplicado.") : message.error)
             nextService()
@@ -260,10 +270,10 @@ FtDialog {
             Label { text:parent.download&&parent.download.state==="failed"?(t(parent.download.error)||t("Falhou.")):t("O Ollama deste computador baixa do registro dele."); color:muted; font.pixelSize:12; wrapMode:Text.WordWrap; Layout.fillWidth:true }
           }
           ColumnLayout { visible:setupWizard.needsKey("OPENAI_API_KEY"); Layout.fillWidth:true; spacing:6
-            Status { label:t("Chave da OpenAI"); status:setupWizard.credential("OPENAI_API_KEY").source&&setupWizard.credential("OPENAI_API_KEY").source!=="missing"?"ok":"warning"; detail:setupWizard.credential("OPENAI_API_KEY").source&&setupWizard.credential("OPENAI_API_KEY").source!=="missing"?t("Configurada."):t("Cole a chave da API da OpenAI. Ela fica num arquivo privado e nunca é mostrada.") }
+            Status { label:t("Chave da OpenAI"); status:setupWizard.keyReady()?"ok":"warning"; detail:setupWizard.pendingKey!==""?t("A chave será salva em arquivo privado quando você concluir."):setupWizard.keyReady()?t("Configurada."):t("Cole a chave da API da OpenAI. Ela fica num arquivo privado e nunca é mostrada.") }
             RowLayout { spacing:8
               FtTextField { id:wizardKey; objectName:"wizardOpenAIKey"; Layout.fillWidth:true; echoMode:TextInput.Password; passwordCharacter:"•"; placeholderText:t("sk-…"); inputMethodHints:Qt.ImhSensitiveData|Qt.ImhNoPredictiveText; Accessible.name:t("Chave da OpenAI") }
-              FtButton { text:t("Salvar chave"); compact:true; enabled:wizardKey.text.trim().length>0&&!setupWizard.hasPending("settings-secret-set"); onClicked:{ setupWizard.request("settings-secret-set",{name:"OPENAI_API_KEY",value:wizardKey.text.trim()}); wizardKey.text="" } }
+              FtButton { text:t("Usar esta chave"); compact:true; enabled:wizardKey.text.trim().length>0; onClicked:{ setupWizard.useKey(wizardKey.text); wizardKey.text="" } }
             }
           }
           Label { text:t("Dá para trocar cada escolha depois em Configurações, em Processamento e IA."); color:muted; font.pixelSize:12; wrapMode:Text.WordWrap; Layout.fillWidth:true }
@@ -289,6 +299,7 @@ FtDialog {
           Label { text:t("Revise antes de concluir"); color:ink; font.pixelSize:16; font.weight:Font.DemiBold }
           Status { label:t("Captura"); status:"ok"; detail:(setupWizard.value("backend")==="gpu-screen-recorder"?t("Tela e áudio"):setupWizard.value("backend")==="obs"?"OBS":t("Só áudio"))+" · "+({both:t("microfone e áudio do sistema"),microphone:t("só microfone"),desktop:t("só áudio do sistema"),none:t("sem áudio")})[setupWizard.value("capture.audioSource")||"both"] }
           Status { label:t("Processamento"); status:setupWizard.preset()==="local"?"ok":"warning"; detail:setupWizard.preset()==="local"?t("Tudo neste computador."):setupWizard.preset()==="hybrid"?t("Transcrição aqui; o texto vai para a OpenAI para resumir."):setupWizard.preset()==="cloud"?t("Áudio e texto vão para a OpenAI."):t("Combinação personalizada; veja Configurações.") }
+          Status { visible:setupWizard.pendingKey!==""; label:t("Chave da OpenAI"); status:"ok"; detail:t("Salva em arquivo privado ao concluir.") }
           Status { label:t("Gravação automática"); status:setupWizard.value("callDetection.enabled")===true&&setupWizard.value("callDetection.mode")==="record"?"warning":"ok"; detail:setupWizard.value("callDetection.enabled")!==true?t("Desligada."):setupWizard.value("callDetection.mode")==="record"?t("Grava sozinho as chamadas detectadas."):t("Só avisa.") }
           Label { text:t("Aplicar agora"); color:ink; font.pixelSize:16; font.weight:Font.DemiBold; Layout.topMargin:6 }
           WrappedCheck { visible:setupWizard.value("callDetection.enabled")===true; text:t("Iniciar o monitor de chamadas"); checked:setupWizard.applyMonitor; onToggled:setupWizard.applyMonitor=checked }

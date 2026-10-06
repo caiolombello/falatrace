@@ -23,7 +23,7 @@ O `make install-studio` compila o Studio, instala em `~/.local/share/falatrace/s
 
 ## 2. Primeiro uso
 
-Abra o **FalaTrace Studio** pelo menu de aplicativos ou rode `recording-studio`. Sem configuração, o Studio abre o assistente. Nada é salvo, gravado ou instalado até você clicar em **Concluir**.
+Abra o **FalaTrace Studio** pelo menu de aplicativos ou rode `recording-studio`. Sem configuração, o Studio abre o assistente. Nada é salvo nem instalado até você clicar em **Concluir**, inclusive a chave da OpenAI. O teste de áudio e os downloads de modelos só rodam pelos próprios botões.
 
 1. **Boas-vindas.** Escolha o idioma (automático, português ou inglês) e confirme que vai gravar só com permissão. **Usar os padrões recomendados** vai direto para a revisão com só áudio, processamento local e gravação automática desligada.
 2. **Captura.** Escolha **Só áudio** (recomendado) ou **Tela e áudio**, e depois o microfone e o áudio do sistema. **Testar áudio** grava 5 segundos, mostra o nível de cada faixa e apaga o arquivo.

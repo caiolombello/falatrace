@@ -24,7 +24,7 @@ apps = [{'id':'slack','label':'Slack','kind':'app','defaultEnabled':True},{'id':
         {'id':'helium','label':'Helium','kind':'browser','defaultEnabled':True},{'id':'chromium','label':'Chromium','kind':'browser','defaultEnabled':True},
         {'id':'firefox','label':'Firefox','kind':'browser','defaultEnabled':True},{'id':'zoom','label':'Zoom','kind':'app','defaultEnabled':True},
         {'id':'discord','label':'Discord','kind':'app','defaultEnabled':False}]
-first = mode in ('first-run', 'wizard-flow', 'wizard-test-audio', 'wizard-english')
+first = mode in ('first-run', 'wizard-flow', 'wizard-test-audio', 'wizard-english', 'wizard-key-cancel', 'wizard-key-finish')
 values = {'callDetection.enabled': not first, 'callDetection.mode':'record', 'callDetection.enqueueOnStop':True, 'callDetection.dryRun':False,
           'callDetection.entryDebounceSeconds':5, 'callDetection.exitTimeoutSeconds':15, 'callDetection.networkSampleSeconds':5,
           'callDetection.apps.slack':True,'callDetection.apps.zen':True,'callDetection.apps.helium':True,'callDetection.apps.chromium':True,
@@ -113,6 +113,12 @@ MODES = {
     'first-run': ('', 'check("first use opens the assistant, not settings", setupWizard.visible && !settingsDialog.visible && setupWizard.step===0); check("continuing needs the consent acknowledgment", !wizardConsentGate()); check("assistant read the configuration", !!setupWizard.data.revision)', '', ''),
     'wizard-flow': ('setupWizard.consentAck=true', 'setupWizard.recommend(); check("recommended defaults go to review", setupWizard.step===4 && setupWizard.value("backend")==="audio" && setupWizard.preset()==="local" && setupWizard.value("callDetection.enabled")===false); setupWizard.finish()',
                     'check("assistant finished and reports the save", setupWizard.step===5 && setupWizard.results.length===1 && setupWizard.results[0].ok)', ''),
+    'wizard-key-cancel': ('setupWizard.consentAck=true',
+                          'setupWizard.step=2; setupWizard.applyPreset("cloud"); setupWizard.useKey("sk-synthetic-wizard-key"); check("a typed key waits for Finish", setupWizard.pendingKey!=="" && setupWizard.keyReady() && !setupWizard.hasPending("settings-secret-set"))',
+                          'setupWizard.close(); check("closing the assistant forgets the key", !setupWizard.visible && setupWizard.pendingKey==="")', ''),
+    'wizard-key-finish': ('setupWizard.consentAck=true',
+                          'setupWizard.applyPreset("cloud"); setupWizard.useKey("sk-synthetic-wizard-key"); setupWizard.step=4; check("review lists the key before anything is saved", setupWizard.pendingKey!=="" && !setupWizard.hasPending("settings-secret-set")); setupWizard.finish()',
+                          'check("Finish saves the configuration, then the key", setupWizard.step===5 && setupWizard.results.length===2 && setupWizard.results[1].ok && setupWizard.pendingKey==="")', ''),
     'wizard-test-audio': ('setupWizard.consentAck=true; setupWizard.step=1; setupWizard.set("capture.microphone","alsa_input.synthetic-mic")', 'setupWizard.request("settings-audio-test",{seconds:5,audioSource:setupWizard.value("capture.audioSource"),microphone:setupWizard.value("capture.microphone"),desktop:setupWizard.value("capture.desktop")})',
                           'check("audio test result is shown", !!setupWizard.audioTest && setupWizard.audioTest.tracks.length===1)', ''),
     'tab-calls': ('settingsDialog.open()', 'check("settings loaded", !!settingsData.revision && !settingsHasChanges()); check("ten sections", settingsDialog.sections.length===10); check("automatic backend status follows the draft", settingsDialog.automaticBackendText().indexOf("tela e áudio")>=0)', '', ''),
@@ -140,6 +146,7 @@ MODES = {
 }
 # Requests each mode is expected to send; anything outside the list fails the journey.
 SIDE_EFFECTS = {'save': {'settings-save'}, 'services': {'settings-service'}, 'wizard-flow': {'settings-save'}, 'backups': {'settings-restore'},
+                'wizard-key-finish': {'settings-save', 'settings-secret-set'},
                 'keys': {'settings-secret-set'}, 'models': {'settings-model-download'}}
 GUARDED = {'settings-save', 'settings-service', 'settings-secret-set', 'settings-secret-remove', 'settings-model-download', 'settings-restore'}
 
@@ -185,6 +192,13 @@ with tempfile.TemporaryDirectory(dir='/tmp', prefix='falatrace-settings-fixture-
             sets = [q for q in requests if q['op'] == 'settings-secret-set']
             checks.append({'name': 'keys: the key went to the bridge once', 'pass': len(sets) == 1 and sets[0]['payload']['name'] == 'OPENAI_API_KEY' and sets[0]['payload']['value'] == 'sha256:' + hashlib.sha256(b'sk-synthetic-ui-key').hexdigest()})
             checks.append({'name': 'keys: the key never appears in Studio output', 'pass': 'sk-synthetic-ui-key' not in r.stderr})
+        if mode == 'wizard-key-finish':
+            ops = [q['op'] for q in requests if q['op'] in ('settings-save', 'settings-secret-set')]
+            sets = [q for q in requests if q['op'] == 'settings-secret-set']
+            checks.append({'name': 'wizard-key-finish: the key is written once, after the configuration', 'pass': ops == ['settings-save', 'settings-secret-set']
+                           and sets[0]['payload'] == {'name': 'OPENAI_API_KEY', 'value': 'sha256:' + hashlib.sha256(b'sk-synthetic-wizard-key').hexdigest()}})
+        if mode.startswith('wizard-key'):
+            checks.append({'name': f'{mode}: the key never appears in Studio output', 'pass': 'sk-synthetic-wizard-key' not in r.stderr})
         if mode == 'models':
             downloads = [q for q in requests if q['op'] == 'settings-model-download']
             checks.append({'name': 'models: download carries explicit consent', 'pass': len(downloads) == 1 and downloads[0]['payload'] == {'kind': 'whisper', 'model': 'tiny', 'consent': True}})

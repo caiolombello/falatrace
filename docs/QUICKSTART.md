@@ -23,7 +23,7 @@ make install-studio
 
 ## 2. First use
 
-Open **FalaTrace Studio** from the application menu or run `recording-studio`. With no configuration yet, the Studio opens the setup assistant. Nothing is saved, recorded or installed until you click **Finish**.
+Open **FalaTrace Studio** from the application menu or run `recording-studio`. With no configuration yet, the Studio opens the setup assistant. Nothing is saved or installed until you click **Finish**, the OpenAI key included. The audio test and model downloads run only from their own buttons.
 
 1. **Welcome.** Pick the language (automatic, Portuguese or English) and confirm you will only record with permission. **Use the recommended defaults** jumps to the review with audio only, local processing and automatic recording off.
 2. **Capture.** Choose **Audio only** (recommended) or **Screen and audio**, then the microphone and system audio. **Test audio** records five seconds, shows the level of each track and deletes the file.

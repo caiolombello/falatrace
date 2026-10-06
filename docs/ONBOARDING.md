@@ -2,7 +2,7 @@
 
 ## First use and settings (Studio)
 
-On a computer without a configuration file the Studio opens a six-step setup assistant: language and consent, capture (with a five-second audio test), processing (three presets, model downloads and the OpenAI key when needed), automatic recording, review, and the services to start. Nothing is saved, recorded, downloaded or installed until **Concluir**/**Finish**; the audio test and downloads only run from their own buttons. The first save writes every explicit choice, so a later default change cannot alter it. Step-by-step instructions: [quickstart](QUICKSTART.md).
+On a computer without a configuration file the Studio opens a six-step setup assistant: language and consent, capture (with a five-second audio test), processing (three presets, model downloads and the OpenAI key when needed), automatic recording, review, and the services to start. Nothing is saved or installed until **Concluir**/**Finish**, the OpenAI key included; closing the assistant discards it. The audio test and model downloads run only from their own buttons. The first save writes every explicit choice, so a later default change cannot alter it. Step-by-step instructions: [quickstart](QUICKSTART.md).
 
 Afterwards, **Configurações…**/**Settings…** in the sidebar edits every option in ten sections. The full field list, values and defaults are in the [configuration reference](CONFIGURATION.md).
 
