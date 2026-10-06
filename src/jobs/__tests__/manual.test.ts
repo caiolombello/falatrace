@@ -102,3 +102,18 @@ test("remote processing names the worker and asks again when the worker changes"
     expect((await planRecordingProcessing({ ...config, processing: { ...config.processing, defaultTarget: "local" } }, entry, deps)).remote).toBeUndefined();
   });
 });
+
+test("a local job whose original is gone is not offered again; a remote one keeps its options", async () => {
+  await withRecording(async (path) => {
+    const config = structuredClone(DEFAULT_CONFIG);
+    const gone = `${path}.gone`;
+    for (const state of ["pending", "failed"] as const) {
+      const stored = job(state, { sourcePath: gone });
+      const plan = await planRecordingProcessing(config, { sourcePath: gone, sourceExists: false, jobs: [stored] }, fakeDeps(stored).deps);
+      expect(plan).toMatchObject({ action: "none", reason: "O arquivo original não está neste computador." });
+      await expect(runRecordingProcessing(config, { sourcePath: gone, sourceExists: false, jobs: [stored] }, { consent: true, consentKey: plan.consentKey }, fakeDeps(stored).deps)).rejects.toThrow("original");
+    }
+    const remote = job("failed", { sourcePath: gone, target: "remote" });
+    expect((await planRecordingProcessing(config, { sourcePath: gone, sourceExists: false, jobs: [remote] }, fakeDeps(remote).deps)).action).toBe("retry");
+  });
+});

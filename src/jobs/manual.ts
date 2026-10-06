@@ -97,6 +97,12 @@ export const planRecordingProcessing = async (
     action = "queue"; reason = "A gravação está na fila e pode ser processada agora.";
   }
   const target = latest ? latest.target : config.processing.defaultTarget;
+  // Local processing reads the original recording: without it, queueing or retrying can only fail again.
+  if (latest && (action === "queue" || action === "retry") && latest.target === "local" &&
+      !(await fs.stat(latest.sourcePath).then((stat) => stat.isFile(), () => false))) {
+    action = "none";
+    reason = "O arquivo original não está neste computador.";
+  }
   if (action === "create" && target === "remote" && isPlaceholderRemoteHost(config.remote.host)) {
     action = "none";
     reason = "O processamento está marcado como remoto, mas nenhum worker foi configurado.";
