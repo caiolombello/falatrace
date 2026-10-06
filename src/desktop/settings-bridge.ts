@@ -131,6 +131,9 @@ export const settingsErrorMessage = (op: string): string =>
                         : op.startsWith("settings-model") || op.startsWith("settings-ollama") ? "Não foi possível concluir o download. Nada foi instalado; tente novamente."
                           : "Não foi possível alterar o serviço. Confira se há uma gravação em andamento e o estado do systemd.";
 
+const OBS_CONNECTION_FIELDS = ["obs.enabled", "obs.host", "obs.port"];
+const OBS_DURING_CAPTURE = "Não altere a conexão com o OBS durante uma gravação ativa.";
+
 export const OBS_PASSWORD_UNKNOWN = "Não foi possível ler o ambiente dos serviços do usuário, então não dá para saber qual senha o monitor de chamadas usa. Tente de novo.";
 
 /** Prefix of the refusal to apply the monitor; the capture check's reason follows it. */
@@ -139,6 +142,7 @@ export const AUTOMATIC_CAPTURE_BLOCKED = "A gravação automática não funciona
 /** Errors whose text is safe and useful to show verbatim. */
 export const SETTINGS_KNOWN_ERRORS = [
   "Não altere os serviços durante uma gravação ativa.",
+  "Não altere a conexão com o OBS durante uma gravação ativa.",
   "Ative a gravação automática e salve antes de aplicar o monitor.",
   "Configuração mudou; reabra antes de salvar.",
   "Nenhuma alteração para salvar.",
@@ -205,10 +209,21 @@ export const handleSettingsOperation = async (
   }
   if (op === "settings-read") return deps.read(deps.configPath(), process.env, { managerEnv: await deps.managerEnv() });
   if (op === "settings-save") {
-    return deps.save(String(payload.revision || ""), payload.changes, deps.configPath(), undefined, {
+    const save = async () => deps.save(String(payload.revision || ""), payload.changes, deps.configPath(), undefined, {
       initialize: payload.initialize === true,
       credentials: { managerEnv: await deps.managerEnv() }
     });
+    // Stopping a capture reaches OBS through the configured connection: while one runs, that connection
+    // stays as it started. The capture lock keeps a capture from starting during the save.
+    const changes = payload.changes && typeof payload.changes === "object" ? Object.keys(payload.changes) : [];
+    if (!changes.some((field) => OBS_CONNECTION_FIELDS.includes(field))) return save();
+    const lease = await deps.lock("capture-control");
+    try {
+      if (await deps.captureActive()) throw new Error(OBS_DURING_CAPTURE);
+      return await save();
+    } finally {
+      await lease.release();
+    }
   }
   if (op === "settings-diagnose") {
     const { config: saved } = await deps.loadConfig();

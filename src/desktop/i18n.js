@@ -1273,6 +1273,7 @@ var EN = {
     "Abrir Gravação automática": "Open Automatic recording",
     "Endereço do Ollama inválido": "Invalid Ollama address",
     "O endereço do Ollama na configuração é inválido. Corrija-o em Configurações, em Processamento e IA.": "The Ollama address in the configuration is invalid. Fix it in Settings, under Processing and AI.",
+    "Não altere a conexão com o OBS durante uma gravação ativa.": "Do not change the OBS connection during an active recording.",
     "Este modelo já está sendo baixado. Aguarde o download em andamento terminar.": "This model is already downloading. Wait for the running download to finish.",
     "Não foi possível falar com o provedor agora. Confira a rede e tente de novo.": "Could not reach the provider right now. Check the network and try again.",
     "Nenhuma chave alcança o processamento em segundo plano. Salve a chave nesta seção.": "No key reaches background processing. Save the key in this section.",

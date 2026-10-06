@@ -148,6 +148,18 @@ describe("settings bridge operations", () => {
     expect(await handleSettingsOperation("settings-remote-check", {}, refused.deps)).toMatchObject({ ok: false, hint: expect.stringContaining("chave") });
   });
 
+  test("the OBS connection is not changed while a capture runs, since stopping it uses that connection", async () => {
+    const busy = fakeDeps({ captureActive: async () => true });
+    await expect(handleSettingsOperation("settings-save", { revision: "r", changes: { "obs.port": 4456 } }, busy.deps)).rejects.toThrow("conexão com o OBS");
+    expect(busy.calls).toEqual(["lock:capture-control", "release"]);
+    const other = fakeDeps({ captureActive: async () => true });
+    await handleSettingsOperation("settings-save", { revision: "r", changes: { "callDetection.apps.discord": true } }, other.deps);
+    expect(other.calls).toEqual(["save"]);
+    const idle = fakeDeps();
+    await handleSettingsOperation("settings-save", { revision: "r", changes: { "obs.host": "localhost" } }, idle.deps);
+    expect(idle.calls).toEqual(["lock:capture-control", "save", "release"]);
+  });
+
   test("the OBS password is tested only with the user manager's environment", async () => {
     const seen: NodeJS.ProcessEnv[] = [];
     const obsCheck: SettingsDeps["obsCheck"] = async (_config, env) => { seen.push(env); return false; };
