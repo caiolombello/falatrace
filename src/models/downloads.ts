@@ -124,7 +124,7 @@ export const downloadWhisperModel = async (id: string, deps: WhisperDownloadDeps
     // Taken before hashing: a change during or after the check leaves the receipt unmatched.
     const verified = await fileIdentity(destination);
     if (existing.size === model.bytes && await sha256File(destination) === model.sha256) return { path: destination, verified };
-    throw new Error("Já existe um arquivo diferente com o nome deste modelo; ele foi preservado.");
+    throw new Error("Já existe um arquivo diferente com o nome deste modelo; ele foi preservado. Mova ou apague esse arquivo da pasta de modelos para baixar de novo.");
   }
   // One unit per model: partial files left by a cancelled or killed attempt are stale now.
   for (const name of await fs.readdir(deps.directory).catch(() => [] as string[])) {

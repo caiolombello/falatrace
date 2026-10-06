@@ -1309,7 +1309,7 @@ var EN = {
     "Turbo sem quantização; mais memória.": "Turbo without quantization; more memory.",
     "Máxima precisão; lento sem GPU.": "Highest accuracy; slow without a GPU.",
     "O destino do modelo não é um arquivo comum.": "The model destination is not a regular file.",
-    "Já existe um arquivo diferente com o nome deste modelo; ele foi preservado.": "A different file with this model's name already exists; it was kept.",
+    "Já existe um arquivo diferente com o nome deste modelo; ele foi preservado. Mova ou apague esse arquivo da pasta de modelos para baixar de novo.": "A different file with this model's name already exists; it was kept. Move or delete that file from the models folder to download again.",
     "O download foi redirecionado para um endereço sem HTTPS.": "The download was redirected to an address without HTTPS.",
     "O arquivo recebido é maior que o esperado.": "The received file is larger than expected.",
     "O arquivo baixado não confere com o tamanho e o SHA-256 publicados; ele foi descartado.": "The downloaded file does not match the published size and SHA-256; it was discarded.",

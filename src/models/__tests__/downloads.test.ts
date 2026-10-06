@@ -82,7 +82,7 @@ test("a corrupted or oversized download is discarded and an unrelated file is pr
       expect(await fs.readdir(dir)).toEqual([]);
       await fs.writeFile(join(dir, "ggml-tiny.bin"), "someone else's file");
       await expect(downloadWhisperModel("tiny", { fetch: serve(payload), directory: dir, onProgress: () => undefined }))
-        .rejects.toThrow("preservado");
+        .rejects.toThrow("preservado. Mova ou apague esse arquivo da pasta de modelos para baixar de novo.");
       expect(await fs.readFile(join(dir, "ggml-tiny.bin"), "utf8")).toBe("someone else's file");
     });
   });
