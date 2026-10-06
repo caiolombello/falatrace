@@ -42,11 +42,17 @@ export const installPaths = (env: NodeJS.ProcessEnv = process.env, home = homedi
 };
 
 const shellQuote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
-// Desktop entry Exec arguments are double-quoted; inside them ", `, $ and \ are escaped with a
-// backslash, and the string-level escaping doubles every backslash again (spec: "\\\\" is one
-// literal backslash). A literal % is written %% so it is never read as a field code.
-const desktopQuote = (value: string): string =>
-  `"${value.replace(/["`$\\]/g, (character) => (character === "\\" ? "\\\\\\\\" : `\\\\${character}`)).replaceAll("%", "%%")}"`;
+// Desktop entry Exec arguments with a reserved character are double-quoted; inside them ", `, $ and \ are
+// escaped with a backslash, and the string-level escaping doubles every backslash again (spec: "\\\\" is
+// one literal backslash). A literal % is the field code %%, which the specification leaves undefined
+// inside quotes: a path with % is written unquoted, and one that would also need quotes is refused.
+const DESKTOP_RESERVED = /[\s"'\\><~|&;$*?#()`]/;
+export const DESKTOP_PERCENT_PATH = "O caminho de instalação tem % junto com espaços, aspas ou outros caracteres reservados; a entrada do menu não conseguiria abrir o Studio. Escolha outro INSTALL_PREFIX.";
+const desktopQuote = (value: string): string => {
+  if (!value.includes("%")) return `"${value.replace(/["`$\\]/g, (character) => (character === "\\" ? "\\\\\\\\" : `\\\\${character}`))}"`;
+  if (DESKTOP_RESERVED.test(value)) throw new Error(DESKTOP_PERCENT_PATH);
+  return value.replaceAll("%", "%%");
+};
 
 export const launcherScript = (paths: InstallPaths): string => `#!/bin/sh
 # ${MARKER}. Remove with: make uninstall-studio
@@ -159,6 +165,8 @@ export const installStudio = async (options: InstallOptions = {}): Promise<Insta
       throw new Error(`${path} não foi instalado por este comando (talvez pela release). Remova-o ou use REPLACE=1.`);
     }
   }
+  // Rendered before anything changes, so a path the menu entry cannot express fails cleanly.
+  const entry = desktopEntry(paths);
   const studioStat = await fs.lstat(paths.studioDir).catch(() => null);
   if (studioStat && (!studioStat.isDirectory() || (!options.replace && !(await exists(join(paths.studioDir, STUDIO_MARKER_FILE)))))) {
     throw new Error(`${paths.studioDir} existe e não foi criado por este comando; nada foi alterado.`);
@@ -195,7 +203,7 @@ export const installStudio = async (options: InstallOptions = {}): Promise<Insta
   } else {
     log(`${paths.alias} já existe e foi mantido.`);
   }
-  await writeFileAtomic(paths.desktopEntry, desktopEntry(paths), 0o644);
+  await writeFileAtomic(paths.desktopEntry, entry, 0o644);
   // The icon name is shared with release packages: replace it only when it is ours, absent or REPLACE=1.
   if (options.replace || (await ownedOrAbsent(paths.icon, MARKER))) {
     const svg = await fs.readFile(join(repo, "docs/assets/falatrace-avatar.svg"), "utf8");

@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { desktopEntry, installPaths, installStudio, MARKER, swapInto, uninstallStudio } from "../install";
+import { DESKTOP_PERCENT_PATH, desktopEntry, installPaths, installStudio, MARKER, swapInto, uninstallStudio } from "../install";
 
 const repo = resolve(import.meta.dir, "../../..");
 
@@ -37,9 +37,27 @@ test("make install-studio replaces another installer's files only with REPLACE=1
   expect(await command("REPLACE=1")).toContain("--replace");
 });
 
-test("a percent sign in the install path is escaped in the menu entry", () => {
+test("a percent sign in the install path is a field code outside quotes, and refused where quotes are needed", async () => {
   const paths = installPaths({ INSTALL_PREFIX: "/opt/fala%trace", XDG_DATA_HOME: "/home/u/.local/share" }, "/home/u");
-  expect(desktopEntry(paths)).toContain('Exec="/opt/fala%%trace/bin/recording-studio"\n');
+  // The specification leaves field codes undefined inside a quoted argument, and gio rejects them.
+  expect(desktopEntry(paths)).toContain("Exec=/opt/fala%%trace/bin/recording-studio\n");
+  expect(desktopEntry(installPaths({ INSTALL_PREFIX: "/opt/falatrace" }, "/home/u"))).toContain('Exec="/opt/falatrace/bin/recording-studio"\n');
+  const spaced = installPaths({ INSTALL_PREFIX: "/opt/fala %trace", XDG_DATA_HOME: "/home/u/.local/share" }, "/home/u");
+  expect(() => desktopEntry(spaced)).toThrow(DESKTOP_PERCENT_PATH);
+  // Refused before anything is built or written.
+  const { root, options } = await fixture();
+  try {
+    await fs.mkdir(join(root, "opt", "fala %trace", "bin"), { recursive: true });
+    const cli = join(root, "opt", "fala %trace", "bin", "falatrace");
+    await fs.writeFile(cli, "#!/bin/sh\n", { mode: 0o755 });
+    const paths = installPaths({ INSTALL_PREFIX: join(root, "opt", "fala %trace"), XDG_DATA_HOME: join(root, "share") }, root);
+    let built = false;
+    await expect(installStudio({ ...options, paths, build: async () => { built = true; return cli; } })).rejects.toThrow(DESKTOP_PERCENT_PATH);
+    expect(built).toBe(false);
+    await expect(fs.stat(join(root, "share"))).rejects.toThrow();
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
 });
 
 test("install refuses to run before the CLI is installed", async () => {
