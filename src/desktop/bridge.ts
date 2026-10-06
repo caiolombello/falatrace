@@ -18,6 +18,7 @@ import { configureDefaultAudio } from "../../src/config/audio";
 import { acquireSingleton } from "../../src/runtime/singleton";
 import { readCaptureStatus, startCapture, stopCapture } from "../../src/recording/application";
 import { queueSelectedJob } from "../../src/jobs/queue";
+import { planRecordingProcessing, runRecordingProcessing } from "../jobs/manual";
 import { readMeetingContext } from "../../src/knowledge/meetings";
 import { getDefaultJobStateDir, hashFile, JobStore } from "../../src/jobs/store";
 import type { JobRecord, Transcript } from "../../src/jobs/types";
@@ -43,6 +44,7 @@ import { MockFrameReview } from "../visual/review-flow";
 const frameReview = new MockFrameReview();
 import {StudioVisualFlow,type StudioSource} from '../visual/studio-flow';
 import {AgentStudio} from '../agent-context/studio';
+import { buildAssistantConnection } from '../agent-context/connect';
 const agentStudio=new AgentStudio();
 import {ProviderStudio} from '../provider-analysis/studio';
 const providerStudio=new ProviderStudio();
@@ -61,14 +63,19 @@ export const handleRealFrameOperation=async(flow:StudioVisualFlow,request:Reques
 
 import { setAutomationPaused } from "../calls/control";
 
-const OPERATIONS = ["summary-plan", "summary-run", "summary-cancel","provider-authorize","provider-analyze","provider-cancel","agent-cancel","agent-status","agent-authorize","agent-pause","agent-resume","agent-revoke","agent-frames","processing-status", "ux-capabilities", "list-cached", "onboarding-read", "onboarding-save-local", ...SETTINGS_OPERATIONS, "frames-check-models", "frames-scope", "frames-plan", "frames-preview-plan", "frames-preview", "frames-confirm", "frames-cancel", "list", "detail", "resolve", "playback-status", "subtitles", "diarization", "automation-pause", "automation-resume", "capture-status", "capture-start", "capture-stop", "capture-recover", "audio-defaults", "jobs-list", "job-process", "job-retry", "diarization-name", "context-meeting", "revision-save", "revision-undo", "export-preview", "export-save"] as const;
-export type Request = { id: number; op: typeof OPERATIONS[number]; key?: string; payload?: {maxRequests?:number;expectedRevision?:number;expectedSnapshotSha256?:string;base?:RevisionBase;expectedBase?:RevisionBase;operations?:RevisionOperation[];format?:"json"|"markdown"|"srt"|"vtt";track?:"transcript"|"diarization";provider?:'openai'|'google';model?:string;analysis?:import('../provider-analysis/contracts').AnalysisOptions;context?:boolean;maxFrames?:number;maxBytes?:number;requestId?:string;grantId?:string;recipientId?:string;data?:Array<'context'|'frames'>;timestamps?:number[]; title?: string; speakerId?: string; label?: string; maxCharacters?: number; query?: string; offset?: number; question?: string; seconds?: number; previewId?: string; consent?: boolean; revision?: string; visionModel?: string; summaryModel?: string; capabilityId?: string; consentKey?: string; planId?:string; consentTranscript?:boolean; scopeId?:string; startSeconds?:number; endSeconds?:number; changes?: Record<string, unknown>; action?: string } };
+const OPERATIONS = ["summary-plan", "summary-run", "summary-cancel","provider-authorize","provider-analyze","provider-cancel","agent-cancel","agent-status","agent-authorize","agent-pause","agent-resume","agent-revoke","agent-frames","agent-connect","recording-process-plan","recording-process","processing-status", "ux-capabilities", "list-cached", "onboarding-read", "onboarding-save-local", ...SETTINGS_OPERATIONS, "frames-check-models", "frames-scope", "frames-plan", "frames-preview-plan", "frames-preview", "frames-confirm", "frames-cancel", "list", "detail", "resolve", "playback-status", "subtitles", "diarization", "automation-pause", "automation-resume", "capture-status", "capture-start", "capture-stop", "capture-recover", "audio-defaults", "jobs-list", "job-process", "job-retry", "diarization-name", "context-meeting", "revision-save", "revision-undo", "export-preview", "export-save"] as const;
+export type Request = { id: number; op: typeof OPERATIONS[number]; key?: string; payload?: {maxRequests?:number;expectedRevision?:number;expectedSnapshotSha256?:string;base?:RevisionBase;expectedBase?:RevisionBase;operations?:RevisionOperation[];format?:"json"|"markdown"|"srt"|"vtt";track?:"transcript"|"diarization";provider?:'openai'|'google';model?:string;analysis?:import('../provider-analysis/contracts').AnalysisOptions;context?:boolean;maxFrames?:number;maxBytes?:number;requestId?:string;grantId?:string;recipientId?:string;data?:Array<'context'|'frames'>;timestamps?:number[]; title?: string; speakerId?: string; label?: string; maxCharacters?: number; query?: string; offset?: number; question?: string; seconds?: number; previewId?: string; consent?: boolean; revision?: string; visionModel?: string; summaryModel?: string; capabilityId?: string; consentKey?: string; planId?:string; consentTranscript?:boolean; scopeId?:string; startSeconds?:number; endSeconds?:number; changes?: Record<string, unknown>; action?: string; name?: string; value?: string; service?: string; backup?: string; path?: string; kind?: string; initialize?: boolean; client?: string } };
 type Response = { id: number; ok: true; result: unknown } | { id: number; ok: false; error: string };
 const MAX_LINE = 1024 * 1024;
 const UUID = /^[a-f0-9-]{36}$/i;
 let libraryCache: { at: number; config: Awaited<ReturnType<typeof loadConfig>>["config"]; entries: LibraryEntry[] } | undefined;
 let libraryLoad: Promise<NonNullable<typeof libraryCache>> | undefined;
 
+const PROCESS_KNOWN_ERRORS = [
+  "Confirme o destino antes de processar.", "A gravação ou as configurações mudaram. Revise o destino de novo.",
+  "Esta gravação já foi processada.", "O processamento já está em andamento.", "O arquivo original não está neste computador.",
+  "O processamento está marcado como remoto, mas nenhum worker foi configurado."
+];
 const emit = (response: Response): void => { process.stdout.write(`${JSON.stringify(response)}\n`); };
 const safeError = (op: string, error: unknown): string => {
   const text = error instanceof Error ? error.message : String(error);
@@ -79,7 +86,7 @@ const safeError = (op: string, error: unknown): string => {
     "Informe o id UUID da gravação", "Aguarde a transcrição terminar antes de identificar os falantes",
     "A transcrição original é inválida", "A gravação ainda não possui uma transcrição utilizável",
     "Já existe uma captura gerenciada. Finalize-a antes de iniciar outra.",
-    "Há uma gravação legada em andamento. Finalize-a pelo terminal com `record stop`; o estado foi preservado.",
+    "Há uma gravação legada em andamento. Pare-a antes de iniciar outra; o estado foi preservado.",
     "Não foi possível iniciar a captura. Verifique o backend e as fontes de áudio configuradas.",
     "Não foi possível finalizar a gravação. O estado foi preservado para nova tentativa.",
     "Aguarde a operação de captura em andamento.", "Não altere o áudio durante uma captura ativa.",
@@ -98,6 +105,7 @@ const safeError = (op: string, error: unknown): string => {
   if (op.startsWith("frames-")) return "Pedido visual recusado/cancelado. Confira horário, preview, consentimento e budget; verifique modelos locais/capabilities, identidade da origem, consentimento e limite persistente. Dados preservados.";
   if (op === "onboarding-save-local") return "Não foi possível confirmar o salvamento. Confira a configuração após reler; ela pode ser inválida, insegura ou ter sido alterada.";
   if (op === "onboarding-read") return "Não foi possível ler a configuração. Confira se o arquivo é válido e está em um local seguro.";
+  if (op.startsWith("recording-process")) return PROCESS_KNOWN_ERRORS.includes(text) ? text : "Não foi possível iniciar o processamento. Revise o destino e tente de novo; a gravação foi preservada.";
   if (op.startsWith("capture-") || op === "audio-defaults") return "Falha na operação de captura; verifique o estado e a configuração de áudio.";
   if (op.startsWith("job")) return "Falha na operação do job selecionado.";
   if (op === "context-meeting") return "Não foi possível carregar o contexto desta reunião.";
@@ -302,6 +310,29 @@ const subtitles = async (key: string): Promise<unknown> => {
   const unit = await queueAlignedSubtitles(id);
   return { id, status: "queued", unit };
 };
+/** Payload keys each operation accepts; anything else is refused before dispatch. */
+const ALLOWED_PAYLOAD: Partial<Record<Request["op"], string[]>> = {
+  "summary-plan": ["requestId", "maxRequests"], "summary-run": ["requestId", "consent", "consentKey"], "summary-cancel": ["requestId"],
+  "provider-authorize": ["provider", "model", "analysis", "context", "maxFrames", "maxBytes", "consent"],
+  "provider-analyze": ["grantId", "requestId", "question", "timestamps"], "provider-cancel": ["grantId"],
+  "agent-status": [], "agent-authorize": ["recipientId", "data", "consent"],
+  "agent-cancel": ["grantId"], "agent-pause": ["grantId"], "agent-resume": ["grantId"], "agent-revoke": ["grantId"],
+  "agent-frames": ["grantId", "timestamps"], "agent-connect": ["grantId", "client"],
+  "frames-check-models": ["visionModel", "summaryModel"], "frames-scope": ["startSeconds", "endSeconds"],
+  "frames-plan": ["capabilityId", "consentTranscript", "scopeId"], "frames-preview-plan": ["planId"],
+  "frames-preview": ["question", "seconds", "capabilityId"], "frames-confirm": ["previewId", "consent", "consentKey"],
+  "frames-cancel": ["previewId", "scopeId"],
+  "revision-save": ["expectedRevision", "base", "operations"], "revision-undo": ["expectedRevision", "base"],
+  "export-preview": ["format", "track"], "export-save": ["format", "track", "expectedRevision", "expectedBase", "expectedSnapshotSha256"],
+  "onboarding-save-local": ["revision"],
+  "settings-save": ["revision", "changes", "initialize"], "settings-service": ["action"],
+  "settings-secret-set": ["name", "value"], "settings-secret-remove": ["name"], "settings-secret-test": ["service"],
+  "settings-restore": ["revision", "backup"], "settings-export": ["path"], "settings-import-read": ["path"],
+  "settings-audio-test": ["seconds"],
+  "settings-model-download": ["kind", "model", "consent"], "settings-model-status": ["kind", "model"], "settings-model-cancel": ["kind", "model"],
+  "recording-process": ["consent", "consentKey"],
+  "capture-start": ["title"], "diarization-name": ["speakerId", "label"], "context-meeting": ["maxCharacters", "query", "offset"]
+};
 export const parseRequest = (value: unknown): Request => {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("request inválido");
   const request = value as Record<string, unknown>;
@@ -310,12 +341,22 @@ export const parseRequest = (value: unknown): Request => {
   if (request.key !== undefined && (typeof request.key !== "string" || request.key.length > 4096 || /[\x00-\x1f]/.test(request.key))) throw new Error("key inválido");
   if (request.payload !== undefined && (!request.payload || typeof request.payload !== "object" || Array.isArray(request.payload))) throw new Error("payload inválido");
   const payload = (request.payload || {}) as Record<string, unknown>;
-  const allowed = request.op === "summary-plan" ? ["requestId", "maxRequests"] : request.op === "summary-run" ? ["requestId", "consent", "consentKey"] : request.op === "summary-cancel" ? ["requestId"] : request.op === "provider-authorize" ? ["provider","model","analysis","context","maxFrames","maxBytes","consent"] : request.op === "provider-analyze" ? ["grantId","requestId","question","timestamps"] : request.op === "provider-cancel" ? ["grantId"] : request.op === "agent-status" ? [] : request.op === "agent-authorize" ? ["recipientId","data","consent"] : ["agent-cancel","agent-pause","agent-resume","agent-revoke"].includes(request.op as string) ? ["grantId"] : request.op === "agent-frames" ? ["grantId","timestamps"] : request.op === "frames-check-models" ? ["visionModel", "summaryModel"] : request.op === "frames-scope" ? ["startSeconds","endSeconds"] : request.op === "frames-plan" ? ["capabilityId","consentTranscript","scopeId"] : request.op === "frames-preview-plan" ? ["planId"] : request.op === "frames-preview" ? ["question", "seconds", "capabilityId"] : request.op === "frames-confirm" ? ["previewId", "consent", "consentKey"] : request.op === "frames-cancel" ? ["previewId","scopeId"] : request.op === "revision-save" ? ["expectedRevision","base","operations"] : request.op === "revision-undo" ? ["expectedRevision","base"] : request.op === "export-preview" ? ["format","track"] : request.op === "export-save" ? ["format","track","expectedRevision","expectedBase","expectedSnapshotSha256"] : request.op === "onboarding-save-local" ? ["revision"] : request.op === "settings-save" ? ["revision", "changes"] : request.op === "settings-service" ? ["action"] : request.op === "capture-start" ? ["title"] : request.op === "diarization-name" ? ["speakerId", "label"] : request.op === "context-meeting" ? ["maxCharacters", "query", "offset"] : [];
+  const allowed = ALLOWED_PAYLOAD[request.op as Request["op"]] || [];
   if (Object.keys(payload).some((key) => !allowed.includes(key))) throw new Error("payload inválido");
   for (const [key, max] of [["title", 200], ["speakerId", 8], ["label", 80], ["query", 1000], ["question", 1000], ["previewId", 36], ["revision", 64], ["visionModel", 200], ["summaryModel", 200], ["capabilityId", 36], ["consentKey", 64]] as const) {
     if (payload[key] !== undefined && (typeof payload[key] !== "string" || (payload[key] as string).length > max || /[\x00-\x1f\x7f]/.test(payload[key] as string))) throw new Error("payload inválido");
   }
   if (payload.action !== undefined && (typeof payload.action !== "string" || payload.action.length > 40)) throw new Error("payload inválido");
+  if (payload.name !== undefined && (typeof payload.name !== "string" || !/^[A-Z_][A-Z0-9_]{0,63}$/.test(payload.name))) throw new Error("payload inválido");
+  if (payload.value !== undefined && (typeof payload.value !== "string" || payload.value.length > 4096 || /[\x00-\x1f\x7f]/.test(payload.value))) throw new Error("payload inválido");
+  if (payload.service !== undefined && !["openai", "gemini"].includes(payload.service as string)) throw new Error("payload inválido");
+  if (payload.backup !== undefined && (typeof payload.backup !== "string" || !/^[\w.-]{1,200}$/.test(payload.backup))) throw new Error("payload inválido");
+  if (payload.path !== undefined && (typeof payload.path !== "string" || !payload.path.startsWith("/") || payload.path.length > 4096 || /[\x00-\x1f\x7f]/.test(payload.path))) throw new Error("payload inválido");
+  if (payload.kind !== undefined && !["whisper", "ollama"].includes(payload.kind as string)) throw new Error("payload inválido");
+  if (request.op !== "provider-authorize" && payload.model !== undefined && (typeof payload.model !== "string" || !/^[A-Za-z0-9._:/-]{1,120}$/.test(payload.model))) throw new Error("payload inválido");
+  if (payload.initialize !== undefined && typeof payload.initialize !== "boolean") throw new Error("payload inválido");
+  if (payload.client !== undefined && !["claude", "codex", "gemini"].includes(payload.client as string)) throw new Error("payload inválido");
+  if (request.op === "settings-audio-test" && payload.seconds !== undefined && (!Number.isSafeInteger(payload.seconds) || (payload.seconds as number) < 2 || (payload.seconds as number) > 15)) throw new Error("payload inválido");
   if (payload.changes !== undefined && (!payload.changes || typeof payload.changes !== "object" || Array.isArray(payload.changes) || Object.keys(payload.changes).length > 100)) throw new Error("payload inválido");
   if (request.op === "settings-save" && (typeof payload.revision !== "string" || payload.changes === undefined)) throw new Error("payload inválido");
   if (request.op === "settings-service" && typeof payload.action !== "string") throw new Error("payload inválido");
@@ -341,7 +382,7 @@ export const parseRequest = (value: unknown): Request => {
   if(payload.planId!==undefined && (typeof payload.planId!=="string"||payload.planId.length>100||/[\x00-\x1f]/.test(payload.planId)))throw Error("payload inválido");
   if(payload.consentTranscript!==undefined && typeof payload.consentTranscript!=="boolean")throw Error("payload inválido");
   if(payload.provider!==undefined&&!['openai','google'].includes(payload.provider as string))throw Error('payload inválido');
-  if(payload.model!==undefined&&(typeof payload.model!=='string'||!/^[-a-zA-Z0-9._]{1,160}$/.test(payload.model)))throw Error('payload inválido');
+  if(request.op==='provider-authorize'&&payload.model!==undefined&&(typeof payload.model!=='string'||!/^[-a-zA-Z0-9._]{1,160}$/.test(payload.model)))throw Error('payload inválido');
   if(payload.context!==undefined&&typeof payload.context!=='boolean')throw Error('payload inválido');
   if(payload.maxFrames!==undefined&&(!Number.isSafeInteger(payload.maxFrames)||(payload.maxFrames as number)<1||(payload.maxFrames as number)>6))throw Error('payload inválido');
   if(payload.maxBytes!==undefined&&(!Number.isSafeInteger(payload.maxBytes)||(payload.maxBytes as number)<65536||(payload.maxBytes as number)>8388608))throw Error('payload inválido');
@@ -417,6 +458,7 @@ const handle = async (request: Request): Promise<unknown> => {
   }
   if(request.op.startsWith('agent-')){const key=request.key||'';const p=request.payload||{};
    if(request.op==='agent-cancel')return agentStudio.cancel(p.grantId||'');
+   if(request.op==='agent-connect'){const grant=await agentStudio.access.read(p.grantId||'');if(grant.revoked||grant.recipient.kind!=='agent')throw Error('Grant unavailable for assistant connection');return {grantId:grant.id,recipientId:grant.recipient.id,paused:grant.paused,...buildAssistantConnection({id:grant.id,recipient:{id:grant.recipient.id}})};}
    if(request.op==='agent-frames')return agentStudio.frames(async()=>{invalidateLibrary();const {entry}=await findEntry(key);const id=registeredAgentRecordingId(entry);if(!id)throw Error('Recording is not registered');return id;},p.grantId||'',p.timestamps||[]);
    invalidateLibrary();const {entry}=await findEntry(key);const recordingId=registeredAgentRecordingId(entry);if(!recordingId)throw Error('Recording is not registered; no agent opt-in available');
    if(request.op==='agent-status')return agentStudio.status(recordingId);
@@ -484,7 +526,9 @@ const handle = async (request: Request): Promise<unknown> => {
       }
       const stopped = await stopCapture(config, { recoverOnly: request.op === "capture-recover" });
       invalidateLibrary();
-      return { ...await readCaptureStatus(config), outcome: stopped.state, jobId: stopped.job?.id };
+      // Automatic processing is on (a job was created): start it now instead of waiting for the timer.
+      const queued = stopped.job ? await queueSelectedJob(stopped.job.id).then((result) => result.status, () => null) : null;
+      return { ...await readCaptureStatus(config), outcome: stopped.state, jobId: stopped.job?.id, jobQueued: queued };
     } finally { await lease.release(); }
   }
   if (request.op === "jobs-list") {
@@ -499,6 +543,15 @@ const handle = async (request: Request): Promise<unknown> => {
   }
   if (!request.key) throw new Error("key é obrigatório para esta operação");
   if (request.op === "job-process" || request.op === "job-retry") return queueSelectedJob(request.key, { retry: request.op === "job-retry" });
+  if (request.op === "recording-process-plan" || request.op === "recording-process") {
+    invalidateLibrary();
+    const { config, entry } = await findEntry(request.key);
+    if (entry.sourceExists) await assertExistingManagedPath(config, entry.sourcePath);
+    if (request.op === "recording-process-plan") return planRecordingProcessing(config, entry);
+    const result = await runRecordingProcessing(config, entry, { consent: request.payload?.consent === true, consentKey: request.payload?.consentKey || "" });
+    invalidateLibrary();
+    return result;
+  }
   if(request.op.startsWith("revision-")||request.op.startsWith("export-")) {
     if(!UUID.test(request.key))throw new Error("Informe o id UUID da gravação");
     const job=await new JobStore().get(request.key), p=request.payload!;

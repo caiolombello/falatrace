@@ -183,3 +183,26 @@ test("keeps the managed session when enqueueing the finalized recording fails", 
 
   expect(acknowledged).toBe(false);
 });
+
+test("a legacy capture is reported as active and the Studio can stop it", async () => {
+  const config = structuredClone(DEFAULT_CONFIG);
+  const legacyState = { backend: "gnome" as const, outputPath: "/tmp/legacy.webm", startedAt: "2026-10-05T10:00:00.000Z" };
+  const status = await readCaptureStatus(config, {
+    sessionStore: { read: async () => null },
+    readLegacyState: async () => legacyState,
+    readAutomationState: async () => ({ version: 1, paused: false })
+  });
+  expect(status).toMatchObject({ active: true, legacy: { backend: "gnome", outputPath: "/tmp/legacy.webm" }, paused: false });
+  expect(status.audio.error).toBeUndefined();
+  expect(status.warning).toContain("backend legado");
+
+  let stopped = 0;
+  const result = await stopCapture(config, {}, {
+    sessionStore: { read: async () => null },
+    readLegacyState: async () => legacyState,
+    stopLegacy: async () => { stopped += 1; return { state: legacyState as never, videoPath: "/tmp/legacy.webm", endedAt: "x", job: null }; }
+  });
+  expect(stopped).toBe(1);
+  expect(result).toEqual({ state: "stopped", sourcePath: "/tmp/legacy.webm" });
+  expect(await stopCapture(config, {}, { sessionStore: { read: async () => null }, readLegacyState: async () => null })).toEqual({ state: "idle" });
+});

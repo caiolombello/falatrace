@@ -7,6 +7,7 @@ import {
 } from "../config/defaults";
 import { JOB_VERSION, type Transcript, type TranscriptSegment } from "../jobs/types";
 import { extractAudioChunk, extractAudioMp3, probeMedia } from "../jobs/media";
+import { readSecret } from "../config/secrets";
 
 const MAX_CHUNK_DURATION = 600;
 export const OPENAI_TRANSCRIPTION_TIMEOUT_MS = 60 * 60 * 1000;
@@ -209,7 +210,7 @@ export const transcribeWithOpenAI = async (
   signal?: AbortSignal
 ): Promise<Transcript> => {
   signal?.throwIfAborted();
-  const apiKey = process.env.OPENAI_API_KEY || config.openai.apiKey;
+  const apiKey = (await readSecret("OPENAI_API_KEY")) || config.openai.apiKey;
   if (!apiKey) {
     throw new Error("OPENAI_API_KEY is not configured");
   }

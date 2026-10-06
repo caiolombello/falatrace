@@ -2,6 +2,7 @@ import { assertPaidAudioSignal } from "./audio-preflight";
 import { promises as fs } from "node:fs";
 import { JOB_VERSION, type Transcript, type TranscriptSegment } from "../jobs/types";
 import { extractAudioMp3, probeMedia } from "../jobs/media";
+import { readSecret } from "../config/secrets";
 
 const GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/interactions";
 const MAX_AUDIO_DURATION = 1_800;
@@ -112,7 +113,7 @@ export const transcribeGeminiAudio = async (
   signal?: AbortSignal
 ): Promise<Transcript> => {
   signal?.throwIfAborted();
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = await readSecret("GEMINI_API_KEY");
   if (!apiKey) throw new Error("GEMINI_API_KEY não está configurada");
   if (!Number.isFinite(options.duration) || options.duration <= 0 || options.duration > MAX_AUDIO_DURATION) {
     throw new Error("Cada trecho enviado ao Gemini deve ter no máximo 30 minutos");
@@ -168,7 +169,7 @@ export const transcribeWithGemini = async (
   signal?: AbortSignal
 ): Promise<Transcript> => {
   signal?.throwIfAborted();
-  if (!process.env.GEMINI_API_KEY) throw new Error("GEMINI_API_KEY não está configurada");
+  if (!(await readSecret("GEMINI_API_KEY"))) throw new Error("GEMINI_API_KEY não está configurada");
   const duration = await probeMedia(sourcePath, signal);
   if (duration > MAX_AUDIO_DURATION) {
     throw new Error("O provedor Gemini experimental aceita arquivos de até 30 minutos");

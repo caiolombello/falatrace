@@ -5,6 +5,7 @@ import type { AppConfig } from "../config/defaults";
 import { launchObsDetached } from "./obsLauncher";
 import { formatName } from "./naming";
 import { clearState, readState, writeState } from "./state";
+import { readSecret } from "../config/secrets";
 
 export type StartOptions = {
   title?: string;
@@ -86,7 +87,7 @@ export class ManualObsController {
 
   private async connect(client: ManualObsClient): Promise<void> {
     const host = this.config.host === "::1" ? "[::1]" : this.config.host;
-    const password = process.env.RECORDING_CLI_OBS_PASSWORD || this.config.password;
+    const password = (await readSecret("RECORDING_CLI_OBS_PASSWORD")) || this.config.password;
     try {
       await client.connect(`ws://${host}:${this.config.port}`, password);
     } catch (err) {

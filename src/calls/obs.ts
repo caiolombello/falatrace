@@ -3,6 +3,7 @@ import { isAbsolute } from "node:path";
 import type { AppConfig } from "../config/defaults";
 import { runCommand } from "../jobs/command";
 import { launchObsDetached } from "../recording/obsLauncher";
+import { readSecret } from "../config/secrets";
 
 export interface CallObsClient {
   connect(url: string, password?: string): Promise<unknown>;
@@ -77,7 +78,7 @@ export class CallObsController {
     let connected = false;
     try {
       const host = this.config.host === "::1" ? "[::1]" : this.config.host;
-      const password = process.env.RECORDING_CLI_OBS_PASSWORD || this.config.password;
+      const password = (await readSecret("RECORDING_CLI_OBS_PASSWORD")) || this.config.password;
       await client.connect(`ws://${host}:${this.config.port}`, password);
       connected = true;
       return await client.call("GetRecordStatus");
@@ -94,7 +95,7 @@ export class CallObsController {
     let connected = false;
     try {
       const host = this.config.host === "::1" ? "[::1]" : this.config.host;
-      const password = process.env.RECORDING_CLI_OBS_PASSWORD || this.config.password;
+      const password = (await readSecret("RECORDING_CLI_OBS_PASSWORD")) || this.config.password;
       await client.connect(`ws://${host}:${this.config.port}`, password);
       connected = true;
       const status = await client.call("GetRecordStatus");
@@ -144,7 +145,7 @@ export class CallObsController {
     let connected = false;
     try {
       const host = this.config.host === "::1" ? "[::1]" : this.config.host;
-      const password = process.env.RECORDING_CLI_OBS_PASSWORD || this.config.password;
+      const password = (await readSecret("RECORDING_CLI_OBS_PASSWORD")) || this.config.password;
       await client.connect(`ws://${host}:${this.config.port}`, password);
       connected = true;
       const status = await client.call("GetRecordStatus");

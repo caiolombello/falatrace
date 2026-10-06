@@ -2,7 +2,11 @@ import { expect, test } from "bun:test";
 import { promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { readCredentialStatus, readSettings, saveSettings, validateSettingsPatch } from "../settings";
+import {
+  exportSettings, isPlaceholderRemoteHost, listConfigBackups, readCredentialStatus, readImportFile, readSettings, restoreConfigBackup,
+  saveSettings, validateSettingsPatch, VISUAL_REVIEW_DEFAULTS
+} from "../settings";
+import { CONFIG_BACKUPS_KEPT } from "../onboarding";
 import { DEFAULT_CONFIG } from "../defaults";
 
 const withRoot = async (run: (root: string) => Promise<void>) => {
@@ -100,7 +104,19 @@ test("patches are restricted to known fields and valid values", () => {
     null, [], {},
     { "openai.apiKey": "sk-test" },
     { "obs.password": "x" },
-    { "remote.host": "evil" },
+    { "remote.host": "-evil" },
+    { "remote.host": "evil host" },
+    { "obs.host": "192.168.0.10" },
+    { "proton.targetFolder": "/my-files/../escape" },
+    { "features.namingTemplate": "../escape" },
+    { "features.namingTemplate": "a/b" },
+    { "transcription.expectedLanguages": ["pt", "pt"] },
+    { "transcription.expectedLanguages": ["Portuguese"] },
+    { "callDetection.enabled": null },
+    { "s3.bucket": "UPPER" },
+    { "visualReview.maxInferences": 0 },
+    { "timesheet.readyConfidence": 0.2 },
+    { "transcription.openaiPrompt": "a\u0000b" },
     { "__proto__.polluted": true },
     { "callDetection.apps.skype": true },
     { "callDetection.enabled": "yes" },
@@ -119,12 +135,120 @@ test("patches are restricted to known fields and valid values", () => {
     .toEqual({ "summary.ollamaUrl": "http://127.0.0.1:11434", "transcription.language": "pt-BR" });
 });
 
-test("credential status reports only the source of each key", async () => {
+test("credential status reports the source and never the value", async () => {
   await withRoot(async (root) => {
-    const envFile = join(root, "calls.env");
-    await fs.writeFile(envFile, "# comment\nGEMINI_API_KEY='synthetic-private-sentinel'\nOPENAI_API_KEY=\n");
-    const status = await readCredentialStatus(DEFAULT_CONFIG, {}, envFile);
-    expect(status).toEqual({ openai: "missing", gemini: "calls.env" });
-    expect(await readCredentialStatus(DEFAULT_CONFIG, { OPENAI_API_KEY: "x" }, join(root, "absent"))).toEqual({ openai: "environment", gemini: "missing" });
+    const files = { "secrets.env": join(root, "secrets.env"), "worker.env": join(root, "worker.env"), "calls.env": join(root, "calls.env") };
+    await fs.writeFile(files["calls.env"], "# comment\nGEMINI_API_KEY='synthetic-private-sentinel'\nOPENAI_API_KEY=\n", { mode: 0o600 });
+    const status = await readCredentialStatus(DEFAULT_CONFIG, { sessionEnv: {}, files });
+    expect(status).toMatchObject({ openai: "missing", gemini: "calls.env" });
+    expect(JSON.stringify(status)).not.toContain("synthetic-private-sentinel");
+    const session = await readCredentialStatus(DEFAULT_CONFIG, { sessionEnv: { OPENAI_API_KEY: "x" }, files: { ...files, "calls.env": join(root, "absent") } });
+    expect(session.openai).toBe("missing");
+    expect(session.details.find((detail) => detail.name === "OPENAI_API_KEY")?.sessionOnly).toBe(true);
+  });
+});
+
+test("the shipped placeholder worker is not offered as configured", async () => {
+  await withRoot(async (root) => {
+    const path = join(root, "config.json");
+    expect((await readSettings(path, {})).readOnly.remoteConfigured).toBe(false);
+    for (const host of [DEFAULT_CONFIG.remote.host, "box.invalid", "worker.example", "a.test", "example.com", "sub.example.org"]) {
+      expect(isPlaceholderRemoteHost(host)).toBe(true);
+    }
+    for (const host of ["worker.lan", "10.0.0.5", "vaio"]) expect(isPlaceholderRemoteHost(host)).toBe(false);
+    await fs.writeFile(path, JSON.stringify({ remote: { host: "worker.lan" } }));
+    expect((await readSettings(path, {})).readOnly.remoteConfigured).toBe(true);
+  });
+});
+
+test("first use can record the defaults once; later empty saves are refused", async () => {
+  await withRoot(async (root) => {
+    const path = join(root, "config.json");
+    const fresh = await readSettings(path, {});
+    expect(fresh.readOnly.backendExplicit).toBe(false);
+    await expect(saveSettings(fresh.revision, {}, path)).rejects.toThrow("Nenhuma alteração");
+    const saved = await saveSettings(fresh.revision, {}, path, undefined, { initialize: true });
+    expect(saved).toMatchObject({ saved: true, exists: true });
+    expect(JSON.parse(await fs.readFile(path, "utf8"))).toEqual({});
+    const again = await readSettings(path, {});
+    await expect(saveSettings(again.revision, {}, path, undefined, { initialize: true })).rejects.toThrow("Nenhuma alteração");
+  });
+});
+
+test("remote processing needs a real worker, but older files are not blocked from unrelated saves", async () => {
+  await withRoot(async (root) => {
+    const path = join(root, "config.json");
+    const draft = await readSettings(path, {});
+    await expect(saveSettings(draft.revision, { "processing.defaultTarget": "remote" }, path)).rejects.toThrow("Configure o worker remoto");
+    await expect(saveSettings(draft.revision, { "archive.enabled": true }, path)).rejects.toThrow("Configure o worker remoto");
+    await saveSettings(draft.revision, { "processing.defaultTarget": "remote", "remote.host": "worker.lan" }, path);
+    await fs.writeFile(path, JSON.stringify({ processing: { defaultTarget: "remote" } }));
+    const old = await readSettings(path, {});
+    await saveSettings(old.revision, { "callDetection.enabled": true }, path);
+    expect(JSON.parse(await fs.readFile(path, "utf8")).callDetection).toEqual({ enabled: true });
+  });
+});
+
+test("visual limits are written as a complete lifetime policy and optional keys can be removed", async () => {
+  await withRoot(async (root) => {
+    const path = join(root, "config.json");
+    await fs.writeFile(path, JSON.stringify({ remote: { host: "worker.lan", user: "me", identityFile: "/home/me/.ssh/id" } }));
+    const draft = await readSettings(path, {});
+    expect(draft.values["visualReview.maxInferences"]).toBe(VISUAL_REVIEW_DEFAULTS.maxInferences);
+    expect(draft.readOnly.visualPolicyDeclared).toBe(false);
+    await saveSettings(draft.revision, { "visualReview.maxPreviews": 4, "remote.user": null, "remote.identityFile": null }, path);
+    const written = JSON.parse(await fs.readFile(path, "utf8"));
+    expect(written.visualReview).toEqual({ maxInferences: VISUAL_REVIEW_DEFAULTS.maxInferences, maxPreviews: 4, period: "lifetime" });
+    expect(written.remote).toEqual({ host: "worker.lan" });
+    expect((await readSettings(path, {})).readOnly.visualPolicyDeclared).toBe(true);
+  });
+});
+
+test("backups are listed, restored with a backup of the current file and rotated", async () => {
+  await withRoot(async (root) => {
+    const path = join(root, "config.json");
+    await fs.writeFile(path, JSON.stringify({ callDetection: { enabled: false } }));
+    let draft = await readSettings(path, {});
+    await saveSettings(draft.revision, { "callDetection.enabled": true }, path);
+    await fs.writeFile(join(root, "config.json.bak-not-ours"), "{}");
+    const backups = await listConfigBackups(path);
+    expect(backups).toHaveLength(1);
+    expect(backups[0]).toMatchObject({ valid: true });
+    draft = await readSettings(path, {});
+    const restored = await restoreConfigBackup(draft.revision, backups[0].name, path);
+    expect(restored.backupCreated).toBe(true);
+    expect(JSON.parse(await fs.readFile(path, "utf8"))).toEqual({ callDetection: { enabled: false } });
+    await expect(restoreConfigBackup((await readSettings(path, {})).revision, "../config.json", path)).rejects.toThrow("inválida");
+    for (let index = 0; index < CONFIG_BACKUPS_KEPT + 3; index += 1) {
+      const current = await readSettings(path, {});
+      await saveSettings(current.revision, { "callDetection.entryDebounceSeconds": 2 + (index % 50) }, path);
+    }
+    expect((await listConfigBackups(path)).length).toBe(CONFIG_BACKUPS_KEPT);
+    expect(await fs.readFile(join(root, "config.json.bak-not-ours"), "utf8")).toBe("{}");
+  });
+});
+
+test("export omits credentials and import returns only allowlisted, valid fields", async () => {
+  await withRoot(async (root) => {
+    const path = join(root, "config.json");
+    await fs.writeFile(path, JSON.stringify({ openai: { apiKey: "synthetic-private-sentinel", model: "x" }, obs: { password: "secret", port: 4455 }, future: { a: 1 }, callDetection: { enabled: true } }));
+    const target = join(root, "exported.json");
+    expect(await exportSettings(target, path)).toEqual({ exported: target, credentialsOmitted: true });
+    const exported = await fs.readFile(target, "utf8");
+    expect(exported).not.toContain("synthetic-private-sentinel");
+    expect(exported).not.toContain("secret");
+    expect((await fs.stat(target)).mode & 0o777).toBe(0o600);
+    await expect(exportSettings("relative.json", path)).rejects.toThrow(".json");
+    await expect(exportSettings(join(root, "missing", "x.json"), path)).rejects.toThrow("não existe");
+
+    const incoming = join(root, "incoming.json");
+    await fs.writeFile(incoming, JSON.stringify({ callDetection: { enabled: false, entryDebounceSeconds: 999 }, backend: "audio", future: 1, openai: { apiKey: "k" }, visualReview: { maxInferences: 5, maxPreviews: 6, period: "lifetime" } }));
+    expect((await readImportFile(incoming)).rejected).toEqual(["callDetection.entryDebounceSeconds"]);
+    await fs.writeFile(incoming, JSON.stringify({ callDetection: { enabled: false, entryDebounceSeconds: 7 }, backend: "audio", future: 1, openai: { apiKey: "k" }, visualReview: { maxInferences: 5, maxPreviews: 6, period: "lifetime" } }));
+    const imported = await readImportFile(incoming);
+    expect(imported.values).toMatchObject({ "callDetection.enabled": false, "callDetection.entryDebounceSeconds": 7, backend: "audio", "visualReview.maxInferences": 5, "visualReview.maxPreviews": 6 });
+    expect(imported.ignored).toEqual(["future"]);
+    expect(imported.credentialsIgnored).toBe(true);
+    expect(JSON.stringify(imported)).not.toContain('"k"');
   });
 });

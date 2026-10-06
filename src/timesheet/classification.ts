@@ -8,6 +8,7 @@ import type {
   TimesheetContext
 } from "./types";
 import { buildActivityPlan } from "./allocation";
+import { readSecret } from "../config/secrets";
 
 const MAX_TRANSCRIPT_CONTEXT = 50_000;
 
@@ -416,7 +417,7 @@ export const classifyTimeEntry = async (
 ): Promise<TimeEntrySuggestion> => {
   const fallback = buildDeterministicSuggestion(summary, transcript, context);
   if (!config.timesheet.aiClassification) return fallback;
-  const apiKey = process.env.OPENAI_API_KEY || config.openai.apiKey;
+  const apiKey = (await readSecret("OPENAI_API_KEY")) || config.openai.apiKey;
   if (!apiKey) {
     return {
       ...fallback,

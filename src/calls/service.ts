@@ -3,14 +3,9 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { AppConfig } from "../config/defaults";
 import { runCommand } from "../jobs/command";
-import { getServiceLaunchCommand } from "../runtime/launcher";
+import { execStart, quoteSystemd, serviceLaunchCommand } from "../runtime/systemd-units";
 
-const quoteSystemd = (value: string): string =>
-  `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
-
-const getLaunchCommand = (): string[] => getServiceLaunchCommand();
-
-const execStart = (args: string[]): string => args.map(quoteSystemd).join(" ");
+const getLaunchCommand = (): string[] => serviceLaunchCommand();
 
 const getUnitPath = (): string =>
   join(homedir(), ".config", "systemd", "user", "recording-cli-calls.service");

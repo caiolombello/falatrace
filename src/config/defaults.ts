@@ -88,6 +88,8 @@ export type AppConfig = {
     autoEnqueue: boolean;
     defaultTarget: ExecutionTarget;
     syncIntervalMinutes: number;
+    /** Desktop notification when a processing job finishes or fails. */
+    notifyOnCompletion: boolean;
   };
   retention: {
     localCompletedWorkDays: number;
@@ -206,7 +208,8 @@ export const DEFAULT_CONFIG: AppConfig = {
   processing: {
     autoEnqueue: false,
     defaultTarget: "local",
-    syncIntervalMinutes: 5
+    syncIntervalMinutes: 5,
+    notifyOnCompletion: true
   },
   retention: {
     localCompletedWorkDays: 7,

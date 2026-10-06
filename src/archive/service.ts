@@ -1,12 +1,10 @@
 import { promises as fs } from "node:fs";
-import { homedir } from "node:os";
-import { basename, join } from "node:path";
+import { join } from "node:path";
 import type { AppConfig } from "../config/defaults";
 import { runCommand } from "../jobs/command";
 import { getArchiveStateDir } from "./store";
 import { getArchiveDataDir } from "./proton";
-
-const quote = (value: string): string => `"${value.replaceAll("%", "%%").replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
+import { quoteSystemd as quote, removeUserUnits, serviceLaunchCommand, userUnitDir } from "../runtime/systemd-units";
 
 export const buildArchiveUnits = (config: AppConfig, command: string[]): { service: string; timer: string } => ({
   service: `[Unit]\nDescription=Archive original recordings independently of transcription\nAfter=network-online.target\n\n[Service]\nType=oneshot\nExecStart=${[...command, "archive", "sync", "--limit", "3"].map(quote).join(" ")}\nEnvironment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin\nEnvironment=PROTON_DRIVE_CACHE_DIR=%h/.local/share/recording-cli/proton-drive-runtime\nNoNewPrivileges=yes\nPrivateTmp=yes\nProtectSystem=strict\nProtectHome=read-only\nReadWritePaths=%h/.local/state/recording-cli %h/.local/share/recording-cli\nTimeoutStartSec=infinity\nNice=10\nIOSchedulingClass=idle\n`,
@@ -15,10 +13,8 @@ export const buildArchiveUnits = (config: AppConfig, command: string[]): { servi
 
 export const installArchiveTimer = async (config: AppConfig): Promise<string[]> => {
   if (!config.archive.enabled || (!config.archive.vaio && !config.archive.proton)) throw new Error("Habilite ao menos um destino em archive antes de instalar o timer");
-  const bin = basename(process.execPath);
-  const launch = bin === "bun" || bin.startsWith("bun-") ? [process.execPath, process.argv[1]] : [process.execPath];
-  const units = buildArchiveUnits(config, launch);
-  const unitDir = join(homedir(), ".config/systemd/user");
+  const units = buildArchiveUnits(config, serviceLaunchCommand());
+  const unitDir = userUnitDir();
   for (const directory of [unitDir, getArchiveStateDir(), getArchiveDataDir()]) await fs.mkdir(directory, { recursive: true, mode: 0o700 });
   const paths: string[] = [];
   for (const [kind, content] of Object.entries(units)) {
@@ -33,3 +29,7 @@ export const installArchiveTimer = async (config: AppConfig): Promise<string[]> 
   await runCommand("systemctl", ["--user", "enable", "--now", "recording-cli-archive.timer"]);
   return paths;
 };
+
+/** Stop periodic original-media copies. Existing copies and the archive catalog are kept. */
+export const uninstallArchiveTimer = async (): Promise<string[]> =>
+  removeUserUnits(["recording-cli-archive.timer", "recording-cli-archive.service"], ["recording-cli-archive.timer"]);

@@ -13,6 +13,7 @@ import { formatName } from "./naming";
 import { capturedAudioConfig, RecordingSessionStore, type RecordingSession, type AudioSelection } from "./session";
 import type { AudioSources } from "./capture";
 import { readState } from "./state";
+import { sharedControllerBackend } from "./capabilities";
 import { captureProcessMatches, findFlatpakCapture } from "./flatpak-capture";
 import { ArchiveStore } from "../archive/store";
 
@@ -187,11 +188,8 @@ export class RecordingController {
     try {
       if (await this.store.read() || await readState()) return "already-recording";
       if (options.signal?.aborted || await options.shouldContinue?.() === false) return "cancelled";
-      if (!["audio", "gpu-screen-recorder", "obs", "obs-ws", "obs-cli", "simple"].includes(this.config.backend)) {
-        throw new Error("This backend does not support the shared automatic recording controller");
-      }
-      const backend = this.config.backend === "audio" || this.config.backend === "gpu-screen-recorder"
-        ? this.config.backend : "obs";
+      const backend = sharedControllerBackend(this.config);
+      if (!backend) throw new Error("This backend does not support the shared automatic recording controller");
       const id = validateJobId(options.sessionId || randomUUID());
       const baseName = formatName(this.config.features.namingTemplate, options.title);
       // Naming templates cannot escape the recordings directory or collide between sessions.

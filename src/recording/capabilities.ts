@@ -145,6 +145,20 @@ const assertObsCompatible = (
 };
 
 export type EffectiveRecordingBackend = "obs" | "gnome" | "wf-recorder" | "audio" | "gpu-screen-recorder";
+export type SharedControllerBackend = "audio" | "gpu-screen-recorder" | "obs";
+
+/**
+ * Backend used by the shared recording controller (call monitor, tray and managed
+ * captures). Unlike manual `simple`, it has no GNOME/wlroots fallback: `simple` and the
+ * OBS aliases mean OBS here. Null means the configured backend cannot record automatically.
+ */
+export const sharedControllerBackend = (config: Pick<AppConfig, "backend">): SharedControllerBackend | null =>
+  config.backend === "audio" || config.backend === "gpu-screen-recorder" ? config.backend
+    : ["obs", "obs-ws", "obs-cli", "simple"].includes(config.backend) ? "obs" : null;
+
+/** Backend an automatic call recording will use for this configuration. */
+export const automaticRecordingBackend = (config: Pick<AppConfig, "backend" | "callDetection">): SharedControllerBackend | null =>
+  config.callDetection.mode === "obs" ? "obs" : sharedControllerBackend(config);
 
 export const resolveSimpleBackend = (
   config: AppConfig,

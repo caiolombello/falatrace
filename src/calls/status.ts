@@ -7,6 +7,7 @@ import type {
   CallMonitorState,
   NetworkTelemetry
 } from "./types";
+import { redactResolvedSecrets } from "../config/secrets";
 
 const getStateRoot = (): string =>
   process.env.XDG_STATE_HOME || join(homedir(), ".local", "state");
@@ -70,5 +71,6 @@ export const sanitizeError = (err: unknown): string =>
       .replace(/[\r\n\0]+/g, " ");
     const obsPassword = process.env.RECORDING_CLI_OBS_PASSWORD;
     if (obsPassword) message = message.replaceAll(obsPassword, "[redacted]");
+    message = redactResolvedSecrets(message);
     return message.slice(0, 500);
   })();

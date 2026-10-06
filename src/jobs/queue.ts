@@ -8,6 +8,7 @@ import {
   validateJobId,
   validateJobRecord
 } from "./types";
+import { getServiceLaunchCommand } from "../runtime/launcher";
 
 export type QueueSelectedJobResult = {
   id: string;
@@ -25,12 +26,7 @@ export type QueueSelectedJobDependencies = {
 const unitName = (id: string): string =>
   `recording-cli-job-${validateJobId(id)}.service`;
 
-const launchCommand = (): string[] => {
-  const executable = basename(process.execPath);
-  return executable === "bun" || executable.startsWith("bun-")
-    ? [process.execPath, resolve(import.meta.dir, "../cli/index.ts")]
-    : [process.execPath];
-};
+const launchCommand = (): string[] => getServiceLaunchCommand();
 
 const defaultUnitActive = async (
   id: string,

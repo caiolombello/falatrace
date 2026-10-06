@@ -8,6 +8,7 @@ import { RecordingController } from "./controller";
 import { capturedAudioConfig, RecordingSessionStore, type RecordingSession } from "./session";
 import { startRecording as startSimpleRecording } from "./simple";
 import { readState, type RecordingState } from "./state";
+import { stopLegacyRecording } from "./legacy-stop";
 
 type CaptureController = Pick<
   RecordingController,
@@ -29,6 +30,7 @@ export type CaptureApplicationDependencies = {
   inspectAudioSources?: typeof inspectAudioSources;
   readAutomationState?: () => Promise<AutomationState>;
   startRecording?: typeof startSimpleRecording;
+  stopLegacy?: typeof stopLegacyRecording;
   now?: () => string;
 };
 
@@ -45,6 +47,8 @@ export type CaptureStatus = {
     error?: string;
   };
   paused?: boolean;
+  /** A capture started by an unmanaged legacy backend; the Studio can stop it but not inspect its audio. */
+  legacy?: { backend: string; startedAt: string; outputPath: string };
 };
 
 export type StopCaptureResult = {
@@ -56,7 +60,7 @@ export type StopCaptureResult = {
 
 const legacyCaptureError = (): Error =>
   new Error(
-    "Há uma gravação legada em andamento. Finalize-a pelo terminal com `record stop`; o estado foi preservado."
+    "Há uma gravação legada em andamento. Pare-a antes de iniciar outra; o estado foi preservado."
   );
 
 export const readCaptureStatus = async (
@@ -90,8 +94,18 @@ export const readCaptureStatus = async (
     } catch {
       warning = "Não foi possível confirmar o estado da captura. O estado persistido foi preservado.";
     }
-  } else if (await (dependencies.readLegacyState || readState)()) {
-    warning = "Há uma gravação legada registrada. Finalize-a pelo terminal com `record stop`.";
+  }
+  const legacyState = managed ? null : await (dependencies.readLegacyState || readState)();
+  if (legacyState) {
+    // The legacy backends keep their own state; report it as active so Stop stays available.
+    return {
+      session: null,
+      active: true,
+      warning: `Captura iniciada por um backend legado (${legacyState.backend}). O Studio pode pará-la, mas não acompanha o áudio dela.`,
+      audio: { configured: { audioSource: config.capture.audioSource, microphone: config.capture.microphone, desktop: config.capture.desktop }, selected: {} },
+      legacy: { backend: String(legacyState.backend), startedAt: legacyState.startedAt, outputPath: legacyState.outputPath },
+      ...(await (dependencies.readAutomationState || readAutomationState)().then((state) => ({ paused: state.paused }), () => ({})))
+    };
   }
 
   const audioConfig = active ? (session?.audio ? capturedAudioConfig(config.capture, session.audio) : undefined) : config.capture;
@@ -203,7 +217,8 @@ export const stopCapture = async (
   const managed = await store.read();
   if (!managed) {
     if (await (dependencies.readLegacyState || readState)()) {
-      throw legacyCaptureError();
+      const legacy = await (dependencies.stopLegacy || stopLegacyRecording)(config);
+      if (legacy) return { state: "stopped", sourcePath: legacy.videoPath, ...(legacy.job ? { job: legacy.job } : {}) };
     }
     return { state: "idle" };
   }

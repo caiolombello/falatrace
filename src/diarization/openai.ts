@@ -4,6 +4,7 @@ import OpenAI, { APIError } from "openai";
 import type { AppConfig } from "../config/defaults";
 import { runCommand } from "../jobs/command";
 import { probeMedia } from "../jobs/media";
+import { readSecret } from "../config/secrets";
 
 export const DIARIZATION_MODEL = "gpt-4o-transcribe-diarize";
 export const DIARIZATION_UPLOAD_MAX_BYTES = 24_000_000;
@@ -73,7 +74,7 @@ export const diarizeAudioWithOpenAI = async (
   config: AppConfig, audioPath: string, duration: number, language: string
 ): Promise<DiarizationTurn[]> => {
   await assertDiarizationUpload(audioPath);
-  const apiKey = process.env.OPENAI_API_KEY || config.openai.apiKey;
+  const apiKey = (await readSecret("OPENAI_API_KEY")) || config.openai.apiKey;
   if (!apiKey) throw new Error("A chave OpenAI não está configurada");
   const client = new OpenAI({
     apiKey, maxRetries: 0, timeout: 60 * 60 * 1000,

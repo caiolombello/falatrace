@@ -2,17 +2,12 @@ import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { runCommand } from "../jobs/command";
-import { getServiceLaunchCommand } from "../runtime/launcher";
+import { execStart, serviceLaunchCommand } from "../runtime/systemd-units";
 import { checkTrayDependencies } from "./runtime";
 
 const SERVICE_NAME = "recording-cli-tray.service";
 
-const quoteSystemd = (value: string): string =>
-  `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
-
-const getLaunchCommand = (): string[] => getServiceLaunchCommand();
-
-const execStart = (args: string[]): string => args.map(quoteSystemd).join(" ");
+const getLaunchCommand = (): string[] => serviceLaunchCommand();
 
 const getUnitPath = (): string =>
   join(homedir(), ".config", "systemd", "user", SERVICE_NAME);

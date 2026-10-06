@@ -20,6 +20,7 @@ import { hashFile, JobStore } from "./store";
 import type { JobRecord } from "./types";
 import { withRevisionLease, RevisionConflictError } from "../revisions";
 import { hasSavedRevision } from "../revisions/service";
+import { notifyJobOutcome } from "./notify";
 
 const ARTIFACT_NAMES = ["transcript.json", "transcript.md", "summary.json", "summary.md"];
 
@@ -170,16 +171,20 @@ export const syncJob = async (
   admissionSignal?: AbortSignal
 ): Promise<JobRecord> => withJobLease(store, id, async (job) => {
   if (["completed", "failed", "processing"].includes(job.state)) return job;
-  try {
-    return job.target === "local"
-      ? await withHeavyAdmission('pipeline',job.id,async()=>{const fresh=await store.get(job.id);if(['completed','failed','processing'].includes(fresh.state)||fresh.target!=='local')return fresh;return processLocalJobOwned(config,store,fresh);},{onWait:cliAdmissionWait,signal:admissionSignal})
-      : await syncRemoteJob(config, store, job);
-  } catch (err) {
-    const fresh=await store.get(job.id);if(fresh.state!==job.state||admissionSignal?.aborted)return fresh;
-    return store.update(job.id, job.state === "transferring" ? "pending" : job.state, {
-      error: err instanceof Error ? err.message : String(err)
-    });
-  }
+  const result = await (async () => {
+    try {
+      return job.target === "local"
+        ? await withHeavyAdmission('pipeline',job.id,async()=>{const fresh=await store.get(job.id);if(['completed','failed','processing'].includes(fresh.state)||fresh.target!=='local')return fresh;return processLocalJobOwned(config,store,fresh);},{onWait:cliAdmissionWait,signal:admissionSignal})
+        : await syncRemoteJob(config, store, job);
+    } catch (err) {
+      const fresh=await store.get(job.id);if(fresh.state!==job.state||admissionSignal?.aborted)return fresh;
+      return store.update(job.id, job.state === "transferring" ? "pending" : job.state, {
+        error: err instanceof Error ? err.message : String(err)
+      });
+    }
+  })();
+  if (result.state !== job.state) await notifyJobOutcome(config, result);
+  return result;
 });
 
 export const syncJobs = async (

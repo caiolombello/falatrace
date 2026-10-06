@@ -1,5 +1,7 @@
 import { REVIEW_EXPORT_HELP } from "./review-export";
 import { REVIEWED_SNAPSHOT_HELP } from "./reviewed-snapshots";
+import { KEYS_HELP } from "./keys";
+import { MODELS_HELP } from "./models";
 import { readArtifactStates } from "../jobs/transcript-access";
 import { version as productVersion } from '../../package.json';
 import { readHeavyStatus } from '../runtime/heavy-admission';
@@ -17,17 +19,18 @@ import { checkRecordingAudio } from "../recording/health";
 import { runCommand } from "../jobs/command";
 import { diagnoseRecordingBackend } from "../recording/capabilities";
 import { clearState, readState } from "../recording/state";
+import { stopLegacyRecording } from "../recording/legacy-stop";
 import { uploadToProtonDrive } from "../proton/upload";
 import {
   backupProtonJob,
   ProtonBackupStore,
   syncProtonBackups
 } from "../proton/backup";
-import { installProtonBackupTimer } from "../proton/service";
+import { installProtonBackupTimer, uninstallProtonBackupTimer } from "../proton/service";
 import { ArchiveStore } from "../archive/store";
 import { syncMediaArchive, sealedArchiveMedia } from "../archive/sync";
 import { restoreProtonMedia } from "../archive/proton";
-import { installArchiveTimer } from "../archive/service";
+import { installArchiveTimer, uninstallArchiveTimer } from "../archive/service";
 import { registerLocalLibraryMedia } from "../archive/discover";
 import { recoverRemoteOriginals } from "../archive/recovery";
 import { importRemoteLibraryMedia } from "../archive/import";
@@ -41,7 +44,7 @@ import { listVideos, getPresignedUrl, playWithPlayer } from "../s3/play";
 import { JobStore } from "../jobs/store";
 import { processLocalJob, retryJob, syncJob, syncJobs } from "../jobs/sync";
 import { checkRemote } from "../jobs/remote";
-import { installSyncTimer, installWorkerService } from "../jobs/service";
+import { installSyncTimer, installWorkerService, uninstallSyncTimer } from "../jobs/service";
 import { runWorker, runWorkerOnce } from "../jobs/worker";
 import { cleanupLocalCompletedWork } from "../jobs/retention";
 import { enqueueRecording } from "../jobs/enqueue";
@@ -104,7 +107,9 @@ const printHelp = (): void => {
   console.log(`\nFalaTrace ${productVersion} (Linux, experimental)\n\nFirst use: init → config → record doctor. Review consent and providers before record start.\nExisting recording-cli config/state identifiers are preserved.\nAutomation: calls pause affects future captures; record stop ends the active capture.\n\nUsage:\n  falatrace <command> [options]\n\nCommands:\n  agent-context capabilities Local candidate frame retrieval capabilities\n  tui                        Browse recordings and time entries\n  tray run                   Visible recording controls (desktop prerequisites)\n  context search <query>     Search meetings as JSON\n  context meeting <job-id>   Read bounded context as JSON\n  context build              Rebuild derived local memory\n  context show <client>      Export compact context as text\n  jobs cleanup --dry-run     Preview eligible local retention cleanup\n  archive status            Inspect backup state as JSON\n  init                       Create a default config file\n  config                     Show current config path\n  time list                  List local time entries\n  time show <id>             Show a time entry\n  time start                 Start a manual timer\n  time stop                  Stop the manual timer\n  time add                   Add a time entry\n  time edit <id>             Edit a time entry\n  time delete <id> --yes     Delete a local time entry\n  time classify <id>         Retry AI classification\n  time init-context          Create an empty local catalog\n  time context               Show catalog path and counts\n  calls inspect              Show sanitized call-detection signals\n  calls run [--dry-run]      Monitor calls in the foreground\n  calls status               Show current call-monitor state\n  calls pause                Suspend new automatic recordings\n  calls resume               Resume recording for future calls\n  calls install-service      Install and start the user service\n  calls uninstall-service    Disable and remove the user service\n  record doctor              Inspect backends without starting capture\n  record recover             Finalize an interrupted capture\n  record check <file>        Check audio tracks and silence locally\n  record start               Start a recording\n  record stop                Stop and enqueue the current recording\n  record status              Show recording status\n  record reset               Clear local recording state\n  transcribe <file>          Create and start a processing job\n  jobs list                  List local jobs\n  jobs status <id>           Show a job\n  jobs process <id>          Process one selected job\n  jobs sync                  Send pending jobs and fetch results\n  jobs retry <id>            Retry a failed job\n  jobs install-timer         Install the periodic sync timer\n  remote check               Check the configured worker host\n  worker run                 Run the processing worker\n  worker once                Process the current remote queue once\n  worker install             Install the worker user service\n  backup proton <job-id>     Back up one completed job to Proton Drive\n  backup sync                Back up eligible completed jobs\n  backup status [job-id]     Show persistent Proton backup state\n  backup install-timer       Install the asynchronous backup timer\n  upload <file>              Legacy cloud upload\n  upload-all                 Legacy bulk cloud upload\n  s3 play                    List S3 videos and play with the recording player\n  monitors                   List available monitors\n  help                       Show this help\n\nTime entry options:\n  --date <YYYY-MM-DD>\n  --start <HH:MM>\n  --end <HH:MM>\n  --hours <decimal>\n  --client <code|name|alias>\n  --type <id|slug|name>\n  --card <DEV-123>\n  --description <text>\n\nProcessing options:\n  --target <local|remote>\n  --transcriber <whisper-cpp|openai|gemini>\n  --summarizer <openai|ollama>\n\nRecording options:\n  --backend <audio|gpu-screen-recorder|obs>\n  --microphone <device-name>\n  --desktop-source <device-name>\n  --capture-profile <standard|call-light>  Explicit video quality tradeoff (GPU only)\n  --encoder <gpu|cpu>\n  --title <name>\n  --duration-mins <mins>\n  --geometry <WxH+X+Y>\n  --audio <none|microphone|desktop|both>\n  --monitor <id|all>\n  --foreground\n  --force\n`);
   console.log(REVIEW_EXPORT_HELP);
   console.log(REVIEWED_SNAPSHOT_HELP);
-  console.log(`Additional commands:\n  context build [--client <client>]\n  context list\n  context show <client>\n  context search <query>     Search meeting summaries and transcripts\n  context meeting <job-id>   Read bounded meeting context as JSON\n  context path <client>\n  context prompt <client>\n  calls validate <app-open|in-call|ended> [--session <name>]\n  calls validation-report [--session <name>]\n  tray run\n  tray install-service\n  tray uninstall-service\n  jobs cleanup [--dry-run]\n`);
+  console.log(KEYS_HELP);
+  console.log(MODELS_HELP);
+  console.log(`Additional commands:\n  context build [--client <client>]\n  context list\n  context show <client>\n  context search <query>     Search meeting summaries and transcripts\n  context meeting <job-id>   Read bounded meeting context as JSON\n  context path <client>\n  context prompt <client>\n  calls validate <app-open|in-call|ended> [--session <name>]\n  calls validation-report [--session <name>]\n  tray run\n  tray install-service\n  tray uninstall-service\n  jobs cleanup [--dry-run]\n  jobs uninstall-timer\n  archive uninstall-timer\n  backup uninstall-timer\n`);
 };
 
 const parseFlag = (args: string[], flag: string): string | undefined => {
@@ -247,6 +252,16 @@ const main = async (): Promise<void> => {
       } else {
         throw new Error("Use recording-studio para abrir a biblioteca gráfica");
       }
+      break;
+    }
+    case "models": {
+      const { runModelsCli } = await import("./models");
+      try { await runModelsCli(args); } catch (error) { console.error(error instanceof Error ? error.message : String(error)); process.exitCode = 1; }
+      break;
+    }
+    case "keys": {
+      const { runKeysCli } = await import("./keys");
+      try { await runKeysCli(args); } catch (error) { console.error(error instanceof Error ? error.message : String(error)); process.exitCode = 1; }
       break;
     }
     case "init": {
@@ -752,60 +767,15 @@ const main = async (): Promise<void> => {
             console.log(`Recording saved: ${stopped.outputPath}`);
             break;
           }
-          const state = await readState();
-          if (!state) {
+          const { config } = await loadConfig();
+          const legacy = await stopLegacyRecording(config);
+          if (!legacy) {
             console.error("No active recording found.");
             process.exit(1);
             return;
           }
-
-          const { config } = await loadConfig();
-          const backend = state.backend ?? config.backend;
-          let videoPath = state.outputPath;
-
-          if (backend === "wf-recorder") {
-            await stopWfRecording();
-            console.log("Recording stopped.");
-          } else if (backend === "gnome") {
-            const result = await stopGnomeRecording();
-            if (result.stopped) {
-              console.log("Recording stopped.");
-            } else {
-              console.warn("Stop requested, but GNOME reported failure. State cleared.");
-              if (result.message) {
-                console.warn(result.message);
-              }
-            }
-          } else if (backend === "simple" || backend === "pipewire" || backend === "gstreamer" || backend === "kooha" || backend === "obs-ws" || backend === "obs-cli") {
-            const result = await stopSimpleRecording(config);
-            videoPath = result.videoPath || videoPath;
-          } else if (backend === "hybrid") {
-            await stopHybridRecording();
-            console.log("Recording stopped.");
-          } else if (backend === "ffmpeg-only" || backend === "gnome-ffmpeg" || backend === "gnome-native") {
-            await stopFfmpegOnlyRecording();
-            console.log("Recording stopped.");
-          } else {
-            console.error("Current backend is not supported yet.");
-            process.exit(1);
-            return;
-          }
-          const endedAt = new Date().toISOString();
-          if (config.timesheet.enabled) {
-            await new TimeEntryStore().finishRecording(
-              state.outputPath,
-              endedAt,
-              videoPath
-            ).catch((err) =>
-              console.warn(
-                `Time entry was not finalized: ${err instanceof Error ? err.message : String(err)}`
-              )
-            );
-          }
-          await enqueueRecording(config, videoPath, {
-            startedAt: state.startedAt,
-            endedAt
-          });
+          if (legacy.warning) console.warn(legacy.warning);
+          console.log(`Recording stopped: ${legacy.videoPath}`);
           break;
         } catch (err) {
           console.error(err instanceof Error ? err.message : String(err));
@@ -979,6 +949,10 @@ const main = async (): Promise<void> => {
           paths.forEach((path) => console.log(path));
           break;
         }
+        if (subcommand === "uninstall-timer") {
+          (await uninstallSyncTimer()).forEach((path) => console.log(path));
+          break;
+        }
         throw new Error("Unknown jobs command");
       } catch (err) {
         console.error(err instanceof Error ? err.message : String(err));
@@ -1103,6 +1077,8 @@ const main = async (): Promise<void> => {
           console.log(await restoreProtonMedia(config, sealedArchiveMedia(record)));
         } else if (subcommand === "install-timer") {
           for (const path of await installArchiveTimer(config)) console.log(path);
+        } else if (subcommand === "uninstall-timer") {
+          for (const path of await uninstallArchiveTimer()) console.log(path);
         } else throw new Error("Comando de arquivamento desconhecido");
       } catch (error) {
         console.error(error instanceof Error ? error.message : String(error)); process.exitCode = 1;
@@ -1171,6 +1147,10 @@ const main = async (): Promise<void> => {
           }
           const paths = await installProtonBackupTimer(config);
           paths.forEach((path) => console.log(path));
+          break;
+        }
+        if (subcommand === "uninstall-timer") {
+          (await uninstallProtonBackupTimer()).forEach((path) => console.log(path));
           break;
         }
         throw new Error("Unknown backup command");

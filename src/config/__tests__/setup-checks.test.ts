@@ -3,7 +3,8 @@ import { promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_CONFIG } from "../defaults";
-import { checkProcessing, listAudioDevices, readServiceStatus, type SetupProbe } from "../setup-checks";
+import { checkAutomation, checkProcessing, listAudioDevices, readServiceStatus, type SetupProbe } from "../setup-checks";
+import { buildSyncUnits } from "../../jobs/service";
 import { buildCallMonitorUnit } from "../../calls/service";
 import { getServiceLaunchCommand } from "../../runtime/launcher";
 
@@ -101,4 +102,79 @@ test("service units prefer a stable link that resolves to the running release", 
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }
+});
+
+test("automation checks say what will really record and whether new recordings get processed", async () => {
+  const config = structuredClone(DEFAULT_CONFIG);
+  const idleTimer = { installed: false, enabled: false, active: false, outdated: false, nextRunAt: null, lastResult: null };
+  const services = { calls: { installed: false, enabled: false, active: false, outdated: false, staleConfig: false }, tray: { installed: false, enabled: false, active: false, outdated: false, staleConfig: false }, sync: idleTimer, archive: idleTimer, backup: idleTimer };
+  expect(checkAutomation(config, services)).toEqual([]);
+  config.callDetection.enabled = true;
+  expect(checkAutomation(config, services)).toEqual([]);
+  config.callDetection.mode = "record";
+  // The shipped `simple` backend means OBS for automatic recording, and OBS starts disabled.
+  expect(checkAutomation(config, services)[0]).toMatchObject({ id: "automatic-backend", status: "missing", action: "capture" });
+  config.backend = "audio";
+  expect(checkAutomation(config, services)[0]).toMatchObject({ id: "automatic-backend", status: "ok", detail: expect.stringContaining("só áudio") });
+  config.backend = "gnome";
+  expect(checkAutomation(config, services)[0]).toMatchObject({ status: "missing", detail: expect.stringContaining("não grava automaticamente") });
+  config.backend = "audio";
+  config.processing.autoEnqueue = true;
+  expect(checkAutomation(config, services).find((check) => check.id === "processing-timer")).toMatchObject({ status: "warning", action: "sync-apply" });
+  expect(checkAutomation(config, { ...services, sync: { ...idleTimer, installed: true, enabled: true } }).find((check) => check.id === "processing-timer")).toMatchObject({ status: "ok" });
+  config.processing.defaultTarget = "remote";
+  expect(checkAutomation(config, services).find((check) => check.id === "remote-worker")).toMatchObject({ status: "missing" });
+  config.archive.enabled = true;
+  config.proton.enabled = true;
+  const ids = checkAutomation(config, services).map((check) => check.id);
+  expect(ids).toContain("archive-timer");
+  expect(ids).toContain("backup-timer");
+});
+
+test("timer status reports drift in the interval or the recordings folder baked into the unit", async () => {
+  const root = await fs.mkdtemp(join(tmpdir(), "falatrace-timer-status-"));
+  try {
+    const config = structuredClone(DEFAULT_CONFIG);
+    const configPath = join(root, "config.json");
+    await fs.writeFile(configPath, "{}");
+    const run = async (_command: string, args: string[]) => {
+      if (args.includes("NextElapseUSecRealtime")) return { stdout: "@1700000000\n", stderr: "" };
+      if (args.includes("Result")) return { stdout: "success\n", stderr: "" };
+      if (args[1] === "show") return { stdout: "@1000\n", stderr: "" };
+      return { stdout: args[1] === "is-enabled" ? "enabled\n" : "active\n", stderr: "" };
+    };
+    const units = buildSyncUnits(config, ["/x/falatrace"]);
+    await fs.writeFile(join(root, "recording-cli-sync.service"), units.service);
+    await fs.writeFile(join(root, "recording-cli-sync.timer"), units.timer);
+    const current = await readServiceStatus(config, configPath, run as never, root);
+    expect(current.sync).toEqual({ installed: true, enabled: true, active: true, outdated: false, nextRunAt: new Date(1700000000000).toISOString(), lastResult: "success" });
+    expect(current.archive.installed).toBe(false);
+    config.processing.syncIntervalMinutes = 7;
+    expect((await readServiceStatus(config, configPath, run as never, root)).sync.outdated).toBe(true);
+    config.processing.syncIntervalMinutes = DEFAULT_CONFIG.processing.syncIntervalMinutes;
+    config.recordingsDir = "/elsewhere";
+    expect((await readServiceStatus(config, configPath, run as never, root)).sync.outdated).toBe(true);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test("key checks explain session-only keys, open permissions and keys hidden from the Studio", async () => {
+  const config = structuredClone(DEFAULT_CONFIG);
+  config.transcription.provider = "gemini";
+  const sessionOnly = await checkProcessing(config, {
+    openai: "missing", gemini: "missing",
+    details: [{ name: "GEMINI_API_KEY", source: "missing", sessionOnly: true, shadowsStudioKey: false, savedInStudio: false }]
+  }, probe());
+  expect(sessionOnly.find((check) => check.id === "transcription-key")).toMatchObject({ status: "missing", action: "keys", detail: expect.stringContaining("só no ambiente desta sessão") });
+  const open = await checkProcessing(config, {
+    openai: "missing", gemini: "worker.env",
+    files: [{ file: "worker.env", exists: true, usable: true, tooOpen: true }]
+  }, probe());
+  expect(open.find((check) => check.id === "transcription-key")).toMatchObject({ status: "warning", detail: expect.stringContaining("600") });
+  const shadowed = await checkProcessing(config, {
+    openai: "missing", gemini: "environment",
+    details: [{ name: "GEMINI_API_KEY", source: "environment", sessionOnly: false, shadowsStudioKey: true, savedInStudio: true }]
+  }, probe());
+  expect(shadowed.find((check) => check.id === "transcription-key")).toMatchObject({ status: "warning", detail: expect.stringContaining("prioridade") });
 });

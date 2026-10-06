@@ -18,7 +18,8 @@ const fakeDeps = (overrides: Partial<SettingsDeps> = {}) => {
     save: async () => { calls.push("save"); return {} as never; },
     loadConfig: async () => ({ path: "/synthetic/config.json", config }),
     configPath: () => "/synthetic/config.json",
-    credentials: async () => ({ openai: "missing", gemini: "missing" }),
+    credentials: async () => ({ openai: "missing", gemini: "missing", details: [], files: [], managerEnvironment: "unavailable" }),
+    managerEnv: async () => null,
     checks: async () => [],
     audioDevices: async () => { throw new Error("pactl unavailable"); },
     services: async () => { calls.push("services"); return {} as never; },
@@ -28,6 +29,23 @@ const fakeDeps = (overrides: Partial<SettingsDeps> = {}) => {
     applyCalls: async () => { calls.push("applyCalls"); return ""; },
     disableCalls: async () => { calls.push("disableCalls"); return ""; },
     applyTray: async () => { calls.push("applyTray"); return ""; },
+    disableTray: async () => { calls.push("disableTray"); return ""; },
+    applySync: async () => { calls.push("applySync"); return []; },
+    disableSync: async () => { calls.push("disableSync"); return []; },
+    applyArchive: async () => { calls.push("applyArchive"); return []; },
+    disableArchive: async () => { calls.push("disableArchive"); return []; },
+    applyBackup: async () => { calls.push("applyBackup"); return []; },
+    disableBackup: async () => { calls.push("disableBackup"); return []; },
+    setSecret: async (name) => { calls.push(`setSecret:${String(name)}`); },
+    removeSecret: async (name) => { calls.push(`removeSecret:${String(name)}`); return { removed: true }; },
+    testKey: async (provider) => ({ provider, status: "ok", source: "secrets.env", detail: "ok" }),
+    remoteCheck: async () => "host=worker\nffmpeg=ok\nwhisper-cli=missing\n/dev/sda1 100G 10G 90G 10% /home\n",
+    obsCheck: async () => false,
+    audioTest: async () => ({ seconds: 5, tracks: [], warnings: [] }),
+    backups: async () => [],
+    restore: async () => ({ restored: "x", backupCreated: true, prunedBackups: 0 }),
+    exportTo: async () => ({ exported: "/tmp/x.json", credentialsOmitted: true }),
+    importRead: async () => ({ values: {}, rejected: [], ignored: [], credentialsIgnored: false }),
     ...overrides
   };
   return { deps, calls, config };
@@ -64,7 +82,63 @@ describe("settings bridge operations", () => {
     const result = await handleSettingsOperation("settings-diagnose", {}, deps) as Record<string, any>;
     expect(result.audio).toBeNull();
     expect(result.recording).toMatchObject({ selectedBackend: null, blockedReason: expect.stringContaining("Não foi possível") });
-    expect(result.credentials).toEqual({ openai: "missing", gemini: "missing" });
+    expect(result.credentials).toMatchObject({ openai: "missing", gemini: "missing" });
+    expect(Array.isArray(result.automation)).toBe(true);
+  });
+
+  test("secrets are saved through the write-only path and never echoed", async () => {
+    const { deps, calls } = fakeDeps();
+    const saved = await handleSettingsOperation("settings-secret-set", { name: "OPENAI_API_KEY", value: "sk-synthetic-echo" }, deps);
+    expect(JSON.stringify(saved)).not.toContain("sk-synthetic-echo");
+    expect(calls).toContain("setSecret:OPENAI_API_KEY");
+    await handleSettingsOperation("settings-secret-remove", { name: "OPENAI_API_KEY" }, deps);
+    expect(calls).toContain("removeSecret:OPENAI_API_KEY");
+    await expect(handleSettingsOperation("settings-secret-test", { service: "anthropic" }, deps)).rejects.toThrow("Chave não suportada");
+    expect(await handleSettingsOperation("settings-secret-test", { service: "gemini" }, deps)).toMatchObject({ provider: "gemini", status: "ok" });
+  });
+
+  test("the remote worker is tested only once configured and its report is parsed", async () => {
+    const placeholder = fakeDeps();
+    await expect(handleSettingsOperation("settings-remote-check", {}, placeholder.deps)).rejects.toThrow("Configure o worker remoto");
+    const configured = fakeDeps();
+    configured.config.remote.host = "worker.lan";
+    expect(await handleSettingsOperation("settings-remote-check", {}, configured.deps)).toEqual({
+      ok: true, host: "worker", commands: [{ name: "ffmpeg", ok: true }, { name: "whisper-cli", ok: false }], disk: "/dev/sda1 100G 10G 90G 10% /home"
+    });
+    const refused = fakeDeps({ remoteCheck: async () => { throw new Error("ssh failed with code 255: Host key verification failed."); } });
+    refused.config.remote.host = "worker.lan";
+    expect(await handleSettingsOperation("settings-remote-check", {}, refused.deps)).toMatchObject({ ok: false, hint: expect.stringContaining("chave") });
+  });
+
+  test("the audio test uses the capture lock and is refused during a capture", async () => {
+    const busy = fakeDeps({ captureActive: async () => true });
+    await expect(handleSettingsOperation("settings-audio-test", {}, busy.deps)).rejects.toThrow("Não teste o áudio");
+    expect(busy.calls).toEqual(["lock:capture-control", "release"]);
+    const idle = fakeDeps();
+    expect(await handleSettingsOperation("settings-audio-test", { seconds: 3 }, idle.deps)).toMatchObject({ seconds: 5 });
+  });
+
+  test("timer actions check their preconditions and every action reaches its own installer", async () => {
+    const { deps, calls, config } = fakeDeps();
+    await expect(handleSettingsOperation("settings-service", { action: "archive-apply" }, deps)).rejects.toThrow("Ative o arquivo");
+    await expect(handleSettingsOperation("settings-service", { action: "backup-apply" }, deps)).rejects.toThrow("Ative o backup");
+    config.archive.enabled = true;
+    config.proton.enabled = true;
+    for (const action of ["sync-apply", "sync-disable", "archive-apply", "archive-disable", "backup-apply", "backup-disable", "tray-disable"]) {
+      await handleSettingsOperation("settings-service", { action }, deps);
+    }
+    for (const name of ["applySync", "disableSync", "applyArchive", "disableArchive", "applyBackup", "disableBackup", "disableTray"]) expect(calls).toContain(name);
+  });
+
+  test("the monitor is not applied when automatic recording has no usable backend", async () => {
+    const { deps, calls, config } = fakeDeps();
+    config.callDetection.enabled = true;
+    config.callDetection.mode = "record";
+    await expect(handleSettingsOperation("settings-service", { action: "calls-apply" }, deps)).rejects.toThrow("backend que funcione");
+    expect(calls).not.toContain("applyCalls");
+    config.backend = "audio";
+    await handleSettingsOperation("settings-service", { action: "calls-apply" }, deps);
+    expect(calls).toContain("applyCalls");
   });
 
   test("request payloads are validated before dispatch", () => {
@@ -73,6 +147,16 @@ describe("settings bridge operations", () => {
     expect(() => parseRequest({ id: 1, op: "settings-service", payload: { action: "x".repeat(41) } })).toThrow("payload inválido");
     expect(() => parseRequest({ id: 1, op: "settings-read", payload: { action: "calls-apply" } })).toThrow("payload inválido");
     expect(parseRequest({ id: 2, op: "settings-save", payload: { revision: "a".repeat(64), changes: { "callDetection.enabled": true } } }).op).toBe("settings-save");
+    expect(parseRequest({ id: 3, op: "settings-save", payload: { revision: "a".repeat(64), changes: {}, initialize: true } }).payload?.initialize).toBe(true);
+    expect(() => parseRequest({ id: 4, op: "settings-secret-set", payload: { name: "openai", value: "x" } })).toThrow("payload inválido");
+    expect(() => parseRequest({ id: 4, op: "settings-secret-set", payload: { name: "OPENAI_API_KEY", value: "x".repeat(4097) } })).toThrow("payload inválido");
+    expect(() => parseRequest({ id: 4, op: "settings-secret-set", payload: { name: "OPENAI_API_KEY", value: "a\nb" } })).toThrow("payload inválido");
+    expect(() => parseRequest({ id: 4, op: "settings-export", payload: { path: "relative.json" } })).toThrow("payload inválido");
+    expect(() => parseRequest({ id: 4, op: "settings-restore", payload: { revision: "a".repeat(64), backup: "../x" } })).toThrow("payload inválido");
+    expect(() => parseRequest({ id: 4, op: "settings-model-download", payload: { kind: "pip", model: "x" } })).toThrow("payload inválido");
+    expect(() => parseRequest({ id: 4, op: "settings-audio-test", payload: { seconds: 60 } })).toThrow("payload inválido");
+    expect(() => parseRequest({ id: 4, op: "agent-connect", payload: { grantId: "123e4567-e89b-42d3-a456-426614174000", client: "vim" } })).toThrow("payload inválido");
+    expect(parseRequest({ id: 5, op: "settings-secret-test", payload: { service: "gemini" } }).op).toBe("settings-secret-test");
   });
 });
 

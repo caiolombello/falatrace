@@ -12,6 +12,7 @@ import {
 import { SUMMARY_JSON_SCHEMA, SUMMARY_SYSTEM_PROMPT } from "./schema";
 import { OPENAI_SUMMARY_OUTPUT_TOKENS, summaryInputLimit } from "./budget";
 import type { SummaryInputEvidence } from "./evidence";
+import { readSecret } from "../config/secrets";
 
 export const summarizeWithOpenAI = async (
   config: AppConfig,
@@ -24,7 +25,7 @@ export const summarizeWithOpenAI = async (
   signal?.throwIfAborted();
   const limit = summaryInputLimit(config, "openai", model);
   const userContent = buildSummaryUserContent(transcript, context, evidence, limit.max, limit.unit);
-  const apiKey = process.env.OPENAI_API_KEY || config.openai.apiKey;
+  const apiKey = (await readSecret("OPENAI_API_KEY")) || config.openai.apiKey;
   if (!apiKey) {
     throw new Error("OPENAI_API_KEY is not configured");
   }

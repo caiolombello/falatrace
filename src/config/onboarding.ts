@@ -1,5 +1,5 @@
 import { promises as fs, constants } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { DEFAULT_CONFIG } from './defaults';
 import { getConfigPath, mergeConfig, validateConfig } from './load';
@@ -83,6 +83,27 @@ export async function readOnboarding(path = getConfigPath()) {
   path = resolve(path);
   return describeOnboarding(path, await raw(path));
 }
+/** Backups written by the commit path and by the audio-default helper. */
+const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const BACKUP_SUFFIX = String.raw`\.bak-(?:\d{10,16}-)?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`;
+export const configBackupPattern = (path: string): RegExp => new RegExp('^' + escapeRegExp(basename(path)) + BACKUP_SUFFIX);
+export const CONFIG_BACKUPS_KEPT = 20;
+/** Keep the most recent FalaTrace configuration backups; never touches other files or the newest copy. */
+export async function pruneConfigBackups(path: string, keep = CONFIG_BACKUPS_KEPT, protect?: string): Promise<number> {
+  const directory = dirname(path), pattern = configBackupPattern(path);
+  const uid = typeof process.getuid === 'function' ? process.getuid() : undefined;
+  const names = (await fs.readdir(directory).catch(() => [] as string[])).filter((name) => pattern.test(name));
+  const entries = (await Promise.all(names.map(async (name) => {
+    const stat = await fs.lstat(join(directory, name)).catch(() => null);
+    return stat && stat.isFile() && !stat.isSymbolicLink() && (uid === undefined || stat.uid === uid) ? { name, mtime: stat.mtimeMs } : null;
+  }))).filter((entry): entry is { name: string; mtime: number } => !!entry).sort((a, b) => b.mtime - a.mtime || b.name.localeCompare(a.name));
+  let removed = 0;
+  for (const entry of entries.slice(keep)) {
+    if (protect && join(directory, entry.name) === protect) continue;
+    await fs.rm(join(directory, entry.name)).then(() => { removed += 1; }, () => undefined);
+  }
+  return removed;
+}
 /**
  * Publish a configuration derived from the current raw value. Requires the caller's revision,
  * preserves unknown keys via `transform`, writes a private exact-byte backup and never overwrites
@@ -134,7 +155,8 @@ export async function commitConfigChange(revision: string, path: string, transfo
         cleanupPending = true;
       }
     }
-    return { path, value, bytes: savedBytes, backupCreated: !!backup, cleanupPending };
+    const prunedBackups = backup ? await pruneConfigBackups(path, CONFIG_BACKUPS_KEPT, backup).catch(() => 0) : 0;
+    return { path, value, bytes: savedBytes, backupCreated: !!backup, cleanupPending, prunedBackups };
   }
   finally {
     await lease.release();

@@ -13,6 +13,7 @@ import { alignCanonicalTranscript } from "./alignment";
 import { DIARIZATION_MODEL, DIARIZATION_AUDIO_ENCODING, diarizeAudioWithOpenAI, prepareDiarizationAudio, normalizeDiarizationResponse } from "./openai";
 import { DiarizationStore, transcriptChecksum, validSpeakerLabel, type DiarizationResult, type DiarizationStatus } from "./store";
 import { readReviewedView, saveRevision, type RevisionBase, type RevisionHead } from "../revisions";
+import { getServiceLaunchCommand } from "../runtime/launcher";
 
 export const readCanonicalTranscript = async (job: JobRecord): Promise<Transcript> => {
   if (job.state !== "completed") throw new Error("Aguarde a transcrição terminar antes de identificar os falantes");
@@ -64,10 +65,7 @@ export const queueDiarization = async (id: string, dependencies: QueueDiarizatio
     if (await store.read(id, job.source.sha256, canonical.text)) return { id, status: "review" };
     if (await (dependencies.unitActive || unitActive)(id)) return { id, status: "queued", unit: unitName(id) };
     await store.writeOperation({ version: 1, jobId: id, state: "running", startedAt: new Date().toISOString() });
-    const executable = basename(process.execPath);
-    const command = executable === "bun" || executable.startsWith("bun-")
-      ? [process.execPath, resolve(import.meta.dir, "../cli/index.ts")]
-      : [process.execPath];
+    const command = getServiceLaunchCommand();
     try {
       await (dependencies.run || runCommand)("systemd-run", ["--user", `--unit=${unitName(id)}`, "--collect", "--property=Type=exec", "--property=Nice=10",
         "--property=RuntimeMaxSec=5400", "--property=TimeoutStopSec=30", "--property=UMask=0077", "--property=MemoryMax=1G",

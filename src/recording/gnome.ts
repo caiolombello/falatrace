@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { clearState, readState } from "./state";
 import type { AppConfig } from "../config/defaults";
 import { assertBackendCompatible, detectRecordingCapabilities } from "./capabilities";
+import { getServiceLaunchCommand } from "../runtime/launcher";
 
 export type StartOptions = {
   title?: string;
@@ -18,8 +19,10 @@ export const startRecording = async (
   }
   assertBackendCompatible("gnome", await detectRecordingCapabilities());
 
-  const scriptPath = process.argv[1];
-  const args = [scriptPath, "record", "gnome-daemon"];
+  // A compiled binary reports a virtual /$bunfs path as argv[1]: reuse the service launch
+  // command, which is [bun, script] from source and the executable itself when compiled.
+  const [program, ...prefix] = getServiceLaunchCommand();
+  const args = [...prefix, "record", "gnome-daemon"];
   if (options.title) {
     args.push("--title", options.title);
   }
@@ -27,7 +30,7 @@ export const startRecording = async (
     args.push("--geometry", options.geometry);
   }
 
-  const child = spawn(process.execPath, args, {
+  const child = spawn(program, args, {
     detached: true,
     stdio: "ignore"
   });

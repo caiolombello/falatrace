@@ -11,6 +11,7 @@ import { runCommand } from "../../src/jobs/command";
 import { writeJsonAtomic } from "../../src/jobs/store";
 import { validateJobId } from "../../src/jobs/types";
 import { acquireSingleton } from "../../src/runtime/singleton";
+import { getServiceLaunchCommand } from "../runtime/launcher";
 
 type State = { state: "running" | "completed" | "failed"; operationId: string; key: string; path?: string; location?: "local" | "vaio" | "proton"; message?: string };
 type Playback = State;
@@ -58,10 +59,7 @@ export const queuePlayback = async (key: string): Promise<State> => {
   await writeState({ state: "running", operationId, key: source });
   const unit = `recording-studio-playback-${operationId}`;
   try {
-    const executable = basename(process.execPath);
-    const launch = executable === "bun" || executable.startsWith("bun-")
-      ? [process.execPath, resolve(import.meta.dir, "../../src/cli/index.ts")]
-      : [process.execPath];
+    const launch = getServiceLaunchCommand();
     await runCommand("systemd-run", ["--user", `--unit=${unit}`, "--collect", "--property=Type=exec", "--property=Nice=10", "--property=RuntimeMaxSec=1800", "--property=TimeoutStopSec=30", "--property=UMask=0077", `--setenv=PATH=${process.env.PATH || ""}`, "--", ...launch, "desktop", "playback", operationId, source], { timeoutMs: 15_000 });
   } catch { const state: State = { state: "failed", operationId, key: source, message: "Não foi possível iniciar a reprodução" }; await writeState(state); return state; }
   active.set(source, operationId);

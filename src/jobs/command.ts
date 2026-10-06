@@ -75,6 +75,9 @@ const runCommandOwned = async (
     });
   });
 
+/** Short, user-initiated local probes (a few seconds of audio) that must not queue behind heavy work. */
+export const runCommandDirect = (...args: Parameters<typeof runCommandOwned>): Promise<CommandResult> => runCommandOwned(...args);
+
 // Capture uses its backend spawn and is deliberately never admitted here.
 export const runCommand = (...args: Parameters<typeof runCommandOwned>): Promise<CommandResult> =>
   args[0] === 'ffmpeg' ? withHeavyAdmission('command', 'ffmpeg', () => runCommandOwned(...args), { signal: args[2]?.signal, onWait: cliAdmissionWait }) : runCommandOwned(...args);

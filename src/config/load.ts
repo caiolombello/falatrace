@@ -181,6 +181,9 @@ export const validateConfig = (config: AppConfig): void => {
   if (!["local", "remote"].includes(config.processing.defaultTarget)) {
     throw new Error("processing.defaultTarget must be local or remote");
   }
+  if (typeof config.processing.notifyOnCompletion !== "boolean" || typeof config.processing.autoEnqueue !== "boolean") {
+    throw new Error("processing.autoEnqueue and processing.notifyOnCompletion must be booleans");
+  }
   if (
     !/^\/my-files(?:\/[A-Za-z0-9._ -]+)*$/.test(config.proton.targetFolder) ||
     config.proton.targetFolder

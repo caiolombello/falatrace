@@ -21,6 +21,7 @@ import {
   type TrayProcessingCounts
 } from "./presentation";
 import { INDICATOR_SCRIPT } from "./python";
+import { getServiceLaunchCommand } from "../runtime/launcher";
 
 const MONITOR_SERVICE = "recording-cli-calls.service";
 const FALLBACK_REFRESH_MS = 15_000;
@@ -65,13 +66,7 @@ export const buildCliActionRunArgs = (
   ...cliActionCommand[action]
 ];
 
-const getLaunchCommand = (): string[] => {
-  const executableName = basename(process.execPath);
-  if (executableName === "bun" || executableName.startsWith("bun-")) {
-    return [process.execPath, process.argv[1]];
-  }
-  return [process.execPath];
-};
+const getLaunchCommand = (): string[] => getServiceLaunchCommand();
 
 const terminalCandidates = [
   { path: "/usr/bin/konsole", args: ["-e"] },
