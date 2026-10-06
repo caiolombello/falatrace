@@ -351,7 +351,7 @@ FtDialog {
           SettingsSection { text:t("Resumo") }
           SettingsChoice { field:"summary.provider"; label:t("Quem resume"); options:[{label:"Ollama",value:"ollama"},{label:t("OpenAI (serviço externo)"),value:"openai"}] }
           SettingsText { visible:settingsDraft["summary.provider"]==="ollama"; field:"summary.ollamaUrl"; label:t("Endereço do Ollama"); placeholder:"http://127.0.0.1:11434" }
-          SettingsHint { visible:settingsDraft["summary.provider"]==="ollama"&&!settingsLoopback(settingsDraft["summary.ollamaUrl"]); color:warningColor; text:t("Esse endereço não é este computador: a transcrição será enviada para ele.") }
+          SettingsHint { visible:settingsDraft["summary.provider"]==="ollama"&&!settingsLoopback(settingsDraft["summary.ollamaUrl"]); color:warningColor; text:String(settingsDraft["summary.ollamaUrl"]||"").indexOf("http://")===0?t("Fora deste computador, use HTTPS: o resumo não envia a transcrição por HTTP a outro endereço."):t("Esse endereço não é este computador: a transcrição será enviada para ele.") }
           SettingsText { visible:settingsDraft["summary.provider"]==="ollama"; field:"summary.ollamaModel"; label:t("Modelo do Ollama"); placeholder:"qwen3.5:9b" }
           SettingsText { visible:settingsDraft["summary.provider"]==="openai"; field:"summary.openaiModel"; label:t("Modelo de resumo da OpenAI") }
           SettingsHint { visible:settingsDraft["summary.provider"]==="openai"; color:warningColor; text:t("A transcrição é enviada para a OpenAI para resumir. Configure a chave em Chaves de API.") }

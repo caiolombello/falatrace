@@ -93,7 +93,7 @@ The **audio test** records five seconds with the saved sources, reports the leve
 | `transcription.expectedLanguages` | list of codes | empty | Helps OpenAI with multilingual calls. |
 | `transcription.openaiPrompt` | text, up to 8,000 characters | empty | Vocabulary and context; sent to OpenAI with the audio. |
 | `summary.provider` | `ollama`, `openai` | `ollama` | OpenAI receives the transcript. |
-| `summary.ollamaUrl` | http(s) URL without credentials | `http://127.0.0.1:11434` | A non-loopback address receives the transcript. |
+| `summary.ollamaUrl` | HTTPS URL, or HTTP on this computer (`127.0.0.1`, `localhost`, `[::1]`); no credentials | `http://127.0.0.1:11434` | A non-loopback address receives the transcript. |
 | `summary.ollamaModel` | model name | `qwen3.5:9b` | |
 | `summary.openaiModel` | model name | `gpt-6-luna` | |
 | `summary.maxInputCharacters` | 4,096–200,000 | 24,000 | Ollama only; OpenAI sizes input to the model. |

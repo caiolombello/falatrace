@@ -51,6 +51,12 @@ const httpUrlWithoutCredentials: FieldRule = (value) => {
     return false;
   }
 };
+/** The summary step sends the transcript over HTTPS anywhere and over plain HTTP only on this computer. */
+const ollamaUrl: FieldRule = (value) => {
+  if (!httpUrlWithoutCredentials(value)) return false;
+  const url = new URL(value as string);
+  return url.protocol === "https:" || ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname);
+};
 const languageList: FieldRule = (value) =>
   Array.isArray(value) && value.length <= 10 && new Set(value).size === value.length &&
   value.every((item) => typeof item === "string" && /^[a-z]{2,3}(?:-[a-z]{2})?$/.test(item));
@@ -108,7 +114,7 @@ export const SETTINGS_FIELDS: Record<string, FieldRule> = {
   "transcription.whisperCpp.threads": intBetween(1, 256),
   // Summary
   "summary.provider": oneOf("ollama", "openai"),
-  "summary.ollamaUrl": httpUrlWithoutCredentials,
+  "summary.ollamaUrl": ollamaUrl,
   "summary.ollamaModel": text(200),
   "summary.openaiModel": text(200),
   "summary.maxInputCharacters": intBetween(4096, 200_000),

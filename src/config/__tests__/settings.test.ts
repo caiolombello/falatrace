@@ -130,6 +130,7 @@ test("patches are restricted to known fields and valid values", () => {
     { "capture.microphone": "bad name; rm -rf" },
     { "summary.ollamaUrl": "http://user:pass@127.0.0.1:11434" },
     { "summary.ollamaUrl": "file:///etc/passwd" },
+    { "summary.ollamaUrl": "http://worker.lan:11434" },
     { "transcription.language": "Portuguese" }
   ]) {
     expect(() => validateSettingsPatch(patch)).toThrow();
@@ -137,6 +138,8 @@ test("patches are restricted to known fields and valid values", () => {
   expect(validateSettingsPatch({ "summary.ollamaUrl": "http://127.0.0.1:11434", "transcription.language": "pt-BR" }))
     .toEqual({ "summary.ollamaUrl": "http://127.0.0.1:11434", "transcription.language": "pt-BR" });
   for (const host of ["worker.lan", "10.0.0.5", "2001:db8::10", "::1"]) expect(validateSettingsPatch({ "remote.host": host })).toEqual({ "remote.host": host });
+  // The summary refuses plain HTTP away from this computer, so saving does too.
+  for (const url of ["https://ollama.example.com", "http://localhost:11434", "http://[::1]:11434"]) expect(validateSettingsPatch({ "summary.ollamaUrl": url })).toEqual({ "summary.ollamaUrl": url });
 });
 
 test("credential status reports the source and never the value", async () => {
