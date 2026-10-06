@@ -19,9 +19,31 @@ test("unit arguments are quoted and never act as systemd specifiers", () => {
 });
 
 test("the worker keeps %h live in its writable archive path", () => {
-  const unit = buildWorkerUnit(DEFAULT_CONFIG, ["/bin/falatrace"]);
+  const unit = buildWorkerUnit(DEFAULT_CONFIG, ["/bin/falatrace"], {});
   expect(unit).toContain('ReadWritePaths=%h/.local/share/recording-cli "%h/Videos/RecordingArchive"\n');
   expect(unit).not.toContain("%%h");
+});
+
+test("installed units carry the installer's XDG directories and may write the custom state and data", () => {
+  const env = { XDG_CONFIG_HOME: "/custom/con fig", XDG_STATE_HOME: "/custom/st%ate", XDG_DATA_HOME: "/custom/data", XDG_CACHE_HOME: "relative/ignored" };
+  const config = structuredClone(DEFAULT_CONFIG);
+  const launch = ["/x/falatrace"];
+  const units = {
+    calls: buildCallMonitorUnit(config, launch, env), tray: buildTrayUnit(launch, env), worker: buildWorkerUnit(config, launch, env),
+    sync: buildSyncUnits(config, launch, env).service, backup: buildProtonBackupUnits(config, launch, env).service, archive: buildArchiveUnits(config, launch, env).service
+  };
+  for (const unit of Object.values(units)) {
+    expect(unit).toContain('Environment="XDG_CONFIG_HOME=/custom/con fig"\nEnvironment="XDG_STATE_HOME=/custom/st%%ate"\nEnvironment="XDG_DATA_HOME=/custom/data"\n');
+    expect(unit).not.toContain("XDG_CACHE_HOME");
+  }
+  const writable = (unit: string) => unit.split("\n").find((line) => line.startsWith("ReadWritePaths="));
+  expect(writable(units.sync)).toEndWith(' "-/custom/st%%ate/recording-cli" "-/custom/data/recording-cli"');
+  expect(writable(units.backup)).toEndWith(' "-/custom/st%%ate/recording-cli" "-/custom/data/recording-cli"');
+  expect(writable(units.archive)).toEndWith(' "-/custom/st%%ate/recording-cli" "-/custom/data/recording-cli"');
+  expect(writable(units.calls)).toEndWith(' "-/custom/st%%ate/recording-cli" "-/custom/data/recording-cli/jobs"');
+  expect(writable(units.worker)).toEndWith(' "-/custom/data/recording-cli"');
+  // Without custom directories the units are what they were.
+  expect(buildSyncUnits(config, launch, {}).service).not.toContain("XDG_");
 });
 
 test("every generated unit uses the same launch command", () => {

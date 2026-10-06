@@ -2,7 +2,7 @@ import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { runCommand } from "../jobs/command";
-import { execStart, isMissingUnitError, serviceLaunchCommand } from "../runtime/systemd-units";
+import { execStart, isMissingUnitError, persistentUnitEnvironment, serviceLaunchCommand } from "../runtime/systemd-units";
 import { checkTrayDependencies } from "./runtime";
 
 const SERVICE_NAME = "recording-cli-tray.service";
@@ -12,8 +12,8 @@ const getLaunchCommand = (): string[] => serviceLaunchCommand();
 const getUnitPath = (): string =>
   join(homedir(), ".config", "systemd", "user", SERVICE_NAME);
 
-export const buildTrayUnit = (launchCommand = getLaunchCommand()): string =>
-  `[Unit]\nDescription=FalaTrace tray indicator\nAfter=graphical-session.target recording-cli-calls.service\nPartOf=graphical-session.target\n\n[Service]\nType=simple\nExecStart=${execStart([...launchCommand, "tray", "run"])}\nRestart=on-failure\nRestartSec=5\nNoNewPrivileges=yes\nPrivateTmp=yes\nProtectSystem=strict\nProtectHome=read-only\nRestrictAddressFamilies=AF_UNIX\nUMask=0077\n\n[Install]\nWantedBy=default.target\n`;
+export const buildTrayUnit = (launchCommand = getLaunchCommand(), env: NodeJS.ProcessEnv = process.env): string =>
+  `[Unit]\nDescription=FalaTrace tray indicator\nAfter=graphical-session.target recording-cli-calls.service\nPartOf=graphical-session.target\n\n[Service]\nType=simple\nExecStart=${execStart([...launchCommand, "tray", "run"])}\n${persistentUnitEnvironment(env)}Restart=on-failure\nRestartSec=5\nNoNewPrivileges=yes\nPrivateTmp=yes\nProtectSystem=strict\nProtectHome=read-only\nRestrictAddressFamilies=AF_UNIX\nUMask=0077\n\n[Install]\nWantedBy=default.target\n`;
 
 export const installTrayService = async (): Promise<string> => {
   await checkTrayDependencies();

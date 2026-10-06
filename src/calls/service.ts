@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { AppConfig } from "../config/defaults";
 import { runCommand } from "../jobs/command";
-import { execStart, isMissingUnitError, quoteSystemd, serviceLaunchCommand } from "../runtime/systemd-units";
+import { execStart, isMissingUnitError, persistentUnitEnvironment, persistentUnitWritablePaths, quoteSystemd, serviceLaunchCommand } from "../runtime/systemd-units";
 
 const getLaunchCommand = (): string[] => serviceLaunchCommand();
 
@@ -13,14 +13,14 @@ const getUnitPath = (): string =>
 const getNetworkProbeUnitPath = (): string =>
   join(homedir(), ".config", "systemd", "user", "recording-cli-network-probe.service");
 
-export const buildNetworkProbeUnit = (launchCommand = getLaunchCommand()): string =>
-  `[Unit]\nDescription=FalaTrace aggregate network metadata probe\nPartOf=recording-cli-calls.service\n\n[Service]\nType=simple\nExecStart=${execStart([...launchCommand, "calls", "network-probe"])}\nRestart=on-failure\nRestartSec=5\nNoNewPrivileges=yes\nRestrictNamespaces=yes\nRestrictSUIDSGID=yes\nLockPersonality=yes\nRestrictRealtime=yes\nRestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK\nUMask=0077\n# Mount namespace directives are intentionally omitted because ss -p needs the desktop namespace for process attribution.\n`;
+export const buildNetworkProbeUnit = (launchCommand = getLaunchCommand(), env: NodeJS.ProcessEnv = process.env): string =>
+  `[Unit]\nDescription=FalaTrace aggregate network metadata probe\nPartOf=recording-cli-calls.service\n\n[Service]\nType=simple\nExecStart=${execStart([...launchCommand, "calls", "network-probe"])}\nRestart=on-failure\nRestartSec=5\nNoNewPrivileges=yes\nRestrictNamespaces=yes\nRestrictSUIDSGID=yes\nLockPersonality=yes\nRestrictRealtime=yes\nRestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK\nUMask=0077\n${persistentUnitEnvironment(env)}# Mount namespace directives are intentionally omitted because ss -p needs the desktop namespace for process attribution.\n`;
 
-export const buildCallMonitorUnit = (config: AppConfig, launchCommand = getLaunchCommand()): string => {
+export const buildCallMonitorUnit = (config: AppConfig, launchCommand = getLaunchCommand(), env: NodeJS.ProcessEnv = process.env): string => {
   if (/[\r\n\0]/.test(config.recordingsDir)) {
     throw new Error("recordingsDir contains unsupported control characters");
   }
-  return `[Unit]\nDescription=FalaTrace call monitor\nAfter=graphical-session.target pipewire.service wireplumber.service recording-cli-network-probe.service\nWants=recording-cli-network-probe.service\nPartOf=graphical-session.target\n\n[Service]\nType=simple\nExecStart=${execStart([...launchCommand, "calls", "run"])}\nEnvironmentFile=-%h/.config/recording-cli/calls.env\nRestart=on-failure\nRestartSec=5\nNoNewPrivileges=yes\nPrivateTmp=yes\nProtectSystem=strict\nProtectHome=read-only\nReadWritePaths=%h/.local/state/recording-cli %h/.local/share/recording-cli/jobs ${quoteSystemd(config.recordingsDir)}\nRestrictAddressFamilies=AF_UNIX AF_INET AF_INET6\nUMask=0077\n\n[Install]\nWantedBy=default.target\n`;
+  return `[Unit]\nDescription=FalaTrace call monitor\nAfter=graphical-session.target pipewire.service wireplumber.service recording-cli-network-probe.service\nWants=recording-cli-network-probe.service\nPartOf=graphical-session.target\n\n[Service]\nType=simple\nExecStart=${execStart([...launchCommand, "calls", "run"])}\nEnvironmentFile=-%h/.config/recording-cli/calls.env\n${persistentUnitEnvironment(env)}Restart=on-failure\nRestartSec=5\nNoNewPrivileges=yes\nPrivateTmp=yes\nProtectSystem=strict\nProtectHome=read-only\nReadWritePaths=%h/.local/state/recording-cli %h/.local/share/recording-cli/jobs ${quoteSystemd(config.recordingsDir)}${persistentUnitWritablePaths(["state", "data/jobs"], env)}\nRestrictAddressFamilies=AF_UNIX AF_INET AF_INET6\nUMask=0077\n\n[Install]\nWantedBy=default.target\n`;
 };
 
 export const installCallMonitorService = async (config: AppConfig): Promise<string> => {

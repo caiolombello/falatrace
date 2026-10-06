@@ -2,10 +2,12 @@ import { promises as fs } from "node:fs";
 import { join } from "node:path";
 import type { AppConfig } from "../config/defaults";
 import { runCommand } from "./command";
-import { execStart, quoteSystemd, quoteSystemdPath, removeUserUnits, serviceLaunchCommand, userUnitDir } from "../runtime/systemd-units";
+import {
+  execStart, persistentUnitEnvironment, persistentUnitWritablePaths, quoteSystemd, quoteSystemdPath, removeUserUnits, serviceLaunchCommand, userUnitDir
+} from "../runtime/systemd-units";
 
-export const buildWorkerUnit = (config: AppConfig, launchCommand = serviceLaunchCommand()): string =>
-  `[Unit]\nDescription=FalaTrace processing worker\nAfter=network-online.target\n\n[Service]\nType=simple\nExecStart=${execStart([...launchCommand, "worker", "run"])}\nEnvironmentFile=-%h/.config/recording-cli/worker.env\nRestart=on-failure\nRestartSec=10\nNoNewPrivileges=yes\nPrivateTmp=yes\nProtectSystem=strict\nProtectHome=read-only\nReadWritePaths=%h/.local/share/recording-cli ${quoteSystemdPath(config.remote.archiveDir)}\n\n[Install]\nWantedBy=default.target\n`;
+export const buildWorkerUnit = (config: AppConfig, launchCommand = serviceLaunchCommand(), env: NodeJS.ProcessEnv = process.env): string =>
+  `[Unit]\nDescription=FalaTrace processing worker\nAfter=network-online.target\n\n[Service]\nType=simple\nExecStart=${execStart([...launchCommand, "worker", "run"])}\nEnvironmentFile=-%h/.config/recording-cli/worker.env\n${persistentUnitEnvironment(env)}Restart=on-failure\nRestartSec=10\nNoNewPrivileges=yes\nPrivateTmp=yes\nProtectSystem=strict\nProtectHome=read-only\nReadWritePaths=%h/.local/share/recording-cli ${quoteSystemdPath(config.remote.archiveDir)}${persistentUnitWritablePaths(["data"], env)}\n\n[Install]\nWantedBy=default.target\n`;
 
 export const installWorkerService = async (config: AppConfig): Promise<string> => {
   const unitDir = userUnitDir();
@@ -18,8 +20,8 @@ export const installWorkerService = async (config: AppConfig): Promise<string> =
   return unitPath;
 };
 
-export const buildSyncUnits = (config: AppConfig, launchCommand = serviceLaunchCommand()): { service: string; timer: string } => ({
-  service: `[Unit]\nDescription=Synchronize FalaTrace jobs\nAfter=network-online.target\n\n[Service]\nType=oneshot\nExecStart=${execStart([...launchCommand, "jobs", "sync"])}\nExecStart=${execStart([...launchCommand, "jobs", "cleanup"])}\nEnvironmentFile=-%h/.config/recording-cli/worker.env\nNoNewPrivileges=yes\nPrivateTmp=yes\nProtectSystem=strict\nProtectHome=read-only\nReadWritePaths=%h/.local/state/recording-cli %h/.local/share/recording-cli ${quoteSystemd(config.recordingsDir)}\n`,
+export const buildSyncUnits = (config: AppConfig, launchCommand = serviceLaunchCommand(), env: NodeJS.ProcessEnv = process.env): { service: string; timer: string } => ({
+  service: `[Unit]\nDescription=Synchronize FalaTrace jobs\nAfter=network-online.target\n\n[Service]\nType=oneshot\nExecStart=${execStart([...launchCommand, "jobs", "sync"])}\nExecStart=${execStart([...launchCommand, "jobs", "cleanup"])}\nEnvironmentFile=-%h/.config/recording-cli/worker.env\n${persistentUnitEnvironment(env)}NoNewPrivileges=yes\nPrivateTmp=yes\nProtectSystem=strict\nProtectHome=read-only\nReadWritePaths=%h/.local/state/recording-cli %h/.local/share/recording-cli ${quoteSystemd(config.recordingsDir)}${persistentUnitWritablePaths(["state", "data"], env)}\n`,
   timer: `[Unit]\nDescription=Periodically synchronize FalaTrace jobs\n\n[Timer]\nOnBootSec=2min\nOnUnitActiveSec=${config.processing.syncIntervalMinutes}min\nPersistent=true\n\n[Install]\nWantedBy=timers.target\n`
 });
 

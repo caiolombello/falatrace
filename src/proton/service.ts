@@ -2,10 +2,10 @@ import { promises as fs } from "node:fs";
 import { join } from "node:path";
 import type { AppConfig } from "../config/defaults";
 import { runCommand } from "../jobs/command";
-import { execStart, removeUserUnits, serviceLaunchCommand, userUnitDir } from "../runtime/systemd-units";
+import { execStart, persistentUnitEnvironment, persistentUnitWritablePaths, removeUserUnits, serviceLaunchCommand, userUnitDir } from "../runtime/systemd-units";
 
-export const buildProtonBackupUnits = (config: AppConfig, launchCommand = serviceLaunchCommand()): { service: string; timer: string } => ({
-  service: `[Unit]\nDescription=Back up completed FalaTrace jobs to Proton Drive\nAfter=network-online.target\n\n[Service]\nType=oneshot\nExecStart=${execStart([...launchCommand, "backup", "sync"])}\nEnvironment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin\nNoNewPrivileges=yes\nPrivateTmp=yes\nProtectSystem=strict\nProtectHome=read-only\nReadWritePaths=%h/.local/state/recording-cli %h/.local/share/recording-cli\n`,
+export const buildProtonBackupUnits = (config: AppConfig, launchCommand = serviceLaunchCommand(), env: NodeJS.ProcessEnv = process.env): { service: string; timer: string } => ({
+  service: `[Unit]\nDescription=Back up completed FalaTrace jobs to Proton Drive\nAfter=network-online.target\n\n[Service]\nType=oneshot\nExecStart=${execStart([...launchCommand, "backup", "sync"])}\nEnvironment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin\n${persistentUnitEnvironment(env)}NoNewPrivileges=yes\nPrivateTmp=yes\nProtectSystem=strict\nProtectHome=read-only\nReadWritePaths=%h/.local/state/recording-cli %h/.local/share/recording-cli${persistentUnitWritablePaths(["state", "data"], env)}\n`,
   timer: `[Unit]\nDescription=Periodically back up FalaTrace jobs to Proton Drive\n\n[Timer]\nOnBootSec=5min\nOnUnitActiveSec=${config.processing.syncIntervalMinutes}min\nPersistent=true\n\n[Install]\nWantedBy=timers.target\n`
 });
 

@@ -35,13 +35,33 @@ const XDG_DIRECTORIES = ["XDG_CONFIG_HOME", "XDG_STATE_HOME", "XDG_DATA_HOME", "
  * `systemd-run --setenv` arguments for a transient unit that must read the same configuration and
  * write the same state as this process: its PATH and the XDG directories it was started with.
  */
+const xdgDirectories = (env: NodeJS.ProcessEnv): Array<[string, string]> =>
+  XDG_DIRECTORIES.flatMap((name) => {
+    const value = env[name];
+    return value && isAbsolute(value) && !/\p{Cc}/u.test(value) ? [[name, value] as [string, string]] : [];
+  });
+
 export const transientUnitEnvironment = (env: NodeJS.ProcessEnv = process.env): string[] => [
   `--setenv=PATH=${env.PATH || ""}`,
-  ...XDG_DIRECTORIES.flatMap((name) => {
-    const value = env[name];
-    return value && isAbsolute(value) && !/\p{Cc}/u.test(value) ? [`--setenv=${name}=${value}`] : [];
-  })
+  ...xdgDirectories(env).map(([name, value]) => `--setenv=${name}=${value}`)
 ];
+
+/** `Environment=` lines that give an installed unit the XDG directories of the process installing it. */
+export const persistentUnitEnvironment = (env: NodeJS.ProcessEnv = process.env): string =>
+  xdgDirectories(env).map(([name, value]) => `Environment=${quoteSystemd(`${name}=${value}`)}\n`).join("");
+
+/**
+ * Writable paths a sandboxed unit needs when the state or data directory is not the default one:
+ * the FalaTrace folders under XDG_STATE_HOME and XDG_DATA_HOME, each optional ("-") so a folder that
+ * does not exist yet never stops the unit. Empty when neither is set.
+ */
+export const persistentUnitWritablePaths = (folders: Array<"state" | "data" | "data/jobs">, env: NodeJS.ProcessEnv = process.env): string => {
+  const directories = Object.fromEntries(xdgDirectories(env));
+  return folders.flatMap((folder) => {
+    const base = folder === "state" ? directories.XDG_STATE_HOME : directories.XDG_DATA_HOME;
+    return base ? [` ${quoteSystemd(`-${join(base, "recording-cli", folder === "data/jobs" ? "jobs" : "")}`.replace(/\/$/, ""))}`] : [];
+  }).join("");
+};
 
 /** systemctl's wording when a unit was never installed or is already gone. */
 const MISSING_UNIT = /does not exist|not loaded|No such file or directory|not found/i;

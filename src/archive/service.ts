@@ -4,10 +4,10 @@ import type { AppConfig } from "../config/defaults";
 import { runCommand } from "../jobs/command";
 import { getArchiveStateDir } from "./store";
 import { getArchiveDataDir } from "./proton";
-import { quoteSystemd as quote, removeUserUnits, serviceLaunchCommand, userUnitDir } from "../runtime/systemd-units";
+import { persistentUnitEnvironment, persistentUnitWritablePaths, quoteSystemd as quote, removeUserUnits, serviceLaunchCommand, userUnitDir } from "../runtime/systemd-units";
 
-export const buildArchiveUnits = (config: AppConfig, command: string[]): { service: string; timer: string } => ({
-  service: `[Unit]\nDescription=Archive original recordings independently of transcription\nAfter=network-online.target\n\n[Service]\nType=oneshot\nExecStart=${[...command, "archive", "sync", "--limit", "3"].map(quote).join(" ")}\nEnvironment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin\nEnvironment=PROTON_DRIVE_CACHE_DIR=%h/.local/share/recording-cli/proton-drive-runtime\nNoNewPrivileges=yes\nPrivateTmp=yes\nProtectSystem=strict\nProtectHome=read-only\nReadWritePaths=%h/.local/state/recording-cli %h/.local/share/recording-cli\nTimeoutStartSec=infinity\nNice=10\nIOSchedulingClass=idle\n`,
+export const buildArchiveUnits = (config: AppConfig, command: string[], env: NodeJS.ProcessEnv = process.env): { service: string; timer: string } => ({
+  service: `[Unit]\nDescription=Archive original recordings independently of transcription\nAfter=network-online.target\n\n[Service]\nType=oneshot\nExecStart=${[...command, "archive", "sync", "--limit", "3"].map(quote).join(" ")}\nEnvironment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin\nEnvironment=PROTON_DRIVE_CACHE_DIR=%h/.local/share/recording-cli/proton-drive-runtime\n${persistentUnitEnvironment(env)}NoNewPrivileges=yes\nPrivateTmp=yes\nProtectSystem=strict\nProtectHome=read-only\nReadWritePaths=%h/.local/state/recording-cli %h/.local/share/recording-cli${persistentUnitWritablePaths(["state", "data"], env)}\nTimeoutStartSec=infinity\nNice=10\nIOSchedulingClass=idle\n`,
   timer: `[Unit]\nDescription=Retry original recording archive copies\n\n[Timer]\nOnBootSec=2min\nOnUnitInactiveSec=${config.archive.syncIntervalMinutes}min\nPersistent=true\n\n[Install]\nWantedBy=timers.target\n`
 });
 
