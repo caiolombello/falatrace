@@ -46,6 +46,8 @@ export const modelStateDir = (): string =>
   join(process.env.XDG_STATE_HOME || join(homedir(), ".local", "state"), "recording-cli", "models");
 
 export type DownloadKind = "whisper" | "ollama";
+/** The file a SHA-256 check accepted; a file with another identity has to be checked again. */
+export type VerifiedFile = { size: number; mtimeMs: number; ino: number };
 export type DownloadState = {
   kind: DownloadKind;
   id: string;
@@ -53,6 +55,7 @@ export type DownloadState = {
   receivedBytes: number;
   totalBytes: number | null;
   path?: string;
+  verified?: VerifiedFile;
   error?: string;
   updatedAt: string;
 };
@@ -77,6 +80,22 @@ export const readDownloadState = async (kind: DownloadKind, id: string): Promise
   } catch {
     return null;
   }
+};
+
+export const fileIdentity = async (path: string): Promise<VerifiedFile> => {
+  const stat = await fs.lstat(path);
+  return { size: stat.size, mtimeMs: stat.mtimeMs, ino: stat.ino };
+};
+
+/**
+ * A Whisper model counts as installed only when its file is the one a download or an
+ * existing-file check accepted by SHA-256. The right size alone is not trusted.
+ */
+export const isVerifiedWhisperModel = async (model: WhisperModel, path: string): Promise<boolean> => {
+  const [stat, state] = await Promise.all([fs.lstat(path).catch(() => null), readDownloadState("whisper", model.id)]);
+  const receipt = state?.state === "completed" && state.path === path ? state.verified : undefined;
+  return !!stat?.isFile() && !!receipt && stat.size === model.bytes &&
+    receipt.size === stat.size && receipt.mtimeMs === stat.mtimeMs && receipt.ino === stat.ino;
 };
 
 export type WhisperDownloadDeps = {

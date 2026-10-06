@@ -1,6 +1,7 @@
 import { loadConfig } from "../config/load";
 import {
-  WHISPER_MODELS, downloadWhisperModel, findWhisperModel, pullOllamaModel, whisperModelsDir, writeDownloadState
+  WHISPER_MODELS, downloadWhisperModel, fileIdentity, findWhisperModel, isVerifiedWhisperModel, pullOllamaModel,
+  whisperModelsDir, writeDownloadState
 } from "../models/downloads";
 
 export const MODELS_HELP = `Models (explicit downloads only):
@@ -15,11 +16,10 @@ export const runModelsCli = async (args: string[]): Promise<void> => {
   const [, subcommand, target] = args;
   if (subcommand === "list" || !subcommand) {
     const directory = whisperModelsDir();
-    const { promises: fs } = await import("node:fs");
     const { join } = await import("node:path");
     const models = await Promise.all(WHISPER_MODELS.map(async (model) => {
-      const stat = await fs.stat(join(directory, model.file)).catch(() => null);
-      return { id: model.id, file: model.file, size: formatBytes(model.bytes), sha256: model.sha256, installed: !!stat && stat.size === model.bytes, recommended: !!model.recommended };
+      const installed = await isVerifiedWhisperModel(model, join(directory, model.file));
+      return { id: model.id, file: model.file, size: formatBytes(model.bytes), sha256: model.sha256, installed, recommended: !!model.recommended };
     }));
     console.log(JSON.stringify({ directory, models }, null, 2));
     return;
@@ -40,7 +40,7 @@ export const runModelsCli = async (args: string[]): Promise<void> => {
           }
         }
       });
-      await writeDownloadState({ kind: "whisper", id: model.id, state: "completed", receivedBytes: model.bytes, totalBytes: model.bytes, path });
+      await writeDownloadState({ kind: "whisper", id: model.id, state: "completed", receivedBytes: model.bytes, totalBytes: model.bytes, path, verified: await fileIdentity(path) });
       if (process.stderr.isTTY) process.stderr.write("\n");
       console.log(JSON.stringify({ id: model.id, path, verified: true }));
     } catch (error) {

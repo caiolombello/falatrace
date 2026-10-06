@@ -1,9 +1,10 @@
 import { expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_CONFIG } from "../../config/defaults";
-import { writeDownloadState } from "../../models/downloads";
+import { fileIdentity, findWhisperModel, writeDownloadState } from "../../models/downloads";
 import { handleModelOperation, modelUnitName, type ModelDeps } from "../model-bridge";
 
 const deps = (directory: string, overrides: Partial<ModelDeps> = {}) => {
@@ -53,4 +54,29 @@ test("a download whose unit ended without a final state is reported as interrupt
   await writeDownloadState({ kind: "whisper", id: "base", state: "completed", receivedBytes: 100, totalBytes: 100, path: "/x" });
   expect(await handleModelOperation("settings-model-status", { kind: "whisper", model: "base" }, value)).toMatchObject({ state: "completed", path: "/x" });
   expect(await handleModelOperation("settings-model-status", { kind: "whisper", model: "small" }, value)).toMatchObject({ state: "idle" });
+});
+
+test("a Whisper model counts as installed only when a SHA-256 check accepted that exact file", async () => {
+  const directory = await fs.mkdtemp(join(tmpdir(), "falatrace-model-verified-"));
+  const model = findWhisperModel("tiny");
+  const original = { ...model };
+  const payload = Buffer.from("synthetic ggml payload ".repeat(64));
+  Object.assign(model, { bytes: payload.length, sha256: createHash("sha256").update(payload).digest("hex") });
+  try {
+    const { value } = deps(directory);
+    type Catalog = { whisper: { models: Array<{ id: string; installed: boolean }> } };
+    const installed = async () => ((await handleModelOperation("settings-model-catalog", {}, value)) as Catalog).whisper.models.find((item) => item.id === "tiny")?.installed;
+    const path = join(directory, model.file);
+    await fs.writeFile(path, payload);
+    expect(await installed()).toBe(false);
+    await writeDownloadState({ kind: "whisper", id: "tiny", state: "completed", receivedBytes: payload.length, totalBytes: payload.length, path, verified: await fileIdentity(path) });
+    expect(await installed()).toBe(true);
+    // Another file of the same size put in its place is not trusted until it is checked again.
+    await fs.writeFile(join(directory, "replacement"), Buffer.alloc(payload.length, 1));
+    await fs.rename(join(directory, "replacement"), path);
+    expect(await installed()).toBe(false);
+  } finally {
+    Object.assign(model, original);
+    await fs.rm(directory, { recursive: true, force: true });
+  }
 });

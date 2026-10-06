@@ -1,12 +1,11 @@
 import { createHash } from "node:crypto";
-import { promises as fs } from "node:fs";
 import { join } from "node:path";
 import { loadConfig } from "../config/load";
 import { runCommand } from "../jobs/command";
 import { getServiceLaunchCommand } from "../runtime/launcher";
 import {
-  WHISPER_MODELS, WHISPER_SOURCE, findWhisperModel, isLoopbackOllama, readDownloadState, validateOllamaModelName,
-  whisperModelsDir, writeDownloadState, type DownloadKind
+  WHISPER_MODELS, WHISPER_SOURCE, findWhisperModel, isLoopbackOllama, isVerifiedWhisperModel, readDownloadState,
+  validateOllamaModelName, whisperModelsDir, writeDownloadState, type DownloadKind
 } from "../models/downloads";
 
 /**
@@ -64,8 +63,8 @@ export const handleModelOperation = async (
     const directory = deps.directory();
     const whisper = await Promise.all(WHISPER_MODELS.map(async (model) => {
       const path = join(directory, model.file);
-      const stat = await fs.lstat(path).catch(() => null);
-      return { ...model, path, installed: !!stat?.isFile() && stat.size === model.bytes, selected: config.transcription.whisperCpp.modelPath === path };
+      // "Download" on a present but unverified file only checks its SHA-256; nothing is fetched.
+      return { ...model, path, installed: await isVerifiedWhisperModel(model, path), selected: config.transcription.whisperCpp.modelPath === path };
     }));
     const loopback = isLoopbackOllama(config.summary.ollamaUrl);
     const installed = loopback ? await deps.ollamaModels(config.summary.ollamaUrl).catch(() => null) : null;
