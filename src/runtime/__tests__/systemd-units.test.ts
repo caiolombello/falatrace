@@ -6,7 +6,7 @@ import { DEFAULT_CONFIG } from "../../config/defaults";
 import { buildArchiveUnits, uninstallArchiveTimer } from "../../archive/service";
 import { buildSyncUnits, buildWorkerUnit, uninstallSyncTimer } from "../../jobs/service";
 import { buildProtonBackupUnits, uninstallProtonBackupTimer } from "../../proton/service";
-import { buildCallMonitorUnit, uninstallCallMonitorService } from "../../calls/service";
+import { buildCallMonitorUnit, buildNetworkProbeUnit, uninstallCallMonitorService } from "../../calls/service";
 import { buildTrayUnit, uninstallTrayService } from "../../tray/service";
 import { queueAlignedSubtitles } from "../../subtitles/service";
 import { playbackRunArgs } from "../../desktop/playback";
@@ -19,7 +19,11 @@ test("command arguments never expand environment variables in units or transient
   expect(execStart([`/opt/falatrace-${braced}/falatrace`, "$HOME"])).toBe(`"/opt/falatrace-$${braced}/falatrace" "$$HOME"`);
   const config = structuredClone(DEFAULT_CONFIG);
   const launch = ["/opt/falatrace-$release/falatrace"];
-  for (const unit of [buildCallMonitorUnit(config, launch), buildTrayUnit(launch), buildWorkerUnit(config, launch), buildSyncUnits(config, launch).service]) {
+  // Every unit FalaTrace writes, the archive timer's included.
+  for (const unit of [
+    buildCallMonitorUnit(config, launch), buildNetworkProbeUnit(launch), buildTrayUnit(launch), buildWorkerUnit(config, launch),
+    buildSyncUnits(config, launch).service, buildArchiveUnits(config, launch).service, buildProtonBackupUnits(config, launch).service
+  ]) {
     expect(unit).toContain('ExecStart="/opt/falatrace-$$release/falatrace" ');
   }
   expect(transientCommand([`/rec/a $HOME ${braced}.mkv`])).toEqual([`/rec/a $$HOME $${braced}.mkv`]);
