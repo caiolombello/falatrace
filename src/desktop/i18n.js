@@ -20,6 +20,7 @@ var EN = {
     "Roda no worker remoto, com a configuração, as chaves e os modelos de lá; não verificado neste computador. Use Testar conexão em Integrações.": "Runs on the remote worker, with its own configuration, keys and models; not checked on this computer. Use Test connection in Integrations.",
     "Todas as fontes de áudio selecionadas estão mutadas ou com volume zero; habilite uma origem de áudio e tente novamente.": "All selected audio sources are muted or at zero volume; enable an audio source and try again.",
     "O GNOME informou falha ao parar; o estado foi limpo.": "GNOME reported that it could not stop; the state was cleared.",
+    "A gravação foi finalizada, mas não entrou na fila. Ela continua na pasta de gravações: use Processar… no Studio para processá-la.": "The recording was finished but not queued. It is still in the recordings folder: use Process… in the Studio to process it.",
     "Usar esta chave": "Use this key",
     "A chave será salva em arquivo privado quando você concluir.": "The key will be saved to a private file when you finish.",
     "Salva em arquivo privado ao concluir.": "Saved to a private file when you finish.",

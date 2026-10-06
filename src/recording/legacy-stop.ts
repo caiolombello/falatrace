@@ -19,7 +19,13 @@ export type LegacyStopResult = { state: RecordingState; videoPath: string; ended
 export const LEGACY_SIMPLE_BACKENDS = ["simple", "pipewire", "gstreamer", "kooha", "obs-ws", "obs-cli"];
 export const LEGACY_FFMPEG_BACKENDS = ["ffmpeg-only", "gnome-ffmpeg", "gnome-native"];
 
-export const stopLegacyRecording = async (config: AppConfig): Promise<LegacyStopResult | null> => {
+/** The legacy backends clear their state when they stop, so stopping again cannot retry the queueing. */
+export const LEGACY_NOT_QUEUED = "A gravação foi finalizada, mas não entrou na fila. Ela continua na pasta de gravações: use Processar… no Studio para processá-la.";
+
+export const stopLegacyRecording = async (
+  config: AppConfig,
+  dependencies: { enqueue?: typeof enqueueRecording } = {}
+): Promise<LegacyStopResult | null> => {
   const state = await readState();
   if (!state) return null;
   const backend = state.backend ?? config.backend;
@@ -46,6 +52,11 @@ export const stopLegacyRecording = async (config: AppConfig): Promise<LegacyStop
       warning = [warning, `Time entry was not finalized: ${error instanceof Error ? error.message : String(error)}`].filter(Boolean).join(" ");
     });
   }
-  const job = await enqueueRecording(config, videoPath, { startedAt: state.startedAt, endedAt });
+  // The capture is stopped and its state gone: a failed queueing is reported with the way to process
+  // the recording, never as a stop to retry.
+  const job = await (dependencies.enqueue || enqueueRecording)(config, videoPath, { startedAt: state.startedAt, endedAt }).catch(() => {
+    warning = [warning, LEGACY_NOT_QUEUED].filter(Boolean).join(" ");
+    return null;
+  });
   return { state, videoPath, endedAt, job, ...(warning ? { warning } : {}) };
 };
