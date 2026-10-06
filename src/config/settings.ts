@@ -1,4 +1,5 @@
 import { constants, promises as fs } from "node:fs";
+import { isIPv6 } from "node:net";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { CALL_APPLICATIONS, CALL_APPLICATION_IDENTITIES } from "../calls/apps";
 import { DEFAULT_CONFIG, TRANSCRIPTION_PROMPT_MAX_LENGTH, type AppConfig } from "./defaults";
@@ -34,8 +35,10 @@ const absoluteOrHomePath: FieldRule = (value) =>
   typeof value === "string" && (value.startsWith("/") || value.startsWith("~/")) && value.length <= 4096 && !CONTROL.test(value);
 const deviceName: FieldRule = (value) =>
   typeof value === "string" && value.length > 0 && value.length <= 300 && /^[A-Za-z0-9_.:@+-]+$/.test(value);
+/** A host name or an IPv6 literal; any other colon (a port, a path) would be split by rsync and sshfs. */
 const hostName: FieldRule = (value) =>
-  typeof value === "string" && value.length <= 253 && !value.startsWith("-") && /^[A-Za-z0-9._:-]+$/.test(value);
+  typeof value === "string" && value.length <= 253 && !value.startsWith("-") &&
+  (/^[A-Za-z0-9._-]+$/.test(value) || (value.includes(":") && isIPv6(value)));
 const accountName: FieldRule = (value) =>
   typeof value === "string" && value.length <= 64 && !value.startsWith("-") && /^[A-Za-z0-9._-]+$/.test(value);
 const optional = (rule: FieldRule): FieldRule => (value) => value === null || rule(value);

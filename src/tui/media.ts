@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 import type { AppConfig } from "../config/defaults";
 import { runCommand } from "../jobs/command";
 import {
-  getSshDestination,
+  getRemotePathSpec,
   inspectRemoteArchivedSource
 } from "../jobs/remote";
 import { hashFile } from "../jobs/store";
@@ -244,7 +244,7 @@ const ensureSafeMountPoint = async (mountPoint: string): Promise<void> => {
 const expectedSshfsSource = (
   config: AppConfig,
   archiveDir: string
-): string => `${getSshDestination(config)}:${archiveDir}`;
+): string => getRemotePathSpec(config, archiveDir);
 
 const findMount = async (
   run: CommandRunner,

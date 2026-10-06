@@ -107,6 +107,8 @@ test("patches are restricted to known fields and valid values", () => {
     { "obs.password": "x" },
     { "remote.host": "-evil" },
     { "remote.host": "evil host" },
+    { "remote.host": "worker.lan:22" },
+    { "remote.host": "a:b" },
     { "obs.host": "192.168.0.10" },
     { "proton.targetFolder": "/my-files/../escape" },
     { "features.namingTemplate": "../escape" },
@@ -134,6 +136,7 @@ test("patches are restricted to known fields and valid values", () => {
   }
   expect(validateSettingsPatch({ "summary.ollamaUrl": "http://127.0.0.1:11434", "transcription.language": "pt-BR" }))
     .toEqual({ "summary.ollamaUrl": "http://127.0.0.1:11434", "transcription.language": "pt-BR" });
+  for (const host of ["worker.lan", "10.0.0.5", "2001:db8::10", "::1"]) expect(validateSettingsPatch({ "remote.host": host })).toEqual({ "remote.host": host });
 });
 
 test("credential status reports the source and never the value", async () => {

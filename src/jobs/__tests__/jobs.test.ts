@@ -17,7 +17,7 @@ import {
 } from "../../transcription/openai";
 import { runCommand } from "../command";
 import { assertUsableTranscript, processJob } from "../pipeline";
-import { buildSshArgs } from "../remote";
+import { buildSshArgs, getRemotePathSpec, getSshDestination } from "../remote";
 import { cleanupLocalCompletedWork, cleanupRemoteServer } from "../retention";
 import { processLocalJob, retryJob, syncJobs } from "../sync";
 import { JobStore, mergeTranscriptionPrompt, writeJsonAtomic } from "../store";
@@ -994,6 +994,42 @@ test("downloads artifacts when a pending remote job is already completed", async
   expect(await fs.readFile(join(root, "rsync.log"), "utf-8")).toContain(
     `worker.test:/home/worker/archive/2026/07/${job.id}/transcript.json`
   );
+});
+
+test("rsync and sshfs get an IPv6 worker in brackets; ssh takes it as is", () => {
+  const ipv6 = mergeConfig(DEFAULT_CONFIG, { remote: { host: "2001:db8::10", user: "ana" } });
+  expect(getSshDestination(ipv6)).toBe("ana@2001:db8::10");
+  expect(getRemotePathSpec(ipv6, "/srv/rec ordings/")).toBe("ana@[2001:db8::10]:/srv/rec ordings/");
+  expect(getRemotePathSpec(mergeConfig(DEFAULT_CONFIG, { remote: { host: "::1" } }), "/x")).toBe("[::1]:/x");
+  expect(getRemotePathSpec(mergeConfig(DEFAULT_CONFIG, { remote: { host: "worker.lan", user: "ana" } }), "/x")).toBe("ana@worker.lan:/x");
+});
+
+test("artifacts from an IPv6 worker are fetched with the host in brackets", async () => {
+  const root = await makeTemporaryDirectory();
+  const binDir = join(root, "bin");
+  const mediaPath = join(root, "meeting.mkv");
+  await fs.mkdir(binDir);
+  await fs.writeFile(mediaPath, "fake media");
+  const store = new JobStore(join(root, "state"), join(root, "data"));
+  const config = mergeConfig(DEFAULT_CONFIG, {
+    processing: { defaultTarget: "remote" },
+    remote: { host: "2001:db8::10", user: "ana" }
+  });
+  const job = await store.enqueue(config, mediaPath);
+  const remoteStatus = JSON.stringify({ version: JOB_VERSION, id: job.id, state: "completed", updatedAt: "2026-07-13T12:00:00.000Z" });
+  await writeExecutable(join(binDir, "ssh"), `#!/usr/bin/env bash\nprintf '%s\\n' '${remoteStatus}'\n`);
+  await writeExecutable(
+    join(binDir, "rsync"),
+    `#!/usr/bin/env bash\nprintf '%s\\n' "$*" >> '${join(root, "rsync.log")}'\ndestination="${"$"}{!#}"\nprintf 'artifact' > "$destination"\n`
+  );
+  process.env.PATH = `${binDir}:${originalPath}`;
+
+  const [result] = await syncJobs(config, store);
+
+  expect(result.state).toBe("completed");
+  const log = await fs.readFile(join(root, "rsync.log"), "utf-8");
+  expect(log).toContain(`ana@[2001:db8::10]:.local/share/recording-cli/server/results/${job.id}/transcript.json`);
+  expect(log).not.toContain("ana@2001:db8::10:");
 });
 
 test("requeues a failed remote job without retransferring its recording", async () => {

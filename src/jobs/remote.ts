@@ -15,6 +15,15 @@ const shellQuote = (value: string): string => `'${value.replaceAll("'", `'\\''`)
 export const getSshDestination = (config: AppConfig): string =>
   config.remote.user ? `${config.remote.user}@${config.remote.host}` : config.remote.host;
 
+/**
+ * `[user@]host:path` for rsync and sshfs. Unlike ssh, both split HOST:PATH at the first colon,
+ * so an IPv6 literal goes in brackets: `user@[2001:db8::10]:path`.
+ */
+export const getRemotePathSpec = (config: AppConfig, path: string): string => {
+  const host = config.remote.host.includes(":") ? `[${config.remote.host}]` : config.remote.host;
+  return `${config.remote.user ? `${config.remote.user}@` : ""}${host}:${path}`;
+};
+
 export const buildSshArgs = (config: AppConfig): string[] => {
   const args = [
     "-F",
@@ -147,7 +156,7 @@ export const transferJob = async (
     remotePath("status"),
     partialDir
   ]);
-  const destination = `${getSshDestination(config)}:${partialDir}/`;
+  const destination = getRemotePathSpec(config, `${partialDir}/`);
   const commonArgs = ["--partial", "--append-verify", "--protect-args", "--chmod=F600,D700"];
   await runCommand(
     "rsync",
@@ -225,7 +234,7 @@ export const pullRemoteArtifacts = async (
       "rsync",
       [
         "--protect-args",
-        `${getSshDestination(config)}:${sourceRoot}/${name}`,
+        getRemotePathSpec(config, `${sourceRoot}/${name}`),
         join(record.artifactDir, name)
       ],
       { env: getRsyncEnvironment(config), timeoutMs: 10 * 60 * 1000 }

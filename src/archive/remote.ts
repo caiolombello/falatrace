@@ -6,6 +6,7 @@ import { runCommand } from "../jobs/command";
 import { hashFile as hashStoredFile } from "../jobs/store";
 import {
   buildSshArgs,
+  getRemotePathSpec,
   getSshDestination,
   resolveRemoteArchiveDir
 } from "../jobs/remote";
@@ -471,7 +472,7 @@ export const archiveMediaToVaio = async (
       "--protect-args",
       "--chmod=F600,D700",
       media.sourcePath,
-      `${getSshDestination(config)}:${stagingPath}`
+      getRemotePathSpec(config, stagingPath)
     ],
     { env: getRsyncEnvironment(config), timeoutMs: TRANSFER_TIMEOUT_MS }
   );
@@ -555,7 +556,7 @@ export const downloadArchivedMedia = async (
         "--partial",
         "--protect-args",
         "--chmod=F600",
-        `${getSshDestination(config)}:${archived.sourcePath}`,
+        getRemotePathSpec(config, archived.sourcePath),
         temporaryPath
       ],
       { env: getRsyncEnvironment(config), timeoutMs: TRANSFER_TIMEOUT_MS }

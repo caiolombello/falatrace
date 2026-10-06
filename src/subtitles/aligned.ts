@@ -4,7 +4,7 @@ import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { extname, join, resolve } from "node:path";
 import type { AppConfig } from "../config/defaults";
-import { buildSshArgs, getSshDestination } from "../jobs/remote";
+import { buildSshArgs, getRemotePathSpec, getSshDestination } from "../jobs/remote";
 import { runCommand } from "../jobs/command";
 import {
   JOB_VERSION,
@@ -256,7 +256,7 @@ const createAlignedSubtitlesOwned = async (
       }
       const env = { ...process.env, RSYNC_RSH: ["ssh", ...buildSshArgs(config)].map(shellQuote).join(" ") };
       try {
-        await run("rsync", ["--protect-args", `${getSshDestination(config)}:${stage}/whisper.json`, localRaw], { env, timeoutMs: REMOTE_TIMEOUT_MS });
+        await run("rsync", ["--protect-args", getRemotePathSpec(config, `${stage}/whisper.json`), localRaw], { env, timeoutMs: REMOTE_TIMEOUT_MS });
       } catch {
         throw new Error("Não foi possível transferir a legenda gerada pelo VAIO");
       }
