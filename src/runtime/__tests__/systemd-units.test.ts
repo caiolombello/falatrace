@@ -11,7 +11,7 @@ import { buildTrayUnit, uninstallTrayService } from "../../tray/service";
 import { queueAlignedSubtitles } from "../../subtitles/service";
 import { playbackRunArgs } from "../../desktop/playback";
 import { cliEntryForBun, getServiceLaunchCommand } from "../launcher";
-import { execStart, quoteSystemd, quoteSystemdPath, removeUserUnits, transientCommand, userUnitDir } from "../systemd-units";
+import { execStart, quoteSystemd, quoteSystemdPath, removeUserUnits, transientCommand, unitWritablePaths, userUnitDir } from "../systemd-units";
 
 test("command arguments never expand environment variables in units or transient commands", () => {
   // systemd expands $NAME and the braced form in command lines, even quoted; "$$" is a literal dollar sign.
@@ -64,6 +64,53 @@ test("installed units carry the installer's XDG directories and may write the cu
   expect(writable(units.worker)).toEndWith(' "-/custom/data/recording-cli"');
   // Without custom directories the units are what they were.
   expect(buildSyncUnits(config, launch, {}).service).not.toContain("XDG_");
+  // The paths created before installing are exactly the ones the unit grants, quoting undone.
+  config.recordingsDir = '/media/Gravações "%u" \\ x';
+  expect(unitWritablePaths(buildCallMonitorUnit(config, launch, env), "/home/u")).toEqual([
+    "/home/u/.local/state/recording-cli", "/home/u/.local/share/recording-cli/jobs", '/media/Gravações "%u" \\ x', "/custom/st%ate/recording-cli", "/custom/data/recording-cli/jobs"
+  ]);
+  expect(unitWritablePaths(buildWorkerUnit(config, launch, {}), "/home/u")).toEqual(["/home/u/.local/share/recording-cli", "/home/u/Videos/RecordingArchive"]);
+  expect(unitWritablePaths(buildTrayUnit(launch, env), "/home/u")).toEqual([]);
+});
+
+test("every path a sandboxed unit may write exists before the unit is installed, custom XDG folders included", async () => {
+  const installers: Record<string, [string, string, string[]]> = {
+    calls: ["calls/service", "installCallMonitorService", ["home/.local/state/recording-cli", "home/.local/share/recording-cli/jobs", "Recordings", "st%ate/recording-cli", "data/recording-cli/jobs"]],
+    sync: ["jobs/service", "installSyncTimer", ["home/.local/state/recording-cli", "home/.local/share/recording-cli", "Recordings", "st%ate/recording-cli", "data/recording-cli"]],
+    worker: ["jobs/service", "installWorkerService", ["home/.local/share/recording-cli", "home/Archive", "data/recording-cli"]],
+    archive: ["archive/service", "installArchiveTimer", ["home/.local/state/recording-cli", "home/.local/share/recording-cli", "st%ate/recording-cli", "data/recording-cli"]],
+    backup: ["proton/service", "installProtonBackupTimer", ["home/.local/state/recording-cli", "home/.local/share/recording-cli", "st%ate/recording-cli", "data/recording-cli"]]
+  };
+  const source = join(import.meta.dir, "../..");
+  for (const [name, [module, installer, expected]] of Object.entries(installers)) {
+    const root = await fs.mkdtemp(join(tmpdir(), `falatrace-writable-${name}-`));
+    try {
+      // A fresh home and custom XDG folders per installer; the systemctl stub accepts every call.
+      await fs.mkdir(join(root, "bin"));
+      await fs.writeFile(join(root, "bin", "systemctl"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+      await fs.writeFile(join(root, "install.ts"), [
+        `import { DEFAULT_CONFIG } from ${JSON.stringify(join(source, "config/defaults"))};`,
+        `import { ${installer} as install } from ${JSON.stringify(join(source, module))};`,
+        "const config = structuredClone(DEFAULT_CONFIG);",
+        `config.recordingsDir = ${JSON.stringify(join(root, "Recordings"))};`,
+        "config.callDetection.enabled = true;",
+        "config.archive.enabled = true;",
+        "config.remote.archiveDir = \"~/Archive\";",
+        "await install(config);"
+      ].join("\n"));
+      const child = Bun.spawn([process.execPath, join(root, "install.ts")], {
+        env: { ...process.env, HOME: join(root, "home"), XDG_CONFIG_HOME: join(root, "config"), XDG_STATE_HOME: join(root, "st%ate"), XDG_DATA_HOME: join(root, "data"), PATH: `${join(root, "bin")}:${process.env.PATH}` },
+        stdout: "ignore", stderr: "pipe"
+      });
+      const [code, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()]);
+      expect({ name, code, stderr }).toEqual({ name, code: 0, stderr: "" });
+      for (const path of expected) {
+        expect({ name, path, directory: await fs.stat(join(root, path)).then((stat) => stat.isDirectory(), () => false) }).toEqual({ name, path, directory: true });
+      }
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  }
 });
 
 test("every generated unit uses the same launch command", () => {

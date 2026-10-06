@@ -3,7 +3,8 @@ import { join } from "node:path";
 import type { AppConfig } from "../config/defaults";
 import { runCommand } from "./command";
 import {
-  execStart, persistentUnitEnvironment, persistentUnitWritablePaths, quoteSystemd, quoteSystemdPath, removeUserUnits, serviceLaunchCommand, userUnitDir
+  createUnitWritablePaths, execStart, persistentUnitEnvironment, persistentUnitWritablePaths, quoteSystemd, quoteSystemdPath, removeUserUnits,
+  serviceLaunchCommand, userUnitDir
 } from "../runtime/systemd-units";
 
 export const buildWorkerUnit = (config: AppConfig, launchCommand = serviceLaunchCommand(), env: NodeJS.ProcessEnv = process.env): string =>
@@ -12,8 +13,10 @@ export const buildWorkerUnit = (config: AppConfig, launchCommand = serviceLaunch
 export const installWorkerService = async (config: AppConfig): Promise<string> => {
   const unitDir = await userUnitDir();
   const unitPath = join(unitDir, "recording-cli-worker.service");
+  const unit = buildWorkerUnit(config);
   await fs.mkdir(unitDir, { recursive: true, mode: 0o700 });
-  await fs.writeFile(unitPath, buildWorkerUnit(config), { mode: 0o600 });
+  await createUnitWritablePaths(unit);
+  await fs.writeFile(unitPath, unit, { mode: 0o600 });
   await runCommand("systemctl", ["--user", "daemon-reload"]);
   await runCommand("systemctl", ["--user", "enable", "recording-cli-worker.service"]);
   await runCommand("systemctl", ["--user", "restart", "recording-cli-worker.service"]);
@@ -32,6 +35,7 @@ export const installSyncTimer = async (config: AppConfig): Promise<string[]> => 
   const timerPath = join(unitDir, "recording-cli-sync.timer");
   const units = buildSyncUnits(config);
   await fs.mkdir(unitDir, { recursive: true, mode: 0o700 });
+  await createUnitWritablePaths(units.service);
   await fs.writeFile(servicePath, units.service, { mode: 0o600 });
   await fs.writeFile(timerPath, units.timer, { mode: 0o600 });
   await runCommand("systemctl", ["--user", "daemon-reload"]);

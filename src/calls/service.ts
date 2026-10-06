@@ -1,9 +1,8 @@
 import { promises as fs } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
 import type { AppConfig } from "../config/defaults";
 import { runCommand } from "../jobs/command";
-import { execStart, isMissingUnitError, persistentUnitEnvironment, persistentUnitWritablePaths, quoteSystemd, serviceLaunchCommand, userUnitDir } from "../runtime/systemd-units";
+import { createUnitWritablePaths, execStart, isMissingUnitError, persistentUnitEnvironment, persistentUnitWritablePaths, quoteSystemd, serviceLaunchCommand, userUnitDir } from "../runtime/systemd-units";
 
 const getLaunchCommand = (): string[] => serviceLaunchCommand();
 
@@ -30,12 +29,9 @@ export const installCallMonitorService = async (config: AppConfig): Promise<stri
     recursive: true,
     mode: 0o700
   });
-  await fs.mkdir(join(homedir(), ".local", "state", "recording-cli"), {
-    recursive: true,
-    mode: 0o700
-  });
-  await fs.mkdir(config.recordingsDir, { recursive: true, mode: 0o700 });
-  await fs.writeFile(unitPath, buildCallMonitorUnit(config), { mode: 0o600 });
+  const unit = buildCallMonitorUnit(config);
+  await createUnitWritablePaths(unit);
+  await fs.writeFile(unitPath, unit, { mode: 0o600 });
   await fs.writeFile(join(unitDir, NETWORK_PROBE_UNIT), buildNetworkProbeUnit(), { mode: 0o600 });
   await runCommand("systemctl", ["--user", "daemon-reload"]);
   await runCommand("systemctl", ["--user", "enable", "recording-cli-calls.service"]);

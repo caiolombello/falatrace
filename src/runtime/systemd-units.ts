@@ -96,6 +96,28 @@ export const persistentUnitWritablePaths = (folders: Array<"state" | "data" | "d
   }).join("");
 };
 
+/**
+ * The directories a unit's ReadWritePaths= grants, as paths on disk: quotes and escapes undone, the
+ * optional marker ("-") dropped and %h expanded.
+ */
+export const unitWritablePaths = (unit: string, home = homedir()): string[] => {
+  const line = unit.split("\n").find((entry) => entry.startsWith("ReadWritePaths="));
+  if (!line) return [];
+  return [...line.slice("ReadWritePaths=".length).matchAll(/"((?:[^"\\]|\\.)*)"|(\S+)/g)].map((match) => {
+    const raw = match[1] !== undefined ? match[1].replace(/\\(.)/g, "$1") : match[2] ?? "";
+    return raw.replace(/^-/, "").replace(/%([%h])/g, (_specifier, letter: string) => letter === "h" ? home : "%");
+  });
+};
+
+/**
+ * systemd grants a writable path only if it exists when the unit starts, and the sandbox then keeps the
+ * unit from creating it: an optional one is ignored and any other stops the unit. So every path a unit
+ * may write is created before the unit is installed.
+ */
+export const createUnitWritablePaths = async (unit: string, home = homedir()): Promise<void> => {
+  for (const path of unitWritablePaths(unit, home)) await fs.mkdir(path, { recursive: true, mode: 0o700 });
+};
+
 /** systemctl's wording when a unit was never installed or is already gone. */
 const MISSING_UNIT = /does not exist|not loaded|No such file or directory|not found/i;
 /**
