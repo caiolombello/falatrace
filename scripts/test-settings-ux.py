@@ -98,6 +98,7 @@ for line in sys.stdin:
         if p['action'] == 'sync-apply': services['sync'].update({'installed':True,'enabled':True,'active':True,'nextRunAt':'2026-10-05T12:00:00.000Z'})
         v = {'action':p['action'],'services':services}
     elif op == 'settings-secret-set' and mode == 'keys-lost': continue
+    elif op == 'settings-secret-test' and mode == 'keys-test-lost': continue
     elif op == 'settings-secret-set' and mode == 'wizard-key-fail':
         print(json.dumps({'id':r['id'],'ok':False,'error':'secrets.env tem permissões amplas demais.'}), flush=True); continue
     elif op == 'settings-secret-set':
@@ -175,6 +176,8 @@ MODES = {
                                'check("once the download stops, Finish is available again", !setupWizard.whisperDownloadRunning()); setupWizard.finish()'),
     'keys-lost': ('settingsDialog.open(); settingsTabs.currentIndex=3', 'settingsDialog.saveSecret("OPENAI_API_KEY","sk-synthetic-lost-key"); check("a key save in flight locks the key fields", settingsDialog.secretBusy)',
                   'settingsConnectionLost(); check("a lost connection unlocks the key fields", !settingsDialog.secretBusy)', ''),
+    'keys-test-lost': ('settingsDialog.open(); settingsTabs.currentIndex=3', 'settingsDialog.testSecret("openai"); check("a key test in flight locks the Test buttons", settingsDialog.keyTestPending==="openai")',
+                       'settingsConnectionLost(); check("a lost connection unlocks the Test buttons", settingsDialog.keyTestPending==="")', ''),
     'wizard-key-required': ('setupWizard.open(); setupWizard.consentAck=true; setupWizard.applyMonitor=false; setupWizard.applyTimer=false',
                             'setupWizard.step=4; setupWizard.finish(); check("Finish waits for the OpenAI key the reviewed setup needs", setupWizard.missingRequiredKey() && setupWizard.step===4 && setupWizard.error!=="" && !setupWizard.hasPending("settings-save") && !setupWizard.hasPending("settings-secret-set"))',
                             'setupWizard.useKey("sk-synthetic-wizard-key"); setupWizard.finish()',

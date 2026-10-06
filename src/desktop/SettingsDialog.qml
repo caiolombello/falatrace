@@ -24,7 +24,9 @@ FtDialog {
     readonly property int sectionServices: 8
     readonly property bool pickerAvailable: pickerLoader.status === Loader.Ready
     property var keyTests: ({})
-    property string keyTestPending: ""
+    // The service whose key test is in flight, read from the pending request: a lost connection drops the
+    // request and so never leaves the Test buttons locked.
+    readonly property string keyTestPending: { const id = Object.keys(pending).find(function(key){ return pending[key].op === "settings-secret-test" && pending[key].settingsGeneration === settingsGeneration }); return id ? String(pending[id].service || "") : "" }
     // Derived from the requests in flight, so a lost connection never leaves the key fields locked.
     readonly property bool secretBusy: hasSettingsPending("settings-secret-set") || hasSettingsPending("settings-secret-remove")
     property var remoteCheck: null
@@ -41,7 +43,7 @@ FtDialog {
     onOpened:{settingsError="";settingsNotice="";resetExtras();settingsTabs.currentIndex=settingsFirstRun?0:settingsTabs.currentIndex;loadSettings(true);settingsTabs.forceActiveFocus(Qt.TabFocusReason)}
     onClosed:{languagePreview="";settingsGeneration+=1;settingsDraft=({});settingsData=({});settingsDiag=({});settingsFirstRun=false;resetExtras();onboardingButton.forceActiveFocus(Qt.TabFocusReason)}
 
-    function resetExtras() { keyTests=({}); keyTestPending=""; remoteCheck=null; obsCheck=null; audioTest=null; confirmDownload=""; confirmRestore=""; importSummary="" }
+    function resetExtras() { keyTests=({}); remoteCheck=null; obsCheck=null; audioTest=null; confirmDownload=""; confirmRestore=""; importSummary="" }
     function draft(field) { return settingsDraft[field] }
     function goToSection(index) { settingsTabs.currentIndex = index; sectionLoaded(index) }
     function sectionLoaded(index) {
@@ -55,7 +57,7 @@ FtDialog {
     // Keys
     function saveSecret(name, value) { if (!value.trim()) return; settingsError = ""; settingsNotice = ""; send("settings-secret-set", "", { name: name, value: value.trim() }) }
     function removeSecret(name) { settingsError = ""; settingsNotice = ""; send("settings-secret-remove", "", { name: name }) }
-    function testSecret(service) { keyTestPending = service; const next = Object.assign({}, keyTests); delete next[service]; keyTests = next; send("settings-secret-test", "", { service: service }) }
+    function testSecret(service) { const next = Object.assign({}, keyTests); delete next[service]; keyTests = next; send("settings-secret-test", "", { service: service }, { service: service }) }
     function secretSourceText(report) {
         if (!report || !report.name) return ""
         if (report.source === "missing") return report.sessionOnly ? t("Existe só no ambiente desta sessão; o processamento em segundo plano não a recebe. Salve-a aqui.") : t("Nenhuma chave encontrada.")
@@ -148,8 +150,7 @@ FtDialog {
                 + (result.credentials ? "" : t(" Não foi possível atualizar o estado das chaves; releia a configuração para conferir."))
             runSettingsDiagnose()
         } else if (request.op === "settings-secret-test") {
-            const service = request.service || keyTestPending
-            keyTestPending = ""
+            const service = request.service
             const next = Object.assign({}, keyTests)
             next[service] = message.ok ? result : { status: "unreachable", detail: message.error }
             keyTests = next
