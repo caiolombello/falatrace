@@ -24,7 +24,8 @@ apps = [{'id':'slack','label':'Slack','kind':'app','defaultEnabled':True},{'id':
         {'id':'helium','label':'Helium','kind':'browser','defaultEnabled':True},{'id':'chromium','label':'Chromium','kind':'browser','defaultEnabled':True},
         {'id':'firefox','label':'Firefox','kind':'browser','defaultEnabled':True},{'id':'zoom','label':'Zoom','kind':'app','defaultEnabled':True},
         {'id':'discord','label':'Discord','kind':'app','defaultEnabled':False}]
-first = mode in ('first-run', 'wizard-flow', 'wizard-test-audio', 'wizard-english', 'wizard-key-cancel', 'wizard-key-finish', 'wizard-download-cancel', 'wizard-reload', 'wizard-recommended-review')
+first = mode in ('first-run', 'wizard-flow', 'wizard-test-audio', 'wizard-english', 'wizard-key-cancel', 'wizard-key-finish', 'wizard-download-cancel', 'wizard-reload', 'wizard-recommended-review',
+                 'wizard-download-double')
 values = {'callDetection.enabled': not first, 'callDetection.mode':'record', 'callDetection.enqueueOnStop':True, 'callDetection.dryRun':False,
           'callDetection.entryDebounceSeconds':5, 'callDetection.exitTimeoutSeconds':15, 'callDetection.networkSampleSeconds':5,
           'callDetection.apps.slack':True,'callDetection.apps.zen':True,'callDetection.apps.helium':True,'callDetection.apps.chromium':True,
@@ -273,6 +274,9 @@ MODES = {
                               'setupWizard.request("settings-model-download",{kind:"ollama",model:"qwen3.5:9b",consent:true,ollamaUrl:"http://127.0.0.1:11434"})',
                               'setupWizard.step=4; setupWizard.finish(); check("Finish waits for an Ollama pull started here", setupWizard.downloads["ollama:qwen3.5:9b"].state==="running" && setupWizard.step===4 && setupWizard.error!=="")', ''),
     'save-list-pending': ('settingsDialog.open()', 'setSettingsField("callDetection.apps.discord", true); saveSettingsDraft()', '', ''),
+    'wizard-download-double': ('setupWizard.consentAck=true',
+                               'setupWizard.step=2; const download = findObject(setupWizard.contentItem, "wizardDownloadModel"); for (let i = 0; i < 2; i++) if (download && download.enabled) download.clicked(); '
+                               'check("the download button waits for the reply to the first click", !!download && !download.enabled)', '', ''),
     'models-ollama-draft': ('settingsDialog.open()',
                             'setSettingsField("summary.provider", "ollama"); setSettingsField("summary.ollamaUrl", "http://127.0.0.1:11435"); setSettingsField("summary.ollamaModel", "llama4:8b"); settingsDialog.goToSection(4)',
                             'check("the list shows the Ollama at the unsaved address", !!settingsDialog.catalog.ollama && settingsDialog.catalog.ollama.url==="http://127.0.0.1:11435"); settingsDialog.startDownload("ollama", "llama4:8b"); '
@@ -312,7 +316,8 @@ SIDE_EFFECTS = {'save': {'settings-save'}, 'services': {'settings-service'}, 'wi
                 'wizard-lost': {'settings-save'}, 'restore-pending': {'settings-restore'}, 'wizard-ffmpeg-review': {'settings-save'}, 'models-ollama-draft': {'settings-model-download'}, 'wizard-automation-review': {'settings-save'},
                 'wizard-skip-services': {'settings-save'}, 'wizard-monitor-stale': {'settings-save'},
                 'wizard-unknown-services': {'settings-save'},
-                'wizard-ollama-pending': {'settings-model-download'}, 'save-list-pending': {'settings-save'}}
+                'wizard-ollama-pending': {'settings-model-download'}, 'save-list-pending': {'settings-save'},
+                'wizard-download-double': {'settings-model-download'}}
 GUARDED = {'settings-save', 'settings-service', 'settings-secret-set', 'settings-secret-remove', 'settings-model-download', 'settings-restore'}
 
 checks = []; screens = []
@@ -385,6 +390,8 @@ with tempfile.TemporaryDirectory(dir='/tmp', prefix='falatrace-settings-fixture-
         if mode in ('wizard-disable-monitor', 'wizard-disable-unknown'):
             applied = [q['payload'] for q in requests if q['op'] == 'settings-service']
             checks.append({'name': f'{mode}: only the monitor is disabled', 'pass': applied == [{'action': 'calls-disable'}]})
+        if mode == 'wizard-download-double':
+            checks.append({'name': 'wizard-download-double: a double click starts one download', 'pass': [q['op'] for q in requests].count('settings-model-download') == 1})
         if mode == 'save-list-pending':
             ops = [q['op'] for q in requests]
             checks.append({'name': 'save-list-pending: a list pending from before the save does not stop the library from being listed again', 'pass': 'settings-save' in ops and 'list' in ops[ops.index('settings-save') + 1:]})
