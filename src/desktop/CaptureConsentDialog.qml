@@ -6,7 +6,7 @@ FtDialog {
     id: captureConsent
     property string intent: "capture"
     objectName: "captureConsent"
-    title: intent === "resume" ? "Retomar gravações automáticas" : "Antes de iniciar a gravação"
+    title: intent === "resume" ? t("Retomar gravações automáticas") : t("Antes de iniciar a gravação")
     anchors.centerIn: parent
     width: Math.min(window.width - 64, 540)
     modal: true
@@ -21,7 +21,7 @@ FtDialog {
         }
         Label {
             Layout.fillWidth: true
-            text: (captureConsent.intent === "resume" ? "As regras já configuradas poderão iniciar novas gravações. Esta ação não inicia uma captura manual. " : "") + "Confirme a permissão das pessoas envolvidas. A captura usa a tela e as fontes de áudio configuradas. Revise o áudio antes de continuar.\n\n" + audioSummary() + "\n\nFechar o Studio não encerra a captura. Use Parar para finalizá-la. O processamento usa os providers configurados; serviços externos podem receber conteúdo."
+            text: (captureConsent.intent === "resume" ? t("As regras já configuradas poderão iniciar novas gravações. Esta ação não inicia uma captura manual. ") : "") + t("Confirme a permissão das pessoas envolvidas. A captura usa a tela e as fontes de áudio configuradas. Revise o áudio antes de continuar.\n\n") + audioSummary() + t("\n\nFechar o Studio não encerra a captura. Use Parar para finalizá-la. O processamento usa os providers configurados; serviços externos podem receber conteúdo.")
             textFormat: Text.PlainText
             wrapMode: Text.WordWrap
             color: ink
@@ -34,8 +34,8 @@ FtDialog {
             anchors.fill: parent; anchors.leftMargin: 20; anchors.rightMargin: 20
             spacing: 10
             Item { Layout.fillWidth: true }
-            FtButton { id: captureConsentCancel; objectName: "captureConsentCancel"; text: "Cancelar"; variant: "outline"; onClicked: captureConsent.reject() }
-            FtButton { id: captureConsentAccept; objectName: "captureConsentAccept"; text: captureConsent.intent === "resume" ? "Retomar automação" : "Iniciar gravação"; variant: "primary"; iconName: captureConsent.intent === "resume" ? "automation-play" : "record"; onClicked: captureConsent.accept() }
+            FtButton { id: captureConsentCancel; objectName: "captureConsentCancel"; text: t("Cancelar"); variant: "outline"; onClicked: captureConsent.reject() }
+            FtButton { id: captureConsentAccept; objectName: "captureConsentAccept"; text: captureConsent.intent === "resume" ? t("Retomar automação") : t("Iniciar gravação"); variant: "primary"; iconName: captureConsent.intent === "resume" ? "automation-play" : "record"; onClicked: captureConsent.accept() }
         }
     }
     // Cancel keeps the initial focus: an accidental Enter never starts a capture.

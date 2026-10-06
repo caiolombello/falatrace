@@ -24,7 +24,7 @@ apps = [{'id':'slack','label':'Slack','kind':'app','defaultEnabled':True},{'id':
         {'id':'helium','label':'Helium','kind':'browser','defaultEnabled':True},{'id':'chromium','label':'Chromium','kind':'browser','defaultEnabled':True},
         {'id':'firefox','label':'Firefox','kind':'browser','defaultEnabled':True},{'id':'zoom','label':'Zoom','kind':'app','defaultEnabled':True},
         {'id':'discord','label':'Discord','kind':'app','defaultEnabled':False}]
-first = mode in ('first-run', 'wizard-flow', 'wizard-test-audio')
+first = mode in ('first-run', 'wizard-flow', 'wizard-test-audio', 'wizard-english')
 values = {'callDetection.enabled': not first, 'callDetection.mode':'record', 'callDetection.enqueueOnStop':True, 'callDetection.dryRun':False,
           'callDetection.entryDebounceSeconds':5, 'callDetection.exitTimeoutSeconds':15, 'callDetection.networkSampleSeconds':5,
           'callDetection.apps.slack':True,'callDetection.apps.zen':True,'callDetection.apps.helium':True,'callDetection.apps.chromium':True,
@@ -46,6 +46,7 @@ values = {'callDetection.enabled': not first, 'callDetection.mode':'record', 'ca
           'timesheet.readyConfidence':0.8,'timesheet.contextPath':'/home/synthetic/timesheet-context.json','aiContext.enabled':False,'aiContext.autoBuild':True,
           'aiContext.maxMeetingsPerClient':12,'aiContext.maxCharactersPerClient':18000,'calendar.enabled':False,
           'gnome.framerate':30,'gnome.drawCursor':True,'gnome.audioSource':'both','visualReview.maxInferences':24,'visualReview.maxPreviews':16,
+          'studio.language':'en' if mode in ('english', 'wizard-english') else 'auto',
           'retention.localCompletedWorkDays':7,'retention.remoteIncomingDays':2,'retention.remoteResultsDays':30,'retention.remoteFailuresDays':30}
 revision = 'a' * 64
 details = [{'name':'OPENAI_API_KEY','source':'missing','sessionOnly':mode == 'keys','shadowsStudioKey':False,'savedInStudio':False},
@@ -131,6 +132,10 @@ MODES = {
     'save': ('settingsDialog.open()', 'setSettingsField("callDetection.apps.discord", true); setSettingsField("backend", "audio"); check("diff has two changes", Object.keys(settingsChanges()).length===2); saveSettingsDraft()',
              'check("saved notice asks to apply monitor", settingsNotice.indexOf("Aplique o monitor")>=0 && !settingsHasChanges() && settingsData.revision==="' + 'b' * 64 + '")', ''),
     'compact': ('window.width=900; window.height=640; settingsDialog.open(); settingsTabs.currentIndex=0', 'check("dialog fits compact window", settingsDialog.width<=window.width && settingsDialog.height<=window.height); check("sections become a list", !settingsTabs.visible)', '', ''),
+    'english': ('settingsDialog.open(); settingsTabs.currentIndex=1', 'check("saved English applies to the whole dialog", uiLanguage==="en" && settingsDialog.sections[0].title==="Automatic recording" && settingsDialog.sections[8].title==="Services and diagnostics"); check("choices show English and keep the saved value", settingsDialog.backendChoice.combo.displayText==="Screen and audio (GPU Screen Recorder)"); check("automatic backend status in English", settingsDialog.automaticBackendText().indexOf("screen and audio")>=0)', '', ''),
+    'language-preview': ('settingsDialog.open(); settingsTabs.currentIndex=1', 'check("starts in Portuguese", uiLanguage==="pt" && settingsDialog.sections[0].title==="Gravação automática"); setSettingsField("studio.language","en"); check("the draft previews English at once", uiLanguage==="en" && settingsDialog.sections[0].title==="Automatic recording"); check("choices keep their value across the switch", settingsDialog.backendChoice.combo.displayText==="Screen and audio (GPU Screen Recorder)")',
+                         'settingsDialog.reject(); check("discarding returns to the saved language", uiLanguage==="pt")', ''),
+    'wizard-english': ('', 'check("assistant opens in the saved language", setupWizard.visible && setupWizard.steps[0]==="Welcome"); check("step counter fills its placeholders", tf("Passo %1 de %2 · %3", 1, setupWizard.steps.length, setupWizard.steps[0])==="Step 1 of 6 · Welcome")', '', ''),
     'discard': ('settingsDialog.open()', 'setSettingsField("callDetection.enabled", false); check("unsaved change counted", settingsHasChanges()); settingsDialog.reject(); check("discard closes and clears draft", !settingsDialog.visible && Object.keys(settingsDraft).length===0)', '', ''),
 }
 # Requests each mode is expected to send; anything outside the list fails the journey.

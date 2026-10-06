@@ -36,10 +36,11 @@ for line in sys.stdin:
  elif op=='detail':v={'transcript':{'segments':[{'start':0,'end':2,'text':'Este texto foi criado para testar a interface.'}],'text':'Este texto foi criado para testar a interface.','timing':'segment'},'diarization':{'state':'idle','turns':[]},'summary':'Nota sintética em [00:00]. Não houve inferência de IA. Confira a fonte.','summaryInfo':'adapter scripted/local fixture','status':'completed','backup':'none','jobId':'synthetic-demo'}
  elif op=='resolve' and mode not in ['error','loading']:v={'state':'completed','location':'local','path':os.environ['FALATRACE_SYNTHETIC_VIDEO']}
  elif op=='context-meeting':v={'context':'STALE-CONTEXT-MUST-NOT-APPEAR','citations':['00:00']}
+ elif op=='settings-read':v={'revision':'a'*64,'exists':True,'values':{'studio.language':'en' if mode=='english' else 'auto'},'apps':[],'nullable':[],'readOnly':{},'credentials':{'details':[]}}
  else:print(json.dumps({'id':r['id'],'ok':False,'error':'Operação recusada no fixture; nenhuma captura iniciada.'}),flush=True);continue
  print(json.dumps({'id':r['id'],'ok':True,'result':v}),flush=True)
 ''');stub.chmod(0o700)
- for mode in ['dark','light','compact','summary','consent','empty','error','loading','recording','paused','regression']:
+ for mode in ['dark','light','compact','summary','consent','empty','error','loading','recording','paused','regression','english']:
   qml=root/mode;qml.mkdir()
   base=source.replace('../../docs/assets/',(repo/'docs/assets').as_uri()+'/').rstrip()
   light='true' if mode in ['light','compact'] else 'false'
@@ -50,6 +51,11 @@ for line in sys.stdin:
  Timer { interval:700; running:true; repeat:false; onTriggered:{
   const p=headerStop.mapToItem(window.contentItem,0,0);headerStop.forceActiveFocus(Qt.TabFocusReason);
   console.log("UX_ASSERTIONS "+JSON.stringify([{name:"stop visible without opening dialog",pass:headerStop.visible&&headerStop.enabled&&!recordingTools.visible},{name:"stop inside 900x640 viewport",pass:p.x>=0&&p.y>=0&&p.x+headerStop.width<=window.width&&p.y+headerStop.height<=window.height},{name:"stop has visible keyboard focus",pass:headerStop.activeFocus&&headerStop.visualFocus}]))
+ } }
+'''
+  if mode=='english':extra+='''
+ Timer { interval: 900; running: true; repeat: false; onTriggered: {
+  console.log("UX_ASSERTIONS "+JSON.stringify([{name:"saved English language applies",pass:uiLanguage==="en"},{name:"library heading in English",pass:t("Biblioteca")==="Library"&&t("Transcrição")==="Transcript"},{name:"bridge status parts in English",pass:artifactParts("Transcrição pronta · Resumo indisponível").join(" · ")==="Transcript ready · Summary unavailable"}]))
  } }
 '''
   if mode=='regression':extra+='''

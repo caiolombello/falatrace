@@ -17,7 +17,7 @@ ColumnLayout {
         Layout.fillWidth:true; spacing:8
         Label { text:secretControl.label; color:ink; font.pixelSize:14; font.weight:Font.DemiBold; Layout.fillWidth:true; wrapMode:Text.WordWrap }
         FtChip {
-            text:secretControl.report.source && secretControl.report.source !== "missing" ? "Configurada" : "Sem chave"
+            text:secretControl.report.source && secretControl.report.source !== "missing" ? t("Configurada") : t("Sem chave")
             kind:secretControl.report.source && secretControl.report.source !== "missing" ? "accent" : "neutral"
             iconName:secretControl.report.source && secretControl.report.source !== "missing" ? "check" : ""
         }
@@ -31,7 +31,7 @@ ColumnLayout {
             objectName:"secretInput_" + secretControl.name
             Layout.fillWidth:true; maximumLength:4096
             echoMode:TextInput.Password; passwordCharacter:"•"
-            placeholderText:secretControl.report.savedInStudio ? "Cole uma nova chave para substituir a salva" : "Cole a chave aqui"
+            placeholderText:secretControl.report.savedInStudio ? t("Cole uma nova chave para substituir a salva") : t("Cole a chave aqui")
             enabled:backend.available && !settingsDialog.secretBusy
             inputMethodHints:Qt.ImhSensitiveData | Qt.ImhNoPredictiveText | Qt.ImhNoAutoUppercase
             Accessible.name:secretControl.label
@@ -39,7 +39,7 @@ ColumnLayout {
         }
         FtButton {
             id:saveButton
-            text:"Salvar chave"; compact:true
+            text:t("Salvar chave"); compact:true
             enabled:backend.available && !settingsDialog.secretBusy && secretInput.text.trim().length > 0
             onClicked:{ settingsDialog.saveSecret(secretControl.name, secretInput.text); secretInput.text = "" }
         }
@@ -48,25 +48,25 @@ ColumnLayout {
         Layout.fillWidth:true; spacing:8
         FtButton {
             visible:!!secretControl.testService
-            text:settingsDialog.keyTestPending === secretControl.testService ? "Testando…" : "Testar chave"
+            text:settingsDialog.keyTestPending === secretControl.testService ? t("Testando…") : t("Testar chave")
             variant:"outline"; compact:true
             enabled:backend.available && !settingsDialog.secretBusy && !settingsDialog.keyTestPending && !!secretControl.report.source && secretControl.report.source !== "missing"
             onClicked:settingsDialog.testSecret(secretControl.testService)
         }
         FtButton {
             visible:!!secretControl.report.savedInStudio
-            text:"Remover a chave salva"; variant:"outline"; compact:true
+            text:t("Remover a chave salva"); variant:"outline"; compact:true
             enabled:backend.available && !settingsDialog.secretBusy
             onClicked:settingsDialog.removeSecret(secretControl.name)
         }
     }
     SettingsHint {
         visible:!!secretControl.testService
-        text:"O teste pede ao provedor só a lista de modelos: nenhum áudio ou texto é enviado."
+        text:t("O teste pede ao provedor só a lista de modelos: nenhum áudio ou texto é enviado.")
     }
     Label {
         visible:!!secretControl.testResult
-        text:secretControl.testResult ? secretControl.testResult.detail : ""
+        text:secretControl.testResult ? t(secretControl.testResult.detail) : ""
         color:secretControl.testResult && secretControl.testResult.status === "ok" ? accent : warningColor
         textFormat:Text.PlainText; wrapMode:Text.WordWrap; Layout.fillWidth:true; font.pixelSize:12
     }

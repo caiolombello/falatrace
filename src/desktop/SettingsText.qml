@@ -39,7 +39,7 @@ ColumnLayout {
         }
         FtButton {
             visible:!!textControl.picker && settingsDialog.pickerAvailable
-            text:"Escolher…"; variant:"outline"; compact:true
+            text:t("Escolher…"); variant:"outline"; compact:true
             enabled:settingsEditable
             onClicked:settingsDialog.choosePath(textControl.picker, textControl.pickerTitle, textInput.text, function(path){ setSettingsField(textControl.field, path) })
         }

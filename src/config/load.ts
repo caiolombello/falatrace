@@ -5,6 +5,7 @@ import { join,dirname,resolve } from "node:path";
 import { CALL_APPLICATIONS } from "../calls/apps";
 import {
   DEFAULT_CONFIG,
+  STUDIO_LANGUAGES,
   TRANSCRIPTION_PROMPT_MAX_LENGTH,
   type AppConfig
 } from "./defaults";
@@ -51,6 +52,7 @@ type PartialConfig = Omit<
   | "callDetection"
   | "timesheet"
   | "aiContext"
+  | "studio"
 > & {
   gnome?: Partial<AppConfig["gnome"]>;
   capture?: Partial<AppConfig["capture"]>;
@@ -73,6 +75,7 @@ type PartialConfig = Omit<
   };
   timesheet?: Partial<AppConfig["timesheet"]>;
   aiContext?: Partial<AppConfig["aiContext"]>;
+  studio?: Partial<AppConfig["studio"]>;
 };
 
 export const loadConfigSnapshot=async(currentPath=getConfigPath())=>{
@@ -136,7 +139,8 @@ export const mergeConfig = (base: AppConfig, override: PartialConfig): AppConfig
     }
   },
   timesheet: { ...base.timesheet, ...override.timesheet },
-  aiContext: { ...base.aiContext, ...override.aiContext }
+  aiContext: { ...base.aiContext, ...override.aiContext },
+  studio: { ...base.studio, ...override.studio }
 });
 
 export const validateConfig = (config: AppConfig): void => {
@@ -210,6 +214,9 @@ export const validateConfig = (config: AppConfig): void => {
   }
   if (!Number.isSafeInteger(config.summary.maxInputCharacters) || config.summary.maxInputCharacters < 4096 || config.summary.maxInputCharacters > 200_000) {
     throw new Error("summary.maxInputCharacters must be between 4096 and 200000");
+  }
+  if (!(STUDIO_LANGUAGES as readonly string[]).includes(config.studio.language)) {
+    throw new Error("studio.language must be auto, pt-BR or en");
   }
   if (typeof config.calendar.enabled !== "boolean") {
     throw new Error("calendar.enabled must be a boolean");

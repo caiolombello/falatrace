@@ -84,6 +84,15 @@ for await(const line of createInterface({input:process.stdin})){
    if mode=='real-compact':action='window.width=900; window.height=640; '+action;assertion+='; check("real compact cancel visible",framesDialog.height<=window.height-64 && frameCancelButton.visible && frameColumn.width<=frameScroll.availableWidth)'
   elif mode.startswith('frames-'):
    action='framesDialog.open(); frameSeconds.text="1.2"; prepareFrames()'
+   if mode in ['frames-result','frames-reference','frames-compact']:
+    # Confirm only once the preview exists and assert once the result arrived (bounded waits):
+    # the preview extracts a real frame with FFmpeg, so fixed delays raced on slower runs.
+    ready='sourceReferenceSeconds === 1.2' if mode=='frames-reference' else '!!frameResult.synthetic'
+    extra='''
+ Timer { interval: 350; running: true; onTriggered: { window.lightTheme = true; ACTION } }
+ Timer { interval: 50; running: true; repeat: true; property int elapsed: 0; onTriggered: { elapsed += 50; if (elapsed < 650 || (!framePreview.id && elapsed < 1500)) return; stop(); SECOND } }
+ Timer { interval: 50; running: true; repeat: true; property int elapsed: 0; onTriggered: { elapsed += 50; if (elapsed < 1100 || (!(READY) && elapsed < 2150)) return; stop(); const a=[]; function check(name,pass){a.push({name:name,pass:!!pass})}; /*TEST_ASSERT*/; console.log("LOCAL_UX_ASSERTIONS "+JSON.stringify(a)) } }
+'''.replace('READY',ready)
    second='confirmFrames(); confirmFrames()' if mode in ['frames-result','frames-reference','frames-compact'] else 'framesDialog.reject()' if mode=='frames-cancel' else 'backToLibrary()' if mode=='frames-stale' else ''
    assertion='check("preview ready without provider", !!framePreview.id && !frameResult.synthetic)' if mode=='frames-preview' else 'check("mock result has temporal reference", frameResult.synthetic && frameResult.timestampSeconds === 1.2); check("confirmation no longer pending", !hasPending("frames-confirm"))' if mode in ['frames-result','frames-reference','frames-compact'] else 'check("cancel closes and clears preview", !framesDialog.visible && !framePreview.id)' if mode=='frames-cancel' else 'check("stale preview discarded after Back", !selected.key && !framePreview.id && !framesDialog.visible)'
   else:
@@ -92,7 +101,7 @@ for await(const line of createInterface({input:process.stdin})){
    assertion='check("onboarding reads existing destination", onboardingDialog.visible && !!onboardingDraft.revision && !localChoice.checked)' if mode=='onboarding-view' else 'check("save completes without starting service", !onboardingDialog.visible && notice.includes("nenhum serviço"))' if mode=='onboarding-saved' else 'check("cancel closes draft", !onboardingDialog.visible && !onboardingDraft.revision)' if mode=='onboarding-cancel' else 'check("invalid config visible and saving blocked", !!onboardingError && !onboardingDraft.revision && !localChoice.enabled)'
   if mode=='frames-compact':action='window.width=900; window.height=640; '+action;assertion+='; check("compact dialog within viewport", framesDialog.height <= window.height-64); check("compact content fits width and Cancel remains visible", frameColumn.width <= frameScroll.availableWidth && frameCancelButton.visible)'
   if mode=='frames-reference':
-   extra+='\n Timer { interval: 900; running: true; onTriggered: followFrameReference() }\n'
+   extra+='\n Timer { interval: 50; running: true; repeat: true; property int elapsed: 0; onTriggered: { elapsed += 50; if (!frameResult.synthetic && elapsed < 1900) return; stop(); followFrameReference() } }\n'
    assertion='check("reference points to exact source time", sourceReferenceSeconds === 1.2 && !framesDialog.visible && notice.includes("00:01.200"))'
   extra=extra.replace('ACTION',action).replace('SECOND',second).replace('/*TEST_ASSERT*/',assertion)
   qml=source.replace('../../docs/assets/',(repo/'docs/assets').as_uri()+'/').rstrip();(folder/'Main.qml').write_text(qml[:-1]+extra+'}\n');copy_qml_siblings(folder)

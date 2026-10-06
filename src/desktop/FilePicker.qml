@@ -18,7 +18,7 @@ Item {
         } else {
             fileDialog.title = title
             fileDialog.fileMode = mode === "save" ? FileDialog.SaveFile : FileDialog.OpenFile
-            fileDialog.nameFilters = mode === "save" || mode === "json" ? ["Configuração JSON (*.json)"] : ["Todos os arquivos (*)"]
+            fileDialog.nameFilters = mode === "save" || mode === "json" ? [t("Configuração JSON (*.json)")] : [t("Todos os arquivos (*)")]
             if (folder) fileDialog.currentFolder = folder
             fileDialog.open()
         }

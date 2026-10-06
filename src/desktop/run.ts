@@ -22,8 +22,9 @@ const run = async (args: string[]): Promise<void> => {
 if (!(await Bun.file(moc).exists())) throw new Error("SDK Qt ausente. Execute bun run desktop:setup.");
 await fs.mkdir(build, { recursive: true });
 const source = join(root, "main.cpp");
-// The Studio QML is split across files loaded at runtime; all of them identify the build.
-const qmlFiles = (await fs.readdir(root)).filter((name) => name.endsWith(".qml")).sort().map((name) => join(root, name));
+// The Studio QML is split across files loaded at runtime (plus the i18n.js dictionary); all
+// of them identify the build.
+const qmlFiles = (await fs.readdir(root)).filter((name) => name.endsWith(".qml") || name.endsWith(".js")).sort().map((name) => join(root, name));
 const buildInputs = [source, ...qmlFiles, join(root, "bridge.ts"), join(root, "run.ts"), resolve(root, "../../package.json")];
 const fingerprint = createHash("sha256");
 for (const input of buildInputs) fingerprint.update(await fs.readFile(input));

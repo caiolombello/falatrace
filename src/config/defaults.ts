@@ -153,7 +153,14 @@ export type AppConfig = {
     maxMeetingsPerClient: number;
     maxCharactersPerClient: number;
   };
+  /** Studio preferences. "auto" follows the system language (Portuguese or English). */
+  studio: {
+    language: StudioLanguage;
+  };
 };
+
+export const STUDIO_LANGUAGES = ["auto", "pt-BR", "en"] as const;
+export type StudioLanguage = (typeof STUDIO_LANGUAGES)[number];
 
 export const DEFAULT_CONFIG: AppConfig = {
   recordingsDir: join(homedir(), "Videos", "Recordings"),
@@ -278,5 +285,8 @@ export const DEFAULT_CONFIG: AppConfig = {
     autoBuild: true,
     maxMeetingsPerClient: 12,
     maxCharactersPerClient: 18_000
+  },
+  studio: {
+    language: "auto"
   }
 };
