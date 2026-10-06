@@ -65,7 +65,7 @@ export type SettingsDeps = {
   removeSecret: typeof removeSecret;
   testKey: (provider: KeyTestProvider, configApiKey?: string) => ReturnType<typeof testProviderKey>;
   remoteCheck: typeof checkRemote;
-  obsCheck: (config: Awaited<ReturnType<typeof loadConfig>>["config"]) => Promise<boolean>;
+  obsCheck: (config: Awaited<ReturnType<typeof loadConfig>>["config"], managerEnv: NodeJS.ProcessEnv) => Promise<boolean>;
   audioTest: typeof runAudioTest;
   backups: typeof listConfigBackups;
   restore: typeof restoreConfigBackup;
@@ -105,8 +105,8 @@ export const defaultSettingsDeps: SettingsDeps = {
   testKey: (provider, configApiKey) => testProviderKey(provider, defaultKeyTestDeps(readManagerEnv, configApiKey)),
   remoteCheck: checkRemote,
   // Tested with the password automatic recording gets: the call monitor's environment with calls.env.
-  obsCheck: async (config) => {
-    const env = unitEnvironment((await readManagerEnv()) || {}, await readSecretFiles(getSecretFiles()), "calls.env");
+  obsCheck: async (config, managerEnv) => {
+    const env = unitEnvironment(managerEnv, await readSecretFiles(getSecretFiles()), "calls.env");
     return new ManualObsController({ ...config.obs, enabled: true }, undefined, undefined, undefined, env).isRecording();
   },
   audioTest: runAudioTest,
@@ -130,6 +130,8 @@ export const settingsErrorMessage = (op: string): string =>
                       : op === "settings-model-cancel" ? "Não foi possível cancelar o download; ele pode continuar em segundo plano. Tente de novo."
                         : op.startsWith("settings-model") || op.startsWith("settings-ollama") ? "Não foi possível concluir o download. Nada foi instalado; tente novamente."
                           : "Não foi possível alterar o serviço. Confira se há uma gravação em andamento e o estado do systemd.";
+
+export const OBS_PASSWORD_UNKNOWN = "Não foi possível ler o ambiente dos serviços do usuário, então não dá para saber qual senha o monitor de chamadas usa. Tente de novo.";
 
 /** Prefix of the refusal to apply the monitor; the capture check's reason follows it. */
 export const AUTOMATIC_CAPTURE_BLOCKED = "A gravação automática não funcionaria com esta configuração.";
@@ -271,8 +273,12 @@ export const handleSettingsOperation = async (
   }
   if (op === "settings-obs-check") {
     const { config } = await deps.loadConfig();
+    // A password in the user manager's environment wins over secrets.env: without that environment the
+    // password the call monitor uses is unknown, so nothing is tested rather than possibly the wrong one.
+    const managerEnv = await deps.managerEnv().catch(() => null);
+    if (!managerEnv) return { ok: false, unknown: true, detail: OBS_PASSWORD_UNKNOWN };
     try {
-      const recording = await deps.obsCheck(config);
+      const recording = await deps.obsCheck(config, managerEnv);
       return { ok: true, recording, detail: recording ? "O OBS respondeu e está gravando agora." : "O OBS respondeu e não está gravando." };
     } catch (error) {
       const text = error instanceof Error ? error.message : String(error);

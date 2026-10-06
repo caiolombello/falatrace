@@ -8,7 +8,7 @@ import { describeDestinations } from "../../jobs/manual";
 import { WHISPER_MODELS } from "../../models/downloads";
 import { translateCaptureMessage } from "../../recording/messages";
 import { waitMessage } from "../../runtime/heavy-admission";
-import { SETTINGS_KNOWN_ERRORS, settingsErrorMessage, SETTINGS_OPERATIONS } from "../settings-bridge";
+import { OBS_PASSWORD_UNKNOWN, SETTINGS_KNOWN_ERRORS, settingsErrorMessage, SETTINGS_OPERATIONS } from "../settings-bridge";
 
 /**
  * The Studio's English comes from src/desktop/i18n.js, keyed by the Portuguese text.
@@ -147,4 +147,5 @@ test("capture, queue, model, key-test and destination messages are translated", 
     english(result.detail);
   }
   english((await testProviderKey("openai", { fetch: (async () => new Response("{}")) as unknown as typeof fetch, managerEnv: async () => ({}), files: [], configApiKey: undefined } as never)).detail);
+  english(OBS_PASSWORD_UNKNOWN);
 });

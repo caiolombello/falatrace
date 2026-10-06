@@ -153,7 +153,7 @@ falatrace models ollama-pull qwen3.5:9b
 | `s3.prefix` | prefix | `recordings/` | |
 | `s3.profile` | AWS CLI profile or empty | empty | |
 
-**Test connection** checks the worker over SSH and lists its tools; **Test the OBS connection** checks the WebSocket.
+**Test connection** checks the worker over SSH and lists its tools; **Test the OBS connection** checks the WebSocket with the password the call monitor uses, and says so instead when the user services' environment cannot be read.
 
 ### Optional features
 

@@ -148,6 +148,17 @@ describe("settings bridge operations", () => {
     expect(await handleSettingsOperation("settings-remote-check", {}, refused.deps)).toMatchObject({ ok: false, hint: expect.stringContaining("chave") });
   });
 
+  test("the OBS password is tested only with the user manager's environment", async () => {
+    const seen: NodeJS.ProcessEnv[] = [];
+    const obsCheck: SettingsDeps["obsCheck"] = async (_config, env) => { seen.push(env); return false; };
+    const unknown = await handleSettingsOperation("settings-obs-check", {}, fakeDeps({ obsCheck }).deps);
+    expect(unknown).toMatchObject({ ok: false, unknown: true, detail: expect.stringContaining("qual senha o monitor de chamadas usa") });
+    expect(seen).toEqual([]);
+    const read = fakeDeps({ obsCheck, managerEnv: async () => ({ RECORDING_CLI_OBS_PASSWORD: "synthetic-manager" }) });
+    expect(await handleSettingsOperation("settings-obs-check", {}, read.deps)).toMatchObject({ ok: true, recording: false });
+    expect(seen).toEqual([{ RECORDING_CLI_OBS_PASSWORD: "synthetic-manager" }]);
+  });
+
   test("the audio test uses the capture lock and is refused during a capture", async () => {
     const busy = fakeDeps({ captureActive: async () => true });
     await expect(handleSettingsOperation("settings-audio-test", {}, busy.deps)).rejects.toThrow("Não teste o áudio");
