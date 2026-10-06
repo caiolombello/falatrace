@@ -34,6 +34,8 @@ FtDialog {
     onClosed:{ languagePreview = ""; generation += 1; data = ({}); draft = ({}); pendingKey = ""; onboardingButton.forceActiveFocus(Qt.TabFocusReason) }
 
     function request(op, payload, extra) { return send(op, "", payload || ({}), Object.assign({ origin: "wizard", wizardGeneration: generation }, extra || ({}))) }
+    // One status request in flight per download, so concurrent downloads all progress.
+    function statusPending(key) { return Object.keys(pending).some(function(id){ return pending[id].origin === "wizard" && pending[id].op === "settings-model-status" && pending[id].downloadKey === key && pending[id].wizardGeneration === generation }) }
     function hasPending(op) { return Object.keys(pending).some(function(id){ return pending[id].origin === "wizard" && pending[id].op === op && pending[id].wizardGeneration === generation }) }
     function load() { if (!backend.available) { error = t("Serviço indisponível. Reconecte e abra o assistente de novo."); return } request("settings-read"); request("settings-diagnose"); request("settings-model-catalog") }
     function value(field) { return Object.prototype.hasOwnProperty.call(draft, field) ? draft[field] : (data.values || ({}))[field] }
@@ -164,7 +166,7 @@ FtDialog {
     Timer {
         interval:2000; repeat:true
         running:setupWizard.visible && Object.keys(setupWizard.downloads).some(function(key){ return setupWizard.downloads[key].state === "running" })
-        onTriggered:{ for (const key in setupWizard.downloads) { const state = setupWizard.downloads[key]; if (state.state === "running" && !setupWizard.hasPending("settings-model-status")) setupWizard.request("settings-model-status", { kind: state.kind, model: state.id }) } }
+        onTriggered:{ for (const key in setupWizard.downloads) { const state = setupWizard.downloads[key]; if (state.state === "running" && !setupWizard.statusPending(key)) setupWizard.request("settings-model-status", { kind: state.kind, model: state.id }, { downloadKey: key }) } }
     }
 
     component Choice: Button {

@@ -67,10 +67,12 @@ FtDialog {
     function cancelDownload(kind, id) { send("settings-model-cancel", "", { kind: kind, model: id }) }
     function downloadKey(kind, id) { return kind + ":" + id }
     function startDownload(kind, id) { confirmDownload = ""; settingsError = ""; send("settings-model-download", "", { kind: kind, model: id, consent: true }) }
+    // One status request in flight per download, so concurrent downloads all progress.
+    function statusPending(key) { return Object.keys(pending).some(function(id){ return pending[id].op === "settings-model-status" && pending[id].downloadKey === key && pending[id].settingsGeneration === settingsGeneration }) }
     function pollDownloads() {
         for (const key in downloads) {
             const state = downloads[key]
-            if (state && state.state === "running" && !hasSettingsPending("settings-model-status")) send("settings-model-status", "", { kind: state.kind, model: state.id })
+            if (state && state.state === "running" && !statusPending(key)) send("settings-model-status", "", { kind: state.kind, model: state.id }, { downloadKey: key })
         }
     }
     function downloadProgress(state) {
