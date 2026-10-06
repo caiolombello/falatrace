@@ -70,6 +70,8 @@ ApplicationWindow {
     property bool loading: true
     // The last saved list is shown at startup until the fresh list replaces it.
     property bool libraryRefreshing: false
+    // Bumped when a settings change may move the recordings folder; older list answers are ignored.
+    property int libraryEpoch: 0
     property bool libraryFresh: false
     property bool resolving: false
     property bool detailLoading: false
@@ -543,7 +545,8 @@ ApplicationWindow {
         return (s.active?t("Ativo"):t("Parado"))+(s.enabled?t(", inicia com a sessão."):t(", não inicia com a sessão."))+(s.staleConfig?t(" Ainda usa a configuração anterior: aplique para valer."):"")+(s.outdated?t(" A pasta das gravações mudou: aplique de novo."):"")
     }
     // A committed save or restore can move the recordings folder: the library list is read again.
-    function refreshLibraryAfterSettings() { if (!backend.available || hasPending("list")) return; libraryRefreshing = true; send("list", "") }
+    // A list sent before the change may describe the previous folder: a newer epoch makes its answer stale.
+    function refreshLibraryAfterSettings() { if (!backend.available) return; libraryEpoch += 1; libraryRefreshing = true; send("list", "") }
     function settingsConnectionLost() {
         setupWizard.connectionLost()
         if(!settingsDialog.visible)return
@@ -693,7 +696,7 @@ ApplicationWindow {
         const id = backend.request(op, key || "", payload || ({}))
         if (id < 0) { if(op.startsWith("summary-"))summaryConnectionLost();if(op.startsWith("revision-")){reviewNeedsReload=true;reviewError=t("Pedido sem confirmação; reconecte e releia antes de tentar novamente.")}if(op.startsWith("export-")){exportError=t("Pedido sem confirmação; atualize a prévia após reconectar.");exportResult=({})}if(op.startsWith("agent-")||op.startsWith("provider-"))agentError=t("Serviço indisponível; dados preservados. Feche e reconecte para continuar."); if(op.startsWith("frames-"))uxError=t("Serviço indisponível; dados preservados. Reabra após reconectar.");if(op.startsWith("onboarding-"))invalidateOnboarding(t("O serviço não recebeu este pedido. Reconecte e releia a configuração antes de salvar."));if(op.startsWith("settings-")&&settingsDialog.visible){settingsNeedsReload=true;settingsError=t("O serviço não recebeu este pedido. Reconecte e releia a configuração.");return -1} errorText = t("O serviço da biblioteca está indisponível. Reabra esta janela."); return -1 }
         const next = Object.assign({}, pending)
-        next[id] = Object.assign({op: op, key: key, generation: generation, frameGeneration: frameGeneration, onboardingGeneration: onboardingGeneration, settingsGeneration: settingsGeneration, agentGeneration:agentGeneration, reviewGeneration:reviewGeneration,exportGeneration:exportGeneration,summaryGeneration:summaryGeneration}, meta || ({}))
+        next[id] = Object.assign({op: op, key: key, generation: generation, frameGeneration: frameGeneration, onboardingGeneration: onboardingGeneration, settingsGeneration: settingsGeneration, agentGeneration:agentGeneration, reviewGeneration:reviewGeneration,exportGeneration:exportGeneration,summaryGeneration:summaryGeneration,libraryEpoch:libraryEpoch}, meta || ({}))
         pending = next
         return id
     }
@@ -781,6 +784,7 @@ ApplicationWindow {
             if (["detail","context-meeting","revision-save","revision-undo"].includes(request.op) && request.reviewGeneration !== reviewGeneration) return
             if(request.op.startsWith("export-") && request.exportGeneration!==exportGeneration)return
             if (request.op === "playback-status") operationPolling = false
+            if (request.op === "list" && request.libraryEpoch !== libraryEpoch) return
             if (request.op === "list") { loading = false; libraryRefreshing = false }
             if (request.op === "detail") detailLoading = false
             if (request.op.startsWith("frames-") && request.op !== "frames-cancel" && (request.generation !== generation || request.frameGeneration !== frameGeneration)) return

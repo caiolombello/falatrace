@@ -140,6 +140,8 @@ for line in sys.stdin:
     elif op == 'settings-obs-check': v = {'ok':False,'detail':'O OBS não respondeu.'}
     elif op == 'settings-audio-test': v = {'seconds':5,'tracks':[{'label':'Microfone','hasSignal':True,'peakDb':-12}],'warnings':[]}
     elif op == 'capture-status': v = {'active':False,'paused':False,'audio':{'configured':False}}
+    # The library list sent at startup is still pending when the save commits.
+    elif op == 'list' and mode == 'save-list-pending' and [q['op'] for q in log].count('list') == 1: continue
     elif op in ('list','list-cached','jobs-list'): v = {'items':[]}
     elif op == 'ux-capabilities': v = {'mockFrames':False,'realFrames':False}
     else:
@@ -270,6 +272,7 @@ MODES = {
     'wizard-ollama-pending': ('setupWizard.open(); setupWizard.consentAck=true; setupWizard.applyMonitor=false; setupWizard.applyTimer=false',
                               'setupWizard.request("settings-model-download",{kind:"ollama",model:"qwen3.5:9b",consent:true,ollamaUrl:"http://127.0.0.1:11434"})',
                               'setupWizard.step=4; setupWizard.finish(); check("Finish waits for an Ollama pull started here", setupWizard.downloads["ollama:qwen3.5:9b"].state==="running" && setupWizard.step===4 && setupWizard.error!=="")', ''),
+    'save-list-pending': ('settingsDialog.open()', 'setSettingsField("callDetection.apps.discord", true); saveSettingsDraft()', '', ''),
     'models-ollama-draft': ('settingsDialog.open()',
                             'setSettingsField("summary.provider", "ollama"); setSettingsField("summary.ollamaUrl", "http://127.0.0.1:11435"); setSettingsField("summary.ollamaModel", "llama4:8b"); settingsDialog.goToSection(4)',
                             'check("the list shows the Ollama at the unsaved address", !!settingsDialog.catalog.ollama && settingsDialog.catalog.ollama.url==="http://127.0.0.1:11435"); settingsDialog.startDownload("ollama", "llama4:8b"); '
@@ -309,7 +312,7 @@ SIDE_EFFECTS = {'save': {'settings-save'}, 'services': {'settings-service'}, 'wi
                 'wizard-lost': {'settings-save'}, 'restore-pending': {'settings-restore'}, 'wizard-ffmpeg-review': {'settings-save'}, 'models-ollama-draft': {'settings-model-download'}, 'wizard-automation-review': {'settings-save'},
                 'wizard-skip-services': {'settings-save'}, 'wizard-monitor-stale': {'settings-save'},
                 'wizard-unknown-services': {'settings-save'},
-                'wizard-ollama-pending': {'settings-model-download'}}
+                'wizard-ollama-pending': {'settings-model-download'}, 'save-list-pending': {'settings-save'}}
 GUARDED = {'settings-save', 'settings-service', 'settings-secret-set', 'settings-secret-remove', 'settings-model-download', 'settings-restore'}
 
 checks = []; screens = []
@@ -382,6 +385,9 @@ with tempfile.TemporaryDirectory(dir='/tmp', prefix='falatrace-settings-fixture-
         if mode in ('wizard-disable-monitor', 'wizard-disable-unknown'):
             applied = [q['payload'] for q in requests if q['op'] == 'settings-service']
             checks.append({'name': f'{mode}: only the monitor is disabled', 'pass': applied == [{'action': 'calls-disable'}]})
+        if mode == 'save-list-pending':
+            ops = [q['op'] for q in requests]
+            checks.append({'name': 'save-list-pending: a list pending from before the save does not stop the library from being listed again', 'pass': 'settings-save' in ops and 'list' in ops[ops.index('settings-save') + 1:]})
         if mode in ('save', 'backups'):
             ops = [q['op'] for q in requests]
             change = 'settings-save' if mode == 'save' else 'settings-restore'
