@@ -138,14 +138,14 @@ falatrace models ollama-pull qwen3.5:9b
 | `remote.port` | 1–65535 | 22 | |
 | `remote.identityFile` | absolute path or empty | empty | |
 | `remote.archiveDir` | absolute or `~/` path | `~/Videos/RecordingArchive` | |
-| `archive.enabled` | true, false | false | Keep verified copies of original recordings. |
+| `archive.enabled` | true, false | false | Keep verified copies of original recordings. Needs at least one destination below. |
 | `archive.vaio` | true, false | true | Copy to the remote worker. |
 | `archive.proton` | true, false | true | Copy to Proton Drive. |
 | `archive.syncIntervalMinutes` | 1–1440 | 5 | |
 | `proton.enabled` | true, false | false | Back up results with rclone. |
 | `proton.targetFolder` | path under `/my-files` | `/my-files/RecordingArchive` | |
 | `proton.policy` | `artifacts`, `full` | `artifacts` | `full` includes the media. |
-| `s3.enabled` | true, false | false | Legacy upload commands only. |
+| `s3.enabled` | true, false | false | Legacy upload commands only. Needs `s3.bucket`. |
 | `s3.bucket` | bucket name | empty | |
 | `s3.region` | region | `us-east-1` | |
 | `s3.prefix` | prefix | `recordings/` | |

@@ -196,6 +196,26 @@ test("remote processing needs a real worker, but older files are not blocked fro
   });
 });
 
+test("an integration that could never run is refused, but older files are not blocked from unrelated saves", async () => {
+  await withRoot(async (root) => {
+    const path = join(root, "config.json");
+    const draft = await readSettings(path, {});
+    // S3 needs its bucket, whether the switch or the bucket is what changes.
+    await expect(saveSettings(draft.revision, { "s3.enabled": true }, path)).rejects.toThrow("Informe o bucket");
+    await saveSettings(draft.revision, { "s3.enabled": true, "s3.bucket": "falatrace-recordings" }, path);
+    const enabled = await readSettings(path, {});
+    await expect(saveSettings(enabled.revision, { "s3.bucket": "" }, path)).rejects.toThrow("Informe o bucket");
+    // The originals archive needs a destination.
+    await expect(saveSettings(enabled.revision, { "archive.enabled": true, "archive.vaio": false, "archive.proton": false }, path))
+      .rejects.toThrow("Escolha ao menos um destino");
+    await saveSettings(enabled.revision, { "archive.enabled": true, "archive.vaio": false, "archive.proton": true }, path);
+    await fs.writeFile(path, JSON.stringify({ s3: { enabled: true, bucket: "" }, archive: { enabled: true, vaio: false, proton: false } }));
+    const old = await readSettings(path, {});
+    await saveSettings(old.revision, { "callDetection.enabled": true }, path);
+    expect(JSON.parse(await fs.readFile(path, "utf8")).callDetection).toEqual({ enabled: true });
+  });
+});
+
 test("visual limits are written as a complete lifetime policy and optional keys can be removed", async () => {
   await withRoot(async (root) => {
     const path = join(root, "config.json");

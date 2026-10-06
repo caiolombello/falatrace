@@ -1320,6 +1320,8 @@ var EN = {
     "Falha ao enfileirar as legendas": "Failed to queue the subtitles",
     "Configure o worker remoto antes de escolher o processamento remoto.": "Configure the remote worker before choosing remote processing.",
     "Configure o worker remoto antes de arquivar originais nele.": "Configure the remote worker before archiving originals on it.",
+    "Escolha ao menos um destino antes de ativar o arquivo de originais.": "Choose at least one destination before turning on the originals archive.",
+    "Informe o bucket antes de ativar o envio para o S3.": "Enter the bucket before turning on the upload to S3.",
     "Ative o backup no Proton Drive antes de instalar o timer.": "Turn on the Proton Drive backup before installing the timer.",
     "O OBS recusou a senha do WebSocket. Salve a senha certa em Chaves de API.": "OBS refused the WebSocket password. Save the right password in API keys.",
     "definida no config.json, formato antigo": "set in config.json, the old format",

@@ -304,6 +304,13 @@ export const applySettingsPatch = (previous: JsonObject, fields: SettingsPatch):
   if (touches("archive.enabled", "archive.vaio", "remote.host") && merged.archive.enabled && merged.archive.vaio && isPlaceholderRemoteHost(merged.remote.host)) {
     throw new Error("Configure o worker remoto antes de arquivar originais nele.");
   }
+  // An integration turned on that could never run is refused here, not on its first upload or timer.
+  if (touches("archive.enabled", "archive.vaio", "archive.proton") && merged.archive.enabled && !merged.archive.vaio && !merged.archive.proton) {
+    throw new Error("Escolha ao menos um destino antes de ativar o arquivo de originais.");
+  }
+  if (touches("s3.enabled", "s3.bucket") && merged.s3.enabled && !merged.s3.bucket) {
+    throw new Error("Informe o bucket antes de ativar o envio para o S3.");
+  }
   return next;
 };
 

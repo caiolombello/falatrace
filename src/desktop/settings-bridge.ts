@@ -142,6 +142,8 @@ export const SETTINGS_KNOWN_ERRORS = [
   "Nenhuma alteração para salvar.",
   "Configure o worker remoto antes de escolher o processamento remoto.",
   "Configure o worker remoto antes de arquivar originais nele.",
+  "Escolha ao menos um destino antes de ativar o arquivo de originais.",
+  "Informe o bucket antes de ativar o envio para o S3.",
   "Ative o arquivo de originais e escolha um destino antes de instalar o timer.",
   "Ative o backup no Proton Drive antes de instalar o timer.",
   "Chave não suportada.",
