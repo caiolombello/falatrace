@@ -42,6 +42,15 @@ test("external providers check only credential presence; remote Ollama is never 
   config.transcription.provider = "whisper-cpp";
   config.processing.defaultTarget = "remote";
   expect(byId(await checkProcessing(config, { openai: "environment", gemini: "missing" }, probe())).whisper).toBe("skipped");
+  // Remote jobs use the worker's own keys and Ollama: nothing on this computer is checked for them.
+  config.transcription.provider = "openai";
+  config.summary.provider = "openai";
+  expect(byId(await checkProcessing(config, none, probe()))).toEqual({ ffmpeg: "ok", "transcription-key": "skipped", "summary-key": "skipped" });
+  config.summary.provider = "ollama";
+  config.summary.ollamaUrl = "http://127.0.0.1:11434";
+  let probed = false;
+  expect(byId(await checkProcessing(config, none, probe({ ollamaModels: async () => { probed = true; return []; } }))).ollama).toBe("skipped");
+  expect(probed).toBe(false);
 });
 
 test("audio devices are listed with safe names and descriptions only", async () => {
@@ -130,7 +139,9 @@ test("automation checks say what will really record and whether new recordings g
   config.backend = "audio";
   config.processing.autoEnqueue = true;
   expect(checkAutomation(config, services).find((check) => check.id === "processing-timer")).toMatchObject({ status: "warning", action: "sync-apply" });
-  expect(checkAutomation(config, { ...services, sync: { ...idleTimer, installed: true, enabled: true } }).find((check) => check.id === "processing-timer")).toMatchObject({ status: "ok" });
+  expect(checkAutomation(config, { ...services, sync: { ...idleTimer, installed: true, enabled: true, active: true } }).find((check) => check.id === "processing-timer")).toMatchObject({ status: "ok" });
+  // Enabled but stopped (or failed to start): jobs stay pending, so it is not healthy.
+  expect(checkAutomation(config, { ...services, sync: { ...idleTimer, installed: true, enabled: true, active: false } }).find((check) => check.id === "processing-timer")).toMatchObject({ status: "warning", action: "sync-apply" });
   config.processing.defaultTarget = "remote";
   expect(checkAutomation(config, services).find((check) => check.id === "remote-worker")).toMatchObject({ status: "missing" });
   config.archive.enabled = true;

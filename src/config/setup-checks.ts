@@ -86,6 +86,9 @@ const keyCheck = (
   return { id, label, status: notes.length ? "warning" : "ok", detail: [`Chave ${credentialLabel(source)}. ${okDetail}`, ...notes].join(" "), ...(notes.length ? { action: "keys" } : {}) };
 };
 
+/** The worker processes remote jobs with its own configuration, keys and Ollama. */
+const REMOTE_PROVIDER_DETAIL = "Roda no worker remoto, com a configuração, as chaves e os modelos de lá; não verificado neste computador. Use Testar conexão em Integrações.";
+
 export const checkProcessing = async (
   config: AppConfig,
   credentials: CredentialStatus,
@@ -113,6 +116,8 @@ export const checkProcessing = async (
         ...(model ? {} : { action: "whisper-model" }),
         detail: model ? "Arquivo do modelo encontrado." : "Arquivo do modelo não encontrado no caminho configurado. Baixe um modelo pelo Studio ou informe o caminho de um arquivo ggml." });
     }
+  } else if (remote) {
+    checks.push({ id: "transcription-key", label: "Transcrição", status: "skipped", detail: REMOTE_PROVIDER_DETAIL });
   } else {
     const variable = transcription === "openai" ? "OPENAI_API_KEY" : "GEMINI_API_KEY";
     const provider = transcription === "openai" ? "a OpenAI" : "o Gemini";
@@ -121,7 +126,9 @@ export const checkProcessing = async (
       "O áudio é enviado para um serviço externo."));
   }
 
-  if (config.summary.provider === "ollama") {
+  if (remote) {
+    checks.push({ id: config.summary.provider === "ollama" ? "ollama" : "summary-key", label: "Resumo", status: "skipped", detail: REMOTE_PROVIDER_DETAIL });
+  } else if (config.summary.provider === "ollama") {
     if (!isLoopbackUrl(config.summary.ollamaUrl)) {
       checks.push({ id: "ollama", label: "Ollama", status: "skipped", detail: "Endereço fora deste computador; não contatado pelo diagnóstico." });
     } else {
@@ -286,7 +293,7 @@ export const checkAutomation = (
     const timer = services?.sync;
     checks.push(!timer
       ? { id: "processing-timer", label: "Processamento automático", status: "skipped", detail: "Estado do timer de processamento indisponível." }
-      : !timer.installed || !timer.enabled
+      : !timer.installed || !timer.enabled || !timer.active
         ? { id: "processing-timer", label: "Processamento automático", status: "warning", action: "sync-apply",
           detail: "Gravações novas entram na fila, mas ficam pendentes até você processá-las: ative o processamento em segundo plano em Serviços." }
         : { id: "processing-timer", label: "Processamento automático", status: timer.outdated ? "warning" : "ok",
