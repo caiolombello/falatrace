@@ -282,12 +282,16 @@ export const checkAutomation = (
           : `Com o backend “${config.backend}”, a gravação automática usa o OBS, que está desativado. Escolha Só áudio ou Tela e áudio em Captura e áudio, ou ative o OBS.` });
     } else {
       const label = automatic === "audio" ? "só áudio" : automatic === "gpu-screen-recorder" ? "tela e áudio pelo GPU Screen Recorder" : "o OBS";
-      // Detection runs in the call monitor: while it is not running, nothing records on its own.
+      // Detection runs in the call monitor: while it is not running, nothing records on its own,
+      // and while its state cannot be read nothing is promised.
       const calls = services?.calls;
-      checks.push(calls && !(calls.installed && calls.enabled && calls.active)
-        ? { id: "automatic-backend", label: "Gravação automática", status: "warning", action: "calls-apply",
-          detail: "O monitor de chamadas não está rodando: nada será gravado automaticamente. Aplique o monitor em Serviços." }
-        : { id: "automatic-backend", label: "Gravação automática", status: "ok", detail: `As chamadas detectadas serão gravadas com ${label}.` });
+      checks.push(!calls
+        ? { id: "automatic-backend", label: "Gravação automática", status: "skipped",
+          detail: "Estado do monitor de chamadas indisponível; não dá para confirmar que as chamadas serão gravadas." }
+        : !(calls.installed && calls.enabled && calls.active)
+          ? { id: "automatic-backend", label: "Gravação automática", status: "warning", action: "calls-apply",
+            detail: "O monitor de chamadas não está rodando: nada será gravado automaticamente. Aplique o monitor em Serviços." }
+          : { id: "automatic-backend", label: "Gravação automática", status: "ok", detail: `As chamadas detectadas serão gravadas com ${label}.` });
     }
   }
   if (config.processing.defaultTarget === "remote" && isPlaceholderRemoteHost(config.remote.host)) {
@@ -305,13 +309,27 @@ export const checkAutomation = (
           ...(timer.outdated ? { action: "sync-apply" } : {}),
           detail: timer.outdated ? "O timer usa um intervalo ou pasta antigos: aplique de novo em Serviços." : "Gravações novas são processadas em segundo plano." });
   }
-  if (config.archive.enabled && services && (!services.archive.installed || !services.archive.enabled)) {
-    checks.push({ id: "archive-timer", label: "Arquivo de originais", status: "warning", action: "archive-apply",
-      detail: "O arquivo de originais está ativado, mas o timer que copia as gravações não está instalado." });
+  // Like the processing timer: an enabled copy needs its timer installed, enabled and running,
+  // and a state that cannot be read is said, not assumed.
+  if (config.archive.enabled) {
+    const timer = services?.archive;
+    if (!timer) checks.push({ id: "archive-timer", label: "Arquivo de originais", status: "skipped", detail: "Estado do timer do arquivo de originais indisponível." });
+    else if (!timer.installed || !timer.enabled || !timer.active) {
+      checks.push({ id: "archive-timer", label: "Arquivo de originais", status: "warning", action: "archive-apply",
+        detail: timer.installed
+          ? "O arquivo de originais está ativado, mas o timer que copia as gravações está desativado ou parado. Aplique-o em Serviços."
+          : "O arquivo de originais está ativado, mas o timer que copia as gravações não está instalado." });
+    }
   }
-  if (config.proton.enabled && services && (!services.backup.installed || !services.backup.enabled)) {
-    checks.push({ id: "backup-timer", label: "Backup no Proton Drive", status: "warning", action: "backup-apply",
-      detail: "O backup no Proton Drive está ativado, mas o timer de backup não está instalado." });
+  if (config.proton.enabled) {
+    const timer = services?.backup;
+    if (!timer) checks.push({ id: "backup-timer", label: "Backup no Proton Drive", status: "skipped", detail: "Estado do timer de backup indisponível." });
+    else if (!timer.installed || !timer.enabled || !timer.active) {
+      checks.push({ id: "backup-timer", label: "Backup no Proton Drive", status: "warning", action: "backup-apply",
+        detail: timer.installed
+          ? "O backup no Proton Drive está ativado, mas o timer de backup está desativado ou parado. Aplique-o em Serviços."
+          : "O backup no Proton Drive está ativado, mas o timer de backup não está instalado." });
+    }
   }
   return checks;
 };

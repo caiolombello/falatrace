@@ -103,12 +103,17 @@ test("diagnostic labels and details are translated in every state", async () => 
       { openai: "missing", gemini: "missing", details: [{ name: "OPENAI_API_KEY", source: "missing", sessionOnly: true, shadowsStudioKey: false, savedInStudio: false }] } as never, probe())
   ];
   const timer = (state: Record<string, boolean>) => ({ installed: false, enabled: false, active: false, outdated: false, nextRunAt: null, lastResult: null, ...state });
-  const services = (state: Record<string, boolean>) => ({ calls: null, tray: null, sync: timer(state), archive: timer(state), backup: timer(state) }) as never;
+  const monitor = { installed: true, enabled: true, active: true, outdated: false, staleConfig: false };
+  const services = (state: Record<string, boolean>, calls: typeof monitor | null = null) => ({ calls, tray: null, sync: timer(state), archive: timer(state), backup: timer(state) }) as never;
   const automation = [
     checkAutomation(config((c) => { c.callDetection.enabled = true; c.callDetection.mode = "record"; c.backend = "simple"; }), null),
     checkAutomation(config((c) => { c.callDetection.enabled = true; c.callDetection.mode = "record"; c.backend = "audio"; c.processing.autoEnqueue = true; c.processing.defaultTarget = "remote"; c.archive.enabled = true; c.proton.enabled = true; }), services({})),
     checkAutomation(config((c) => { c.callDetection.enabled = true; c.callDetection.mode = "obs"; c.processing.autoEnqueue = true; }), services({ installed: true, enabled: true, outdated: true })),
-    checkAutomation(config((c) => { c.callDetection.enabled = true; c.callDetection.mode = "record"; c.backend = "gpu-screen-recorder"; c.processing.autoEnqueue = true; }), services({ installed: true, enabled: true }))
+    checkAutomation(config((c) => { c.callDetection.enabled = true; c.callDetection.mode = "record"; c.backend = "gpu-screen-recorder"; c.processing.autoEnqueue = true; }), services({ installed: true, enabled: true })),
+    checkAutomation(config((c) => { c.callDetection.enabled = true; c.callDetection.mode = "record"; c.backend = "gpu-screen-recorder"; }), services({}, monitor)),
+    checkAutomation(config((c) => { c.callDetection.enabled = true; c.callDetection.mode = "record"; c.backend = "audio"; }), services({}, { ...monitor, active: false })),
+    checkAutomation(config((c) => { c.archive.enabled = true; c.proton.enabled = true; }), services({ installed: true, enabled: true })),
+    checkAutomation(config((c) => { c.archive.enabled = true; c.proton.enabled = true; c.processing.autoEnqueue = true; }), null)
   ];
   const checks = [...runs.flat(), ...automation.flat()];
   expect(checks.length).toBeGreaterThan(15);

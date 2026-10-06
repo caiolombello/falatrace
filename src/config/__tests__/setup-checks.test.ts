@@ -137,6 +137,10 @@ test("automation checks say what will really record and whether new recordings g
   expect(checkAutomation(config, services)[0]).toMatchObject({ id: "automatic-backend", status: "warning", action: "calls-apply" });
   const running = { ...services, calls: { installed: true, enabled: true, active: true, outdated: false, staleConfig: false } };
   expect(checkAutomation(config, running)[0]).toMatchObject({ id: "automatic-backend", status: "ok", detail: expect.stringContaining("só áudio") });
+  // Service status unavailable: the monitor may not be running, so nothing is promised.
+  for (const unknown of [null, { ...services, calls: null }] as never[]) {
+    expect(checkAutomation(config, unknown)[0]).toMatchObject({ id: "automatic-backend", status: "skipped", detail: expect.stringContaining("indisponível") });
+  }
   config.backend = "gnome";
   expect(checkAutomation(config, services)[0]).toMatchObject({ status: "missing", detail: expect.stringContaining("não grava automaticamente") });
   config.backend = "audio";
@@ -152,6 +156,16 @@ test("automation checks say what will really record and whether new recordings g
   const ids = checkAutomation(config, services).map((check) => check.id);
   expect(ids).toContain("archive-timer");
   expect(ids).toContain("backup-timer");
+  const copies = (archive: typeof idleTimer, backup: typeof idleTimer) =>
+    checkAutomation(config, { ...services, archive, backup }).filter((check) => check.id === "archive-timer" || check.id === "backup-timer");
+  const runningTimer = { ...idleTimer, installed: true, enabled: true, active: true };
+  expect(copies(runningTimer, runningTimer)).toEqual([]);
+  // Enabled but stopped: no copy is made, so it is flagged like the processing timer.
+  const stopped = { ...runningTimer, active: false };
+  expect(copies(stopped, stopped).map((check) => [check.status, check.action])).toEqual([["warning", "archive-apply"], ["warning", "backup-apply"]]);
+  expect(copies(stopped, stopped)[0].detail).toContain("parado");
+  // Service status unavailable: said, not assumed.
+  expect(checkAutomation(config, null).filter((check) => check.id === "archive-timer" || check.id === "backup-timer").map((check) => check.status)).toEqual(["skipped", "skipped"]);
 });
 
 test("timer status reports drift in the interval or the recordings folder baked into the unit", async () => {
