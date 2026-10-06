@@ -48,7 +48,7 @@ FtDialog {
     function goToSection(index) { settingsTabs.currentIndex = index; sectionLoaded(index) }
     function sectionLoaded(index) {
         if (!backend.available) return
-        if (index === 4 && !hasSettingsPending("settings-model-catalog")) send("settings-model-catalog", "")
+        if (index === 4 && !hasSettingsPending("settings-model-catalog")) requestCatalog()
         if (index === 9 && !hasSettingsPending("settings-backups")) send("settings-backups", "")
     }
     function choosePath(mode, title, start, done) { if (pickerLoader.item) pickerLoader.item.open(mode, title, start, done) }
@@ -71,7 +71,17 @@ FtDialog {
     function downloadKey(kind, id) { return kind + ":" + id }
     // A Whisper model is in use only while transcription runs on this computer.
     function modelInUse(path) { return path === settingsDraft["transcription.whisperCpp.modelPath"] && settingsDraft["transcription.provider"] === "whisper-cpp" }
-    function startDownload(kind, id) { confirmDownload = ""; settingsError = ""; send("settings-model-download", "", { kind: kind, model: id, consent: true }) }
+    // Ollama is listed and pulled into at the draft's address, which may not be saved yet, so the model lands
+    // where processing will look for it; the download waits for a list read from that same address.
+    function draftOllamaUrl() { return String(settingsDraft["summary.ollamaUrl"] || (settingsData.values || {})["summary.ollamaUrl"] || "") }
+    function requestCatalog() { send("settings-model-catalog", "", draftOllamaUrl() ? { ollamaUrl: draftOllamaUrl() } : ({})) }
+    function ollamaCatalogCurrent() { return !!catalog.ollama && catalog.ollama.url === draftOllamaUrl() }
+    function startDownload(kind, id) {
+        confirmDownload = ""; settingsError = ""
+        if (kind !== "ollama") { send("settings-model-download", "", { kind: kind, model: id, consent: true }); return }
+        if (!ollamaCatalogCurrent()) { settingsError = t("Atualize a lista para baixar no Ollama do endereço escolhido."); return }
+        send("settings-model-download", "", { kind: kind, model: id, consent: true, ollamaUrl: catalog.ollama.url })
+    }
     // One status request in flight per download, so concurrent downloads all progress.
     function statusPending(key) { return Object.keys(pending).some(function(id){ return pending[id].op === "settings-model-status" && pending[id].downloadKey === key && pending[id].settingsGeneration === settingsGeneration }) }
     function pollDownloads() {
@@ -187,7 +197,7 @@ FtDialog {
             const next = Object.assign({}, downloads)
             next[downloadKey(result.kind, result.id)] = result
             downloads = next
-            if (result.state === "completed" || result.state === "failed") send("settings-model-catalog", "")
+            if (result.state === "completed" || result.state === "failed") requestCatalog()
             if (result.state === "completed" && result.kind === "whisper" && result.path) {
                 // Only local transcription takes the new model at once; with an external provider the audio
                 // would still go there, so "Usar este modelo" switches both.
@@ -422,7 +432,8 @@ FtDialog {
           }
           SettingsSection { text:"Ollama" }
           SettingsHint { text:!settingsDialog.catalog.ollama?"":!settingsDialog.catalog.ollama.loopback?t("O Ollama configurado não está neste computador; o Studio não baixa modelos nele."):!settingsDialog.catalog.ollama.reachable?t("O Ollama não respondeu em ")+settingsDialog.catalog.ollama.url+t(". Instale e inicie o Ollama."):t("Modelos instalados: ")+(settingsDialog.catalog.ollama.installed.length?settingsDialog.catalog.ollama.installed.join(", "):t("nenhum"))+"." }
-          RowLayout { visible:!!(settingsDialog.catalog.ollama&&settingsDialog.catalog.ollama.loopback&&settingsDialog.catalog.ollama.reachable); Layout.fillWidth:true; spacing:8
+          SettingsHint { objectName:"ollamaCatalogStale"; visible:!!settingsDialog.catalog.ollama&&!settingsDialog.ollamaCatalogCurrent(); color:warningColor; text:t("Esta lista é do Ollama em ")+(settingsDialog.catalog.ollama?settingsDialog.catalog.ollama.url:"")+t(". Atualize a lista para ver o endereço escolhido.") }
+          RowLayout { visible:!!(settingsDialog.catalog.ollama&&settingsDialog.catalog.ollama.loopback&&settingsDialog.catalog.ollama.reachable&&settingsDialog.ollamaCatalogCurrent()); Layout.fillWidth:true; spacing:8
            readonly property string model: String(settingsDraft["summary.ollamaModel"]||"")
            readonly property var download: settingsDialog.downloads[settingsDialog.downloadKey("ollama", model)]
            readonly property bool installed: !!settingsDialog.catalog.ollama && (settingsDialog.catalog.ollama.installed.indexOf(model)>=0||settingsDialog.catalog.ollama.installed.indexOf(model+":latest")>=0)
@@ -439,7 +450,7 @@ FtDialog {
             FtButton { text:t("Cancelar"); compact:true; variant:"outline"; onClicked:settingsDialog.confirmDownload="" }
            }
           }
-          FtButton { text:t("Atualizar lista"); iconName:"refresh"; variant:"outline"; compact:true; enabled:backend.available&&!hasSettingsPending("settings-model-catalog"); onClicked:send("settings-model-catalog","") }
+          FtButton { text:t("Atualizar lista"); iconName:"refresh"; variant:"outline"; compact:true; enabled:backend.available&&!hasSettingsPending("settings-model-catalog"); onClicked:settingsDialog.requestCatalog() }
         }
 
         // 5 · Integrações

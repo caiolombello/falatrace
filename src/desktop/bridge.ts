@@ -330,7 +330,8 @@ const ALLOWED_PAYLOAD: Partial<Record<Request["op"], string[]>> = {
   "settings-secret-set": ["name", "value"], "settings-secret-remove": ["name"], "settings-secret-test": ["service"],
   "settings-restore": ["revision", "backup"], "settings-export": ["path"], "settings-import-read": ["path"],
   "settings-audio-test": ["seconds", "audioSource", "microphone", "desktop"],
-  "settings-model-download": ["kind", "model", "consent", "ollamaUrl"], "settings-model-status": ["kind", "model"], "settings-model-cancel": ["kind", "model"],
+  "settings-model-catalog": ["ollamaUrl"], "settings-model-download": ["kind", "model", "consent", "ollamaUrl"],
+  "settings-model-status": ["kind", "model"], "settings-model-cancel": ["kind", "model"],
   "recording-process": ["consent", "consentKey"],
   "capture-start": ["title"], "diarization-name": ["speakerId", "label"], "context-meeting": ["maxCharacters", "query", "offset"]
 };

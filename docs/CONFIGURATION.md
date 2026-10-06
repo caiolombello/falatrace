@@ -125,7 +125,7 @@ falatrace models download large-v3-turbo-q5_0
 falatrace models ollama-pull qwen3.5:9b
 ```
 
-`ollama-pull` uses `summary.ollamaUrl`, or the address after `--url`; either must be an Ollama on this computer.
+`ollama-pull` uses `summary.ollamaUrl`, or the address after `--url`; either must be an Ollama on this computer. The Studio's Models section lists and pulls into the address in its draft, saved or not.
 
 ### Integrations
 

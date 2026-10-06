@@ -113,7 +113,8 @@ for line in sys.stdin:
     elif op == 'settings-secret-remove':
         details[0].update({'source':'missing','savedInStudio':False}); v = {'name':p['name'],'removed':True,'credentials':credentials()}
     elif op == 'settings-secret-test': v = {'provider':p['service'],'status':'ok','source':'secrets.env','detail':'Chave aceita pelo provedor. O teste não envia áudio nem texto.'}
-    elif op == 'settings-model-catalog': v = catalog
+    # Like the bridge, the Ollama listed is the one at the address the request names.
+    elif op == 'settings-model-catalog': v = dict(catalog, ollama=dict(catalog['ollama'], url=p.get('ollamaUrl', catalog['ollama']['url'])))
     elif op in ('settings-model-download', 'settings-model-status'):
         v = {'kind':p['kind'],'id':p['model'],'state':'running','receivedBytes':1048576,'totalBytes':77691713}
         if cancelled: v.update({'state':'failed','error':'O download foi interrompido. Tente novamente.'})
@@ -220,6 +221,11 @@ MODES = {
                              'if (missing) missing.clicked(); const ffmpeg = findObject(setupWizard.contentItem, "wizardProblem-ffmpeg"); check("the processing step shows what is missing", setupWizard.step===2 && !!ffmpeg && ffmpeg.visible); setupWizard.step=4; setupWizard.finish()',
                              'const title = findObject(setupWizard.contentItem, "wizardDoneTitle"); check("the last page lists FFmpeg instead of saying all set", setupWizard.step===5 && !!title && title.text!=="Tudo pronto" && setupWizard.pendingIssues().some(function(issue){ return issue.label==="FFmpeg" })); '
                              'setupWizard.set("processing.defaultTarget", "remote"); check("jobs sent to the remote worker do not need FFmpeg here", !setupWizard.processingProblems().length)', ''),
+    'models-ollama-draft': ('settingsDialog.open()',
+                            'setSettingsField("summary.provider", "ollama"); setSettingsField("summary.ollamaUrl", "http://127.0.0.1:11435"); setSettingsField("summary.ollamaModel", "llama4:8b"); settingsDialog.goToSection(4)',
+                            'check("the list shows the Ollama at the unsaved address", !!settingsDialog.catalog.ollama && settingsDialog.catalog.ollama.url==="http://127.0.0.1:11435"); settingsDialog.startDownload("ollama", "llama4:8b"); '
+                            'setSettingsField("summary.ollamaUrl", "http://127.0.0.1:11436"); const stale = findObject(settingsDialog.contentItem, "ollamaCatalogStale"); check("a list from another address is flagged", !!stale && stale.visible); settingsDialog.startDownload("ollama", "llama4:8b")',
+                            'check("a download is refused until the list matches the chosen address", settingsError!=="")'),
     'models-two': ('settingsDialog.open(); settingsDialog.goToSection(4)', 'settingsDialog.startDownload("whisper","tiny"); settingsDialog.startDownload("whisper","large-v3-turbo-q5_0")',
                    'settingsDialog.pollDownloads(); check("two downloads are tracked", !!settingsDialog.downloads["whisper:tiny"] && !!settingsDialog.downloads["whisper:large-v3-turbo-q5_0"])', ''),
     'integrations': ('settingsDialog.open(); settingsDialog.goToSection(5)', 'check("remote check available once configured", settingsData.readOnly.remoteConfigured); send("settings-remote-check",""); setSettingsField("remote.user", null); check("cleared optional field becomes a null change", settingsChanges()["remote.user"]===null)',
@@ -251,7 +257,7 @@ SIDE_EFFECTS = {'save': {'settings-save'}, 'services': {'settings-service'}, 'wi
                 'wizard-key-fail': {'settings-save', 'settings-secret-set'}, 'wizard-download-pending': {'settings-model-download'},
                 'keys-lost': {'settings-secret-set'}, 'wizard-key-required': {'settings-save', 'settings-secret-set'},
                 'models-cloud': {'settings-model-download'}, 'wizard-gemini-key': {'settings-save'}, 'wizard-recommended-review': {'settings-save'},
-                'wizard-lost': {'settings-save'}, 'restore-pending': {'settings-restore'}, 'wizard-ffmpeg-review': {'settings-save'}}
+                'wizard-lost': {'settings-save'}, 'restore-pending': {'settings-restore'}, 'wizard-ffmpeg-review': {'settings-save'}, 'models-ollama-draft': {'settings-model-download'}}
 GUARDED = {'settings-save', 'settings-service', 'settings-secret-set', 'settings-secret-remove', 'settings-model-download', 'settings-restore'}
 
 checks = []; screens = []
@@ -310,6 +316,11 @@ with tempfile.TemporaryDirectory(dir='/tmp', prefix='falatrace-settings-fixture-
             sets = [q for q in requests if q['op'] == 'settings-secret-set']
             checks.append({'name': 'wizard-key-finish: the key is written once, after the configuration', 'pass': ops == ['settings-save', 'settings-secret-set']
                            and sets[0]['payload'] == {'name': 'OPENAI_API_KEY', 'value': 'sha256:' + hashlib.sha256(b'sk-synthetic-wizard-key').hexdigest()}})
+        if mode == 'models-ollama-draft':
+            catalogs = [q['payload'] for q in requests if q['op'] == 'settings-model-catalog']
+            downloads = [q['payload'] for q in requests if q['op'] == 'settings-model-download']
+            checks.append({'name': 'models-ollama-draft: the list and the pull use the unsaved Ollama address', 'pass': bool(catalogs) and catalogs[0] == {'ollamaUrl': 'http://127.0.0.1:11435'}
+                           and downloads == [{'kind': 'ollama', 'model': 'llama4:8b', 'consent': True, 'ollamaUrl': 'http://127.0.0.1:11435'}]})
         if mode == 'models-two':
             polled = {q['payload'].get('model') for q in requests if q['op'] == 'settings-model-status'}
             checks.append({'name': 'models-two: every running download is polled', 'pass': {'tiny', 'large-v3-turbo-q5_0'} <= polled})

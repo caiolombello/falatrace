@@ -35,6 +35,20 @@ test("the catalog marks installed files and the configured Ollama model", async 
   }
 });
 
+test("the catalog lists the Ollama of the draft Settings shows, and only one on this computer", async () => {
+  const contacted: string[] = [];
+  const { value, config } = deps("/synthetic/models", { ollamaModels: async (url) => { contacted.push(url); return url.endsWith(":11435") ? [] : ["qwen3.5:9b"]; } });
+  config.summary.ollamaUrl = "http://127.0.0.1:11434";
+  type Catalog = { ollama: { url: string; loopback: boolean; reachable: boolean; installed: string[] } };
+  const drafted = await handleModelOperation("settings-model-catalog", { ollamaUrl: "http://127.0.0.1:11435" }, value) as Catalog;
+  expect(drafted.ollama).toMatchObject({ url: "http://127.0.0.1:11435", loopback: true, reachable: true, installed: [] });
+  const remote = await handleModelOperation("settings-model-catalog", { ollamaUrl: "http://ollama.lan:11434" }, value) as Catalog;
+  expect(remote.ollama).toMatchObject({ url: "http://ollama.lan:11434", loopback: false, reachable: false, installed: [] });
+  const saved = await handleModelOperation("settings-model-catalog", {}, value) as Catalog;
+  expect(saved.ollama).toMatchObject({ url: "http://127.0.0.1:11434", installed: ["qwen3.5:9b"] });
+  expect(contacted).toEqual(["http://127.0.0.1:11435", "http://127.0.0.1:11434"]);
+});
+
 test("downloads require consent, start a transient unit and never contact a remote Ollama", async () => {
   const { value, runs, config } = deps("/synthetic/models");
   await expect(handleModelOperation("settings-model-download", { kind: "whisper", model: "tiny" }, value)).rejects.toThrow("Confirme");

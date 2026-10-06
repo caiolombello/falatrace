@@ -64,17 +64,19 @@ export const handleModelOperation = async (
 ): Promise<unknown> => {
   if (op === "settings-model-catalog") {
     const { config } = await deps.loadConfig();
+    // Settings lists the Ollama of its draft, which may not be saved yet, and downloads into that same one.
+    const ollamaUrl = typeof payload.ollamaUrl === "string" ? payload.ollamaUrl : config.summary.ollamaUrl;
     const directory = deps.directory();
     const whisper = await Promise.all(WHISPER_MODELS.map(async (model) => {
       const path = join(directory, model.file);
       // "Download" on a present but unverified file only checks its SHA-256; nothing is fetched.
       return { ...model, path, installed: await isVerifiedWhisperModel(model, path), selected: config.transcription.whisperCpp.modelPath === path };
     }));
-    const loopback = isLoopbackOllama(config.summary.ollamaUrl);
-    const installed = loopback ? await deps.ollamaModels(config.summary.ollamaUrl).catch(() => null) : null;
+    const loopback = isLoopbackOllama(ollamaUrl);
+    const installed = loopback ? await deps.ollamaModels(ollamaUrl).catch(() => null) : null;
     return {
       whisper: { directory, source: WHISPER_SOURCE, models: whisper },
-      ollama: { url: config.summary.ollamaUrl, loopback, reachable: installed !== null, installed: installed || [], configured: config.summary.ollamaModel }
+      ollama: { url: ollamaUrl, loopback, reachable: installed !== null, installed: installed || [], configured: config.summary.ollamaModel }
     };
   }
   // Status and cancel need only the model and its unit: a broken configuration never strands a download.
@@ -96,8 +98,8 @@ export const handleModelOperation = async (
   }
   if (payload.consent !== true) throw new Error("Confirme o download antes de começar.");
   const { config } = await deps.loadConfig();
-  // The assistant pulls into the Ollama of the setup it is reviewing, which may not be saved yet. Any
-  // endpoint must be on this computer, and the pull uses exactly the one checked here.
+  // The assistant and Settings pull into the Ollama of the draft they show, which may not be saved yet.
+  // Any endpoint must be on this computer, and the pull uses exactly the one checked here.
   const ollamaUrl = typeof payload.ollamaUrl === "string" ? payload.ollamaUrl : config.summary.ollamaUrl;
   if (target.kind === "ollama" && !isLoopbackOllama(ollamaUrl)) {
     throw new Error("O download pelo Ollama só é feito para um Ollama neste computador.");
