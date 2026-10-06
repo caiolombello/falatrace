@@ -26,6 +26,10 @@ test("finalizing a recording queues one durable job without processing other pen
     expect(JSON.parse(await fs.readFile(join(store.getWorkDir(first!.id), "manifest.json"), "utf8")).id).toBe(first!.id);
     await fs.writeFile(source, "different media");
     await expect(store.enqueue(config, source, options)).rejects.toThrow("different media");
+    // A consented hash that no longer matches the bytes creates nothing.
+    const before = (await store.list()).length;
+    await expect(store.enqueue(config, source, { expectedSha256: "0".repeat(64) })).rejects.toThrow("mudaram");
+    expect(await store.list()).toHaveLength(before);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }

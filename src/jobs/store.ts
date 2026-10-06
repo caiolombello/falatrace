@@ -59,6 +59,8 @@ export const writeJsonAtomic = async (path: string, value: unknown): Promise<voi
 
 export type EnqueueOptions = {
   recordingId?: string;
+  /** The SHA-256 the person consented to; a source with other bytes is refused before any job exists. */
+  expectedSha256?: string;
   target?: ExecutionTarget;
   transcriptionProvider?: TranscriptionProvider;
   summaryProvider?: SummaryProvider;
@@ -141,6 +143,9 @@ export class JobStore {
         : [];
     const artifactDir = join(dirname(sourcePath), `${parse(sourcePath).name}.recording`, id);
     const sha256 = await hashFile(sourcePath);
+    if (options.expectedSha256 && sha256 !== options.expectedSha256) {
+      throw new Error("A gravação ou as configurações mudaram. Revise o destino de novo.");
+    }
     const verifiedStat = await fs.stat(sourcePath);
     if (!verifiedStat.isFile() || verifiedStat.size !== stat.size) {
       throw new Error("Recording source changed while the job was being created");

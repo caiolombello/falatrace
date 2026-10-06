@@ -25,6 +25,8 @@ export type ProcessPlan = {
   jobState?: string;
   durationSeconds: number | null;
   target: "local" | "remote";
+  /** SHA-256 of the source the plan was made for; the job is created only for these bytes. */
+  sourceSha256?: string;
   /** The worker that receives the audio when the target is remote. */
   remote?: { destination: string; port: number };
   transcription: Destination;
@@ -129,7 +131,7 @@ export const planRecordingProcessing = async (
   ])).digest("hex");
   return {
     key: entry.sourcePath, action, reason, ...(latest ? { jobId: latest.id, jobState: latest.state } : {}),
-    durationSeconds, target, ...(remote ? { remote } : {}), ...destinations, consentKey
+    durationSeconds, target, ...(sha256 ? { sourceSha256: sha256 } : {}), ...(remote ? { remote } : {}), ...destinations, consentKey
   };
 };
 
@@ -144,7 +146,8 @@ export const runRecordingProcessing = async (
   if (plan.consentKey !== consent.consentKey) throw new Error("A gravação ou as configurações mudaram. Revise o destino de novo.");
   if (plan.action === "none") throw new Error(plan.reason);
   const created = plan.action === "create";
-  const jobId = created ? (await deps.store.enqueue(config, entry.sourcePath, {})).id : plan.jobId;
+  // The bytes can still change between this check and the job: the job is bound to the consented hash.
+  const jobId = created ? (await deps.store.enqueue(config, entry.sourcePath, { expectedSha256: plan.sourceSha256 })).id : plan.jobId;
   if (!jobId) throw new Error(plan.reason);
   const queued = await deps.queue(jobId, { retry: plan.action === "retry" });
   return { jobId, status: queued.status, created, ...(queued.warning ? { warning: queued.warning } : {}) };

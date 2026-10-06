@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createHash } from "node:crypto";
 import { DEFAULT_CONFIG } from "../../config/defaults";
 import { planRecordingProcessing, runRecordingProcessing, type ManualProcessDeps } from "../manual";
 import type { JobRecord } from "../types";
@@ -23,15 +24,16 @@ const withRecording = async (run: (path: string) => Promise<void>) => {
 
 const fakeDeps = (stored?: JobRecord) => {
   const calls: string[] = [];
+  const enqueued: Array<Record<string, unknown>> = [];
   const deps: ManualProcessDeps = {
     store: {
       get: async () => { if (!stored) throw new Error("missing"); return stored; },
-      enqueue: async () => { calls.push("enqueue"); return job("pending", { id: "223e4567-e89b-42d3-a456-426614174000" }); }
+      enqueue: async (_config: unknown, _path: string, options: Record<string, unknown>) => { calls.push("enqueue"); enqueued.push(options); return job("pending", { id: "223e4567-e89b-42d3-a456-426614174000" }); }
     } as never,
     duration: async () => 61,
     queue: async (id, options) => { calls.push(`queue:${id}:${options?.retry ? "retry" : "run"}`); return { id, status: "queued" }; }
   };
-  return { deps, calls };
+  return { deps, calls, enqueued };
 };
 
 test("an unprocessed recording is planned with its destinations disclosed", async () => {
@@ -66,7 +68,7 @@ test("running needs the consent of the exact plan, then creates and queues the j
   await withRecording(async (path) => {
     const config = structuredClone(DEFAULT_CONFIG);
     const entry = { sourcePath: path, sourceExists: true, jobs: [] };
-    const { deps, calls } = fakeDeps();
+    const { deps, calls, enqueued } = fakeDeps();
     const plan = await planRecordingProcessing(config, entry, deps);
     await expect(runRecordingProcessing(config, entry, { consent: false, consentKey: plan.consentKey }, deps)).rejects.toThrow("Confirme");
     await expect(runRecordingProcessing(config, entry, { consent: true, consentKey: "b".repeat(64) }, deps)).rejects.toThrow("mudaram");
@@ -83,6 +85,8 @@ test("running needs the consent of the exact plan, then creates and queues the j
     const fresh = await planRecordingProcessing(config, entry, deps);
     expect(await runRecordingProcessing(config, entry, { consent: true, consentKey: fresh.consentKey }, deps)).toEqual({ jobId: "223e4567-e89b-42d3-a456-426614174000", status: "queued", created: true });
     expect(calls).toEqual(["enqueue", "queue:223e4567-e89b-42d3-a456-426614174000:run"]);
+    // The job is created only for the bytes that were consented to.
+    expect(enqueued).toEqual([{ expectedSha256: createHash("sha256").update("xyz").digest("hex") }]);
     const failed = job("failed", { sourcePath: path });
     const retry = fakeDeps(failed);
     const retryPlan = await planRecordingProcessing(config, { ...entry, jobs: [failed] }, retry.deps);
