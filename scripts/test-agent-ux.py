@@ -26,11 +26,12 @@ item = {'key':'/synthetic/Recordings/demo.mkv','recordingId':'rec-synthetic','ti
 grant = {'id':grant_id,'recipient':{'kind':'agent','id':'claude-code'},'data':['context'],'scope':{'includesFuture':False,'recordingIds':['rec-synthetic']},
          'limits':{'maxFrames':2,'maxBytes':2097152,'cacheTtlMs':300000},'paused':False,'revoked':mode == 'revoked'}
 line = '/home/synthetic/.local/bin/falatrace agent-context serve --grant ' + grant_id + ' --recipient claude-code'
-connection = {'grantId':grant_id,'recipientId':'claude-code','paused':False,'serverName':'falatrace-claude-code',
-              'claude':'claude mcp add --scope user --transport stdio falatrace-claude-code -- ' + line,
-              'codexCommand':'codex mcp add falatrace-claude-code -- ' + line,
-              'codexToml':'[mcp_servers.falatrace-claude-code]\ncommand = "/home/synthetic/.local/bin/falatrace"\nargs = ["agent-context","serve"]\n',
-              'geminiSettings':json.dumps({'mcpServers':{'falatrace-claude-code':{'command':'/home/synthetic/.local/bin/falatrace','args':['agent-context','serve']}}}, indent=2),
+server = 'falatrace-claude-code-' + grant_id[:8]
+connection = {'grantId':grant_id,'recipientId':'claude-code','paused':False,'serverName':server,
+              'claude':'claude mcp add --scope user --transport stdio ' + server + ' -- ' + line,
+              'codexCommand':'codex mcp add ' + server + ' -- ' + line,
+              'codexToml':'[mcp_servers.' + server + ']\ncommand = "/home/synthetic/.local/bin/falatrace"\nargs = ["agent-context","serve"]\n',
+              'geminiSettings':json.dumps({'mcpServers':{server:{'command':'/home/synthetic/.local/bin/falatrace','args':['agent-context','serve']}}}, indent=2),
               'geminiSettingsPath':'~/.gemini/settings.json'}
 log = []
 for raw in sys.stdin:

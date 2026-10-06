@@ -3,8 +3,9 @@ import { getServiceLaunchCommand } from "../runtime/launcher";
 /**
  * Commands that register FalaTrace's local stdio MCP server with an assistant client
  * for one existing grant. Nothing is installed or run here: the user copies the command
- * into a terminal of their own. The server name includes the recipient so several
- * grants can coexist.
+ * into a terminal of their own. The server name carries the recipient and the first eight
+ * hex digits of the grant, so several grants, even for one assistant, coexist under
+ * separate keys in each client's configuration.
  *
  * Syntax checked against the official docs on 2026-10-05:
  * Claude Code `claude mcp add [options] <name> -- <command> [args...]`;
@@ -26,10 +27,11 @@ export const buildAssistantConnection = (
   grant: { id: string; recipient: { id: string }; status?: string },
   launch: string[] = getServiceLaunchCommand()
 ): AssistantConnection => {
-  if (!/^[a-f0-9-]{36}$/i.test(grant.id) || !/^[-a-z0-9._]{1,64}$/.test(grant.recipient.id)) throw new Error("Permissão inválida.");
+  if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(grant.id) || !/^[-a-z0-9._]{1,64}$/.test(grant.recipient.id)) throw new Error("Permissão inválida.");
   const [command, ...prefix] = launch;
   const args = [...prefix, "agent-context", "serve", "--grant", grant.id, "--recipient", grant.recipient.id];
-  const serverName = `falatrace-${grant.recipient.id.replace(/[^a-z0-9-]/g, "-")}`.slice(0, 64);
+  const grantSuffix = grant.id.replaceAll("-", "").slice(0, 8).toLowerCase();
+  const serverName = `falatrace-${grant.recipient.id.replace(/[^a-z0-9-]/g, "-").slice(0, 45)}-${grantSuffix}`;
   const line = [command, ...args].map(shellQuote).join(" ");
   return {
     serverName,
