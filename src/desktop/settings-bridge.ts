@@ -260,7 +260,12 @@ export const handleSettingsOperation = async (
   if (op === "settings-backups") return { backups: await deps.backups(deps.configPath()) };
   if (op === "settings-restore") {
     const result = await deps.restore(String(payload.revision || ""), payload.backup, deps.configPath());
-    return { ...result, settings: await deps.read(deps.configPath(), process.env, { managerEnv: await deps.managerEnv() }) };
+    // The backup is restored at this point: a failed reread asks for a reload, never reports a failure.
+    try {
+      return { ...result, settings: await deps.read(deps.configPath(), process.env, { managerEnv: await deps.managerEnv() }) };
+    } catch {
+      return { ...result, needsReload: true };
+    }
   }
   if (op === "settings-export") return deps.exportTo(payload.path, deps.configPath());
   if (op === "settings-import-read") return deps.importRead(payload.path);

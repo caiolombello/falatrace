@@ -52,6 +52,12 @@ const fakeDeps = (overrides: Partial<SettingsDeps> = {}) => {
 };
 
 describe("settings bridge operations", () => {
+  test("a restore that committed stays a success when the reread fails", async () => {
+    const { deps } = fakeDeps({ read: async () => { throw new Error("EIO"); } });
+    expect(await handleSettingsOperation("settings-restore", { revision: "a".repeat(64), backup: "config.json.bak-x" }, deps))
+      .toEqual({ restored: "x", backupCreated: true, prunedBackups: 0, needsReload: true });
+  });
+
   test("service changes are refused during an active capture and the lock is released", async () => {
     const { deps, calls } = fakeDeps({ captureActive: async () => true });
     await expect(handleSettingsOperation("settings-service", { action: "calls-disable" }, deps))

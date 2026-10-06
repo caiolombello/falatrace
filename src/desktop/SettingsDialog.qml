@@ -125,9 +125,10 @@ FtDialog {
     function timerText(timer) {
         if (!timer) return ""
         if (!timer.installed) return t("Não instalado.")
-        return (timer.enabled ? t("Ativo") : t("Instalado, mas desativado")) + (timer.nextRunAt ? t(". Próxima execução: ") + new Date(timer.nextRunAt).toLocaleString(Qt.locale(), Locale.ShortFormat) : "") + (timer.lastResult && timer.lastResult !== "success" ? t(". Última execução: ") + timer.lastResult : "") + (timer.outdated ? t(". Usa um intervalo ou pasta antigos: aplique de novo.") : ".")
+        // Enabled but not active (stopped by hand or failed to start): nothing runs.
+        return (!timer.enabled ? t("Instalado, mas desativado") : timer.active ? t("Ativo") : t("Ativado, mas parado")) + (timer.nextRunAt ? t(". Próxima execução: ") + new Date(timer.nextRunAt).toLocaleString(Qt.locale(), Locale.ShortFormat) : "") + (timer.lastResult && timer.lastResult !== "success" ? t(". Última execução: ") + timer.lastResult : "") + (timer.outdated ? t(". Usa um intervalo ou pasta antigos: aplique de novo.") : ".")
     }
-    function timerStatus(timer) { return !timer ? "skipped" : !timer.installed ? "missing" : timer.enabled && !timer.outdated ? "ok" : "warning" }
+    function timerStatus(timer) { return !timer ? "skipped" : !timer.installed ? "missing" : timer.enabled && timer.active && !timer.outdated ? "ok" : "warning" }
 
     function handleExtra(request, message) {
         const result = message.result
@@ -155,7 +156,9 @@ FtDialog {
         } else if (request.op === "settings-restore") {
             confirmRestore = ""
             if (!message.ok) { settingsError = message.error; return }
-            settingsData = result.settings; settingsDraft = Object.assign({}, result.settings.values)
+            // Restored even when the reread failed: read it again instead of keeping the old values.
+            if (result.settings) { settingsData = result.settings; settingsDraft = Object.assign({}, result.settings.values) }
+            else loadSettings(false)
             settingsNotice = t("Configuração restaurada. A anterior também foi guardada como cópia de segurança. Aplique os serviços para valer.")
             send("settings-backups", ""); runSettingsDiagnose()
         } else if (request.op === "settings-export") {

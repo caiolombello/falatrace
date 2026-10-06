@@ -102,7 +102,9 @@ for line in sys.stdin:
         if cancelled: v.update({'state':'failed','error':'O download foi interrompido. Tente novamente.'})
     elif op == 'settings-model-cancel': cancelled = True; v = {'kind':p['kind'],'id':p['model'],'cancelled':True}
     elif op == 'settings-backups': v = {'backups':[{'name':'config.json.bak-0b8c3a0e-1f2a-4b3c-8d4e-5f6a7b8c9d0e','modifiedAt':'2026-10-04T10:00:00.000Z','bytes':2048,'valid':True}]}
-    elif op == 'settings-restore': v = {'restored':p['backup'],'backupCreated':True,'prunedBackups':0,'settings':settings()}
+    elif op == 'settings-restore':
+        v = {'restored':p['backup'],'backupCreated':True,'prunedBackups':0,'settings':settings()}
+        if mode == 'restore-reload': v = {'restored':p['backup'],'backupCreated':True,'prunedBackups':0,'needsReload':True}
     elif op == 'settings-remote-check': v = {'ok':True,'host':'worker','commands':[{'name':'ffmpeg','ok':True},{'name':'whisper-cli','ok':False}],'disk':'/dev/sda1 100G 10G 90G 10% /home'}
     elif op == 'settings-obs-check': v = {'ok':False,'detail':'O OBS não respondeu.'}
     elif op == 'settings-audio-test': v = {'seconds':5,'tracks':[{'label':'Microfone','hasSignal':True,'peakDb':-12}],'warnings':[]}
@@ -148,9 +150,12 @@ MODES = {
     'integrations': ('settingsDialog.open(); settingsDialog.goToSection(5)', 'check("remote check available once configured", settingsData.readOnly.remoteConfigured); send("settings-remote-check",""); setSettingsField("remote.user", null); check("cleared optional field becomes a null change", settingsChanges()["remote.user"]===null)',
                      'check("remote check result shown", !!settingsDialog.remoteCheck && settingsDialog.remoteCheck.ok)', ''),
     'services': ('settingsDialog.open(); settingsTabs.currentIndex=8', 'check("stale monitor flagged", settingsServiceStatus("calls")==="warning" && settingsServiceText("calls").indexOf("configuração anterior")>=0); check("automation check offers a fix", settingsDiag.automation.length===1 && settingsDialog.checkActionLabel("capture")!=="")', 'runSettingsService("calls-apply"); runSettingsService("sync-apply")',
-                 'check("apply clears stale flag", settingsServiceStatus("calls")==="ok"); check("timer status shown", settingsDialog.timerStatus(settingsDiag.services.sync)==="ok")'),
+                 'check("apply clears stale flag", settingsServiceStatus("calls")==="ok"); check("timer status shown", settingsDialog.timerStatus(settingsDiag.services.sync)==="ok"); '
+                 'check("an enabled but stopped timer is not shown as healthy", settingsDialog.timerStatus({installed:true,enabled:true,active:false,outdated:false})==="warning" && settingsDialog.timerText({installed:true,enabled:true,active:false,outdated:false}).indexOf("parado")>=0)'),
     'backups': ('settingsDialog.open(); settingsDialog.goToSection(9)', 'check("backups listed", settingsDialog.backups.length===1); settingsDialog.confirmRestore=settingsDialog.backups[0].name; send("settings-restore","",{revision:settingsData.revision,backup:settingsDialog.backups[0].name})',
                 'check("restore reloads the settings", settingsNotice.indexOf("restaurada")>=0)', ''),
+    'restore-reload': ('settingsDialog.open(); settingsDialog.goToSection(9)', 'settingsDialog.confirmRestore=settingsDialog.backups[0].name; send("settings-restore","",{revision:settingsData.revision,backup:settingsDialog.backups[0].name})',
+                       'check("a restore whose reread failed still reports success and reads again", settingsNotice.indexOf("restaurada")>=0 && settingsError==="" && !!settingsData.revision)', ''),
     'save': ('settingsDialog.open()', 'setSettingsField("callDetection.apps.discord", true); setSettingsField("backend", "audio"); check("diff has two changes", Object.keys(settingsChanges()).length===2); saveSettingsDraft()',
              'check("saved notice asks to apply monitor", settingsNotice.indexOf("Aplique o monitor")>=0 && !settingsHasChanges() && settingsData.revision==="' + 'b' * 64 + '")', ''),
     'compact': ('window.width=900; window.height=640; settingsDialog.open(); settingsTabs.currentIndex=0', 'check("dialog fits compact window", settingsDialog.width<=window.width && settingsDialog.height<=window.height); check("sections become a list", !settingsTabs.visible)', '', ''),
@@ -161,7 +166,7 @@ MODES = {
     'discard': ('settingsDialog.open()', 'setSettingsField("callDetection.enabled", false); check("unsaved change counted", settingsHasChanges()); settingsDialog.reject(); check("discard closes and clears draft", !settingsDialog.visible && Object.keys(settingsDraft).length===0)', '', ''),
 }
 # Requests each mode is expected to send; anything outside the list fails the journey.
-SIDE_EFFECTS = {'save': {'settings-save'}, 'services': {'settings-service'}, 'wizard-flow': {'settings-save'}, 'backups': {'settings-restore'},
+SIDE_EFFECTS = {'save': {'settings-save'}, 'services': {'settings-service'}, 'wizard-flow': {'settings-save'}, 'backups': {'settings-restore'}, 'restore-reload': {'settings-restore'},
                 'wizard-key-finish': {'settings-save', 'settings-secret-set'}, 'wizard-download-cancel': {'settings-model-download'},
                 'wizard-reload': {'settings-save', 'settings-service'},
                 'keys': {'settings-secret-set'}, 'models': {'settings-model-download'}}
@@ -214,6 +219,9 @@ with tempfile.TemporaryDirectory(dir='/tmp', prefix='falatrace-settings-fixture-
             sets = [q for q in requests if q['op'] == 'settings-secret-set']
             checks.append({'name': 'wizard-key-finish: the key is written once, after the configuration', 'pass': ops == ['settings-save', 'settings-secret-set']
                            and sets[0]['payload'] == {'name': 'OPENAI_API_KEY', 'value': 'sha256:' + hashlib.sha256(b'sk-synthetic-wizard-key').hexdigest()}})
+        if mode == 'restore-reload':
+            ops = [q['op'] for q in requests]
+            checks.append({'name': 'restore-reload: the configuration is read again after the restore', 'pass': 'settings-restore' in ops and 'settings-read' in ops[ops.index('settings-restore') + 1:]})
         if mode == 'wizard-reload':
             applied = [q for q in requests if q['op'] == 'settings-service']
             reads = [q for q in requests if q['op'] == 'settings-read']
