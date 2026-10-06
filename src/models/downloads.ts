@@ -120,6 +120,10 @@ export const downloadWhisperModel = async (id: string, deps: WhisperDownloadDeps
     if (existing.size === model.bytes && await sha256File(destination) === model.sha256) return destination;
     throw new Error("Já existe um arquivo diferente com o nome deste modelo; ele foi preservado.");
   }
+  // One unit per model: partial files left by a cancelled or killed attempt are stale now.
+  for (const name of await fs.readdir(deps.directory).catch(() => [] as string[])) {
+    if (name.startsWith(`.${model.file}.partial-`)) await fs.rm(join(deps.directory, name), { force: true }).catch(() => undefined);
+  }
   const partial = join(deps.directory, `.${model.file}.partial-${randomUUID()}`);
   const response = await deps.fetch(WHISPER_SOURCE + model.file, { redirect: "follow", signal: deps.signal });
   if (!response.ok || !response.body) throw new Error(`O servidor respondeu ${response.status}.`);

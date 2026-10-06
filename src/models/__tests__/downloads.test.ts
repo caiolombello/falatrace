@@ -119,3 +119,33 @@ test("long model names that share a prefix keep separate download states", async
   expect((await readDownloadState("ollama", `${prefix}:one`))?.receivedBytes).toBe(1);
   expect((await readDownloadState("ollama", `${prefix}:two`))?.receivedBytes).toBe(2);
 });
+
+test("a cancelled download leaves no partial file, and a new one clears stale partials", async () => {
+  await withDir(async (dir) => {
+    const payload = Buffer.from("synthetic ggml payload ".repeat(1000));
+    await withSyntheticModel(payload, async () => {
+      const controller = new AbortController();
+      // Like fetch: aborting the signal errors the body stream mid-transfer.
+      const stalled = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+        const body = new ReadableStream<Uint8Array>({
+          start(stream) {
+            stream.enqueue(new Uint8Array(payload.subarray(0, 100)));
+            init?.signal?.addEventListener("abort", () => stream.error(new DOMException("aborted", "AbortError")));
+          }
+        });
+        const response = new Response(body, { status: 200 });
+        Object.defineProperty(response, "url", { value: "https://huggingface.co/x" });
+        return response;
+      }) as typeof fetch;
+      const running = downloadWhisperModel("tiny", { fetch: stalled, directory: dir, signal: controller.signal, onProgress: () => undefined });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      controller.abort();
+      await expect(running).rejects.toThrow();
+      expect(await fs.readdir(dir)).toEqual([]);
+
+      await fs.writeFile(join(dir, ".ggml-tiny.bin.partial-left-by-a-killed-unit"), "x");
+      await downloadWhisperModel("tiny", { fetch: serve(payload), directory: dir, onProgress: () => undefined });
+      expect(await fs.readdir(dir)).toEqual(["ggml-tiny.bin"]);
+    });
+  });
+});

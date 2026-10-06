@@ -28,10 +28,16 @@ export const runModelsCli = async (args: string[]): Promise<void> => {
     const model = findWhisperModel(target);
     const directory = whisperModelsDir();
     let last = 0;
+    // Cancelling stops the unit with SIGTERM: abort the transfer so the partial file is removed.
+    const controller = new AbortController();
+    const stop = () => controller.abort();
+    process.once("SIGTERM", stop);
+    process.once("SIGINT", stop);
     try {
       const path = await downloadWhisperModel(model.id, {
         fetch,
         directory,
+        signal: controller.signal,
         onProgress: async (received) => {
           await writeDownloadState({ kind: "whisper", id: model.id, state: "running", receivedBytes: received, totalBytes: model.bytes });
           if (process.stderr.isTTY && received - last > 32 * 1024 * 1024) {
@@ -44,9 +50,12 @@ export const runModelsCli = async (args: string[]): Promise<void> => {
       if (process.stderr.isTTY) process.stderr.write("\n");
       console.log(JSON.stringify({ id: model.id, path, verified: true }));
     } catch (error) {
-      const message = (error instanceof Error ? error.message : String(error)).slice(0, 300);
+      const message = controller.signal.aborted ? "Download cancelado." : (error instanceof Error ? error.message : String(error)).slice(0, 300);
       await writeDownloadState({ kind: "whisper", id: model.id, state: "failed", receivedBytes: 0, totalBytes: model.bytes, error: message });
       throw error;
+    } finally {
+      process.off("SIGTERM", stop);
+      process.off("SIGINT", stop);
     }
     return;
   }
