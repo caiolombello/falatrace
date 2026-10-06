@@ -134,6 +134,7 @@ export const settingsErrorMessage = (op: string): string =>
 const OBS_DURING_CAPTURE = "Não altere a conexão com o OBS durante uma gravação ativa.";
 const TIMESHEET_DURING_CAPTURE = "Não ligue nem desligue o apontamento de horas durante uma gravação ativa.";
 const OBS_PASSWORD_DURING_CAPTURE = "Não altere a senha do OBS durante uma gravação ativa.";
+const RESTORE_DURING_CAPTURE = "Não restaure uma cópia de segurança durante uma gravação ativa.";
 
 /**
  * Settings that stopping a capture reads again, with the refusal shown when a save would change them
@@ -166,6 +167,7 @@ export const SETTINGS_KNOWN_ERRORS = [
   "Não altere a conexão com o OBS durante uma gravação ativa.",
   "Não ligue nem desligue o apontamento de horas durante uma gravação ativa.",
   "Não altere a senha do OBS durante uma gravação ativa.",
+  "Não restaure uma cópia de segurança durante uma gravação ativa.",
   "Ative a gravação automática e salve antes de aplicar o monitor.",
   "Configuração mudou; reabra antes de salvar.",
   "Nenhuma alteração para salvar.",
@@ -323,7 +325,8 @@ export const handleSettingsOperation = async (
   }
   if (op === "settings-backups") return { backups: await deps.backups(deps.configPath()) };
   if (op === "settings-restore") {
-    const result = await deps.restore(String(payload.revision || ""), payload.backup, deps.configPath());
+    // A restore replaces every setting, those a running capture's stop reads again included.
+    const result = await outsideCapture(deps, RESTORE_DURING_CAPTURE, () => deps.restore(String(payload.revision || ""), payload.backup, deps.configPath()));
     // The backup is restored at this point: a failed reread asks for a reload, never reports a failure.
     try {
       return { ...result, settings: await deps.read(deps.configPath(), process.env, { managerEnv: await deps.managerEnv() }) };

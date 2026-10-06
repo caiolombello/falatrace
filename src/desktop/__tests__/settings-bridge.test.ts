@@ -185,6 +185,20 @@ describe("settings bridge operations", () => {
     }
   });
 
+  test("a backup is not restored while a capture runs, since it replaces the settings stopping it reads", async () => {
+    const restored: string[] = [];
+    const restore: SettingsDeps["restore"] = async () => { restored.push("restore"); return { restored: "x", backupCreated: true, prunedBackups: 0 }; };
+    const request = { revision: "a".repeat(64), backup: "config.json.bak-x" };
+    const busy = fakeDeps({ captureActive: async () => true, restore });
+    await expect(handleSettingsOperation("settings-restore", request, busy.deps)).rejects.toThrow("cópia de segurança");
+    expect(restored).toEqual([]);
+    expect(busy.calls).toEqual(["lock:capture-control", "release"]);
+    const idle = fakeDeps({ restore });
+    await handleSettingsOperation("settings-restore", request, idle.deps);
+    expect(restored).toEqual(["restore"]);
+    expect(idle.calls).toEqual(["lock:capture-control", "release", "read"]);
+  });
+
   test("the OBS password is tested only with the user manager's environment", async () => {
     const seen: NodeJS.ProcessEnv[] = [];
     const obsCheck: SettingsDeps["obsCheck"] = async (_config, env) => { seen.push(env); return false; };
