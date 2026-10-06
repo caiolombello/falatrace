@@ -52,6 +52,32 @@ test("precedence: explicit environment, then the Studio file, then legacy files"
   expect(resolveSecretFrom("OPENAI_API_KEY", { OPENAI_API_KEY: "worker" }, all)).toEqual({ value: "studio", source: "secrets.env" });
   expect(resolveSecretFrom("OPENAI_API_KEY", {}, [state("secrets.env"), state("worker.env"), state("calls.env", "calls")])).toEqual({ value: "calls", source: "calls.env" });
   expect(resolveSecretFrom("OPENAI_API_KEY", { OPENAI_API_KEY: "  " }, [])).toEqual({ source: "missing" });
+  // systemd still loads a rejected legacy file: its values are dropped from the environment, never used.
+  const rejected = { ...state("worker.env"), exists: true, rejectedValues: new Map([["OPENAI_API_KEY", "tampered"]]) };
+  expect(resolveSecretFrom("OPENAI_API_KEY", { OPENAI_API_KEY: "tampered" }, [state("secrets.env", "studio"), rejected, state("calls.env")])).toEqual({ value: "studio", source: "secrets.env" });
+  expect(resolveSecretFrom("OPENAI_API_KEY", { OPENAI_API_KEY: "tampered" }, [state("secrets.env"), rejected, state("calls.env")])).toEqual({ source: "missing" });
+});
+
+test("a rejected legacy file cannot reach processing through a unit's environment", async () => {
+  await withFiles(async (files, root) => {
+    await fs.writeFile(files["worker.env"], "OPENAI_API_KEY=from-open-worker\n", { mode: 0o600 });
+    await fs.chmod(files["worker.env"], 0o664);
+    await fs.writeFile(join(root, "target.env"), "GEMINI_API_KEY=from-linked-calls\n", { mode: 0o600 });
+    await fs.symlink(join(root, "target.env"), files["calls.env"]);
+    const unitEnv = { OPENAI_API_KEY: "from-open-worker", GEMINI_API_KEY: "from-linked-calls" };
+    expect(await readSecret("OPENAI_API_KEY", unitEnv, files)).toBeUndefined();
+    expect(await readSecret("GEMINI_API_KEY", unitEnv, files)).toBeUndefined();
+    await setSecret("OPENAI_API_KEY", "studio-key", files);
+    expect(await readSecret("OPENAI_API_KEY", unitEnv, files)).toBe("studio-key");
+    expect(await readSecret("OPENAI_API_KEY", { OPENAI_API_KEY: "shell-key" }, files)).toBe("shell-key");
+
+    const report = await describeCredentials({ sessionEnv: unitEnv, managerEnv: unitEnv, files });
+    expect(report).toMatchObject({ openai: "secrets.env", gemini: "missing" });
+    expect(report.details.find((detail) => detail.name === "GEMINI_API_KEY")).toMatchObject({ sessionOnly: false });
+    expect(report.files.find((file) => file.file === "worker.env")).toMatchObject({ usable: false, problem: expect.stringContaining("alterá-lo") });
+    expect(report.files.every((file) => !("rejectedValues" in file))).toBe(true);
+    expect(JSON.stringify(report)).not.toContain("from-");
+  });
 });
 
 test("saving is write-only, private and preserves other lines; removal touches only secrets.env", async () => {

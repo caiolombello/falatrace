@@ -11,14 +11,17 @@ import { acquireSingleton } from "../runtime/singleton";
  *
  * Resolution order, identical for every process (terminal, Studio bridge, call
  * monitor, timers and per-job systemd units):
- *   1. an explicit environment variable whose value did not come from a legacy file;
+ *   1. an explicit environment variable whose value did not come from a legacy file
+ *      (a file this module rejects included);
  *   2. secrets.env next to the active configuration (written by the Studio);
  *   3. ~/.config/recording-cli/worker.env, then calls.env (legacy, still loaded by units);
  *   4. the caller's own legacy fallback (config.openai.apiKey for OpenAI).
  *
  * Generated units load worker.env or calls.env through EnvironmentFile=, so their
  * process environment repeats those values; a value equal to a legacy file is ranked as
- * that file, which lets a key saved in the Studio replace an older one everywhere.
+ * that file, which lets a key saved in the Studio replace an older one everywhere. systemd
+ * also loads a legacy file this module rejects, so values found in a rejected file are
+ * dropped from the environment and never used.
  * Values are never logged, returned to the UI or written anywhere but secrets.env.
  */
 export const SECRET_NAMES = ["OPENAI_API_KEY", "GEMINI_API_KEY", "RECORDING_CLI_OBS_PASSWORD"] as const;
@@ -27,6 +30,8 @@ export type SecretFileName = "secrets.env" | "worker.env" | "calls.env";
 export type SecretSource = "environment" | SecretFileName | "config" | "missing";
 
 const MAX_SECRET_FILE_BYTES = 64 * 1024;
+/** Upper bound for reading a rejected legacy file only to recognise its values. */
+const MAX_REJECTED_FILE_BYTES = 4 * 1024 * 1024;
 const MAX_SECRET_LENGTH = 4096;
 
 export const isSecretName = (value: unknown): value is SecretName =>
@@ -50,6 +55,8 @@ export type SecretFileState = {
   tooOpen: boolean;
   problem?: string;
   values: Map<string, string>;
+  /** Values of a rejected legacy file, kept only so resolution can drop them from the environment. */
+  rejectedValues?: Map<string, string>;
 };
 
 const unquote = (raw: string): string => {
@@ -105,16 +112,44 @@ export const readSecretFile = async (file: SecretFileName, path: string): Promis
   }
 };
 
+/**
+ * Units load worker.env and calls.env through EnvironmentFile= even when this module rejects
+ * them, so their environment repeats the rejected values. Read such a file the way systemd
+ * does (following links) only to recognise those values; they are never used.
+ */
+const readRejectedValues = async (path: string): Promise<Map<string, string>> => {
+  let handle: FileHandle | undefined;
+  try {
+    handle = await fs.open(path, constants.O_RDONLY | constants.O_NONBLOCK);
+    const stat = await handle.stat();
+    if (!stat.isFile()) return new Map();
+    const buffer = Buffer.alloc(Math.min(stat.size, MAX_REJECTED_FILE_BYTES));
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+    return parseSecretLines(buffer.subarray(0, bytesRead).toString("utf8"));
+  } catch {
+    return new Map();
+  } finally {
+    await handle?.close().catch(() => undefined);
+  }
+};
+
 export const readSecretFiles = async (files: SecretFiles = getSecretFiles()): Promise<SecretFileState[]> =>
-  Promise.all((["secrets.env", "worker.env", "calls.env"] as const).map((file) => readSecretFile(file, files[file])));
+  Promise.all((["secrets.env", "worker.env", "calls.env"] as const).map(async (file) => {
+    const state = await readSecretFile(file, files[file]);
+    if (file !== "secrets.env" && state.exists && !state.usable) state.rejectedValues = await readRejectedValues(files[file]);
+    return state;
+  }));
 
 export type ResolvedSecret = { value?: string; source: Exclude<SecretSource, "config"> };
 
 /** Pure resolution shared by readSecret and the diagnostics. */
 export const resolveSecretFrom = (name: string, env: NodeJS.ProcessEnv, states: SecretFileState[]): ResolvedSecret => {
   const fileValue = (file: SecretFileName) => states.find((state) => state.file === file && state.usable)?.values.get(name);
-  const fromEnv = env[name]?.trim() || undefined;
-  const legacy = [fileValue("worker.env"), fileValue("calls.env")];
+  const envValue = env[name]?.trim() || undefined;
+  // A unit that loads a rejected legacy file repeats its values: drop them, never use them.
+  const rejected = states.map((state) => state.rejectedValues?.get(name)?.trim());
+  const fromEnv = envValue && !rejected.includes(envValue) ? envValue : undefined;
+  const legacy = [fileValue("worker.env")?.trim(), fileValue("calls.env")?.trim()];
   if (fromEnv && !legacy.includes(fromEnv)) return { value: fromEnv, source: "environment" };
   for (const file of ["secrets.env", "worker.env", "calls.env"] as const) {
     const value = fileValue(file);
@@ -258,7 +293,7 @@ export const describeCredentials = async (
     openai: sourceOf("OPENAI_API_KEY"),
     gemini: sourceOf("GEMINI_API_KEY"),
     details,
-    files: states.map(({ values: _values, ...state }) => state),
+    files: states.map(({ values: _values, rejectedValues: _rejected, ...state }) => state),
     managerEnvironment: managerEnv ? "read" : "unavailable"
   };
 };

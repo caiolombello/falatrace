@@ -38,7 +38,7 @@ Keys are write-only: the Studio and the CLI save, test and remove them, and repo
 3. `worker.env`.
 4. `calls.env`.
 
-Background services do not see keys that exist only in your terminal session, and the diagnostics say so. A legacy `openai.apiKey` in `config.json` is still read; saving the key in the Studio lets you remove it from the file. **Test** asks the provider only for its model list: no audio or text is sent.
+A key file that other users can change, that belongs to another user, that is a link or that is too large is ignored, and its values are not used even when a service loads that file into its environment. Background services do not see keys that exist only in your terminal session, and the diagnostics say so. A legacy `openai.apiKey` in `config.json` is still read; saving the key in the Studio lets you remove it from the file. **Test** asks the provider only for its model list: no audio or text is sent.
 
 ```sh
 falatrace keys status
