@@ -171,7 +171,7 @@ class Bridge(QObject):
         self._start()
 
     def _fail(self, message):
-        if self._failing:
+        if self._failing or self._shutting_down:
             return
         self._failing = True
         self._alive = False
@@ -237,6 +237,7 @@ def main():
     context.setContextProperty('smokeDiarization', 'RECORDING_DESKTOP_DIARIZATION_SMOKE' in os.environ)
     engine.load(QUrl.fromLocalFile(root + '/Main.qml'))
     if not engine.rootObjects():
+        bridge.shutdown()
         return 3
     window = engine.rootObjects()[0]
     snapshot = os.environ.get('RECORDING_DESKTOP_SNAPSHOT', '')

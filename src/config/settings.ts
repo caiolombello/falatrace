@@ -104,7 +104,6 @@ export const SETTINGS_FIELDS: Record<string, FieldRule> = {
   "transcription.whisperCpp.command": text(4096),
   "transcription.whisperCpp.modelPath": absolutePath,
   "transcription.whisperCpp.threads": intBetween(1, 256),
-  "transcription.whisperCpp.variant": oneOf("cpu", "vulkan"),
   // Summary
   "summary.provider": oneOf("ollama", "openai"),
   "summary.ollamaUrl": httpUrlWithoutCredentials,
@@ -234,6 +233,7 @@ const describeSettings = (value: Record<string, unknown>) => {
   return {
     values: valuesOf(config),
     defaults: DEFAULT_VALUES,
+    nullable: [...NULLABLE_FIELDS],
     apps: CALL_APPLICATIONS.map((id) => ({
       id,
       label: CALL_APPLICATION_IDENTITIES[id].label,

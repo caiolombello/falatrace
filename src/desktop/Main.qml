@@ -295,7 +295,7 @@ ApplicationWindow {
     function closeAgentAccess() { cancelProvider(); if (activeGrant.id && hasPending("agent-frames")) send("agent-cancel", selected.key, {grantId:activeGrant.id}); agentDialog.close() }
     property string cliVersion: ""
     property var releaseInfo: ({})
-    property bool uxModal: settingsDialog.visible || aboutDialog.visible || captureConsent.visible || framesDialog.visible || onboardingDialog.visible || agentDialog.visible || recordingTools.visible || reviewDialog.visible || exportDialog.visible || summaryDialog.visible
+    property bool uxModal: settingsDialog.visible || setupWizard.visible || aboutDialog.visible || captureConsent.visible || framesDialog.visible || onboardingDialog.visible || agentDialog.visible || recordingTools.visible || reviewDialog.visible || exportDialog.visible || summaryDialog.visible
     function summaryBusy() { return summaryRunning || hasPending("summary-plan") || hasPending("summary-run") }
     function summaryPlanText() {
         const p=summaryPlan
@@ -403,17 +403,20 @@ ApplicationWindow {
 
     SettingsDialog { id: settingsDialog }
     property alias settingsTabs: settingsDialog.settingsTabs
+    SetupWizard { id: setupWizard }
 
     function handleSettingsResponse(request, message) {
+        if (request.origin === "wizard") { setupWizard.handleResponse(request, message); return }
         if (request.settingsGeneration !== settingsGeneration) return
         const result = message.result
         if (request.op === "settings-read" && !settingsDialog.visible) {
-            // Startup probe: open the guided setup once when no configuration exists yet.
-            if (message.ok && result.exists === false && !settingsFirstRunChecked) { settingsFirstRun = true; settingsDialog.open() }
+            // Startup probe: run the guided setup once when no configuration exists yet.
+            if (message.ok && result.exists === false && !settingsFirstRunChecked) { settingsFirstRun = true; setupWizard.open() }
             settingsFirstRunChecked = true
             return
         }
         if (!settingsDialog.visible) return
+        if (["settings-read", "settings-save", "settings-diagnose", "settings-service"].indexOf(request.op) < 0) { settingsDialog.handleExtra(request, message); return }
         if (!message.ok) {
             if (request.op === "settings-diagnose") { settingsDiag = ({}); settingsNotice = ""; settingsError = message.error; return }
             if (request.op === "settings-save") settingsNeedsReload = true
@@ -423,17 +426,32 @@ ApplicationWindow {
         }
         if (request.op === "settings-read") {
             settingsData = result; settingsDraft = Object.assign({}, result.values); settingsError = ""; settingsNeedsReload = false; settingsFirstRunChecked = true
+            settingsDialog.sectionLoaded(settingsTabs.currentIndex)
         } else if (request.op === "settings-diagnose") {
             settingsDiag = result
         } else if (request.op === "settings-save") {
             if (result.needsReload) { settingsNeedsReload = true; settingsNotice = "Salvo. Releia a configuração para continuar editando."; settingsData = ({}); settingsDraft = ({}); return }
             settingsData = result; settingsDraft = Object.assign({}, result.values); settingsNeedsReload = false; settingsFirstRun = false
-            const affectsMonitor = (result.changed || []).some(function(f){ return f.startsWith("callDetection.") || f === "backend" || f.startsWith("capture.") || f === "recordingsDir" })
-            settingsNotice = "Configuração salva" + (result.backupCreated ? " (com cópia de segurança da anterior)" : "") + "." + (affectsMonitor ? " Aplique o monitor na aba Serviços para valer nas próximas chamadas." : "") + (result.cleanupPending ? " Uma cópia temporária privada pode ter ficado na pasta da configuração." : "")
+            const changed = result.changed || []
+            const affectsMonitor = changed.some(function(f){ return f.startsWith("callDetection.") || f === "backend" || f.startsWith("capture.") || f === "recordingsDir" || f.startsWith("obs.") })
+            const affectsTimers = changed.some(function(f){ return f === "recordingsDir" || f === "processing.syncIntervalMinutes" || f === "archive.syncIntervalMinutes" })
+            settingsNotice = "Configuração salva" + (result.backupCreated ? " (com cópia de segurança da anterior)" : "") + "." + (affectsMonitor ? " Aplique o monitor em Serviços e diagnóstico para valer nas próximas chamadas." : "") + (affectsTimers ? " Reaplique os timers em Serviços e diagnóstico." : "") + (result.cleanupPending ? " Uma cópia temporária privada pode ter ficado na pasta da configuração." : "")
             runSettingsDiagnose()
         } else if (request.op === "settings-service") {
             settingsDiag = Object.assign({}, settingsDiag, { services: result.services })
-            settingsNotice = result.action === "calls-apply" ? "Monitor de chamadas aplicado e reiniciado com a configuração atual." : result.action === "calls-disable" ? "Monitor de chamadas desativado. Nenhuma gravação automática será iniciada." : "Bandeja instalada e reiniciada."
+            settingsNotice = ({
+                "calls-apply": "Monitor de chamadas aplicado e reiniciado com a configuração atual.",
+                "calls-disable": "Monitor de chamadas desativado. Nenhuma gravação automática será iniciada.",
+                "tray-apply": "Bandeja instalada e reiniciada.",
+                "tray-disable": "Bandeja removida.",
+                "sync-apply": "Processamento em segundo plano ativado.",
+                "sync-disable": "Processamento em segundo plano desativado. A fila foi preservada.",
+                "archive-apply": "Timer de arquivo de originais ativado.",
+                "archive-disable": "Timer de arquivo de originais desativado.",
+                "backup-apply": "Timer de backup no Proton Drive ativado.",
+                "backup-disable": "Timer de backup no Proton Drive desativado."
+            })[result.action] || "Serviço atualizado."
+            runSettingsDiagnose()
         }
     }
     function hasSettingsPending(op) {
@@ -449,9 +467,16 @@ ApplicationWindow {
     function runSettingsDiagnose() { if(backend.available)send("settings-diagnose","") }
     function runSettingsService(action) { settingsError="";settingsNotice="";send("settings-service","",{action:action}) }
     function setSettingsField(field, value) { const next=Object.assign({},settingsDraft);next[field]=value;settingsDraft=next }
+    function settingsSame(left, right) { return JSON.stringify(left === undefined ? null : left) === JSON.stringify(right === undefined ? null : right) }
     function settingsChanges() {
-        const values=settingsData.values||({}), changes={}
-        for(const field in settingsDraft) if(settingsDraft[field]!==values[field]&&settingsDraft[field]!==null&&settingsDraft[field]!=="") changes[field]=settingsDraft[field]
+        const values=settingsData.values||({}), nullable=settingsData.nullable||[], changes={}
+        for(const field in settingsDraft) {
+            const value=settingsDraft[field]
+            if(settingsSame(value, values[field])||value==="")continue
+            // Cleared optional fields become null (the key is removed); other empty fields are ignored.
+            if(value===null&&nullable.indexOf(field)<0)continue
+            changes[field]=value
+        }
         return changes
     }
     function settingsHasChanges() { return Object.keys(settingsChanges()).length>0 }
@@ -461,7 +486,7 @@ ApplicationWindow {
         settingsError="";settingsNotice="";send("settings-save","",{revision:settingsData.revision,changes:changes})
     }
     function settingsLoopback(url) { return /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d+)?\/?$/.test(String(url||"")) }
-    function settingsCredentialText(source) { return source==="environment"?"definida no ambiente":source==="calls.env"?"definida em calls.env":source==="config"?"definida na configuração":source==="missing"?"não encontrada":"—" }
+    function settingsCredentialText(source) { return source==="secrets.env"?"salva pelo Studio":source==="environment"?"definida no ambiente":source==="worker.env"?"definida em worker.env":source==="calls.env"?"definida em calls.env":source==="config"?"definida na configuração":source==="missing"?"não encontrada":"—" }
     function settingsDeviceOptions(monitor) {
         const audio=settingsDiag.audio||({}), field=monitor?"capture.desktop":"capture.microphone", current=settingsDraft[field]
         const fallback=monitor?audio.defaultDesktop:audio.defaultMicrophone
@@ -624,12 +649,13 @@ ApplicationWindow {
         const labels = turns.filter(turn => Number(turn.start) <= seconds && seconds < Number(turn.end)).map(turn => turn.label || turn.speaker || "Falante incerto")
         return labels.filter((label, index) => labels.indexOf(label) === index).join(" + ")
     }
-    function send(op, key, payload) {
+    // `meta` adds non-sensitive routing facts to the pending entry; payloads are never stored.
+    function send(op, key, payload, meta) {
         if (["agent-authorize","provider-authorize","agent-frames","provider-analyze"].includes(op)) agentError=""
         const id = backend.request(op, key || "", payload || ({}))
         if (id < 0) { if(op.startsWith("summary-"))summaryConnectionLost();if(op.startsWith("revision-")){reviewNeedsReload=true;reviewError="Pedido sem confirmação; reconecte e releia antes de tentar novamente."}if(op.startsWith("export-")){exportError="Pedido sem confirmação; atualize a prévia após reconectar.";exportResult=({})}if(op.startsWith("agent-")||op.startsWith("provider-"))agentError="Serviço indisponível; dados preservados. Feche e reconecte para continuar."; if(op.startsWith("frames-"))uxError="Serviço indisponível; dados preservados. Reabra após reconectar.";if(op.startsWith("onboarding-"))invalidateOnboarding("O serviço não recebeu este pedido. Reconecte e releia a configuração antes de salvar.");if(op.startsWith("settings-")&&settingsDialog.visible){settingsNeedsReload=true;settingsError="O serviço não recebeu este pedido. Reconecte e releia a configuração.";return -1} errorText = "O serviço da biblioteca está indisponível. Reabra esta janela."; return -1 }
         const next = Object.assign({}, pending)
-        next[id] = {op: op, key: key, generation: generation, frameGeneration: frameGeneration, onboardingGeneration: onboardingGeneration, settingsGeneration: settingsGeneration, agentGeneration:agentGeneration, reviewGeneration:reviewGeneration,exportGeneration:exportGeneration,summaryGeneration:summaryGeneration}
+        next[id] = Object.assign({op: op, key: key, generation: generation, frameGeneration: frameGeneration, onboardingGeneration: onboardingGeneration, settingsGeneration: settingsGeneration, agentGeneration:agentGeneration, reviewGeneration:reviewGeneration,exportGeneration:exportGeneration,summaryGeneration:summaryGeneration}, meta || ({}))
         pending = next
         return id
     }

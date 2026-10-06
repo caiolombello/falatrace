@@ -105,7 +105,7 @@ export const checkProcessing = async (
       const found = command.includes("/") ? (await probe.isExecutable(command) ? command : null) : await probe.resolve(command);
       checks.push({ id: "whisper", label: "Whisper.cpp", status: found ? "ok" : "missing",
         detail: found
-          ? `Comando ${command} encontrado.${config.transcription.whisperCpp.variant === "vulkan" ? " Vulkan selecionado: confirme que este whisper-cli foi compilado com Vulkan." : ""}`
+          ? `Comando ${command} encontrado.`
           : `Comando ${command} não encontrado. Instale o whisper.cpp ou informe o caminho do executável.` });
       const model = await probe.isFile(config.transcription.whisperCpp.modelPath);
       checks.push({ id: "whisper-model", label: "Modelo do Whisper", status: model ? "ok" : "missing",

@@ -1,7 +1,7 @@
 import { loadConfig } from "../config/load";
 import { getConfigPath } from "../config/load";
 import {
-  exportSettings, listConfigBackups, readCredentialStatus, readImportFile, readSettings, restoreConfigBackup, saveSettings
+  exportSettings, listConfigBackups, readCredentialStatus, readImportFile, readSettings, restoreConfigBackup, saveSettings, validateSettingsPatch
 } from "../config/settings";
 import { checkAutomation, checkProcessing, listAudioDevices, readServiceStatus } from "../config/setup-checks";
 import { parseManagerEnvironment, removeSecret, setSecret } from "../config/secrets";
@@ -206,7 +206,13 @@ export const handleSettingsOperation = async (
           selectedBackend: result.selectedBackend ?? null,
           blockedReason: typeof result.blockedReason === "string" ? translateCaptureMessage(result.blockedReason) : null,
           warnings: Array.isArray(result.warnings) ? result.warnings.slice(0, 20).map((warning) => translateCaptureMessage(String(warning))) : [],
-          session: result.session ?? null
+          session: result.session ?? null,
+          capabilities: {
+            gpuRecorder: !!(result.capture as { gpuRecorder?: boolean } | undefined)?.gpuRecorder,
+            ffmpeg: !!(result.legacy as { ffmpeg?: boolean } | undefined)?.ffmpeg,
+            obsLauncher: !!(result.obs as { launcher?: unknown } | undefined)?.launcher,
+            sessionType: (result.session as { type?: string } | undefined)?.type ?? null
+          }
         }),
         () => ({ selectedBackend: null, blockedReason: "Não foi possível inspecionar o backend de gravação.", warnings: [], session: null })
       )
@@ -263,7 +269,13 @@ export const handleSettingsOperation = async (
     try {
       if (await deps.captureActive()) throw new Error("Não teste o áudio durante uma gravação ativa.");
       const seconds = Number.isSafeInteger(payload.seconds) ? payload.seconds as number : 5;
-      return await deps.audioTest((await deps.loadConfig()).config, seconds);
+      // The first-use assistant tests choices that are not saved yet; they pass the same rules as saving.
+      const overrides: Record<string, unknown> = {};
+      for (const field of ["audioSource", "microphone", "desktop"] as const) if (payload[field] !== undefined) overrides[`capture.${field}`] = payload[field];
+      if (Object.keys(overrides).length) validateSettingsPatch(overrides);
+      const { config } = await deps.loadConfig();
+      const capture = { ...config.capture, ...Object.fromEntries(Object.entries(overrides).map(([field, value]) => [field.slice(8), value])) };
+      return await deps.audioTest({ ...config, capture: capture as typeof config.capture }, seconds);
     } finally {
       await lease.release();
     }
