@@ -56,6 +56,8 @@ export type StopCaptureResult = {
   sourcePath?: string;
   session?: RecordingSession;
   job?: JobRecord | null;
+  /** Something the stop could not confirm, for example GNOME not stopping its screencast. */
+  warning?: string;
 };
 
 const legacyCaptureError = (): Error =>
@@ -218,7 +220,9 @@ export const stopCapture = async (
   if (!managed) {
     if (await (dependencies.readLegacyState || readState)()) {
       const legacy = await (dependencies.stopLegacy || stopLegacyRecording)(config);
-      if (legacy) return { state: "stopped", sourcePath: legacy.videoPath, ...(legacy.job ? { job: legacy.job } : {}) };
+      if (legacy) {
+        return { state: "stopped", sourcePath: legacy.videoPath, ...(legacy.job ? { job: legacy.job } : {}), ...(legacy.warning ? { warning: legacy.warning } : {}) };
+      }
     }
     return { state: "idle" };
   }

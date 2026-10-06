@@ -529,7 +529,7 @@ const handle = async (request: Request): Promise<unknown> => {
       invalidateLibrary();
       // Automatic processing is on (a job was created): start it now instead of waiting for the timer.
       const queued = stopped.job ? await queueSelectedJob(stopped.job.id).then((result) => result.status, () => null) : null;
-      return { ...await readCaptureStatus(config), outcome: stopped.state, jobId: stopped.job?.id, jobQueued: queued };
+      return { ...await readCaptureStatus(config), outcome: stopped.state, jobId: stopped.job?.id, jobQueued: queued, ...(stopped.warning ? { stopWarning: stopped.warning } : {}) };
     } finally { await lease.release(); }
   }
   if (request.op === "jobs-list") {

@@ -204,5 +204,12 @@ test("a legacy capture is reported as active and the Studio can stop it", async 
   });
   expect(stopped).toBe(1);
   expect(result).toEqual({ state: "stopped", sourcePath: "/tmp/legacy.webm" });
+  // A stop the legacy backend could not confirm reaches the Studio instead of a plain success.
+  const warned = await stopCapture(config, {}, {
+    sessionStore: { read: async () => null },
+    readLegacyState: async () => legacyState,
+    stopLegacy: async () => ({ state: legacyState as never, videoPath: "/tmp/legacy.webm", endedAt: "x", job: null, warning: "O GNOME informou falha ao parar; o estado foi limpo." })
+  });
+  expect(warned).toEqual({ state: "stopped", sourcePath: "/tmp/legacy.webm", warning: "O GNOME informou falha ao parar; o estado foi limpo." });
   expect(await stopCapture(config, {}, { sessionStore: { read: async () => null }, readLegacyState: async () => null })).toEqual({ state: "idle" });
 });

@@ -21,7 +21,7 @@ with tempfile.TemporaryDirectory(dir='/tmp',prefix='falatrace-ui-fixture-') as s
  stub=root/'bridge-stub.py'
  stub.write_text('''#!/usr/bin/python3
 import sys,json,os,datetime
-mode=os.environ['FALATRACE_TEST_MODE']
+mode=os.environ['FALATRACE_TEST_MODE'];stopped=False
 item={'key':'synthetic-demo','title':'Exemplo sintético — revisão de interface','fileName':'synthetic.mp4','modifiedAt':'2026-09-30T12:00:00Z','location':'local','status':'completed','backup':'none'}
 for line in sys.stdin:
  r=json.loads(line);op=r['op']
@@ -29,7 +29,8 @@ for line in sys.stdin:
   if mode=='loading':continue
   if mode=='error':print(json.dumps({'id':r['id'],'ok':False,'error':'Falha sintética. Dados preservados; use Reconectar.'}),flush=True);continue
   v={'items':[] if mode=='empty' else [item]}
- elif op=='capture-status':v={'active':mode=='recording','session':{'startedAt':(datetime.datetime.now(datetime.timezone.utc)-datetime.timedelta(seconds=128)).isoformat()} if mode=='recording' else None,'paused':mode=='paused','audio':{'configured':False},'warning':'Fixture sintético: nenhuma captura ou dispositivo real'}
+ elif op=='capture-stop' and mode=='stop-warning':stopped=True;v={'active':False,'session':None,'paused':False,'audio':{'configured':False},'outcome':'stopped','jobQueued':None,'stopWarning':'O GNOME informou falha ao parar; o estado foi limpo.'}
+ elif op=='capture-status':v={'active':mode=='recording' or (mode=='stop-warning' and not stopped),'session':{'startedAt':(datetime.datetime.now(datetime.timezone.utc)-datetime.timedelta(seconds=128)).isoformat()} if mode=='recording' else None,'paused':mode=='paused','audio':{'configured':False},'warning':'Fixture sintético: nenhuma captura ou dispositivo real'}
  elif op=='jobs-list':v={'items':[]}
  elif op=='processing-status':v={'waiting':[]}
  elif op=='ux-capabilities':v={'mockFrames':False,'realFrames':True}
@@ -40,7 +41,7 @@ for line in sys.stdin:
  else:print(json.dumps({'id':r['id'],'ok':False,'error':'Operação recusada no fixture; nenhuma captura iniciada.'}),flush=True);continue
  print(json.dumps({'id':r['id'],'ok':True,'result':v}),flush=True)
 ''');stub.chmod(0o700)
- for mode in ['dark','light','compact','summary','consent','empty','error','loading','recording','paused','regression','english']:
+ for mode in ['dark','light','compact','summary','consent','empty','error','loading','recording','paused','regression','english','stop-warning']:
   qml=root/mode;qml.mkdir()
   base=source.replace('../../docs/assets/',(repo/'docs/assets').as_uri()+'/').rstrip()
   light='true' if mode in ['light','compact'] else 'false'
@@ -51,6 +52,12 @@ for line in sys.stdin:
  Timer { interval:700; running:true; repeat:false; onTriggered:{
   const p=headerStop.mapToItem(window.contentItem,0,0);headerStop.forceActiveFocus(Qt.TabFocusReason);
   console.log("UX_ASSERTIONS "+JSON.stringify([{name:"stop visible without opening dialog",pass:headerStop.visible&&headerStop.enabled&&!recordingTools.visible},{name:"stop inside 900x640 viewport",pass:p.x>=0&&p.y>=0&&p.x+headerStop.width<=window.width&&p.y+headerStop.height<=window.height},{name:"stop has visible keyboard focus",pass:headerStop.activeFocus&&headerStop.visualFocus}]))
+ } }
+'''
+  if mode=='stop-warning':extra+='''
+ Timer { interval: 650; running: true; repeat: false; onTriggered: headerStop.clicked() }
+ Timer { interval: 1100; running: true; repeat: false; onTriggered: {
+  console.log("UX_ASSERTIONS "+JSON.stringify([{name:"a stop the backend could not confirm shows its warning",pass:notice.indexOf("Captura parada, com aviso: O GNOME")===0&&!captureStatus.active}]))
  } }
 '''
   if mode=='english':extra+='''

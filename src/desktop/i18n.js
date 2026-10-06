@@ -9,6 +9,8 @@ var EN = {
     "Gravações e contexto com origem para Linux · experimental": "Recordings and traceable context for Linux · experimental",
     "Studio em execução: ": "Running Studio: ",
     "Build local: ": "Local build: ",
+    "Captura parada, com aviso: ": "Capture stopped, with a warning: ",
+    "O GNOME informou falha ao parar; o estado foi limpo.": "GNOME reported that it could not stop; the state was cleared.",
     "Usar esta chave": "Use this key",
     "A chave será salva em arquivo privado quando você concluir.": "The key will be saved to a private file when you finish.",
     "Salva em arquivo privado ao concluir.": "Saved to a private file when you finish.",
