@@ -84,7 +84,7 @@ for line in sys.stdin:
              'audio':{'devices':[{'name':'alsa_input.synthetic-mic','description':'Microfone sintético','monitor':False},
                                  {'name':'alsa_output.synthetic.monitor','description':'Monitor sintético','monitor':True}],
                       'defaultMicrophone':'alsa_input.synthetic-mic','defaultDesktop':'alsa_output.synthetic.monitor'},
-             'services':services,'recording':{'selectedBackend':'gpu-screen-recorder','blockedReason':None,'warnings':[],'session':None,'capabilities':{'gpuRecorder':True,'ffmpeg':True,'obsLauncher':False,'sessionType':'wayland'}},
+             'services':None if mode in ('wizard-disable-unknown', 'services-unknown') else services,'recording':{'selectedBackend':'gpu-screen-recorder','blockedReason':None,'warnings':[],'session':None,'capabilities':{'gpuRecorder':True,'ffmpeg':True,'obsLauncher':False,'sessionType':'wayland'}},
              'automatic':None,'credentials':credentials()}
     elif op == 'settings-save':
         values.update(p['changes']); revision = 'b' * 64
@@ -141,6 +141,9 @@ MODES = {
     'wizard-draft-ollama': ('setupWizard.open(); setupWizard.consentAck=true; setupWizard.step=2',
                             'check("the saved OpenAI configuration has no Ollama check", !setupWizard.check("ollama") && !setupWizard.offersOllamaDownload()); setupWizard.applyPreset("local")',
                             'check("picking the local preset diagnoses the draft and offers the missing Ollama model", setupWizard.check("ollama").status==="warning" && setupWizard.offersOllamaDownload())', ''),
+    'wizard-disable-unknown': ('setupWizard.open(); setupWizard.consentAck=true; setupWizard.applyTimer=false',
+                               'check("the service status could not be read", !!setupWizard.diag.checks && !setupWizard.diag.services); setupWizard.set("callDetection.enabled", false); setupWizard.step=4; setupWizard.finish()',
+                               'check("turning detection off stops the monitor even when its state is unknown", setupWizard.step===5 && setupWizard.results.some(function(r){return r.label==="Monitor de chamadas" && r.ok}))', ''),
     'wizard-reload': ('setupWizard.consentAck=true',
                       'setupWizard.recommend(); setupWizard.set("callDetection.enabled", true); setupWizard.set("callDetection.mode", "notify-only"); setupWizard.finish()',
                       'check("a save without values still applies the reviewed services", setupWizard.step===5 && setupWizard.results.some(function(r){return r.label==="Monitor de chamadas" && r.ok}))', ''),
@@ -164,6 +167,7 @@ MODES = {
     'services': ('settingsDialog.open(); settingsTabs.currentIndex=8', 'check("stale monitor flagged", settingsServiceStatus("calls")==="warning" && settingsServiceText("calls").indexOf("configuração anterior")>=0); check("automation check offers a fix", settingsDiag.automation.length===1 && settingsDialog.checkActionLabel("capture")!=="")', 'runSettingsService("calls-apply"); runSettingsService("sync-apply")',
                  'check("apply clears stale flag", settingsServiceStatus("calls")==="ok"); check("timer status shown", settingsDialog.timerStatus(settingsDiag.services.sync)==="ok"); '
                  'check("an enabled but stopped timer is not shown as healthy", settingsDialog.timerStatus({installed:true,enabled:true,active:false,outdated:false})==="warning" && settingsDialog.timerText({installed:true,enabled:true,active:false,outdated:false}).indexOf("parado")>=0)'),
+    'services-unknown': ('settingsDialog.open(); settingsTabs.currentIndex=8', 'check("an unreadable service status is shown as unknown", !!settingsDiag.checks && !settingsDiag.services && settingsServiceStatus("calls")==="skipped"); check("the monitor can still be disabled while its state is unknown", settingsDialog.canDisableMonitor())', '', ''),
     'backups': ('settingsDialog.open(); settingsDialog.goToSection(9)', 'check("backups listed", settingsDialog.backups.length===1); settingsDialog.confirmRestore=settingsDialog.backups[0].name; send("settings-restore","",{revision:settingsData.revision,backup:settingsDialog.backups[0].name})',
                 'check("restore reloads the settings", settingsNotice.indexOf("restaurada")>=0)', ''),
     'restore-reload': ('settingsDialog.open(); settingsDialog.goToSection(9)', 'settingsDialog.confirmRestore=settingsDialog.backups[0].name; send("settings-restore","",{revision:settingsData.revision,backup:settingsDialog.backups[0].name})',
@@ -181,6 +185,7 @@ MODES = {
 SIDE_EFFECTS = {'save': {'settings-save'}, 'services': {'settings-service'}, 'wizard-flow': {'settings-save'}, 'backups': {'settings-restore'}, 'restore-reload': {'settings-restore'},
                 'wizard-key-finish': {'settings-save', 'settings-secret-set'}, 'wizard-download-cancel': {'settings-model-download'},
                 'wizard-reload': {'settings-save', 'settings-service'}, 'wizard-disable-monitor': {'settings-save', 'settings-service'},
+                'wizard-disable-unknown': {'settings-save', 'settings-service'},
                 'keys': {'settings-secret-set'}, 'models': {'settings-model-download'}, 'models-two': {'settings-model-download'}}
 GUARDED = {'settings-save', 'settings-service', 'settings-secret-set', 'settings-secret-remove', 'settings-model-download', 'settings-restore'}
 
@@ -234,9 +239,9 @@ with tempfile.TemporaryDirectory(dir='/tmp', prefix='falatrace-settings-fixture-
         if mode == 'models-two':
             polled = {q['payload'].get('model') for q in requests if q['op'] == 'settings-model-status'}
             checks.append({'name': 'models-two: every running download is polled', 'pass': {'tiny', 'large-v3-turbo-q5_0'} <= polled})
-        if mode == 'wizard-disable-monitor':
+        if mode in ('wizard-disable-monitor', 'wizard-disable-unknown'):
             applied = [q['payload'] for q in requests if q['op'] == 'settings-service']
-            checks.append({'name': 'wizard-disable-monitor: only the monitor is disabled', 'pass': applied == [{'action': 'calls-disable'}]})
+            checks.append({'name': f'{mode}: only the monitor is disabled', 'pass': applied == [{'action': 'calls-disable'}]})
         if mode == 'wizard-draft-ollama':
             diagnoses = [q['payload'] for q in requests if q['op'] == 'settings-diagnose']
             checks.append({'name': 'wizard-draft-ollama: the preset is diagnosed as a draft, not saved', 'pass': len(diagnoses) >= 2 and 'changes' not in diagnoses[0]

@@ -132,6 +132,8 @@ FtDialog {
         return (!timer.enabled ? t("Instalado, mas desativado") : timer.active ? t("Ativo") : t("Ativado, mas parado")) + (timer.nextRunAt ? t(". Próxima execução: ") + new Date(timer.nextRunAt).toLocaleString(Qt.locale(), Locale.ShortFormat) : "") + (timer.lastResult && timer.lastResult !== "success" ? t(". Última execução: ") + timer.lastResult : "") + (timer.outdated ? t(". Usa um intervalo ou pasta antigos: aplique de novo.") : ".")
     }
     function timerStatus(timer) { return !timer ? "skipped" : !timer.installed ? "missing" : timer.enabled && timer.active && !timer.outdated ? "ok" : "warning" }
+    // Disabling a monitor that is not there changes nothing: only a status that shows it absent turns this off.
+    function canDisableMonitor() { const calls = settingsDiag.services && settingsDiag.services.calls; return !(calls && calls.installed === false) }
 
     function handleExtra(request, message) {
         const result = message.result
@@ -557,7 +559,7 @@ FtDialog {
           SettingsCheckRow { visible:!!settingsDiag.services; label:t("Serviço recording-cli-calls"); status:settingsServiceStatus("calls"); detail:settingsServiceText("calls") }
           Flow { Layout.fillWidth:true; spacing:8
            FtButton { objectName:"settingsApplyCalls"; text:hasSettingsPending("settings-service")?t("Aplicando…"):t("Aplicar e reiniciar monitor"); highlighted:enabled&&!!settingsDiag.services&&(settingsDiag.services.calls.staleConfig||settingsDiag.services.calls.outdated||!settingsDiag.services.calls.active); enabled:backend.available&&!settingsHasChanges()&&!!settingsData.values&&settingsData.values["callDetection.enabled"]===true&&!hasSettingsPending("settings-service"); onClicked:runSettingsService("calls-apply") }
-           FtButton { text:t("Desativar monitor"); variant:"outline"; enabled:backend.available&&!!(settingsDiag.services&&settingsDiag.services.calls&&settingsDiag.services.calls.installed)&&!hasSettingsPending("settings-service"); onClicked:runSettingsService("calls-disable") }
+           FtButton { text:t("Desativar monitor"); variant:"outline"; enabled:backend.available&&settingsDialog.canDisableMonitor()&&!hasSettingsPending("settings-service"); onClicked:runSettingsService("calls-disable") }
           }
           SettingsHint { text:settingsHasChanges()?t("Salve as alterações antes de aplicar o monitor."):settingsData.values&&settingsData.values["callDetection.enabled"]!==true?t("Ative a gravação automática e salve para poder aplicar o monitor."):t("O monitor lê a configuração ao iniciar; aplique depois de salvar mudanças de gravação. Nunca é reiniciado durante uma gravação.") }
           SettingsSection { text:t("Processamento em segundo plano") }

@@ -95,7 +95,8 @@ FtDialog {
         const monitor = diag.services && diag.services.calls
         if (applyMonitor && value("callDetection.enabled") === true) actions.push("calls-apply")
         // A monitor already installed keeps the configuration it started with: stop it when detection is turned off.
-        else if (value("callDetection.enabled") !== true && monitor && monitor.installed) actions.push("calls-disable")
+        // Unless the diagnostic shows it is not installed, disable it; disabling a missing monitor changes nothing.
+        else if (value("callDetection.enabled") !== true && !(monitor && monitor.installed === false)) actions.push("calls-disable")
         if (applyTimer && value("processing.autoEnqueue") === true) actions.push("sync-apply")
         if (applyTray) actions.push("tray-apply")
         return actions
