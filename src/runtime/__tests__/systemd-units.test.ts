@@ -79,15 +79,17 @@ test("every path a sandboxed unit may write exists before the unit is installed,
     sync: ["jobs/service", "installSyncTimer", ["home/.local/state/recording-cli", "home/.local/share/recording-cli", "Recordings", "st%ate/recording-cli", "data/recording-cli"]],
     worker: ["jobs/service", "installWorkerService", ["home/.local/share/recording-cli", "home/Archive", "data/recording-cli"]],
     archive: ["archive/service", "installArchiveTimer", ["home/.local/state/recording-cli", "home/.local/share/recording-cli", "st%ate/recording-cli", "data/recording-cli"]],
-    backup: ["proton/service", "installProtonBackupTimer", ["home/.local/state/recording-cli", "home/.local/share/recording-cli", "st%ate/recording-cli", "data/recording-cli"]]
+    backup: ["proton/service", "installProtonBackupTimer", ["home/.local/state/recording-cli", "home/.local/share/recording-cli", "st%ate/recording-cli", "data/recording-cli"]],
+    // The tray writes nothing but watches the call status folder, which it cannot create in its sandbox.
+    tray: ["tray/service", "installTrayService", ["st%ate/recording-cli"]]
   };
   const source = join(import.meta.dir, "../..");
   for (const [name, [module, installer, expected]] of Object.entries(installers)) {
     const root = await fs.mkdtemp(join(tmpdir(), `falatrace-writable-${name}-`));
     try {
-      // A fresh home and custom XDG folders per installer; the systemctl stub accepts every call.
+      // A fresh home and custom XDG folders per installer; systemctl and the tray's checks accept every call.
       await fs.mkdir(join(root, "bin"));
-      await fs.writeFile(join(root, "bin", "systemctl"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+      for (const command of ["systemctl", "python3", "gdbus"]) await fs.writeFile(join(root, "bin", command), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
       await fs.writeFile(join(root, "install.ts"), [
         `import { DEFAULT_CONFIG } from ${JSON.stringify(join(source, "config/defaults"))};`,
         `import { ${installer} as install } from ${JSON.stringify(join(source, module))};`,

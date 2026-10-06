@@ -1,6 +1,6 @@
 import { promises as fs } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { getCallStatusPath } from "../calls/status";
 import { runCommand } from "../jobs/command";
 import { execStart, isMissingUnitError, persistentUnitEnvironment, serviceLaunchCommand, userUnitDir } from "../runtime/systemd-units";
 import { checkTrayDependencies } from "./runtime";
@@ -20,7 +20,9 @@ export const installTrayService = async (): Promise<string> => {
     recursive: true,
     mode: 0o700
   });
-  await fs.mkdir(join(homedir(), ".local", "state", "recording-cli"), {
+  // The tray only reads the call monitor's status, under the XDG_STATE_HOME the unit gets; the sandbox
+  // keeps it from creating that folder, so it is created here.
+  await fs.mkdir(dirname(getCallStatusPath()), {
     recursive: true,
     mode: 0o700
   });
