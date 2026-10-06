@@ -105,3 +105,15 @@ test("explicit XDG config home is honored while existing legacy configuration is
   const legacyHome=join(root,"legacy-home");await fs.mkdir(legacyHome);expect((await init(legacyHome)).code).toBe(0);const legacy=join(legacyHome,".config/recording-cli/config.json");const before=await fs.readFile(legacy,"utf8");const newXdg=join(root,"new-xdg");expect((await init(legacyHome,newXdg)).stdout).toContain("preservada");expect(await fs.readFile(legacy,"utf8")).toBe(before);expect(await fs.stat(join(newXdg,"recording-cli/config.json")).catch(()=>null)).toBeNull();
  }finally{await fs.rm(root,{recursive:true,force:true});}
 });
+
+test("an unknown recording backend or Studio language is refused when the config loads", () => {
+  const backend = structuredClone(DEFAULT_CONFIG) as unknown as Record<string, unknown>;
+  backend.backend = "screen-magic";
+  expect(() => validateConfig(backend as never)).toThrow("backend must be one of");
+  const language = structuredClone(DEFAULT_CONFIG);
+  (language.studio as { language: string }).language = "fr";
+  expect(() => validateConfig(language)).toThrow("studio.language must be auto, pt-BR or en");
+  for (const value of ["audio", "gpu-screen-recorder", "obs", "simple"] as const) {
+    expect(() => validateConfig({ ...structuredClone(DEFAULT_CONFIG), backend: value })).not.toThrow();
+  }
+});

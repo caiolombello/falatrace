@@ -2,7 +2,7 @@ import { promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AppConfig } from "../config/defaults";
-import { runCommand, runCommandDirect } from "../jobs/command";
+import { type runCommand, runCommandDirect } from "../jobs/command";
 import { buildCaptureCommand, inspectAudioSources } from "./capture";
 import { checkRecordingAudio } from "./health";
 import { translateCaptureMessage } from "./messages";
@@ -37,7 +37,7 @@ export const runAudioTest = async (
 ): Promise<AudioTestResult> => {
   if (!Number.isInteger(seconds) || seconds < 2 || seconds > 15) throw new Error("O teste dura de 2 a 15 segundos.");
   if (config.capture.audioSource === "none") throw new Error("Nenhuma fonte de áudio foi escolhida para gravar.");
-  let inspection;
+  let inspection: Awaited<ReturnType<AudioTestDeps["inspect"]>>;
   try {
     inspection = await deps.inspect(config.capture);
   } catch (error) {

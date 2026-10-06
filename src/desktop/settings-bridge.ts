@@ -166,7 +166,7 @@ const parseRemoteCheck = (output: string) => {
     const [name, state] = line.split("=");
     return { name, ok: state === "ok" };
   });
-  const disk = lines.find((line) => line.startsWith("/") || /^\S+\s+\d/.test(line))?.replace(/[\x00-\x1f\x7f]/g, " ").slice(0, 200) || null;
+  const disk = lines.find((line) => line.startsWith("/") || /^\S+\s+\d/.test(line))?.replace(/\p{Cc}/gu, " ").slice(0, 200) || null;
   return { host, commands, disk };
 };
 

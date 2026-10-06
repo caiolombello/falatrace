@@ -12,7 +12,7 @@ let sequence = 0;
  */
 export const notifyJobOutcome = async (config: AppConfig, job: JobRecord, run: typeof runCommand = runCommand): Promise<void> => {
   if (!config.processing.notifyOnCompletion || (job.state !== "completed" && job.state !== "failed")) return;
-  const name = (basename(dirname(job.sourcePath)) || basename(job.sourcePath)).replace(/[\x00-\x1f\x7f]/g, " ").slice(0, 80);
+  const name = (basename(dirname(job.sourcePath)) || basename(job.sourcePath)).replace(/\p{Cc}/gu, " ").slice(0, 80);
   const [title, body] = job.state === "completed"
     ? ["Gravação processada", `${name}: transcrição e resumo prontos no FalaTrace Studio.`]
     : ["Processamento falhou", `${name}: abra o FalaTrace Studio para ver o motivo e tentar de novo.`];

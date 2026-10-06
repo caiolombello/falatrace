@@ -14,21 +14,20 @@ import { describeCredentials, type SecretFiles } from "./secrets";
  */
 type FieldRule = (value: unknown) => boolean;
 
-const CONTROL = /[\x00-\x1f\x7f]/;
-const has = (target: object, key: string): boolean => Object.prototype.hasOwnProperty.call(target, key);
+const CONTROL = /\p{Cc}/u;
+// Own keys only: a patch naming "constructor" or "__proto__" is never an allowed field.
+const has = (target: object, key: string): boolean => Object.getOwnPropertyDescriptor(target, key) !== undefined;
 const bool: FieldRule = (value) => typeof value === "boolean";
 const oneOf = (...values: string[]): FieldRule => (value) => typeof value === "string" && values.includes(value);
 const intBetween = (min: number, max: number): FieldRule => (value) =>
   Number.isSafeInteger(value) && (value as number) >= min && (value as number) <= max;
 const numberBetween = (min: number, max: number): FieldRule => (value) =>
   typeof value === "number" && Number.isFinite(value) && value >= min && value <= max;
-const text = (max: number, pattern = /^[^\x00-\x1f\x7f]+$/): FieldRule => (value) =>
+const text = (max: number, pattern = /^\P{Cc}+$/u): FieldRule => (value) =>
   typeof value === "string" && value.length > 0 && value.length <= max && pattern.test(value);
-const textOrEmpty = (max: number): FieldRule => (value) =>
-  typeof value === "string" && value.length <= max && !CONTROL.test(value);
 /** Free text such as a vocabulary hint: line breaks and tabs allowed, other control characters not. */
 const multiline = (max: number): FieldRule => (value) =>
-  typeof value === "string" && value.length <= max && !/[\x00-\x08\x0b-\x1f\x7f]/.test(value);
+  typeof value === "string" && value.length <= max && !/(?![\t\n])\p{Cc}/u.test(value);
 const absolutePath: FieldRule = (value) =>
   typeof value === "string" && value.startsWith("/") && value.length <= 4096 && !CONTROL.test(value);
 const absoluteOrHomePath: FieldRule = (value) =>
@@ -168,16 +167,20 @@ const getPath = (source: unknown, path: string): unknown =>
   path.split(".").reduce<unknown>((value, key) =>
     value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>)[key] : undefined, source);
 
-const setPath = (target: Record<string, any>, path: string, value: unknown): void => {
+type JsonObject = Record<string, unknown>;
+
+const setPath = (target: JsonObject, path: string, value: unknown): void => {
   const keys = path.split(".");
   let node = target;
   for (const key of keys.slice(0, -1)) {
     const next = node[key];
-    node[key] = next && typeof next === "object" && !Array.isArray(next) ? { ...next } : {};
-    node = node[key];
+    const copy: JsonObject = next && typeof next === "object" && !Array.isArray(next) ? { ...(next as JsonObject) } : {};
+    node[key] = copy;
+    node = copy;
   }
-  if (value === null) delete node[keys[keys.length - 1]];
-  else node[keys[keys.length - 1]] = value;
+  const last = keys[keys.length - 1];
+  if (value === null) delete node[last];
+  else node[last] = value;
 };
 
 export const validateSettingsPatch = (patch: unknown, options: { allowEmpty?: boolean } = {}): SettingsPatch => {
@@ -263,14 +266,14 @@ export async function readSettings(path = getConfigPath(), env: NodeJS.ProcessEn
 }
 
 /** Apply a validated patch to the raw file value, keeping cross-field invariants explicit. */
-export const applySettingsPatch = (previous: Record<string, any>, fields: SettingsPatch): Record<string, any> => {
+export const applySettingsPatch = (previous: JsonObject, fields: SettingsPatch): JsonObject => {
   const next = structuredClone(previous);
   const visual = Object.keys(fields).some((field) => field.startsWith("visualReview."));
   for (const [field, value] of Object.entries(fields)) {
     if (!field.startsWith("visualReview.")) setPath(next, field, value);
   }
   if (visual) {
-    const current = next.visualReview && typeof next.visualReview === "object" ? next.visualReview : {};
+    const current = (next.visualReview && typeof next.visualReview === "object" ? next.visualReview : {}) as { maxInferences?: number; maxPreviews?: number };
     next.visualReview = {
       maxInferences: fields["visualReview.maxInferences"] ?? current.maxInferences ?? VISUAL_REVIEW_DEFAULTS.maxInferences,
       maxPreviews: fields["visualReview.maxPreviews"] ?? current.maxPreviews ?? VISUAL_REVIEW_DEFAULTS.maxPreviews,
@@ -320,7 +323,7 @@ const readBounded = async (path: string, limit = 1024 * 1024): Promise<Buffer> =
   }
 };
 
-const parseConfigObject = (bytes: Buffer): Record<string, any> => {
+const parseConfigObject = (bytes: Buffer): JsonObject => {
   const value = JSON.parse(bytes.toString("utf8"));
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("O arquivo não contém uma configuração.");
   validateConfig(mergeConfig(DEFAULT_CONFIG, value));

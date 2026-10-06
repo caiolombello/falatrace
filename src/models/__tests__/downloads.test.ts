@@ -79,7 +79,7 @@ test("Ollama pulls only go to loopback servers and report progress and errors", 
   expect(validateOllamaModelName("library/llama3:8b-instruct")).toBe("library/llama3:8b-instruct");
   for (const bad of ["", "UPPER", "a b", "../x", "x".repeat(200)]) expect(() => validateOllamaModelName(bad)).toThrow();
   await expect(pullOllamaModel("https://ollama.example.com", "qwen3.5:9b", { fetch, onProgress: () => undefined })).rejects.toThrow("neste computador");
-  const lines = [{ status: "pulling manifest" }, { status: "downloading", completed: 5, total: 10 }, { status: "success" }].map((line) => JSON.stringify(line)).join("\n") + "\n";
+  const lines = [{ status: "pulling manifest" }, { status: "downloading", completed: 5, total: 10 }, { status: "success" }].map((line) => `${JSON.stringify(line)}\n`).join("");
   const seen: Array<{ url: string; body: string }> = [];
   const progress: string[] = [];
   await pullOllamaModel("http://127.0.0.1:11434", "qwen3.5:9b", {
@@ -89,7 +89,7 @@ test("Ollama pulls only go to loopback servers and report progress and errors", 
   expect(seen).toEqual([{ url: "http://127.0.0.1:11434/api/pull", body: JSON.stringify({ model: "qwen3.5:9b", stream: true }) }]);
   expect(progress).toContain("success");
   await expect(pullOllamaModel("http://localhost:11434", "qwen3.5:9b", {
-    fetch: (async () => new Response(JSON.stringify({ error: "pull model manifest: file does not exist" }) + "\n")) as unknown as typeof fetch,
+    fetch: (async () => new Response(`${JSON.stringify({ error: "pull model manifest: file does not exist" })}\n`)) as unknown as typeof fetch,
     onProgress: () => undefined
   })).rejects.toThrow("Ollama: pull model manifest");
 });

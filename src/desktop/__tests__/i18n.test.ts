@@ -44,7 +44,7 @@ const qmlKeys = (): string[] => {
 test("every literal passed to t() or tf() in the QML has an English entry", () => {
   const keys = qmlKeys();
   expect(keys.length).toBeGreaterThan(900);
-  expect(keys.filter((key) => !Object.prototype.hasOwnProperty.call(i18n.EN, key))).toEqual([]);
+  expect(keys.filter((key) => Object.getOwnPropertyDescriptor(i18n.EN, key) === undefined)).toEqual([]);
 });
 
 test("entries keep placeholders, line breaks and the spaces used to join fragments", () => {

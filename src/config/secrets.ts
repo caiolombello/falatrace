@@ -1,4 +1,5 @@
 import { constants, promises as fs } from "node:fs";
+import type { FileHandle } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
@@ -67,7 +68,7 @@ export const parseSecretLines = (content: string): Map<string, string> => {
     const match = line.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=(.*)$/);
     if (!match) continue;
     const value = unquote(match[2]);
-    if (value && !/[\x00-\x1f\x7f]/.test(value)) values.set(match[1], value);
+    if (value && !/\p{Cc}/u.test(value)) values.set(match[1], value);
   }
   return values;
 };
@@ -76,7 +77,7 @@ const currentUid = (): number | undefined => (typeof process.getuid === "functio
 
 export const readSecretFile = async (file: SecretFileName, path: string): Promise<SecretFileState> => {
   const state: SecretFileState = { file, path, exists: false, usable: false, tooOpen: false, values: new Map() };
-  let handle;
+  let handle: FileHandle;
   try {
     handle = await fs.open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
   } catch (error) {
@@ -151,7 +152,7 @@ export const readSecret = async (
 const validateSecretValue = (value: unknown): string => {
   if (typeof value !== "string") throw new Error("Valor inválido.");
   const trimmed = value.trim();
-  if (!trimmed || trimmed.length > MAX_SECRET_LENGTH || /[\x00-\x1f\x7f]/.test(trimmed)) {
+  if (!trimmed || trimmed.length > MAX_SECRET_LENGTH || /\p{Cc}/u.test(trimmed)) {
     throw new Error("Valor inválido: use uma única linha, sem caracteres de controle.");
   }
   return trimmed;
@@ -252,7 +253,7 @@ export const describeCredentials = async (
       savedInStudio
     };
   });
-  const sourceOf = (name: SecretName) => details.find((detail) => detail.name === name)!.source;
+  const sourceOf = (name: SecretName) => details.find((detail) => detail.name === name)?.source ?? "missing";
   return {
     openai: sourceOf("OPENAI_API_KEY"),
     gemini: sourceOf("GEMINI_API_KEY"),

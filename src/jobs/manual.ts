@@ -127,13 +127,9 @@ export const runRecordingProcessing = async (
   const plan = await planRecordingProcessing(config, entry, deps);
   if (plan.consentKey !== consent.consentKey) throw new Error("A gravação ou as configurações mudaram. Revise o destino de novo.");
   if (plan.action === "none") throw new Error(plan.reason);
-  let jobId = plan.jobId;
-  let created = false;
-  if (plan.action === "create") {
-    const job = await deps.store.enqueue(config, entry.sourcePath, {});
-    jobId = job.id;
-    created = true;
-  }
-  const queued = await deps.queue(jobId!, { retry: plan.action === "retry" });
-  return { jobId: jobId!, status: queued.status, created, ...(queued.warning ? { warning: queued.warning } : {}) };
+  const created = plan.action === "create";
+  const jobId = created ? (await deps.store.enqueue(config, entry.sourcePath, {})).id : plan.jobId;
+  if (!jobId) throw new Error(plan.reason);
+  const queued = await deps.queue(jobId, { retry: plan.action === "retry" });
+  return { jobId, status: queued.status, created, ...(queued.warning ? { warning: queued.warning } : {}) };
 };

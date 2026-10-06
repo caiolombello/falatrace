@@ -2,23 +2,11 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { defaultCallApplications, type CallApplication } from "../calls/apps";
 
-export type RecordingBackend =
-  | "audio"
-  | "gpu-screen-recorder"
-  | "wf-recorder"
-  | "gnome"
-  | "obs"
-  | "obs-ws"
-  | "obs-cli"
-  | "ffmpeg"
-  | "ffmpeg-only"
-  | "gnome-ffmpeg"
-  | "gnome-native"
-  | "pipewire"
-  | "gstreamer"
-  | "kooha"
-  | "hybrid"
-  | "simple";
+export const RECORDING_BACKENDS = [
+  "audio", "gpu-screen-recorder", "wf-recorder", "gnome", "obs", "obs-ws", "obs-cli", "ffmpeg", "ffmpeg-only",
+  "gnome-ffmpeg", "gnome-native", "pipewire", "gstreamer", "kooha", "hybrid", "simple"
+] as const;
+export type RecordingBackend = (typeof RECORDING_BACKENDS)[number];
 
 export type ExecutionTarget = "local" | "remote";
 export type TranscriptionProvider = "openai" | "whisper-cpp" | "gemini";
@@ -54,11 +42,6 @@ export type AppConfig = {
     password?: string;
   };
   features: {
-    countdownSeconds: number;
-    autoStopMinutes?: number;
-    enableHotkeys: boolean;
-    enableWindowPicker: boolean;
-    enableCompression: boolean;
     namingTemplate: string;
   };
   proton: {
@@ -187,11 +170,6 @@ export const DEFAULT_CONFIG: AppConfig = {
     password: undefined
   },
   features: {
-    countdownSeconds: 3,
-    autoStopMinutes: undefined,
-    enableHotkeys: false,
-    enableWindowPicker: false,
-    enableCompression: false,
     namingTemplate: "YYYY-MM-DD_HH-mm_[title]"
   },
   proton: {

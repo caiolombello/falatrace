@@ -55,7 +55,7 @@ test("existing jobs are queued, retried or left alone and keep their recorded pr
       expect(plan.action).toBe(action);
       expect(plan.transcription.provider).toBe("openai");
     }
-    const missing = await planRecordingProcessing(config, { sourcePath: path + ".gone", sourceExists: false, jobs: [] }, fakeDeps().deps);
+    const missing = await planRecordingProcessing(config, { sourcePath: `${path}.gone`, sourceExists: false, jobs: [] }, fakeDeps().deps);
     expect(missing.action).toBe("none");
     config.processing.defaultTarget = "remote";
     expect((await planRecordingProcessing(config, { sourcePath: path, sourceExists: true, jobs: [] }, fakeDeps().deps)).action).toBe("none");

@@ -153,7 +153,7 @@ export const listAudioDevices = async (run: typeof runCommand = runCommand) => {
   const devices: AudioDevice[] = parsed.flatMap((value) => {
     const item = value as { name?: unknown; description?: unknown };
     if (typeof item.name !== "string" || !/^[A-Za-z0-9_.:@+-]{1,300}$/.test(item.name)) return [];
-    const description = typeof item.description === "string" ? item.description.replace(/[\x00-\x1f\x7f]/g, " ").slice(0, 200) : item.name;
+    const description = typeof item.description === "string" ? item.description.replace(/\p{Cc}/gu, " ").slice(0, 200) : item.name;
     return [{ name: item.name, description, monitor: item.name.endsWith(".monitor") }];
   }).slice(0, 100);
   const defaultSink = sink.stdout.trim();
@@ -230,7 +230,8 @@ export const readServiceStatus = async (
     unitState(run, "is-enabled", "recording-cli-tray.service"), unitState(run, "is-active", "recording-cli-tray.service")
   ]);
   // Only the parts the Studio controls are compared: the launch target is allowed to differ.
-  const callsOutdated = callsUnit !== null && !callsUnit.includes(buildCallMonitorUnit(config, ["X"]).split("\n").find((line) => line.startsWith("ReadWritePaths="))!);
+  const expectedPaths = buildCallMonitorUnit(config, ["X"]).split("\n").find((line) => line.startsWith("ReadWritePaths="));
+  const callsOutdated = callsUnit !== null && !!expectedPaths && !callsUnit.includes(expectedPaths);
   const configChangedAt = await fs.stat(configPath).then((stat) => stat.mtimeMs, () => null);
   const callsStartedAt = callsActive ? await showUnix(run, "recording-cli-calls.service", "ActiveEnterTimestamp") : null;
   const staleConfig = callsStartedAt !== null && configChangedAt !== null && configChangedAt > callsStartedAt;

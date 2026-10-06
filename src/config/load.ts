@@ -5,6 +5,7 @@ import { join,dirname,resolve } from "node:path";
 import { CALL_APPLICATIONS } from "../calls/apps";
 import {
   DEFAULT_CONFIG,
+  RECORDING_BACKENDS,
   STUDIO_LANGUAGES,
   TRANSCRIPTION_PROMPT_MAX_LENGTH,
   type AppConfig
@@ -214,6 +215,9 @@ export const validateConfig = (config: AppConfig): void => {
   }
   if (!Number.isSafeInteger(config.summary.maxInputCharacters) || config.summary.maxInputCharacters < 4096 || config.summary.maxInputCharacters > 200_000) {
     throw new Error("summary.maxInputCharacters must be between 4096 and 200000");
+  }
+  if (!(RECORDING_BACKENDS as readonly string[]).includes(config.backend)) {
+    throw new Error(`backend must be one of ${RECORDING_BACKENDS.join(", ")}`);
   }
   if (!(STUDIO_LANGUAGES as readonly string[]).includes(config.studio.language)) {
     throw new Error("studio.language must be auto, pt-BR or en");

@@ -1,0 +1,8 @@
+# PySide6 runtime for the offscreen Studio journeys (scripts/studio-qml-runner.py).
+# Pinned by version and hash (Linux x86_64, glibc 2.34+, CPython 3.10+). Install with:
+#   python3 -m venv .venv-studio && .venv-studio/bin/pip install --require-hashes --no-deps -r scripts/studio-requirements.txt
+# then run: FALATRACE_QML_PYTHON=.venv-studio/bin/python bash scripts/test-studio-journeys.sh
+PySide6-Essentials==6.11.2 \
+    --hash=sha256:aaf9f25f0f324874085fa5b26a610318db8a8e243cf85bb3e5400595191c7778
+shiboken6==6.11.2 \
+    --hash=sha256:7a7a0a72a9ed26c9bf77d42246b1c736486befb8f31aa2fb29957ea4cdd1c1c2

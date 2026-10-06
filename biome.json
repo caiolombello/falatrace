@@ -1,0 +1,40 @@
+{
+	"$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+	"vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+	"files": {
+		"includes": [
+			"src/agent-context/connect.ts",
+			"src/agent-context/__tests__/connect.test.ts",
+			"src/cli/keys.ts",
+			"src/cli/models.ts",
+			"src/config/credential-test.ts",
+			"src/config/secrets.ts",
+			"src/config/settings.ts",
+			"src/config/setup-checks.ts",
+			"src/config/__tests__/credential-test.test.ts",
+			"src/config/__tests__/secrets.test.ts",
+			"src/desktop/model-bridge.ts",
+			"src/desktop/settings-bridge.ts",
+			"src/desktop/__tests__/i18n.test.ts",
+			"src/desktop/__tests__/model-bridge.test.ts",
+			"src/jobs/manual.ts",
+			"src/jobs/notify.ts",
+			"src/jobs/__tests__/manual.test.ts",
+			"src/jobs/__tests__/notify.test.ts",
+			"src/models/downloads.ts",
+			"src/models/__tests__/downloads.test.ts",
+			"src/recording/audio-test.ts",
+			"src/recording/legacy-stop.ts",
+			"src/recording/messages.ts",
+			"src/recording/__tests__/audio-test.test.ts",
+			"src/runtime/systemd-units.ts",
+			"src/runtime/__tests__/systemd-units.test.ts"
+		]
+	},
+	"formatter": { "enabled": false },
+	"assist": { "enabled": false },
+	"linter": {
+		"enabled": true,
+		"rules": { "preset": "recommended" }
+	}
+}

@@ -189,8 +189,7 @@ export const pullOllamaModel = async (
     if (done) break;
     buffer += decoder.decode(value, { stream: true });
     if (buffer.length > 1024 * 1024) throw new Error("Resposta do Ollama grande demais.");
-    let index;
-    while ((index = buffer.indexOf("\n")) >= 0) {
+    for (let index = buffer.indexOf("\n"); index >= 0; index = buffer.indexOf("\n")) {
       const line = buffer.slice(0, index).trim();
       buffer = buffer.slice(index + 1);
       if (!line) continue;
