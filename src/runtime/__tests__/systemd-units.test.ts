@@ -72,6 +72,33 @@ test("a unit that fails to stop keeps its files; one that is already gone does n
   }
 });
 
+test("uninstall commands still run while the configuration is broken", async () => {
+  const root = await fs.mkdtemp(join(tmpdir(), "falatrace-uninstall-"));
+  try {
+    const home = join(root, "home");
+    const xdg = join(root, "config");
+    const bin = join(root, "bin");
+    const log = join(root, "systemctl.log");
+    await fs.mkdir(join(xdg, "recording-cli"), { recursive: true });
+    await fs.writeFile(join(xdg, "recording-cli", "config.json"), "{ broken");
+    await fs.mkdir(bin);
+    await fs.writeFile(join(bin, "systemctl"), `#!/bin/sh\nprintf '%s\\n' "$*" >> '${log}'\n`, { mode: 0o755 });
+    for (const command of [["jobs", "uninstall-timer"], ["archive", "uninstall-timer"], ["backup", "uninstall-timer"], ["calls", "uninstall-service"]]) {
+      const child = Bun.spawn([process.execPath, join(import.meta.dir, "../../cli/index.ts"), ...command], {
+        env: { HOME: home, XDG_CONFIG_HOME: xdg, PATH: `${bin}:/usr/bin:/bin` }, stdout: "ignore", stderr: "pipe"
+      });
+      const [code, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()]);
+      expect({ command: command.join(" "), code, stderr }).toEqual({ command: command.join(" "), code: 0, stderr: "" });
+    }
+    const calls = await fs.readFile(log, "utf8");
+    for (const unit of ["recording-cli-sync.timer", "recording-cli-archive.timer", "recording-cli-proton-backup.timer", "recording-cli-calls.service"]) {
+      expect(calls).toContain(`--user disable --now ${unit}`);
+    }
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
 test("source runs from the Studio bridge launch the CLI entry, not bridge.ts", () => {
   expect(cliEntryForBun("/repo/src/cli/index.ts")).toBe("/repo/src/cli/index.ts");
   expect(cliEntryForBun("/repo/dist/index.js")).toBe("/repo/dist/index.js");

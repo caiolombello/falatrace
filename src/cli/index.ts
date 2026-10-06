@@ -554,6 +554,11 @@ const main = async (): Promise<void> => {
           }
           break;
         }
+        // Removing a service needs no configuration: a broken one must not keep a unit running.
+        if (subcommand === "uninstall-service") {
+          console.log(await uninstallCallMonitorService());
+          break;
+        }
         const { config } = await loadConfig();
         if (subcommand === "pause" || subcommand === "resume") {
           const paused = subcommand === "pause";
@@ -608,10 +613,6 @@ const main = async (): Promise<void> => {
         }
         if (subcommand === "install-service") {
           console.log(await installCallMonitorService(config));
-          break;
-        }
-        if (subcommand === "uninstall-service") {
-          console.log(await uninstallCallMonitorService());
           break;
         }
         throw new Error("Unknown calls command");
@@ -896,6 +897,11 @@ const main = async (): Promise<void> => {
     }
     case "jobs": {
       try {
+        // Removing a timer needs no configuration: a broken one must not keep a failing unit running.
+        if (subcommand === "uninstall-timer") {
+          (await uninstallSyncTimer()).forEach((path) => console.log(path));
+          break;
+        }
         const { config } = await loadConfig();
         const store = new JobStore();
         if (subcommand === "list") {
@@ -947,10 +953,6 @@ const main = async (): Promise<void> => {
         if (subcommand === "install-timer") {
           const paths = await installSyncTimer(config);
           paths.forEach((path) => console.log(path));
-          break;
-        }
-        if (subcommand === "uninstall-timer") {
-          (await uninstallSyncTimer()).forEach((path) => console.log(path));
           break;
         }
         throw new Error("Unknown jobs command");
@@ -1031,6 +1033,10 @@ const main = async (): Promise<void> => {
     }
     case "archive": {
       try {
+        if (subcommand === "uninstall-timer") {
+          for (const path of await uninstallArchiveTimer()) console.log(path);
+          break;
+        }
         const { config } = await loadConfig();
         const store = new ArchiveStore();
         if (subcommand === "status" || !subcommand) {
@@ -1077,8 +1083,6 @@ const main = async (): Promise<void> => {
           console.log(await restoreProtonMedia(config, sealedArchiveMedia(record)));
         } else if (subcommand === "install-timer") {
           for (const path of await installArchiveTimer(config)) console.log(path);
-        } else if (subcommand === "uninstall-timer") {
-          for (const path of await uninstallArchiveTimer()) console.log(path);
         } else throw new Error("Comando de arquivamento desconhecido");
       } catch (error) {
         console.error(error instanceof Error ? error.message : String(error)); process.exitCode = 1;
@@ -1087,6 +1091,10 @@ const main = async (): Promise<void> => {
     }
     case "backup": {
       try {
+        if (subcommand === "uninstall-timer") {
+          (await uninstallProtonBackupTimer()).forEach((path) => console.log(path));
+          break;
+        }
         const { config } = await loadConfig();
         const backupStore = new ProtonBackupStore();
         if (subcommand === "proton") {
@@ -1147,10 +1155,6 @@ const main = async (): Promise<void> => {
           }
           const paths = await installProtonBackupTimer(config);
           paths.forEach((path) => console.log(path));
-          break;
-        }
-        if (subcommand === "uninstall-timer") {
-          (await uninstallProtonBackupTimer()).forEach((path) => console.log(path));
           break;
         }
         throw new Error("Unknown backup command");
