@@ -50,7 +50,7 @@ values = {'callDetection.enabled': not first, 'callDetection.mode':'record', 'ca
           'retention.localCompletedWorkDays':7,'retention.remoteIncomingDays':2,'retention.remoteResultsDays':30,'retention.remoteFailuresDays':30}
 revision = 'a' * 64
 # Assistant modes on an existing OpenAI setup that already has its key; wizard-key-required has none.
-key_present = mode in ('wizard-disable-monitor', 'wizard-disable-unknown', 'wizard-download-finish', 'wizard-download-pending', 'wizard-gemini-key', 'wizard-lost')
+key_present = mode in ('wizard-disable-monitor', 'wizard-disable-unknown', 'wizard-download-finish', 'wizard-download-pending', 'wizard-gemini-key', 'wizard-lost', 'wizard-ffmpeg-review')
 details = [{'name':'OPENAI_API_KEY','source':'secrets.env' if key_present else 'missing','sessionOnly':mode == 'keys','shadowsStudioKey':False,'savedInStudio':key_present},
            {'name':'GEMINI_API_KEY','source':'missing','sessionOnly':False,'shadowsStudioKey':False,'savedInStudio':False},
            {'name':'RECORDING_CLI_OBS_PASSWORD','source':'missing','sessionOnly':False,'shadowsStudioKey':False,'savedInStudio':False}]
@@ -78,8 +78,11 @@ for line in sys.stdin:
     elif op == 'settings-diagnose':
         # Like the bridge, the checks follow the unsaved choices the assistant sends.
         summary = p.get('changes', {}).get('summary.provider', values['summary.provider'])
-        v = {'checks':[{'id':'ffmpeg','label':'FFmpeg','status':'ok','detail':'Encontrado.'},
-                       {'id':'whisper-model','label':'Modelo do Whisper','status':'missing','detail':'Não encontrado.','action':'whisper-model'},
+        transcription = p.get('changes', {}).get('transcription.provider', values['transcription.provider'])
+        ffmpeg = {'id':'ffmpeg','label':'FFmpeg','status':'ok','detail':'Encontrado.'} if mode != 'wizard-ffmpeg-review' else \
+                 {'id':'ffmpeg','label':'FFmpeg','status':'missing','detail':'Necessário para gravar só áudio e para extrair o áudio antes da transcrição. Instale pelo gerenciador de pacotes.'}
+        v = {'checks':[ffmpeg,
+                       *([{'id':'whisper-model','label':'Modelo do Whisper','status':'missing','detail':'Não encontrado.','action':'whisper-model'}] if transcription == 'whisper-cpp' else []),
                        {'id':'ollama','label':'Ollama','status':'warning','action':'ollama-model','detail':'Ollama respondeu, mas o modelo qwen3.5:9b não está instalado.'} if summary == 'ollama'
                        else {'id':'summary-key','label':'Resumo · OPENAI_API_KEY','status':'missing','detail':'Chave não encontrada.'}],
              'automation':[{'id':'automatic-backend','label':'Gravação automática','status':'missing','detail':'Usa o OBS desativado.','action':'capture'}] if mode == 'services' else [],
@@ -211,6 +214,12 @@ MODES = {
                                   'check("review flags the local models that are missing", setupWizard.step===4 && !!row && row.status==="warning" && !!missing && missing.visible); '
                                   'if (missing) missing.clicked(); check("review leads to the step that offers the downloads", setupWizard.step===2); setupWizard.step=4; setupWizard.finish()',
                                   'const title = findObject(setupWizard.contentItem, "wizardDoneTitle"); check("the last page does not say all set while the models are missing", setupWizard.step===5 && !!title && title.text!=="Tudo pronto")'),
+    'wizard-ffmpeg-review': ('setupWizard.open(); setupWizard.consentAck=true; setupWizard.applyMonitor=false; setupWizard.applyTimer=false',
+                             'setupWizard.step=4; const row = findObject(setupWizard.contentItem, "wizardReviewProcessing"), missing = findObject(setupWizard.contentItem, "wizardShowMissing"); '
+                             'check("review flags the FFmpeg that processing on this computer needs", !setupWizard.missingRequiredKey() && !!row && row.detail.indexOf("extrair o áudio")>=0 && !!missing && missing.visible); '
+                             'if (missing) missing.clicked(); const ffmpeg = findObject(setupWizard.contentItem, "wizardProblem-ffmpeg"); check("the processing step shows what is missing", setupWizard.step===2 && !!ffmpeg && ffmpeg.visible); setupWizard.step=4; setupWizard.finish()',
+                             'const title = findObject(setupWizard.contentItem, "wizardDoneTitle"); check("the last page lists FFmpeg instead of saying all set", setupWizard.step===5 && !!title && title.text!=="Tudo pronto" && setupWizard.pendingIssues().some(function(issue){ return issue.label==="FFmpeg" })); '
+                             'setupWizard.set("processing.defaultTarget", "remote"); check("jobs sent to the remote worker do not need FFmpeg here", !setupWizard.processingProblems().length)', ''),
     'models-two': ('settingsDialog.open(); settingsDialog.goToSection(4)', 'settingsDialog.startDownload("whisper","tiny"); settingsDialog.startDownload("whisper","large-v3-turbo-q5_0")',
                    'settingsDialog.pollDownloads(); check("two downloads are tracked", !!settingsDialog.downloads["whisper:tiny"] && !!settingsDialog.downloads["whisper:large-v3-turbo-q5_0"])', ''),
     'integrations': ('settingsDialog.open(); settingsDialog.goToSection(5)', 'check("remote check available once configured", settingsData.readOnly.remoteConfigured); send("settings-remote-check",""); setSettingsField("remote.user", null); check("cleared optional field becomes a null change", settingsChanges()["remote.user"]===null)',
@@ -242,7 +251,7 @@ SIDE_EFFECTS = {'save': {'settings-save'}, 'services': {'settings-service'}, 'wi
                 'wizard-key-fail': {'settings-save', 'settings-secret-set'}, 'wizard-download-pending': {'settings-model-download'},
                 'keys-lost': {'settings-secret-set'}, 'wizard-key-required': {'settings-save', 'settings-secret-set'},
                 'models-cloud': {'settings-model-download'}, 'wizard-gemini-key': {'settings-save'}, 'wizard-recommended-review': {'settings-save'},
-                'wizard-lost': {'settings-save'}, 'restore-pending': {'settings-restore'}}
+                'wizard-lost': {'settings-save'}, 'restore-pending': {'settings-restore'}, 'wizard-ffmpeg-review': {'settings-save'}}
 GUARDED = {'settings-save', 'settings-service', 'settings-secret-set', 'settings-secret-remove', 'settings-model-download', 'settings-restore'}
 
 checks = []; screens = []

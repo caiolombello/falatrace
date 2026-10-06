@@ -119,8 +119,10 @@ FtDialog {
     }
     function missingRequiredKey() { return missingKeys().length > 0 }
     // Processing dependencies the diagnostic of the reviewed choices reports missing; keys are handled above.
+    // Every provider needs FFmpeg here to extract the audio; jobs sent to the remote worker use the worker's.
     function processingProblems() {
-        return (diag.checks || []).filter(function(item){ return ["whisper", "whisper-model", "ollama"].indexOf(item.id) >= 0 && item.status !== "ok" && item.status !== "skipped" })
+        const ids = value("processing.defaultTarget") === "remote" ? ["whisper", "whisper-model", "ollama"] : ["ffmpeg", "whisper", "whisper-model", "ollama"]
+        return (diag.checks || []).filter(function(item){ return ids.indexOf(item.id) >= 0 && item.status !== "ok" && item.status !== "skipped" })
     }
     // What will not run yet: the capture and the processing dependencies. Empty until the choices are diagnosed.
     function pendingIssues() {
@@ -325,6 +327,9 @@ FtDialog {
           Choice { heading:t("Tudo pela OpenAI"); detail:t("O áudio e a transcrição vão para a OpenAI. Não exige modelos locais; precisa de uma chave de API e gera custo na sua conta."); selected:setupWizard.preset()==="cloud"; onClicked:setupWizard.applyPreset("cloud") }
           Label { text:t("O que falta"); color:ink; font.pixelSize:16; font.weight:Font.DemiBold; Layout.topMargin:6 }
           Label { visible:!setupWizard.diag.checks; text:t("Verificando este computador…"); color:muted }
+          // What this step does not show on its own: FFmpeg missing here.
+          Repeater { model:setupWizard.processingProblems().filter(function(item){ return item.id==="ffmpeg" })
+            Status { required property var modelData; objectName:"wizardProblem-"+modelData.id; label:modelData.label; status:modelData.status; detail:modelData.detail } }
           Status { visible:setupWizard.value("transcription.provider")==="whisper-cpp"; label:"Whisper.cpp"; status:setupWizard.check("whisper")?setupWizard.check("whisper").status:"skipped"; detail:setupWizard.check("whisper")?setupWizard.check("whisper").detail:t("Salve e verifique depois em Serviços e diagnóstico.") }
           ColumnLayout { visible:setupWizard.value("transcription.provider")==="whisper-cpp"&&!!setupWizard.recommendedModel(); Layout.fillWidth:true; spacing:6
             readonly property var model: setupWizard.recommendedModel()
