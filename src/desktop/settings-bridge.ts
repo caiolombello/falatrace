@@ -226,13 +226,22 @@ export const handleSettingsOperation = async (
     const automatic = config.callDetection.enabled ? automaticRecordingBackend(config) : null;
     return { checks, automation: checkAutomation(config, services), audio, services, recording, automatic, credentials };
   }
+  // The key file has changed once set or remove returns: a failed status refresh asks for a reread
+  // instead of reporting the change as failed.
+  const refreshedCredentials = async () => {
+    try {
+      return { credentials: await deps.credentials((await deps.loadConfig()).config, { managerEnv: await deps.managerEnv() }) };
+    } catch {
+      return { needsReload: true };
+    }
+  };
   if (op === "settings-secret-set") {
     await deps.setSecret(payload.name, payload.value);
-    return { name: payload.name, saved: true, credentials: await deps.credentials((await deps.loadConfig()).config, { managerEnv: await deps.managerEnv() }) };
+    return { name: payload.name, saved: true, ...(await refreshedCredentials()) };
   }
   if (op === "settings-secret-remove") {
     const result = await deps.removeSecret(payload.name);
-    return { name: payload.name, ...result, credentials: await deps.credentials((await deps.loadConfig()).config, { managerEnv: await deps.managerEnv() }) };
+    return { name: payload.name, ...result, ...(await refreshedCredentials()) };
   }
   if (op === "settings-secret-test") {
     const provider = payload.service === "gemini" ? "gemini" : payload.service === "openai" ? "openai" : null;
@@ -328,7 +337,8 @@ export const handleSettingsOperation = async (
     } else {
       await deps.disableBackup();
     }
-    return { action, services: await deps.services(config, deps.configPath()) };
+    // The action has run: a status read that fails afterwards leaves the state unknown, not the action failed.
+    return { action, services: await deps.services(config, deps.configPath()).catch(() => null) };
   } finally {
     await lease.release();
   }

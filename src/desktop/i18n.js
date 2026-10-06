@@ -1237,6 +1237,7 @@ var EN = {
     "Estado do timer de backup indisponível.": "Backup timer state unavailable.",
     "Não foi possível cancelar o download; ele pode continuar em segundo plano. Tente de novo.": "Could not cancel the download; it may keep running in the background. Try again.",
     "Não foi possível consultar os serviços do usuário. Tente de novo.": "Could not query the user services. Try again.",
+    " Não foi possível atualizar o estado das chaves; releia a configuração para conferir.": " The key status could not be refreshed; reread the configuration to check.",
     "Aguarde o download do modelo terminar, ou cancele-o, antes de concluir.": "Wait for the model download to finish, or cancel it, before finishing.",
     "O download do modelo ainda está em andamento. Concluir fica disponível quando ele terminar ou for cancelado.": "The model download is still running. Finish becomes available when it ends or is cancelled.",
     "Chave aceita pelo provedor. O teste não envia áudio nem texto.": "Key accepted by the provider. The test sends no audio or text.",

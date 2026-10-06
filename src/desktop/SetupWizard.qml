@@ -150,7 +150,7 @@ FtDialog {
             audioTest = message.ok ? result : { error: message.error }
         } else if (req.op === "settings-secret-set") {
             addResult(t("Chave da OpenAI"), message.ok, message.ok ? t("Salva em arquivo privado.") : message.error)
-            if (message.ok) data = Object.assign({}, data, { credentials: result.credentials })
+            if (message.ok && result.credentials) data = Object.assign({}, data, { credentials: result.credentials })
             runServices()
         } else if (req.op === "settings-model-cancel") {
             if (!message.ok) { error = message.error; return }

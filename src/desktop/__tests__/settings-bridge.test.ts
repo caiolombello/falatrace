@@ -109,6 +109,21 @@ describe("settings bridge operations", () => {
     await expect(handleSettingsOperation("settings-diagnose", { changes: { "openai.apiKey": "sk-synthetic" } }, deps)).rejects.toThrow("não editável");
   });
 
+  test("a service action that ran stays a success when the status read after it fails", async () => {
+    const { deps, calls } = fakeDeps({ services: async () => { throw new Error("systemctl timed out"); } });
+    expect(await handleSettingsOperation("settings-service", { action: "tray-apply" }, deps)).toEqual({ action: "tray-apply", services: null });
+    expect(calls).toContain("applyTray");
+  });
+
+  test("a key change stays a success when the status refresh after it fails", async () => {
+    const { deps, calls } = fakeDeps({ credentials: async () => { throw new Error("config.json changed"); } });
+    expect(await handleSettingsOperation("settings-secret-set", { name: "OPENAI_API_KEY", value: "sk-synthetic-refresh" }, deps))
+      .toEqual({ name: "OPENAI_API_KEY", saved: true, needsReload: true });
+    expect(await handleSettingsOperation("settings-secret-remove", { name: "OPENAI_API_KEY" }, deps))
+      .toEqual({ name: "OPENAI_API_KEY", removed: true, needsReload: true });
+    expect(calls).toEqual(["setSecret:OPENAI_API_KEY", "removeSecret:OPENAI_API_KEY"]);
+  });
+
   test("secrets are saved through the write-only path and never echoed", async () => {
     const { deps, calls } = fakeDeps();
     const saved = await handleSettingsOperation("settings-secret-set", { name: "OPENAI_API_KEY", value: "sk-synthetic-echo" }, deps);

@@ -140,8 +140,10 @@ FtDialog {
         if (request.op === "settings-secret-set" || request.op === "settings-secret-remove") {
             secretBusy = false
             if (!message.ok) { settingsError = message.error; return }
-            settingsData = Object.assign({}, settingsData, { credentials: result.credentials })
-            settingsNotice = request.op === "settings-secret-set" ? t("Chave salva em arquivo privado. Ela vale para o processamento em segundo plano a partir de agora.") : result.removed ? t("Chave removida do arquivo do Studio.") : t("Não havia chave salva pelo Studio com esse nome.")
+            // The key file changed even when its status could not be read again: say so and ask for a reread.
+            if (result.credentials) settingsData = Object.assign({}, settingsData, { credentials: result.credentials })
+            settingsNotice = (request.op === "settings-secret-set" ? t("Chave salva em arquivo privado. Ela vale para o processamento em segundo plano a partir de agora.") : result.removed ? t("Chave removida do arquivo do Studio.") : t("Não havia chave salva pelo Studio com esse nome."))
+                + (result.credentials ? "" : t(" Não foi possível atualizar o estado das chaves; releia a configuração para conferir."))
             runSettingsDiagnose()
         } else if (request.op === "settings-secret-test") {
             const service = request.service || keyTestPending
