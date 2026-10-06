@@ -229,6 +229,8 @@ export const readCredentialStatus = async (config: AppConfig, options: Credentia
     sessionEnv: options.sessionEnv ?? process.env,
     managerEnv: options.managerEnv ?? null,
     configApiKey: !!config.openai.apiKey,
+    // Capture still falls back to a legacy obs.password, so it is reported as found there.
+    configObsPassword: !!config.obs.password,
     files: options.files
   });
 

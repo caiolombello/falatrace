@@ -401,6 +401,7 @@ export const describeCredentials = async (
     sessionEnv?: NodeJS.ProcessEnv;
     managerEnv?: NodeJS.ProcessEnv | null;
     configApiKey?: boolean;
+    configObsPassword?: boolean;
     files?: SecretFiles;
   } = {}
 ): Promise<CredentialStatus> => {
@@ -412,7 +413,7 @@ export const describeCredentials = async (
     const session = resolveSecretFrom(name, sessionEnv, states);
     const savedInStudio = !!states.find((state) => state.file === "secrets.env" && state.usable)?.values.get(name);
     const source: SecretSource = background.source !== "missing" ? background.source
-      : name === "OPENAI_API_KEY" && options.configApiKey ? "config" : "missing";
+      : (name === "OPENAI_API_KEY" && options.configApiKey) || (name === "RECORDING_CLI_OBS_PASSWORD" && options.configObsPassword) ? "config" : "missing";
     return {
       name,
       source,

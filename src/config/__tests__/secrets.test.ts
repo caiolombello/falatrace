@@ -136,6 +136,14 @@ test("diagnostics resolve keys in the environment a processing unit really gets"
   });
 });
 
+test("a legacy OBS password in config.json is reported as found there, like a legacy OpenAI key", async () => {
+  await withFiles(async (files) => {
+    const report = await describeCredentials({ sessionEnv: {}, managerEnv: {}, files, configObsPassword: true });
+    expect(report.details.find((detail) => detail.name === "RECORDING_CLI_OBS_PASSWORD")).toMatchObject({ source: "config" });
+    expect((await describeCredentials({ sessionEnv: {}, managerEnv: {}, files })).details.find((detail) => detail.name === "RECORDING_CLI_OBS_PASSWORD")).toMatchObject({ source: "missing" });
+  });
+});
+
 test("the OBS password is reported from the call monitor's environment, which loads calls.env", async () => {
   await withFiles(async (files) => {
     await fs.writeFile(files["calls.env"], "RECORDING_CLI_OBS_PASSWORD=calls-password\n", { mode: 0o600 });
