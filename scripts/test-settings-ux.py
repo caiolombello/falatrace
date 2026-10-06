@@ -51,7 +51,7 @@ values = {'callDetection.enabled': not first, 'callDetection.mode':'record', 'ca
 revision = 'a' * 64
 # Assistant modes on an existing OpenAI setup that already has its key; wizard-key-required has none.
 key_present = mode in ('wizard-disable-monitor', 'wizard-disable-unknown', 'wizard-download-finish', 'wizard-download-pending', 'wizard-gemini-key', 'wizard-lost', 'wizard-ffmpeg-review', 'wizard-automation-review',
-                       'wizard-skip-services', 'wizard-monitor-stale')
+                       'wizard-skip-services', 'wizard-monitor-stale', 'wizard-reread-fail')
 details = [{'name':'OPENAI_API_KEY','source':'secrets.env' if key_present else 'missing','sessionOnly':mode == 'keys','shadowsStudioKey':False,'savedInStudio':key_present},
            {'name':'GEMINI_API_KEY','source':'missing','sessionOnly':False,'shadowsStudioKey':False,'savedInStudio':False},
            {'name':'RECORDING_CLI_OBS_PASSWORD','source':'missing','sessionOnly':False,'shadowsStudioKey':False,'savedInStudio':False}]
@@ -75,6 +75,9 @@ for line in sys.stdin:
     # Keep only a digest of credential values in the receipt.
     if 'value' in logged: logged['value'] = 'sha256:' + hashlib.sha256(logged['value'].encode()).hexdigest()
     log.append({'op':op,'payload':logged}); open(receipt,'w').write(json.dumps(log))
+    # The configuration cannot be read again after reconnecting.
+    if op == 'settings-read' and mode == 'wizard-reread-fail' and any(q['op'] == 'settings-read' for q in log[:-1]):
+        print(json.dumps({'id':r['id'],'ok':False,'error':'Não foi possível ler a configuração.'}), flush=True); continue
     if op == 'settings-read': v = settings()
     elif op == 'settings-diagnose':
         # Like the bridge, the checks follow the unsaved choices the assistant sends.
@@ -191,9 +194,13 @@ MODES = {
     'keys-test-lost': ('settingsDialog.open(); settingsTabs.currentIndex=3', 'settingsDialog.testSecret("openai"); check("a key test in flight locks the Test buttons", settingsDialog.keyTestPending==="openai")',
                        'settingsConnectionLost(); check("a lost connection unlocks the Test buttons", settingsDialog.keyTestPending==="")', ''),
     'wizard-lost': ('setupWizard.open(); setupWizard.consentAck=true; setupWizard.applyMonitor=false; setupWizard.applyTimer=false',
-                    'setupWizard.set("processing.notifyOnCompletion", false); setupWizard.step=4; setupWizard.finish(); check("Finish is saving", setupWizard.busy)',
+                    'setupWizard.set("processing.notifyOnCompletion", false); setupWizard.step=4; setupWizard.finish(); check("Finish is saving", setupWizard.busy); '
                     'settingsConnectionLost(); const next = findObject(setupWizard.footer, "wizardNext"); check("a lost connection stops the assistant with the outcome unknown", setupWizard.stale && setupWizard.error!=="" && !setupWizard.busy && !!next && !next.enabled)',
-                    'setupWizard.reconnected(); check("on reconnection the assistant reads the configuration again and keeps its choices", !setupWizard.stale && setupWizard.value("processing.notifyOnCompletion")===false)'),
+                    'setupWizard.reconnected(); const next = findObject(setupWizard.footer, "wizardNext"); check("the assistant stays stopped while it reads the configuration again", setupWizard.stale && !!next && !next.enabled)',
+                    'const next = findObject(setupWizard.footer, "wizardNext"); check("once read again the assistant continues and keeps its choices", !setupWizard.stale && setupWizard.value("processing.notifyOnCompletion")===false && !!next && next.enabled)'),
+    'wizard-reread-fail': ('setupWizard.open(); setupWizard.consentAck=true; setupWizard.applyMonitor=false; setupWizard.applyTimer=false',
+                           'setupWizard.step=4; settingsConnectionLost()', 'setupWizard.reconnected()',
+                           'const next = findObject(setupWizard.footer, "wizardNext"); check("a failed reread after reconnecting keeps the assistant stopped", setupWizard.stale && setupWizard.error!=="" && !!next && !next.enabled)'),
     'restore-pending': ('settingsDialog.open(); settingsDialog.goToSection(9)',
                         'settingsDialog.confirmRestore=settingsDialog.backups[0].name; const confirm = findObject(settingsDialog.contentItem, "settingsRestoreConfirm"); for (let i = 0; i < 2; i++) if (confirm && confirm.enabled) confirm.clicked(); check("the restore confirmation is disabled while a restore is pending", !!confirm && !confirm.enabled)', '', ''),
     'wizard-key-required': ('setupWizard.open(); setupWizard.consentAck=true; setupWizard.applyMonitor=false; setupWizard.applyTimer=false',

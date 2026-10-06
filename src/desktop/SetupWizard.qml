@@ -46,9 +46,10 @@ FtDialog {
         generation += 1; stale = true
         error = working ? t("Conexão perdida durante a operação; o resultado não foi confirmado. Ao reconectar, o assistente relê a configuração.") : t("Serviço desconectado. Ao reconectar, o assistente relê a configuração.")
     }
+    // Stays stopped until the configuration is read again: nothing runs on the state from before the disconnect.
     function reconnected() {
         if (!visible || !stale) return
-        stale = false; error = ""
+        error = t("Reconectado. Relendo a configuração…")
         request("settings-read"); diagnose(); request("settings-model-catalog")
     }
     function request(op, payload, extra) { return send(op, "", payload || ({}), Object.assign({ origin: "wizard", wizardGeneration: generation }, extra || ({}))) }
@@ -199,6 +200,7 @@ FtDialog {
         if (req.op === "settings-read") {
             if (!message.ok) { error = message.error; return }
             data = result
+            if (stale) { stale = false; error = "" }
             if (["audio", "gpu-screen-recorder", "obs"].indexOf(result.values.backend) < 0) set("backend", "audio")
         } else if (req.op === "settings-diagnose") {
             if (message.ok && req.diagSeq === diagSeq) diag = result
