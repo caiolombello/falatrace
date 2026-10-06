@@ -22,9 +22,23 @@ FtDialog {
     anchors.centerIn:parent; width:Math.min(window.width-48,720); height:Math.min(window.height-48,740); modal:true
     property bool saving: hasPending("provider-authorize") || hasPending("agent-authorize") || hasPending("agent-revoke") || hasPending("agent-pause") || hasPending("agent-resume")
     property bool detailsOpen:false
+    property alias connectClient: connectClient
+    // Commands to register the local MCP server for the active grant; nothing is installed from here.
+    property var connection: ({})
+    readonly property bool connectionShown: !!connection.grantId && connection.grantId === activeGrant.id && !activeGrant.revoked
+    function connectionText() {
+        if (!connectionShown) return ""
+        return [connection.claude, connection.codexCommand, connection.codexToml, connection.geminiSettings][connectClient.currentIndex] || ""
+    }
+    function connectionHint() {
+        return ["Rode no terminal. Registra o servidor só para o seu usuário.",
+                "Rode no terminal. O Codex grava o servidor em ~/.codex/config.toml.",
+                "Alternativa ao comando: cole no ~/.codex/config.toml.",
+                "Junte ao objeto mcpServers de " + (connection.geminiSettingsPath || "~/.gemini/settings.json") + ", sem apagar servidores que já existam."][connectClient.currentIndex] || ""
+    }
     closePolicy:saving ? Popup.NoAutoClose : Popup.CloseOnEscape
-    onOpened:{agentLoaded=false;showAgentSetup=false;detailsOpen=false;preferredGrantId="";agentGeneration+=1;agentState=({grants:[],budget:({}),capabilities:({})});agentResult=({});agentError="";agentConsent.checked=false;send("agent-status",selected.key);agentMode.forceActiveFocus(Qt.TabFocusReason)}
-    onClosed:{cancelProvider();if(activeGrant.id && hasPending("agent-frames"))send("agent-cancel",selected.key,{grantId:activeGrant.id});agentGeneration+=1;agentConsent.checked=false;agentResult=({});agentAccessButton.forceActiveFocus(Qt.TabFocusReason)}
+    onOpened:{agentLoaded=false;showAgentSetup=false;detailsOpen=false;preferredGrantId="";agentGeneration+=1;agentState=({grants:[],budget:({}),capabilities:({})});agentResult=({});agentError="";connection=({});agentConsent.checked=false;send("agent-status",selected.key);agentMode.forceActiveFocus(Qt.TabFocusReason)}
+    onClosed:{connection=({});cancelProvider();if(activeGrant.id && hasPending("agent-frames"))send("agent-cancel",selected.key,{grantId:activeGrant.id});agentGeneration+=1;agentConsent.checked=false;agentResult=({});agentAccessButton.forceActiveFocus(Qt.TabFocusReason)}
     contentItem:ScrollView {
       id:agentScrollView; clip:true; contentWidth:availableWidth
       ColumnLayout {
@@ -33,7 +47,7 @@ FtDialog {
         Label { text:"Escolha quem pode consultar esta gravação. A autorização continua após fechar o Studio; você pode pausar ou revogar a qualquer momento."; wrapMode:Text.WordWrap; Layout.fillWidth:true; color:muted }
         Label { text:"COMO USAR"; font.pixelSize:11; font.letterSpacing:1; color:accent }
         FtComboBox { id:agentMode; objectName:"agentMode"; enabled:!agentDialog.saving; model:["Meu agente · contexto e imagens locais","Analisar com OpenAI ou Google · API"]; Layout.fillWidth:true; onCurrentIndexChanged:{cancelProvider();providerRequestUUID="";agentGeneration+=1;agentConsent.checked=false;providerConsent.checked=false;agentResult=({});showAgentSetup=visibleGrants.length===0;if(agentDialog.visible)send("agent-status",selected.key)} Accessible.name:"Como usar a gravação com IA" }
-        Label { visible:agentMode.currentIndex===0; text:"O agente recebe apenas os dados autorizados. Consultar um frame não executa um modelo de IA. A conexão do seu agente com a CLI é configurada separadamente."; wrapMode:Text.WordWrap; Layout.fillWidth:true; color:muted }
+        Label { visible:agentMode.currentIndex===0; text:"O agente recebe apenas os dados autorizados. Consultar um frame não executa um modelo de IA. Depois de autorizar, use Conectar meu assistente para copiar o comando que liga Claude Code, Codex ou Gemini CLI a esta autorização."; wrapMode:Text.WordWrap; Layout.fillWidth:true; color:muted }
         Label { visible:agentMode.currentIndex===1; text:agentState.providerAnalysis && agentState.providerAnalysis.available ? "Envio API habilitado. Confira o acesso ao modelo e a tarifa antes de analisar. Assinatura de chat não inclui uso de API." : "Envio API desativado nesta instalação. Você pode preparar a autorização; nenhuma análise será enviada. Acesso ao modelo e tarifas ainda não foram verificados."; wrapMode:Text.WordWrap; Layout.fillWidth:true; color:warningColor }
         BusyIndicator { running:hasPending("agent-status")&&!agentLoaded; visible:running; Layout.alignment:Qt.AlignHCenter }
 
@@ -48,6 +62,24 @@ FtDialog {
           RowLayout {
            FtButton { objectName:"agentPauseButton"; text:activeGrant.paused?"Retomar acesso":"Pausar acesso"; enabled:!!activeGrant.id&&!activeGrant.revoked&&!agentDialog.saving; onClicked:changeAgentAccess(activeGrant.paused?"agent-resume":"agent-pause") }
            FtButton { objectName:"agentRevokeButton"; text:"Revogar acesso"; enabled:!!activeGrant.id&&!activeGrant.revoked&&!agentDialog.saving; onClicked:changeAgentAccess("agent-revoke") }
+          }
+          FtButton {
+           objectName:"agentConnectButton"; visible:agentMode.currentIndex===0 && !!activeGrant.id && !activeGrant.revoked; variant:"outline"; iconName:"plug"
+           text:agentDialog.connectionShown ? "Ocultar comandos de conexão" : hasPending("agent-connect") ? "Gerando comandos…" : "Conectar meu assistente…"
+           enabled:!hasPending("agent-connect") && !agentDialog.saving
+           Accessible.name:"Mostrar os comandos que conectam Claude Code, Codex ou Gemini CLI a esta autorização"
+           onClicked:{ if (agentDialog.connectionShown) agentDialog.connection=({}); else { agentError=""; send("agent-connect", selected.key, { grantId: activeGrant.id }) } }
+          }
+          ColumnLayout {
+           visible:agentDialog.connectionShown; Layout.fillWidth:true; spacing:8
+           Label { text:"Copie o comando para o seu terminal. O Studio não instala nem executa nada. O assistente só lê o que esta autorização permite; pausar ou revogar vale na próxima consulta."; wrapMode:Text.WordWrap; Layout.fillWidth:true; color:muted }
+           FtComboBox { id:connectClient; objectName:"connectClient"; Layout.fillWidth:true; model:["Claude Code", "Codex CLI · comando", "Codex CLI · config.toml", "Gemini CLI · settings.json"]; Accessible.name:"Assistente a conectar" }
+           Label { text:agentDialog.connectionHint(); wrapMode:Text.WordWrap; Layout.fillWidth:true; color:muted; font.pixelSize:12 }
+           Rectangle {
+            Layout.fillWidth:true; implicitHeight:connectCommand.implicitHeight + 16; radius:8; color:fieldSurface; border.width:1; border.color:divider
+            TextEdit { id:connectCommand; objectName:"connectCommand"; anchors.fill:parent; anchors.margins:8; readOnly:true; selectByMouse:true; text:agentDialog.connectionText(); textFormat:TextEdit.PlainText; wrapMode:TextEdit.WrapAnywhere; color:ink; selectionColor:accent; selectedTextColor:onAccent; font.family:"monospace"; font.pixelSize:12; Accessible.name:"Comando de conexão" }
+           }
+           FtButton { objectName:"connectCopy"; compact:true; iconName:"copy"; text:"Copiar"; enabled:!!connectCommand.text; onClicked:{ connectCommand.selectAll(); connectCommand.copy(); connectCommand.deselect(); notice = "Comando de conexão copiado. Cole no seu terminal." } }
           }
          }
         }

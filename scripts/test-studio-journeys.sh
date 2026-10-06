@@ -7,7 +7,7 @@ set -uo pipefail
 repo_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 output_root="${1:-$(mktemp -d /tmp/falatrace-journeys-XXXXXX)}"
 mkdir -p "$output_root"
-journeys=(settings-ux process-ux desktop-ui local-ux scope-ux planner-ux heavy-ux)
+journeys=(settings-ux process-ux agent-ux desktop-ui local-ux scope-ux planner-ux heavy-ux)
 failed=0
 for journey in "${journeys[@]}"; do
   script="$repo_dir/scripts/test-$journey.py"
