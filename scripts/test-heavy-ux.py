@@ -5,10 +5,10 @@ import runpy
 import tempfile,subprocess,json,sys,hashlib,shutil,secrets
 repo=Path(__file__).resolve().parents[1]
 out=Path(sys.argv[1]).resolve();out.mkdir(parents=True,exist_ok=True)
-binary=repo/'dist/desktop/recording-studio'
+from studio_fixture import require_studio_command,copy_qml_siblings
+command=require_studio_command()
 bun=shutil.which('bun') or str(Path.home()/'.bun/bin/bun')
 source=(repo/'src/desktop/Main.qml').read_text()
-assert binary.is_file(),'Build using existing native SDK first'
 checks=[];screens=[]
 with tempfile.TemporaryDirectory(dir='/tmp',prefix='falatrace-local-ux-') as temp:
  root=Path(temp);nonce=secrets.token_hex(16);(root/'.falatrace-qa').write_text(nonce);(root/'.falatrace-qa').chmod(0o600)
@@ -101,13 +101,13 @@ createInterface({input:process.stdin}).on('line',line=>void accept(line));
    if mode=='real-wait-cancel':
     extra+='\n Timer { interval: 2250; running: true; onTriggered: framesDialog.reject() }\n Timer { interval: 2650; running: true; onTriggered: console.log("LOCAL_UX_ASSERTIONS "+JSON.stringify([{name:"cancel pending admission closes and clears preview",pass:!framesDialog.visible && !hasPending("frames-preview") && !framePreview.id && !processingWait}])) }\n'
   extra=extra.replace('ACTION',action).replace('SECOND',second).replace('/*TEST_ASSERT*/',assertion)
-  qml=source.replace('../../docs/assets/',(repo/'docs/assets').as_uri()+'/').rstrip();(folder/'Main.qml').write_text(qml[:-1]+extra+'}\n')
+  qml=source.replace('../../docs/assets/',(repo/'docs/assets').as_uri()+'/').rstrip();(folder/'Main.qml').write_text(qml[:-1]+extra+'}\n');copy_qml_siblings(folder)
   png=out/(mode+'.png')
   state=folder/'state';managed=state/'recording-cli';managed.mkdir(parents=True)
   (managed/'recording-session.json').write_text(json.dumps({'version':1,'phase':'recording','id':'123e4567-e89b-42d3-a456-426614174000','owner':'manual','backend':'gpu-screen-recorder','startedAt':'2026-10-01T00:00:00Z','outputPath':str(video)}))
   env={'FALATRACE_QA_ISOLATED':'1','FALATRACE_QA_ROOT':str(root),'FALATRACE_QA_NONCE':nonce,'XDG_CONFIG_HOME':str(root/'config'),'XDG_DATA_HOME':str(root/'data'),'FALATRACE_HEAVY_PAUSE':'capture','XDG_STATE_HOME':str(state),'HOME':str(root/'home'),'XDG_RUNTIME_DIR':str(root/'runtime'),'XDG_CACHE_HOME':str(root/'cache'),'TMPDIR':str(root/'tmp'),'LANG':'C.UTF-8','PATH':'/usr/bin:/bin','QT_QPA_PLATFORM':'offscreen','QT_QUICK_BACKEND':'software','RECORDING_DESKTOP_SOFTWARE_SMOKE':'1','RECORDING_DESKTOP_SMOKE_KEY':'synthetic-demo','RECORDING_DESKTOP_SNAPSHOT':str(png),'RECORDING_DESKTOP_SNAPSHOT_MS':'2900'}
   runpy.run_path(str(repo/'scripts/qa-run.py'))['require_isolated'](env)
-  result=subprocess.run([str(binary),str(folder),bun],env=env,capture_output=True,text=True,timeout=15)
+  result=subprocess.run([*command,str(folder),bun],env=env,capture_output=True,text=True,timeout=40)
   (out/(mode+'.stderr')).write_text(result.stderr)
   assert png.is_file() and 'ReferenceError' not in result.stderr and 'TypeError' not in result.stderr and 'Unable to assign' not in result.stderr and 'failed to load component' not in result.stderr,result.stderr
   for line in result.stderr.splitlines():

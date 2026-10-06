@@ -7,9 +7,8 @@ from pathlib import Path
 import runpy
 import tempfile,subprocess,os,json,sys,hashlib,shutil,secrets
 repo=Path(__file__).resolve().parents[1]
-binary=repo/'dist/desktop/recording-studio'
-if not binary.is_file():
- print('Desktop binary missing; explicitly build with existing SDK first.',file=sys.stderr);sys.exit(77)
+from studio_fixture import require_studio_command,copy_qml_siblings
+command=require_studio_command()
 out=Path(sys.argv[1]).resolve() if len(sys.argv)>1 else Path(tempfile.mkdtemp(dir='/tmp',prefix='falatrace-ui-output-'))
 out.mkdir(parents=True,exist_ok=True)
 source=(repo/'src/desktop/Main.qml').read_text()
@@ -72,11 +71,11 @@ for line in sys.stdin:
   console.log("UX_ASSERTIONS "+JSON.stringify(a))
  } }
 '''
-  (qml/'Main.qml').write_text(base[:-1]+extra+'}\n')
+  (qml/'Main.qml').write_text(base[:-1]+extra+'}\n');copy_qml_siblings(qml)
   image=out/f'studio-{mode}.png'
   env={'FALATRACE_QA_ISOLATED':'1','FALATRACE_QA_ROOT':str(root),'FALATRACE_QA_NONCE':nonce,'XDG_CONFIG_HOME':str(root/'config'),'XDG_STATE_HOME':str(root/'state'),'XDG_DATA_HOME':str(root/'data'),'HOME':str(root/'home'),'XDG_RUNTIME_DIR':str(root/'runtime'),'XDG_CACHE_HOME':str(root/'cache'),'TMPDIR':str(root/'tmp'),'LANG':'C.UTF-8','PATH':'/usr/bin:/bin','QT_QPA_PLATFORM':'offscreen','QT_QUICK_BACKEND':'software','RECORDING_DESKTOP_SOFTWARE_SMOKE':'1','RECORDING_DESKTOP_SMOKE_KEY':'synthetic-demo' if mode not in ['empty','error','loading'] else '', 'RECORDING_DESKTOP_SNAPSHOT':str(image),'RECORDING_DESKTOP_SNAPSHOT_MS':'1300','FALATRACE_TEST_MODE':mode,'FALATRACE_SYNTHETIC_VIDEO':str(video)}
   runpy.run_path(str(repo/'scripts/qa-run.py'))['require_isolated'](env)
-  r=subprocess.run([str(binary),str(qml),str(stub)],env=env,capture_output=True,text=True,timeout=15)
+  r=subprocess.run([*command,str(qml),str(stub)],env=env,capture_output=True,text=True,timeout=40)
   (out/f'studio-{mode}.stderr').write_text(r.stderr)
   receipt=json.loads(Path(str(image)+'.json').read_text()) if Path(str(image)+'.json').exists() else {}
   if not receipt.get('snapshot') or 'ReferenceError' in r.stderr or 'failed to load component' in r.stderr:raise SystemExit(f'Native QML failure: {mode}: '+r.stderr)

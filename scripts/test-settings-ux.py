@@ -6,9 +6,9 @@ Exit 77 means the native desktop binary is unavailable.
 from pathlib import Path
 import runpy, tempfile, subprocess, json, sys, hashlib, secrets
 repo = Path(__file__).resolve().parents[1]
-binary = repo / 'dist/desktop/recording-studio'
-if not binary.is_file():
-    print('Desktop binary missing; build with the existing SDK first.', file=sys.stderr); sys.exit(77)
+sys.path.insert(0, str(repo / 'scripts'))
+from studio_fixture import copy_qml_siblings, qml_sources_digest, require_studio_command, runner_kind
+command = require_studio_command()
 out = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path(tempfile.mkdtemp(dir='/tmp', prefix='falatrace-settings-ux-'))
 out.mkdir(parents=True, exist_ok=True)
 source = (repo / 'src/desktop/Main.qml').read_text()
@@ -97,7 +97,7 @@ with tempfile.TemporaryDirectory(dir='/tmp', prefix='falatrace-settings-fixture-
  Timer {{ interval: 2300; running: true; repeat: false; onTriggered: {{ const a=[]; function check(name,pass){{a.push({{name:"{mode}: "+name,pass:!!pass}})}}; {follow}; console.log("UX_ASSERTIONS "+JSON.stringify(a)) }} }}
  Timer {{ interval: 3100; running: true; repeat: false; onTriggered: {{ const a=[]; function check(name,pass){{a.push({{name:"{mode}: "+name,pass:!!pass}})}}; {final}; console.log("UX_ASSERTIONS "+JSON.stringify(a)) }} }}
 '''
-        (qml / 'Main.qml').write_text(base[:-1] + extra + '}\n')
+        (qml / 'Main.qml').write_text(base[:-1] + extra + '}\n'); copy_qml_siblings(qml)
         image = out / f'settings-{mode}.png'; receipt_path = root / f'{mode}-requests.json'
         env = {'FALATRACE_QA_ISOLATED': '1', 'FALATRACE_QA_ROOT': str(root), 'FALATRACE_QA_NONCE': nonce,
                'XDG_CONFIG_HOME': str(root / 'config'), 'XDG_STATE_HOME': str(root / 'state'), 'XDG_DATA_HOME': str(root / 'data'),
@@ -107,7 +107,7 @@ with tempfile.TemporaryDirectory(dir='/tmp', prefix='falatrace-settings-fixture-
                'RECORDING_DESKTOP_SNAPSHOT': str(image), 'RECORDING_DESKTOP_SNAPSHOT_MS': '3600',
                'FALATRACE_TEST_MODE': mode, 'FALATRACE_RECEIPT': str(receipt_path)}
         runpy.run_path(str(repo / 'scripts/qa-run.py'))['require_isolated'](env)
-        r = subprocess.run([str(binary), str(qml), str(stub)], env=env, capture_output=True, text=True, timeout=25)
+        r = subprocess.run([*command, str(qml), str(stub)], env=env, capture_output=True, text=True, timeout=40)
         (out / f'settings-{mode}.stderr').write_text(r.stderr)
         if not image.exists() or 'ReferenceError' in r.stderr or 'TypeError' in r.stderr or 'failed to load component' in r.stderr:
             raise SystemExit(f'Native QML failure: {mode}: ' + r.stderr[-4000:])
@@ -121,6 +121,6 @@ with tempfile.TemporaryDirectory(dir='/tmp', prefix='falatrace-settings-fixture-
             checks.append({'name': f'{mode}: no save or service request', 'pass': not any(q['op'] in ('settings-save', 'settings-service') for q in requests)})
         screens.append({'mode': mode, 'file': image.name, 'sha256': hashlib.sha256(image.read_bytes()).hexdigest()})
 failed = [c for c in checks if not c['pass']]
-(out / 'settings-receipt.json').write_text(json.dumps({'actualQmlSha256': hashlib.sha256(source.encode()).hexdigest(), 'assertions': checks, 'screens': screens, 'platform': 'Qt offscreen software', 'syntheticBackend': True}, indent=2) + '\n')
+(out / 'settings-receipt.json').write_text(json.dumps({'actualQmlSha256': qml_sources_digest(), 'runner': runner_kind(command), 'assertions': checks, 'screens': screens, 'platform': 'Qt offscreen software', 'syntheticBackend': True}, indent=2) + '\n')
 print(json.dumps({'screens': len(screens), 'assertions': len(checks), 'failed': failed, 'output': str(out)}, ensure_ascii=False))
 if failed or not checks: sys.exit(1)

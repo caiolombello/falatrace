@@ -25,3 +25,4 @@ worker.env
 # Only explicitly curated public design and synthetic UI assets are versioned.
 !docs/assets/*.png
 !docs/assets/*.jpg
+__pycache__/
