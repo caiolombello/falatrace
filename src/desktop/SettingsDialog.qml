@@ -555,6 +555,7 @@ FtDialog {
            SettingsHint { text:t("Verifica dependências e serviços sem gravar, transcrever nem contatar serviços externos.") }
            FtButton { objectName:"settingsDiagnose"; text:hasSettingsPending("settings-diagnose")?t("Verificando…"):t("Verificar agora"); variant:"outline"; compact:true; enabled:backend.available&&!hasSettingsPending("settings-diagnose"); onClicked:runSettingsDiagnose() }
           }
+          SettingsHint { objectName:"settingsDiagOutdated"; visible:!!settingsDiag.checks&&settingsDiagChanges!==JSON.stringify(settingsChanges()); color:warningColor; text:t("O rascunho mudou depois desta verificação. Clique em Verificar agora para atualizar.") }
           SettingsSection { text:t("Processamento") }
           Repeater { model:settingsDiag.checks||[]
            ColumnLayout { required property var modelData; Layout.fillWidth:true; spacing:4

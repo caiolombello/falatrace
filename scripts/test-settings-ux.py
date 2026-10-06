@@ -256,6 +256,10 @@ MODES = {
                              'check("a running monitor left with the previous configuration is pending", stale()); setupWizard.applyMonitor=true; check("applying the monitor clears it", !stale()); '
                              'setupWizard.applyMonitor=false; setupWizard.finish()',
                              'const title = findObject(setupWizard.contentItem, "wizardDoneTitle"); check("after saving, the last page still names the monitor left on the previous configuration", setupWizard.step===5 && !!title && title.text!=="Tudo pronto" && setupWizard.pendingIssues().some(function(issue){ return issue.detail.indexOf("configuração anterior")>=0 }))', ''),
+    'diagnose-draft': ('settingsDialog.open()',
+                       'setSettingsField("transcription.provider", "whisper-cpp"); settingsTabs.currentIndex=8; runSettingsDiagnose()',
+                       'const outdated = findObject(settingsDialog.contentItem, "settingsDiagOutdated"); check("a diagnostic of the current draft is not flagged", !!outdated && !outdated.visible); '
+                       'setSettingsField("summary.provider", "ollama"); check("an edit after the check flags the diagnostic as out of date", !!outdated && outdated.visible)', ''),
     'models-ollama-draft': ('settingsDialog.open()',
                             'setSettingsField("summary.provider", "ollama"); setSettingsField("summary.ollamaUrl", "http://127.0.0.1:11435"); setSettingsField("summary.ollamaModel", "llama4:8b"); settingsDialog.goToSection(4)',
                             'check("the list shows the Ollama at the unsaved address", !!settingsDialog.catalog.ollama && settingsDialog.catalog.ollama.url==="http://127.0.0.1:11435"); settingsDialog.startDownload("ollama", "llama4:8b"); '
@@ -352,6 +356,9 @@ with tempfile.TemporaryDirectory(dir='/tmp', prefix='falatrace-settings-fixture-
             sets = [q for q in requests if q['op'] == 'settings-secret-set']
             checks.append({'name': 'wizard-key-finish: the key is written once, after the configuration', 'pass': ops == ['settings-save', 'settings-secret-set']
                            and sets[0]['payload'] == {'name': 'OPENAI_API_KEY', 'value': 'sha256:' + hashlib.sha256(b'sk-synthetic-wizard-key').hexdigest()}})
+        if mode == 'diagnose-draft':
+            diagnoses = [q['payload'] for q in requests if q['op'] == 'settings-diagnose']
+            checks.append({'name': 'diagnose-draft: Settings diagnoses the unsaved draft', 'pass': any(d.get('changes', {}).get('transcription.provider') == 'whisper-cpp' for d in diagnoses)})
         if mode == 'models-ollama-draft':
             catalogs = [q['payload'] for q in requests if q['op'] == 'settings-model-catalog']
             downloads = [q['payload'] for q in requests if q['op'] == 'settings-model-download']

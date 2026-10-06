@@ -279,6 +279,8 @@ ApplicationWindow {
     property var settingsData: ({})
     property var settingsDraft: ({})
     property var settingsDiag: ({})
+    // The draft changes the shown diagnostic was made for, so a later edit can flag it as out of date.
+    property string settingsDiagChanges: "{}"
     property int settingsGeneration: 0
     property string settingsError: ""
     property string settingsNotice: ""
@@ -453,7 +455,7 @@ ApplicationWindow {
             settingsData = result; settingsDraft = Object.assign({}, result.values); settingsError = ""; settingsNeedsReload = false; settingsFirstRunChecked = true
             settingsDialog.sectionLoaded(settingsTabs.currentIndex)
         } else if (request.op === "settings-diagnose") {
-            settingsDiag = result
+            settingsDiag = result; settingsDiagChanges = request.diagChanges || "{}"
         } else if (request.op === "settings-save") {
             if (result.needsReload) { settingsNeedsReload = true; settingsNotice = t("Salvo. Releia a configuração para continuar editando."); settingsData = ({}); settingsDraft = ({}); refreshLibraryAfterSettings(); return }
             settingsData = result; settingsDraft = Object.assign({}, result.values); settingsNeedsReload = false; settingsFirstRun = false
@@ -490,7 +492,12 @@ ApplicationWindow {
         settingsError="";settingsNeedsReload=false;send("settings-read","")
         if(withDiagnose)send("settings-diagnose","")
     }
-    function runSettingsDiagnose() { if(backend.available)send("settings-diagnose","") }
+    // The diagnostic follows the draft, like the assistant's: unsaved choices are checked as they would be saved.
+    function runSettingsDiagnose() {
+        if(!backend.available)return
+        const changes=settingsChanges()
+        send("settings-diagnose","",Object.keys(changes).length?{changes:changes}:({}),{diagChanges:JSON.stringify(changes)})
+    }
     function runSettingsService(action) { settingsError="";settingsNotice="";send("settings-service","",{action:action}) }
     function setSettingsField(field, value) { const next=Object.assign({},settingsDraft);next[field]=value;settingsDraft=next;if(field==="studio.language")languagePreview=value }
     function settingsSame(left, right) { return JSON.stringify(left === undefined ? null : left) === JSON.stringify(right === undefined ? null : right) }

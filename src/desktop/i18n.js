@@ -1268,6 +1268,7 @@ var EN = {
     "O monitor de chamadas não está rodando: nenhuma chamada será avisada. Aplique o monitor em Serviços.": "The call monitor is not running: no call will be announced. Apply the monitor in Services.",
     "As chamadas detectadas serão avisadas por notificação.": "Detected calls will be announced with a notification.",
     "Reconectado. Relendo a configuração…": "Reconnected. Reading the configuration again…",
+    "O rascunho mudou depois desta verificação. Clique em Verificar agora para atualizar.": "The draft changed after this check. Click Check now to update it.",
     "Este modelo já está sendo baixado. Aguarde o download em andamento terminar.": "This model is already downloading. Wait for the running download to finish.",
     "Não foi possível falar com o provedor agora. Confira a rede e tente de novo.": "Could not reach the provider right now. Check the network and try again.",
     "Nenhuma chave alcança o processamento em segundo plano. Salve a chave nesta seção.": "No key reaches background processing. Save the key in this section.",
