@@ -135,3 +135,42 @@ test("a swap that fails halfway puts the previous Studio back", async () => {
     await fs.rm(root, { recursive: true, force: true });
   }
 });
+
+test("a previous copy that cannot be deleted does not turn a finished swap into a failure", async () => {
+  const root = await fs.mkdtemp(join(tmpdir(), "falatrace-swap-"));
+  try {
+    const target = join(root, "studio");
+    const staging = join(root, "studio.new");
+    await fs.mkdir(target);
+    await fs.writeFile(join(target, "old"), "old");
+    await fs.mkdir(staging);
+    await fs.writeFile(join(staging, "new"), "new");
+    const leftover = await swapInto(staging, target, fs.rename, async () => { throw new Error("EBUSY"); });
+    expect(leftover).toBe(`${target}.old-${process.pid}`);
+    expect(await fs.readdir(target)).toEqual(["new"]);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test("install still refreshes the launcher and menu entry when the old copy stays behind", async () => {
+  const { root, paths, options } = await fixture();
+  try {
+    await fs.mkdir(paths.binDir, { recursive: true });
+    await fs.writeFile(paths.cli, "#!/bin/sh\n", { mode: 0o755 });
+    await installStudio(options);
+    await fs.rm(paths.launcher);
+    await fs.rm(paths.desktopEntry);
+    const lines: string[] = [];
+    await installStudio({
+      ...options, log: (line: string) => { lines.push(line); },
+      swap: (staging: string, target: string) => swapInto(staging, target, fs.rename, async () => { throw new Error("EBUSY"); })
+    });
+    expect(await fs.readFile(paths.launcher, "utf8")).toContain(MARKER);
+    expect(await fs.readFile(paths.desktopEntry, "utf8")).toBe(desktopEntry(paths));
+    expect(lines).toContain(`A cópia anterior do Studio não pôde ser apagada; remova ${paths.studioDir}.old-${process.pid} quando puder.`);
+    expect(lines.some((line) => line.startsWith("FalaTrace Studio instalado"))).toBe(true);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});

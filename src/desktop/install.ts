@@ -87,11 +87,19 @@ const writeFileAtomic = async (path: string, contents: string | Uint8Array, mode
   await fs.rename(temporary, path);
 };
 
+const removeTree = (path: string) => fs.rm(path, { recursive: true, force: true });
+
 /**
  * Replace `target` with `staging`. When the swap fails halfway the previous copy is put back,
- * so the launcher keeps pointing at a working Studio.
+ * so the launcher keeps pointing at a working Studio. Once the new copy is in place the swap
+ * has succeeded: a previous copy that cannot be deleted is returned for the caller to report.
  */
-export const swapInto = async (staging: string, target: string, rename: typeof fs.rename = fs.rename): Promise<void> => {
+export const swapInto = async (
+  staging: string,
+  target: string,
+  rename: typeof fs.rename = fs.rename,
+  remove: (path: string) => Promise<void> = removeTree
+): Promise<string | undefined> => {
   const previous = `${target}.old-${process.pid}`;
   const hadPrevious = await exists(target);
   if (hadPrevious) await rename(target, previous);
@@ -103,7 +111,8 @@ export const swapInto = async (staging: string, target: string, rename: typeof f
     }
     throw error;
   }
-  await fs.rm(previous, { recursive: true, force: true });
+  if (!hadPrevious) return undefined;
+  return remove(previous).then(() => undefined, () => previous);
 };
 
 export type InstallOptions = {
@@ -116,6 +125,8 @@ export type InstallOptions = {
   replace?: boolean;
   /** Refresh desktop and icon caches when the tools exist. */
   refreshCaches?: boolean;
+  /** Puts the staged copy in place; tests swap in one whose cleanup fails. */
+  swap?: (staging: string, target: string) => Promise<string | undefined>;
   log?: (line: string) => void;
 };
 
@@ -162,16 +173,19 @@ export const installStudio = async (options: InstallOptions = {}): Promise<Insta
   const staging = `${paths.studioDir}.new-${process.pid}`;
   await fs.rm(staging, { recursive: true, force: true });
   await fs.mkdir(join(staging, "qml"), { recursive: true, mode: 0o755 });
+  let leftover: string | undefined;
   try {
     await fs.copyFile(binary, join(staging, "recording-studio"));
     await fs.chmod(join(staging, "recording-studio"), 0o755);
     for (const name of files) await fs.copyFile(join(source, name), join(staging, "qml", name));
     await fs.writeFile(join(staging, STUDIO_MARKER_FILE), `${MARKER}\n`);
-    await swapInto(staging, paths.studioDir);
+    leftover = await (options.swap ?? swapInto)(staging, paths.studioDir);
   } catch (error) {
-    await fs.rm(staging, { recursive: true, force: true });
+    // The original failure is what the user needs; a staging copy that stays behind is harmless.
+    await fs.rm(staging, { recursive: true, force: true }).catch(() => undefined);
     throw error;
   }
+  if (leftover) log(`A cópia anterior do Studio não pôde ser apagada; remova ${leftover} quando puder.`);
 
   await writeFileAtomic(paths.launcher, launcherScript(paths), 0o755);
   const alias = await fs.lstat(paths.alias).catch(() => null);
