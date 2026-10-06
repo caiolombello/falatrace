@@ -80,8 +80,17 @@ FtDialog {
     function downloadState(kind, id) { return downloads[kind + ":" + id] || null }
     function useKey(text) { pendingKey = String(text || "").trim() }
     function keyReady() { const source = credential("OPENAI_API_KEY").source; return pendingKey !== "" || (!!source && source !== "missing") }
+    function serviceActions() {
+        const actions = []
+        if (applyMonitor && value("callDetection.enabled") === true) actions.push("calls-apply")
+        if (applyTimer && value("processing.autoEnqueue") === true) actions.push("sync-apply")
+        if (applyTray) actions.push("tray-apply")
+        return actions
+    }
     function finish() {
         error = ""; notice = ""; results = []
+        // Decided from what the person reviewed: the save clears the draft and may not return the new values.
+        plannedActions = serviceActions()
         // An existing configuration with nothing changed only needs the key and services steps.
         if (!fresh && !Object.keys(changes()).length) { addResult(t("Configuração"), true, t("Sem alterações.")); saveKey(); return }
         request("settings-save", { revision: data.revision, changes: changes(), initialize: fresh })
@@ -93,14 +102,13 @@ FtDialog {
         request("settings-secret-set", { name: "OPENAI_API_KEY", value: key })
     }
     function runServices() {
-        const actions = []
-        if (applyMonitor && value("callDetection.enabled") === true) actions.push("calls-apply")
-        if (applyTimer && value("processing.autoEnqueue") === true) actions.push("sync-apply")
-        if (applyTray) actions.push("tray-apply")
-        pendingActions = actions
+        pendingActions = plannedActions
         nextService()
     }
     property var pendingActions: []
+    property var plannedActions: []
+    // Stops the transient unit; the status poll that follows uses the model the bridge echoes back.
+    function cancelDownload(kind, id) { request("settings-model-cancel", { kind: kind, model: id }) }
     function nextService() {
         if (!pendingActions.length) { step = 5; return }
         const action = pendingActions[0]
@@ -127,6 +135,9 @@ FtDialog {
             addResult(t("Chave da OpenAI"), message.ok, message.ok ? t("Salva em arquivo privado.") : message.error)
             if (message.ok) data = Object.assign({}, data, { credentials: result.credentials })
             runServices()
+        } else if (req.op === "settings-model-cancel") {
+            if (!message.ok) { error = message.error; return }
+            request("settings-model-status", { kind: result.kind, model: result.id })
         } else if (req.op === "settings-model-download" || req.op === "settings-model-status") {
             if (!message.ok) { error = message.error; return }
             const next = Object.assign({}, downloads); next[result.kind + ":" + result.id] = result; downloads = next
@@ -137,7 +148,9 @@ FtDialog {
         } else if (req.op === "settings-save") {
             if (!message.ok) { error = message.error; return }
             addResult(t("Configuração"), true, result.backupCreated ? t("Salva, com cópia de segurança da anterior.") : t("Salva."))
+            // Saved, but the reread failed: read again so the assistant shows what was written.
             if (result.values) data = result
+            else request("settings-read")
             draft = ({})
             saveKey()
         } else if (req.op === "settings-service") {
@@ -260,13 +273,15 @@ FtDialog {
             Status { label:t("Modelo do Whisper"); status:parent.model&&parent.model.installed?"ok":"warning"; detail:parent.model&&parent.model.installed?t("Modelo recomendado instalado."):t("O modelo recomendado (")+(parent.model?parent.model.id:"")+", "+(parent.model?Math.round(parent.model.bytes/1048576):0)+t(" MiB) ainda não foi baixado.") }
             RowLayout { visible:!!parent.model&&!parent.model.installed; spacing:8
               FtButton { objectName:"wizardDownloadModel"; text:parent.parent.download&&parent.parent.download.state==="running"?t("Baixando…"):t("Baixar o modelo recomendado"); compact:true; variant:"outline"; enabled:backend.available&&!(parent.parent.download&&parent.parent.download.state==="running"); onClicked:setupWizard.request("settings-model-download",{kind:"whisper",model:parent.parent.model.id,consent:true}) }
-              Label { text:parent.parent.download?(parent.parent.download.state==="running"&&parent.parent.download.totalBytes?Math.floor(100*parent.parent.download.receivedBytes/parent.parent.download.totalBytes)+"%":parent.parent.download.state==="failed"?(parent.parent.download.error||t("Falhou.")):parent.parent.download.state==="completed"?t("Conferido pelo SHA-256."):""):t("Baixa de huggingface.co e confere pelo SHA-256."); color:muted; font.pixelSize:12; wrapMode:Text.WordWrap; Layout.fillWidth:true }
+              FtButton { objectName:"wizardCancelModel"; visible:!!(parent.parent.download&&parent.parent.download.state==="running"); text:t("Cancelar"); compact:true; variant:"outline"; onClicked:setupWizard.cancelDownload("whisper",parent.parent.model.id) }
+              Label { text:parent.parent.download?(parent.parent.download.state==="running"&&parent.parent.download.totalBytes?Math.floor(100*parent.parent.download.receivedBytes/parent.parent.download.totalBytes)+"%":parent.parent.download.state==="failed"?(t(parent.parent.download.error)||t("Falhou.")):parent.parent.download.state==="completed"?t("Conferido pelo SHA-256."):""):t("Baixa de huggingface.co e confere pelo SHA-256."); color:muted; font.pixelSize:12; wrapMode:Text.WordWrap; Layout.fillWidth:true }
             }
           }
           Status { visible:setupWizard.value("summary.provider")==="ollama"; label:"Ollama"; status:setupWizard.check("ollama")?setupWizard.check("ollama").status:"skipped"; detail:setupWizard.check("ollama")?setupWizard.check("ollama").detail:"" }
           RowLayout { visible:setupWizard.value("summary.provider")==="ollama"&&!!setupWizard.check("ollama")&&setupWizard.check("ollama").status==="warning"; spacing:8
             readonly property var download: setupWizard.downloadState("ollama", String(setupWizard.value("summary.ollamaModel")||""))
             FtButton { text:parent.download&&parent.download.state==="running"?t("Baixando…"):t("Baixar ")+setupWizard.value("summary.ollamaModel")+t(" pelo Ollama"); compact:true; variant:"outline"; enabled:backend.available&&!(parent.download&&parent.download.state==="running"); onClicked:setupWizard.request("settings-model-download",{kind:"ollama",model:String(setupWizard.value("summary.ollamaModel")),consent:true}) }
+            FtButton { visible:!!(parent.download&&parent.download.state==="running"); text:t("Cancelar"); compact:true; variant:"outline"; onClicked:setupWizard.cancelDownload("ollama",String(setupWizard.value("summary.ollamaModel"))) }
             Label { text:parent.download&&parent.download.state==="failed"?(t(parent.download.error)||t("Falhou.")):t("O Ollama deste computador baixa do registro dele."); color:muted; font.pixelSize:12; wrapMode:Text.WordWrap; Layout.fillWidth:true }
           }
           ColumnLayout { visible:setupWizard.needsKey("OPENAI_API_KEY"); Layout.fillWidth:true; spacing:6

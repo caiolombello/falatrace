@@ -24,7 +24,7 @@ apps = [{'id':'slack','label':'Slack','kind':'app','defaultEnabled':True},{'id':
         {'id':'helium','label':'Helium','kind':'browser','defaultEnabled':True},{'id':'chromium','label':'Chromium','kind':'browser','defaultEnabled':True},
         {'id':'firefox','label':'Firefox','kind':'browser','defaultEnabled':True},{'id':'zoom','label':'Zoom','kind':'app','defaultEnabled':True},
         {'id':'discord','label':'Discord','kind':'app','defaultEnabled':False}]
-first = mode in ('first-run', 'wizard-flow', 'wizard-test-audio', 'wizard-english', 'wizard-key-cancel', 'wizard-key-finish')
+first = mode in ('first-run', 'wizard-flow', 'wizard-test-audio', 'wizard-english', 'wizard-key-cancel', 'wizard-key-finish', 'wizard-download-cancel', 'wizard-reload')
 values = {'callDetection.enabled': not first, 'callDetection.mode':'record', 'callDetection.enqueueOnStop':True, 'callDetection.dryRun':False,
           'callDetection.entryDebounceSeconds':5, 'callDetection.exitTimeoutSeconds':15, 'callDetection.networkSampleSeconds':5,
           'callDetection.apps.slack':True,'callDetection.apps.zen':True,'callDetection.apps.helium':True,'callDetection.apps.chromium':True,
@@ -85,6 +85,8 @@ for line in sys.stdin:
     elif op == 'settings-save':
         values.update(p['changes']); revision = 'b' * 64
         v = dict(settings(), saved=True, changed=list(p['changes']), backupCreated=not first, cleanupPending=False, needsReload=False, prunedBackups=0)
+        # Published, but the reread failed: no values come back.
+        if mode == 'wizard-reload': v = {'saved':True, 'changed':list(p['changes']), 'backupCreated':False, 'cleanupPending':False, 'needsReload':True, 'prunedBackups':0}
     elif op == 'settings-service':
         services['calls']['staleConfig'] = False
         if p['action'] == 'sync-apply': services['sync'].update({'installed':True,'enabled':True,'active':True,'nextRunAt':'2026-10-05T12:00:00.000Z'})
@@ -123,6 +125,13 @@ MODES = {
     'wizard-key-finish': ('setupWizard.consentAck=true',
                           'setupWizard.applyPreset("cloud"); setupWizard.useKey("sk-synthetic-wizard-key"); setupWizard.step=4; check("review lists the key before anything is saved", setupWizard.pendingKey!=="" && !setupWizard.hasPending("settings-secret-set")); setupWizard.finish()',
                           'check("Finish saves the configuration, then the key", setupWizard.step===5 && setupWizard.results.length===2 && setupWizard.results[1].ok && setupWizard.pendingKey==="")', ''),
+    'wizard-download-cancel': ('setupWizard.consentAck=true',
+                               'setupWizard.step=2; setupWizard.request("settings-model-download",{kind:"whisper",model:"large-v3-turbo-q5_0",consent:true})',
+                               'check("a running download can be cancelled from the assistant", !!setupWizard.downloadState("whisper","large-v3-turbo-q5_0") && setupWizard.downloadState("whisper","large-v3-turbo-q5_0").state==="running"); setupWizard.cancelDownload("whisper","large-v3-turbo-q5_0")',
+                               'check("the cancelled download shows its stopped state without an error", setupWizard.error==="" && setupWizard.downloadState("whisper","large-v3-turbo-q5_0").state==="failed")'),
+    'wizard-reload': ('setupWizard.consentAck=true',
+                      'setupWizard.recommend(); setupWizard.set("callDetection.enabled", true); setupWizard.set("callDetection.mode", "notify-only"); setupWizard.finish()',
+                      'check("a save without values still applies the reviewed services", setupWizard.step===5 && setupWizard.results.some(function(r){return r.label==="Monitor de chamadas" && r.ok}))', ''),
     'wizard-test-audio': ('setupWizard.consentAck=true; setupWizard.step=1; setupWizard.set("capture.microphone","alsa_input.synthetic-mic")', 'setupWizard.request("settings-audio-test",{seconds:5,audioSource:setupWizard.value("capture.audioSource"),microphone:setupWizard.value("capture.microphone"),desktop:setupWizard.value("capture.desktop")})',
                           'check("audio test result is shown", !!setupWizard.audioTest && setupWizard.audioTest.tracks.length===1)', ''),
     'tab-calls': ('settingsDialog.open()', 'check("settings loaded", !!settingsData.revision && !settingsHasChanges()); check("ten sections", settingsDialog.sections.length===10); check("automatic backend status follows the draft", settingsDialog.automaticBackendText().indexOf("tela e áudio")>=0)', '', ''),
@@ -153,7 +162,8 @@ MODES = {
 }
 # Requests each mode is expected to send; anything outside the list fails the journey.
 SIDE_EFFECTS = {'save': {'settings-save'}, 'services': {'settings-service'}, 'wizard-flow': {'settings-save'}, 'backups': {'settings-restore'},
-                'wizard-key-finish': {'settings-save', 'settings-secret-set'},
+                'wizard-key-finish': {'settings-save', 'settings-secret-set'}, 'wizard-download-cancel': {'settings-model-download'},
+                'wizard-reload': {'settings-save', 'settings-service'},
                 'keys': {'settings-secret-set'}, 'models': {'settings-model-download'}}
 GUARDED = {'settings-save', 'settings-service', 'settings-secret-set', 'settings-secret-remove', 'settings-model-download', 'settings-restore'}
 
@@ -204,6 +214,15 @@ with tempfile.TemporaryDirectory(dir='/tmp', prefix='falatrace-settings-fixture-
             sets = [q for q in requests if q['op'] == 'settings-secret-set']
             checks.append({'name': 'wizard-key-finish: the key is written once, after the configuration', 'pass': ops == ['settings-save', 'settings-secret-set']
                            and sets[0]['payload'] == {'name': 'OPENAI_API_KEY', 'value': 'sha256:' + hashlib.sha256(b'sk-synthetic-wizard-key').hexdigest()}})
+        if mode == 'wizard-reload':
+            applied = [q for q in requests if q['op'] == 'settings-service']
+            reads = [q for q in requests if q['op'] == 'settings-read']
+            checks.append({'name': 'wizard-reload: the monitor is applied once and the configuration is read again', 'pass': [q['payload'] for q in applied] == [{'action': 'calls-apply'}] and len(reads) >= 2})
+        if mode == 'wizard-download-cancel':
+            ops = [q['op'] for q in requests]
+            after = requests[ops.index('settings-model-cancel') + 1:] if 'settings-model-cancel' in ops else []
+            checks.append({'name': 'wizard-download-cancel: the cancel and the poll after it name the model', 'pass': {'kind': 'whisper', 'model': 'large-v3-turbo-q5_0'} in [q['payload'] for q in requests if q['op'] == 'settings-model-cancel']
+                           and any(q['op'] == 'settings-model-status' and q['payload'] == {'kind': 'whisper', 'model': 'large-v3-turbo-q5_0'} for q in after)})
         if mode.startswith('wizard-key'):
             checks.append({'name': f'{mode}: the key never appears in Studio output', 'pass': 'sk-synthetic-wizard-key' not in r.stderr})
         if mode == 'models':
