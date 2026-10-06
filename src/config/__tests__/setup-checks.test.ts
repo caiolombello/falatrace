@@ -73,7 +73,9 @@ test("service status flags a unit with stale paths and a config newer than the r
     const config = structuredClone(DEFAULT_CONFIG);
     const configPath = join(root, "config.json");
     await fs.writeFile(configPath, "{}");
+    let startedAt = "Thu 1970-01-01 00:00:01.000000 UTC";
     const run = async (_command: string, args: string[]) => {
+      if (args.includes("--timestamp=us+utc")) return { stdout: `${startedAt}\n`, stderr: "" };
       if (args[1] === "show") return { stdout: "@1000\n", stderr: "" };
       return { stdout: args[1] === "is-enabled" ? "enabled\n" : "active\n", stderr: "" };
     };
@@ -82,6 +84,12 @@ test("service status flags a unit with stale paths and a config newer than the r
     await fs.writeFile(join(root, "recording-cli-calls.service"), buildCallMonitorUnit(config, ["/x"]));
     const current = await readServiceStatus(config, configPath, run as never, root);
     expect(current.calls).toEqual({ installed: true, enabled: true, active: true, outdated: false, staleConfig: true });
+    // A restart in the same second as the save, but after it, is not stale; one before it is.
+    await fs.utimes(configPath, new Date(1700000000400), new Date(1700000000400));
+    startedAt = "Tue 2023-11-14 22:13:20.700000 UTC";
+    expect((await readServiceStatus(config, configPath, run as never, root)).calls.staleConfig).toBe(false);
+    startedAt = "Tue 2023-11-14 22:13:20.100000 UTC";
+    expect((await readServiceStatus(config, configPath, run as never, root)).calls.staleConfig).toBe(true);
     config.recordingsDir = "/elsewhere/Recordings";
     expect((await readServiceStatus(config, configPath, run as never, root)).calls.outdated).toBe(true);
   } finally {

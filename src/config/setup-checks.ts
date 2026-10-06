@@ -182,6 +182,17 @@ const showUnix = async (run: typeof runCommand, unit: string, property: string):
   run("systemctl", ["--user", "show", unit, "-p", property, "--value", "--timestamp=unix"], { timeoutMs: 5_000 })
     .then(({ stdout }) => { const match = stdout.trim().match(/^@(\d+)$/); return match ? Number(match[1]) * 1000 : null; }, () => null);
 
+/**
+ * A timestamp to the millisecond. `--timestamp=unix` stops at whole seconds, so a monitor
+ * restarted in the same second as a save would look older than the configuration it loaded.
+ */
+const showMillis = async (run: typeof runCommand, unit: string, property: string): Promise<number | null> =>
+  run("systemctl", ["--user", "show", unit, "-p", property, "--value", "--timestamp=us+utc"], { timeoutMs: 5_000 })
+    .then(({ stdout }) => {
+      const match = stdout.trim().match(/(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2})\.(\d{3})\d{3} UTC$/);
+      return match ? Date.parse(`${match[1]}T${match[2]}.${match[3]}Z`) : null;
+    }, () => null);
+
 const showValue = async (run: typeof runCommand, unit: string, property: string): Promise<string | null> =>
   run("systemctl", ["--user", "show", unit, "-p", property, "--value"], { timeoutMs: 5_000 })
     .then(({ stdout }) => stdout.trim().slice(0, 80) || null, () => null);
@@ -233,8 +244,8 @@ export const readServiceStatus = async (
   const expectedPaths = buildCallMonitorUnit(config, ["X"]).split("\n").find((line) => line.startsWith("ReadWritePaths="));
   const callsOutdated = callsUnit !== null && !!expectedPaths && !callsUnit.includes(expectedPaths);
   const configChangedAt = await fs.stat(configPath).then((stat) => stat.mtimeMs, () => null);
-  const callsStartedAt = callsActive ? await showUnix(run, "recording-cli-calls.service", "ActiveEnterTimestamp") : null;
-  const staleConfig = callsStartedAt !== null && configChangedAt !== null && configChangedAt > callsStartedAt;
+  const callsStartedAt = callsActive ? await showMillis(run, "recording-cli-calls.service", "ActiveEnterTimestamp") : null;
+  const staleConfig = callsStartedAt !== null && configChangedAt !== null && Math.floor(configChangedAt) > callsStartedAt;
   const [sync, archive, backup] = await Promise.all((["sync", "archive", "backup"] as const).map((name) => readTimer(name, config, run, unitDir)));
   return {
     calls: { installed: callsUnit !== null, enabled: callsEnabled, active: callsActive, outdated: callsOutdated, staleConfig },
