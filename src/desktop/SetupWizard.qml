@@ -119,16 +119,22 @@ FtDialog {
     }
     function missingRequiredKey() { return missingKeys().length > 0 }
     // Processing dependencies the diagnostic of the reviewed choices reports missing; keys are handled above.
-    // Every provider needs FFmpeg here to extract the audio; jobs sent to the remote worker use the worker's.
+    // Every provider needs FFmpeg here to extract the audio; jobs sent to the remote worker use the worker's,
+    // which must be configured.
     function processingProblems() {
-        const ids = value("processing.defaultTarget") === "remote" ? ["whisper", "whisper-model", "ollama"] : ["ffmpeg", "whisper", "whisper-model", "ollama"]
-        return (diag.checks || []).filter(function(item){ return ids.indexOf(item.id) >= 0 && item.status !== "ok" && item.status !== "skipped" })
+        const ids = value("processing.defaultTarget") === "remote" ? ["whisper", "whisper-model", "ollama", "remote-worker"] : ["ffmpeg", "whisper", "whisper-model", "ollama"]
+        return (diag.checks || []).concat(diag.automation || []).filter(function(item){ return ids.indexOf(item.id) >= 0 && item.status !== "ok" && item.status !== "skipped" })
     }
-    // What will not run yet: the capture and the processing dependencies. Empty until the choices are diagnosed.
+    // Automatic recording with a backend that cannot record on its own. A monitor that is not running yet
+    // is not listed: Finish applies it.
+    function automationProblems() {
+        return (diag.automation || []).filter(function(item){ return item.id === "automatic-backend" && item.status === "missing" })
+    }
+    // What will not run yet: the capture, processing and automatic recording. Empty until the choices are diagnosed.
     function pendingIssues() {
         const issues = []
         if (diag.recording && diag.recording.blockedReason) issues.push({ label: t("Captura"), detail: diag.recording.blockedReason })
-        for (const item of processingProblems()) issues.push({ label: item.label, detail: item.detail })
+        for (const item of processingProblems().concat(automationProblems())) issues.push({ label: item.label, detail: item.detail })
         return issues
     }
     function serviceActions() {
@@ -327,8 +333,8 @@ FtDialog {
           Choice { heading:t("Tudo pela OpenAI"); detail:t("O áudio e a transcrição vão para a OpenAI. Não exige modelos locais; precisa de uma chave de API e gera custo na sua conta."); selected:setupWizard.preset()==="cloud"; onClicked:setupWizard.applyPreset("cloud") }
           Label { text:t("O que falta"); color:ink; font.pixelSize:16; font.weight:Font.DemiBold; Layout.topMargin:6 }
           Label { visible:!setupWizard.diag.checks; text:t("Verificando este computador…"); color:muted }
-          // What this step does not show on its own: FFmpeg missing here.
-          Repeater { model:setupWizard.processingProblems().filter(function(item){ return item.id==="ffmpeg" })
+          // What this step does not show on its own: FFmpeg missing here, or a remote worker never configured.
+          Repeater { model:setupWizard.processingProblems().filter(function(item){ return item.id==="ffmpeg"||item.id==="remote-worker" })
             Status { required property var modelData; objectName:"wizardProblem-"+modelData.id; label:modelData.label; status:modelData.status; detail:modelData.detail } }
           Status { visible:setupWizard.value("transcription.provider")==="whisper-cpp"; label:"Whisper.cpp"; status:setupWizard.check("whisper")?setupWizard.check("whisper").status:"skipped"; detail:setupWizard.check("whisper")?setupWizard.check("whisper").detail:t("Salve e verifique depois em Serviços e diagnóstico.") }
           ColumnLayout { visible:setupWizard.value("transcription.provider")==="whisper-cpp"&&!!setupWizard.recommendedModel(); Layout.fillWidth:true; spacing:6
@@ -381,7 +387,7 @@ FtDialog {
           Status { objectName:"wizardReviewProcessing"; label:t("Processamento"); status:setupWizard.preset()==="local"&&!setupWizard.processingProblems().length?"ok":"warning"; detail:(setupWizard.preset()==="local"?t("Tudo neste computador."):setupWizard.preset()==="hybrid"?t("Transcrição aqui; o texto vai para a OpenAI para resumir."):setupWizard.preset()==="cloud"?t("Áudio e texto vão para a OpenAI."):t("Combinação personalizada; veja Configurações."))+setupWizard.processingProblems().map(function(item){ return "\n" + t(item.detail) }).join("") }
           FtButton { objectName:"wizardShowMissing"; visible:setupWizard.processingProblems().length>0; text:t("Ver o que falta"); iconName:"back"; compact:true; variant:"outline"; onClicked:setupWizard.step=2 }
           Status { visible:setupWizard.pendingKey!==""; label:t("Chave da OpenAI"); status:"ok"; detail:t("Salva em arquivo privado ao concluir.") }
-          Status { label:t("Gravação automática"); status:setupWizard.value("callDetection.enabled")===true&&setupWizard.value("callDetection.mode")==="record"?"warning":"ok"; detail:setupWizard.value("callDetection.enabled")!==true?t("Desligada."):setupWizard.value("callDetection.mode")==="record"?t("Grava sozinho as chamadas detectadas."):t("Só avisa.") }
+          Status { objectName:"wizardReviewAutomation"; label:t("Gravação automática"); status:(setupWizard.value("callDetection.enabled")===true&&setupWizard.value("callDetection.mode")==="record")||setupWizard.automationProblems().length?"warning":"ok"; detail:(setupWizard.value("callDetection.enabled")!==true?t("Desligada."):setupWizard.value("callDetection.mode")==="record"?t("Grava sozinho as chamadas detectadas."):t("Só avisa."))+setupWizard.automationProblems().map(function(item){ return "\n" + t(item.detail) }).join("") }
           Label { text:t("Aplicar agora"); color:ink; font.pixelSize:16; font.weight:Font.DemiBold; Layout.topMargin:6 }
           WrappedCheck { visible:setupWizard.value("callDetection.enabled")===true; text:t("Iniciar o monitor de chamadas"); checked:setupWizard.applyMonitor; onToggled:setupWizard.applyMonitor=checked }
           WrappedCheck { visible:setupWizard.value("processing.autoEnqueue")===true; text:t("Ativar o processamento em segundo plano"); checked:setupWizard.applyTimer; onToggled:setupWizard.applyTimer=checked }

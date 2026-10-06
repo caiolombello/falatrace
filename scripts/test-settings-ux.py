@@ -37,7 +37,7 @@ values = {'callDetection.enabled': not first, 'callDetection.mode':'record', 'ca
           'transcription.openaiModel':'gpt-transcribe','transcription.geminiModel':'gemini-3.5-transcribe','transcription.whisperCpp.command':'whisper-cli',
           'transcription.whisperCpp.modelPath':'/home/synthetic/model.bin','transcription.whisperCpp.threads':8,
           'summary.provider':'ollama' if first else 'openai','summary.ollamaUrl':'http://127.0.0.1:11434','summary.ollamaModel':'qwen3.5:9b','summary.openaiModel':'gpt-6-luna',
-          'summary.maxInputCharacters':24000,'processing.defaultTarget':'local','processing.autoEnqueue':not first,'processing.syncIntervalMinutes':5,
+          'summary.maxInputCharacters':24000,'processing.defaultTarget':'remote' if mode == 'wizard-automation-review' else 'local','processing.autoEnqueue':not first,'processing.syncIntervalMinutes':5,
           'processing.notifyOnCompletion':True,'remote.host':'worker.lan' if mode == 'integrations' else 'worker.example.invalid','remote.user':'synthetic','remote.port':22,
           'remote.identityFile':None,'remote.archiveDir':'~/Videos/RecordingArchive','archive.enabled':False,'archive.vaio':True,'archive.proton':True,
           'archive.syncIntervalMinutes':5,'proton.enabled':False,'proton.targetFolder':'/my-files/RecordingArchive','proton.policy':'artifacts',
@@ -50,7 +50,7 @@ values = {'callDetection.enabled': not first, 'callDetection.mode':'record', 'ca
           'retention.localCompletedWorkDays':7,'retention.remoteIncomingDays':2,'retention.remoteResultsDays':30,'retention.remoteFailuresDays':30}
 revision = 'a' * 64
 # Assistant modes on an existing OpenAI setup that already has its key; wizard-key-required has none.
-key_present = mode in ('wizard-disable-monitor', 'wizard-disable-unknown', 'wizard-download-finish', 'wizard-download-pending', 'wizard-gemini-key', 'wizard-lost', 'wizard-ffmpeg-review')
+key_present = mode in ('wizard-disable-monitor', 'wizard-disable-unknown', 'wizard-download-finish', 'wizard-download-pending', 'wizard-gemini-key', 'wizard-lost', 'wizard-ffmpeg-review', 'wizard-automation-review')
 details = [{'name':'OPENAI_API_KEY','source':'secrets.env' if key_present else 'missing','sessionOnly':mode == 'keys','shadowsStudioKey':False,'savedInStudio':key_present},
            {'name':'GEMINI_API_KEY','source':'missing','sessionOnly':False,'shadowsStudioKey':False,'savedInStudio':False},
            {'name':'RECORDING_CLI_OBS_PASSWORD','source':'missing','sessionOnly':False,'shadowsStudioKey':False,'savedInStudio':False}]
@@ -85,7 +85,9 @@ for line in sys.stdin:
                        *([{'id':'whisper-model','label':'Modelo do Whisper','status':'missing','detail':'Não encontrado.','action':'whisper-model'}] if transcription == 'whisper-cpp' else []),
                        {'id':'ollama','label':'Ollama','status':'warning','action':'ollama-model','detail':'Ollama respondeu, mas o modelo qwen3.5:9b não está instalado.'} if summary == 'ollama'
                        else {'id':'summary-key','label':'Resumo · OPENAI_API_KEY','status':'missing','detail':'Chave não encontrada.'}],
-             'automation':[{'id':'automatic-backend','label':'Gravação automática','status':'missing','detail':'Usa o OBS desativado.','action':'capture'}] if mode == 'services' else [],
+             'automation':[{'id':'automatic-backend','label':'Gravação automática','status':'missing','detail':'Usa o OBS desativado.','action':'capture'}] if mode == 'services' else
+                          [{'id':'automatic-backend','label':'Gravação automática','status':'missing','action':'capture','detail':'O modo “Controlar o OBS” exige o OBS ativado em Integrações.'},
+                           {'id':'remote-worker','label':'Worker remoto','status':'missing','action':'remote','detail':'O processamento está marcado como remoto, mas nenhum worker foi configurado. Configure-o em Integrações ou volte para “Neste computador”.'}] if mode == 'wizard-automation-review' else [],
              'audio':{'devices':[{'name':'alsa_input.synthetic-mic','description':'Microfone sintético','monitor':False},
                                  {'name':'alsa_output.synthetic.monitor','description':'Monitor sintético','monitor':True}],
                       'defaultMicrophone':'alsa_input.synthetic-mic','defaultDesktop':'alsa_output.synthetic.monitor'},
@@ -224,6 +226,13 @@ MODES = {
                              'setupWizard.set("processing.defaultTarget", "remote"); check("jobs sent to the remote worker do not need FFmpeg here", !setupWizard.processingProblems().length)', ''),
     'keys-manager-unknown': ('settingsDialog.open(); settingsTabs.currentIndex=3',
                              'const unknown = findObject(settingsDialog.contentItem, "keysManagerUnknown"); check("keys warn that a key in the unread user services\' environment would win", !!unknown && unknown.visible)', '', ''),
+    'wizard-automation-review': ('setupWizard.open(); setupWizard.consentAck=true; setupWizard.applyMonitor=false; setupWizard.applyTimer=false',
+                                 'setupWizard.step=4; const row = findObject(setupWizard.contentItem, "wizardReviewAutomation"); '
+                                 'check("review flags automatic recording that cannot record", !!row && row.status==="warning" && row.detail.indexOf("exige o OBS ativado")>=0); '
+                                 'const missing = findObject(setupWizard.contentItem, "wizardShowMissing"); if (missing) missing.clicked(); const worker = findObject(setupWizard.contentItem, "wizardProblem-remote-worker"); '
+                                 'check("the processing step shows the remote worker that is missing", setupWizard.step===2 && !!worker && worker.visible); setupWizard.step=4; setupWizard.finish()',
+                                 'const title = findObject(setupWizard.contentItem, "wizardDoneTitle"), labels = setupWizard.pendingIssues().map(function(issue){ return issue.label }); '
+                                 'check("the last page lists automatic recording and the remote worker", setupWizard.step===5 && !!title && title.text!=="Tudo pronto" && labels.indexOf("Gravação automática")>=0 && labels.indexOf("Worker remoto")>=0)', ''),
     'models-ollama-draft': ('settingsDialog.open()',
                             'setSettingsField("summary.provider", "ollama"); setSettingsField("summary.ollamaUrl", "http://127.0.0.1:11435"); setSettingsField("summary.ollamaModel", "llama4:8b"); settingsDialog.goToSection(4)',
                             'check("the list shows the Ollama at the unsaved address", !!settingsDialog.catalog.ollama && settingsDialog.catalog.ollama.url==="http://127.0.0.1:11435"); settingsDialog.startDownload("ollama", "llama4:8b"); '
@@ -260,7 +269,7 @@ SIDE_EFFECTS = {'save': {'settings-save'}, 'services': {'settings-service'}, 'wi
                 'wizard-key-fail': {'settings-save', 'settings-secret-set'}, 'wizard-download-pending': {'settings-model-download'},
                 'keys-lost': {'settings-secret-set'}, 'wizard-key-required': {'settings-save', 'settings-secret-set'},
                 'models-cloud': {'settings-model-download'}, 'wizard-gemini-key': {'settings-save'}, 'wizard-recommended-review': {'settings-save'},
-                'wizard-lost': {'settings-save'}, 'restore-pending': {'settings-restore'}, 'wizard-ffmpeg-review': {'settings-save'}, 'models-ollama-draft': {'settings-model-download'}}
+                'wizard-lost': {'settings-save'}, 'restore-pending': {'settings-restore'}, 'wizard-ffmpeg-review': {'settings-save'}, 'models-ollama-draft': {'settings-model-download'}, 'wizard-automation-review': {'settings-save'}}
 GUARDED = {'settings-save', 'settings-service', 'settings-secret-set', 'settings-secret-remove', 'settings-model-download', 'settings-restore'}
 
 checks = []; screens = []
