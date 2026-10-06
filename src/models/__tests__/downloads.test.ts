@@ -6,6 +6,8 @@ import { join } from "node:path";
 import {
   WHISPER_MODELS, downloadWhisperModel, fileIdentity, findWhisperModel, pullOllamaModel, readDownloadState, validateOllamaModelName, writeDownloadState
 } from "../downloads";
+import { runModelsCli } from "../../cli/models";
+import { acquireSingleton } from "../../runtime/singleton";
 
 const withDir = async (run: (dir: string) => Promise<void>) => {
   const dir = await fs.mkdtemp(join(tmpdir(), "falatrace-models-"));
@@ -26,6 +28,43 @@ const serve = (body: Buffer, seen: string[] = []) => (async (input: RequestInfo 
   Object.defineProperty(response, "url", { value: String(input) });
   return response;
 }) as typeof fetch;
+
+test("one download per model at a time, and a file published meanwhile is kept", async () => {
+  await withDir(async (dir) => {
+    const payload = Buffer.from("synthetic ggml payload ".repeat(1000));
+    await withSyntheticModel(payload, async () => {
+      // Another download of this model holds its lock: nothing is fetched or touched.
+      const lease = await acquireSingleton("whisper-download-tiny");
+      const seen: string[] = [];
+      try {
+        await expect(downloadWhisperModel("tiny", { fetch: serve(payload, seen), directory: dir, onProgress: () => undefined }))
+          .rejects.toThrow("já está sendo baixado");
+      } finally {
+        await lease.release();
+      }
+      expect(seen).toEqual([]);
+      // Something outside FalaTrace writes the destination while this download runs.
+      const racing = (async (input: RequestInfo | URL) => {
+        await fs.writeFile(join(dir, "ggml-tiny.bin"), "someone else's file");
+        return serve(payload)(input);
+      }) as typeof fetch;
+      await expect(downloadWhisperModel("tiny", { fetch: racing, directory: dir, onProgress: () => undefined })).rejects.toThrow("preservado");
+      expect(await fs.readFile(join(dir, "ggml-tiny.bin"), "utf8")).toBe("someone else's file");
+      expect((await fs.readdir(dir)).filter((name) => name.includes("partial"))).toEqual([]);
+    });
+  });
+});
+
+test("a second download of a model already downloading leaves the running one's state alone", async () => {
+  await writeDownloadState({ kind: "whisper", id: "tiny", state: "running", receivedBytes: 10, totalBytes: 100 });
+  const lease = await acquireSingleton("whisper-download-tiny");
+  try {
+    await expect(runModelsCli(["models", "download", "tiny"])).rejects.toThrow("já está sendo baixado");
+  } finally {
+    await lease.release();
+  }
+  expect(await readDownloadState("whisper", "tiny")).toMatchObject({ state: "running", receivedBytes: 10 });
+});
 
 test("the catalog pins unique ids, files, sizes and SHA-256 values", () => {
   expect(new Set(WHISPER_MODELS.map((model) => model.id)).size).toBe(WHISPER_MODELS.length);

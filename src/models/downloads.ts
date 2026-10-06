@@ -4,6 +4,7 @@ import type { FileHandle } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { DEFAULT_CONFIG } from "../config/defaults";
+import { acquireSingleton } from "../runtime/singleton";
 
 /**
  * Explicit model downloads. Nothing here runs unless the user starts it: the Studio
@@ -114,8 +115,26 @@ export type WhisperDownloadDeps = {
  * Download, verify and publish one Whisper model. An existing verified file is reused. The
  * identity returned is the one the SHA-256 check covered, for the receipt to compare against.
  */
+const CONFLICT = "Já existe um arquivo diferente com o nome deste modelo; ele foi preservado. Mova ou apague esse arquivo da pasta de modelos para baixar de novo.";
+
+/** Another download of the same model is running; its state is the one to report. */
+export class DownloadInProgressError extends Error {}
+
 export const downloadWhisperModel = async (id: string, deps: WhisperDownloadDeps): Promise<{ path: string; verified: VerifiedFile }> => {
   const model = findWhisperModel(id);
+  // One download per model at a time, from the Studio or the CLI: a second one would delete the
+  // first one's partial file and race it to publish.
+  const lease = await acquireSingleton(`whisper-download-${model.id.replace(/[^a-z0-9-]/g, "-")}`).catch(() => {
+    throw new DownloadInProgressError("Este modelo já está sendo baixado. Aguarde o download em andamento terminar.");
+  });
+  try {
+    return await downloadUnlocked(model, deps);
+  } finally {
+    await lease.release();
+  }
+};
+
+const downloadUnlocked = async (model: WhisperModel, deps: WhisperDownloadDeps): Promise<{ path: string; verified: VerifiedFile }> => {
   await fs.mkdir(deps.directory, { recursive: true, mode: 0o700 });
   const destination = join(deps.directory, model.file);
   const existing = await fs.lstat(destination).catch(() => null);
@@ -124,7 +143,7 @@ export const downloadWhisperModel = async (id: string, deps: WhisperDownloadDeps
     // Taken before hashing: a change during or after the check leaves the receipt unmatched.
     const verified = await fileIdentity(destination);
     if (existing.size === model.bytes && await sha256File(destination) === model.sha256) return { path: destination, verified };
-    throw new Error("Já existe um arquivo diferente com o nome deste modelo; ele foi preservado. Mova ou apague esse arquivo da pasta de modelos para baixar de novo.");
+    throw new Error(CONFLICT);
   }
   // One unit per model: partial files left by a cancelled or killed attempt are stale now.
   for (const name of await fs.readdir(deps.directory).catch(() => [] as string[])) {
@@ -162,7 +181,10 @@ export const downloadWhisperModel = async (id: string, deps: WhisperDownloadDeps
       throw new Error("O arquivo baixado não confere com o tamanho e o SHA-256 publicados; ele foi descartado.");
     }
     await fs.chmod(partial, 0o644);
-    await fs.link(partial, destination);
+    // Something outside FalaTrace may have put a file there meanwhile: keep it, as above.
+    await fs.link(partial, destination).catch((error: NodeJS.ErrnoException) => {
+      throw error.code === "EEXIST" ? new Error(CONFLICT) : error;
+    });
     await deps.onProgress(received);
   } finally {
     await fs.rm(partial, { force: true }).catch(() => undefined);

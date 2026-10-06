@@ -1256,6 +1256,7 @@ var EN = {
     "Chave aceita pelo provedor. O teste não envia áudio nem texto.": "Key accepted by the provider. The test sends no audio or text.",
     "O provedor recusou a chave. Confira se ela está ativa e se foi copiada inteira.": "The provider refused the key. Check that it is active and was copied in full.",
     "A chave existe, mas a conta está sem créditos ou no limite de uso. Confira o faturamento da API.": "The key exists, but the account has no credits or hit its usage limit. Check the API billing.",
+    "Este modelo já está sendo baixado. Aguarde o download em andamento terminar.": "This model is already downloading. Wait for the running download to finish.",
     "Não foi possível falar com o provedor agora. Confira a rede e tente de novo.": "Could not reach the provider right now. Check the network and try again.",
     "Nenhuma chave alcança o processamento em segundo plano. Salve a chave nesta seção.": "No key reaches background processing. Save the key in this section.",
     "é um link simbólico; ignorado": "is a symbolic link; ignored",

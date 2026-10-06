@@ -1,6 +1,6 @@
 import { loadConfig } from "../config/load";
 import {
-  WHISPER_MODELS, downloadWhisperModel, findWhisperModel, isVerifiedWhisperModel, pullOllamaModel,
+  DownloadInProgressError, WHISPER_MODELS, downloadWhisperModel, findWhisperModel, isVerifiedWhisperModel, pullOllamaModel,
   whisperModelsDir, writeDownloadState
 } from "../models/downloads";
 
@@ -51,6 +51,8 @@ export const runModelsCli = async (args: string[]): Promise<void> => {
       if (process.stderr.isTTY) process.stderr.write("\n");
       console.log(JSON.stringify({ id: model.id, path, verified: true }));
     } catch (error) {
+      // The download already running owns the state; this attempt only reports that it did not start.
+      if (error instanceof DownloadInProgressError) throw error;
       const message = controller.signal.aborted ? "Download cancelado." : (error instanceof Error ? error.message : String(error)).slice(0, 300);
       await writeDownloadState({ kind: "whisper", id: model.id, state: "failed", receivedBytes: 0, totalBytes: model.bytes, error: message });
       throw error;
