@@ -100,6 +100,7 @@ for line in sys.stdin:
     elif op == 'settings-secret-set' and mode == 'keys-lost': continue
     elif op == 'settings-secret-test' and mode == 'keys-test-lost': continue
     elif op == 'settings-save' and mode == 'wizard-lost': continue
+    elif op == 'settings-restore' and mode == 'restore-pending': continue
     elif op == 'settings-secret-set' and mode == 'wizard-key-fail':
         print(json.dumps({'id':r['id'],'ok':False,'error':'secrets.env tem permissões amplas demais.'}), flush=True); continue
     elif op == 'settings-secret-set':
@@ -183,6 +184,8 @@ MODES = {
                     'setupWizard.set("processing.notifyOnCompletion", false); setupWizard.step=4; setupWizard.finish(); check("Finish is saving", setupWizard.busy)',
                     'settingsConnectionLost(); const next = findObject(setupWizard.footer, "wizardNext"); check("a lost connection stops the assistant with the outcome unknown", setupWizard.stale && setupWizard.error!=="" && !setupWizard.busy && !!next && !next.enabled)',
                     'setupWizard.reconnected(); check("on reconnection the assistant reads the configuration again and keeps its choices", !setupWizard.stale && setupWizard.value("processing.notifyOnCompletion")===false)'),
+    'restore-pending': ('settingsDialog.open(); settingsDialog.goToSection(9)',
+                        'settingsDialog.confirmRestore=settingsDialog.backups[0].name; const confirm = findObject(settingsDialog.contentItem, "settingsRestoreConfirm"); for (let i = 0; i < 2; i++) if (confirm && confirm.enabled) confirm.clicked(); check("the restore confirmation is disabled while a restore is pending", !!confirm && !confirm.enabled)', '', ''),
     'wizard-key-required': ('setupWizard.open(); setupWizard.consentAck=true; setupWizard.applyMonitor=false; setupWizard.applyTimer=false',
                             'setupWizard.step=4; setupWizard.finish(); check("Finish waits for the OpenAI key the reviewed setup needs", setupWizard.missingRequiredKey() && setupWizard.step===4 && setupWizard.error!=="" && !setupWizard.hasPending("settings-save") && !setupWizard.hasPending("settings-secret-set"))',
                             'setupWizard.useKey("sk-synthetic-wizard-key"); setupWizard.finish()',
@@ -239,7 +242,7 @@ SIDE_EFFECTS = {'save': {'settings-save'}, 'services': {'settings-service'}, 'wi
                 'wizard-key-fail': {'settings-save', 'settings-secret-set'}, 'wizard-download-pending': {'settings-model-download'},
                 'keys-lost': {'settings-secret-set'}, 'wizard-key-required': {'settings-save', 'settings-secret-set'},
                 'models-cloud': {'settings-model-download'}, 'wizard-gemini-key': {'settings-save'}, 'wizard-recommended-review': {'settings-save'},
-                'wizard-lost': {'settings-save'}}
+                'wizard-lost': {'settings-save'}, 'restore-pending': {'settings-restore'}}
 GUARDED = {'settings-save', 'settings-service', 'settings-secret-set', 'settings-secret-remove', 'settings-model-download', 'settings-restore'}
 
 checks = []; screens = []
@@ -311,6 +314,8 @@ with tempfile.TemporaryDirectory(dir='/tmp', prefix='falatrace-settings-fixture-
         if mode == 'wizard-lost':
             ops = [q['op'] for q in requests]
             checks.append({'name': 'wizard-lost: the configuration is read again after reconnecting', 'pass': 'settings-save' in ops and 'settings-read' in ops[ops.index('settings-save') + 1:]})
+        if mode == 'restore-pending':
+            checks.append({'name': 'restore-pending: a double click sends one restore', 'pass': [q['op'] for q in requests].count('settings-restore') == 1})
         if mode == 'wizard-gemini-key':
             saves = [q['payload'] for q in requests if q['op'] == 'settings-save']
             checks.append({'name': 'wizard-gemini-key: nothing is saved until the setup no longer needs the missing key', 'pass': len(saves) == 1 and saves[0]['changes'].get('transcription.provider') == 'openai'})

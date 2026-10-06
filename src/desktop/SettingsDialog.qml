@@ -612,7 +612,7 @@ FtDialog {
             }
             RowLayout { visible:settingsDialog.confirmRestore===modelData.name; spacing:8
              SettingsHint { text:t("Substituir a configuração atual por esta cópia?"); color:warningColor }
-             FtButton { text:t("Restaurar"); compact:true; highlighted:true; onClicked:send("settings-restore","",{revision:settingsData.revision,backup:modelData.name}) }
+             FtButton { objectName:"settingsRestoreConfirm"; text:t("Restaurar"); compact:true; highlighted:true; enabled:!hasSettingsPending("settings-restore"); onClicked:send("settings-restore","",{revision:settingsData.revision,backup:modelData.name}) }
              FtButton { text:t("Cancelar"); compact:true; variant:"outline"; onClicked:settingsDialog.confirmRestore="" }
             }
            }
