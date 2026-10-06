@@ -95,6 +95,43 @@ async function bridge(value: Fixture, requests: unknown[]): Promise<Reply[]> {
   return replies.sort((a, b) => a.id - b.id);
 }
 
+/** One bridge process answering requests in order, so state such as its library cache carries over. */
+async function session(value: Fixture, requests: Array<(previous: Reply[]) => { id: number }>): Promise<Reply[]> {
+  const child = Bun.spawn([
+    "/usr/bin/python3", "-I", join(sourceRoot, "scripts/qa-run.py"), process.execPath,
+    "run", "--preload", join(sourceRoot, "scripts/offline-network.ts"),
+    join(sourceRoot, "src/desktop/bridge.ts")
+  ], { cwd: sourceRoot, env: value.env, stdin: "pipe", stdout: "pipe", stderr: "pipe" });
+  const output = child.stdout.pipeThrough(new TextDecoderStream()).getReader();
+  const replies: Reply[] = [];
+  let buffer = "";
+  try {
+    for (const make of requests) {
+      const request = make(replies);
+      child.stdin.write(`${JSON.stringify(request)}\n`);
+      child.stdin.flush();
+      let reply: Reply | undefined;
+      while (!reply) {
+        const end = buffer.indexOf("\n");
+        if (end < 0) {
+          const { value: chunk, done } = await output.read();
+          if (done) throw new Error("The bridge closed before answering");
+          buffer += chunk;
+          continue;
+        }
+        const parsed = JSON.parse(buffer.slice(0, end)) as Reply;
+        buffer = buffer.slice(end + 1);
+        if (parsed.id === request.id) reply = parsed;
+      }
+      replies.push(reply);
+    }
+  } finally {
+    child.stdin.end();
+    await child.exited;
+  }
+  return replies;
+}
+
 function successful(reply: Reply): Record<string, unknown> {
   expect(reply.ok).toBe(true);
   expect(reply.error).toBeUndefined();
@@ -240,4 +277,27 @@ describe("G4 onboarding through the guarded production desktop bridge", () => {
     }
     expect(await snapshot(value.root)).toEqual(validBefore);
   }), 10000);
+
+  test("a restore that moves the recordings folder is seen by the next library read", async () => withFixture(async value => {
+    // This test reads the library, so it starts without the synthetic capture and job state above.
+    for (const seeded of ["state/recording-cli", "data/recording-cli", "home/Videos"]) await fs.rm(join(value.root, seeded), { recursive: true, force: true });
+    const folder = (name: string) => join(value.root, "home", name);
+    for (const name of ["before", "after"]) {
+      await fs.mkdir(folder(name), { recursive: true, mode: 0o700 });
+      await fs.writeFile(join(folder(name), `${name}.mkv`), "synthetic-media-only\n", { mode: 0o600 });
+    }
+    await seedConfig(value, `${JSON.stringify({ recordingsDir: folder("before") })}\n`);
+    const backup = "config.json.bak-0b8c3a0e-1f2a-4b3c-8d4e-5f6a7b8c9d0e";
+    await fs.writeFile(join(value.config, "..", backup), `${JSON.stringify({ recordingsDir: folder("after") })}\n`, { mode: 0o600 });
+    const replies = await session(value, [
+      () => ({ id: 1, op: "list" }),
+      () => ({ id: 2, op: "settings-read" }),
+      (previous) => ({ id: 3, op: "settings-restore", payload: { revision: successful(previous[1]!).revision, backup } }),
+      () => ({ id: 4, op: "detail", key: join(folder("after"), "after.mkv") })
+    ]);
+    expect((successful(replies[0]!).items as Array<{ fileName: string }>).map((item) => item.fileName)).toEqual(["before.mkv"]);
+    expect(successful(replies[2]!)).toMatchObject({ restored: backup });
+    // The cached library of the old folder would not know this recording.
+    expect(replies[3]).toMatchObject({ ok: true });
+  }), 20000);
 });

@@ -470,9 +470,13 @@ const handle = async (request: Request): Promise<unknown> => {
   if(request.op === "processing-status") return readHeavyStatus();
   if (request.op === "ux-capabilities") return {mockFrames: process.env.FALATRACE_UX_MOCK_ONLY === "1",realFrames:true,productVersion,release:await readReleaseInfo()};
   if ((SETTINGS_OPERATIONS as readonly string[]).includes(request.op)) {
-    const result = await handleSettingsOperation(request.op as SettingsOperation, request.payload || {});
-    if (request.op === "settings-save") invalidateLibrary();
-    return result;
+    // A save or a restore replaces the configuration and may move the recordings folder; one that
+    // failed may have replaced it too. Library reads after it start from the file on disk.
+    try {
+      return await handleSettingsOperation(request.op as SettingsOperation, request.payload || {});
+    } finally {
+      if (request.op === "settings-save" || request.op === "settings-restore") invalidateLibrary();
+    }
   }
   if (request.op === "onboarding-read") return readOnboarding();
   if (request.op === "onboarding-save-local") { const result=await saveLocalOnboarding(request.payload?.revision || ""); invalidateLibrary(); return result; }
