@@ -59,7 +59,7 @@ def settings(): return {'revision':revision,'exists':not first,'values':values,'
                 'remoteConfigured':mode == 'integrations','summaryLocal':True,'visualPolicyDeclared':False,'legacyApiKeyInConfig':False,'obsPasswordInConfig':False},
     'credentials':credentials()}
 timer = {'installed':False,'enabled':False,'active':False,'outdated':False,'nextRunAt':None,'lastResult':None}
-services = {'calls':{'installed':True,'enabled':True,'active':True,'outdated':False,'staleConfig':mode == 'services'},
+services = {'calls':{'installed':not first,'enabled':not first,'active':not first,'outdated':False,'staleConfig':mode == 'services'},
             'tray':{'installed':True,'enabled':True,'active':True,'outdated':False,'staleConfig':False},'sync':dict(timer),'archive':dict(timer),'backup':dict(timer)}
 catalog = {'whisper':{'directory':'/home/synthetic/models','source':'https://huggingface.co/','models':[
     {'id':'tiny','file':'ggml-tiny.bin','bytes':77691713,'sha256':'0'*64,'quality':'Muito rápido.','installed':False,'selected':False,'path':'/home/synthetic/models/ggml-tiny.bin'},
@@ -131,6 +131,9 @@ MODES = {
                                'setupWizard.step=2; setupWizard.request("settings-model-download",{kind:"whisper",model:"large-v3-turbo-q5_0",consent:true})',
                                'check("a running download can be cancelled from the assistant", !!setupWizard.downloadState("whisper","large-v3-turbo-q5_0") && setupWizard.downloadState("whisper","large-v3-turbo-q5_0").state==="running"); setupWizard.cancelDownload("whisper","large-v3-turbo-q5_0")',
                                'check("the cancelled download shows its stopped state without an error", setupWizard.error==="" && setupWizard.downloadState("whisper","large-v3-turbo-q5_0").state==="failed")'),
+    'wizard-disable-monitor': ('setupWizard.open(); setupWizard.consentAck=true; setupWizard.applyTimer=false',
+                               'setupWizard.set("callDetection.enabled", false); setupWizard.step=4; setupWizard.finish()',
+                               'check("turning detection off in the assistant stops the installed monitor", setupWizard.step===5 && setupWizard.results.some(function(r){return r.label==="Monitor de chamadas" && r.ok}))', ''),
     'wizard-reload': ('setupWizard.consentAck=true',
                       'setupWizard.recommend(); setupWizard.set("callDetection.enabled", true); setupWizard.set("callDetection.mode", "notify-only"); setupWizard.finish()',
                       'check("a save without values still applies the reviewed services", setupWizard.step===5 && setupWizard.results.some(function(r){return r.label==="Monitor de chamadas" && r.ok}))', ''),
@@ -168,7 +171,7 @@ MODES = {
 # Requests each mode is expected to send; anything outside the list fails the journey.
 SIDE_EFFECTS = {'save': {'settings-save'}, 'services': {'settings-service'}, 'wizard-flow': {'settings-save'}, 'backups': {'settings-restore'}, 'restore-reload': {'settings-restore'},
                 'wizard-key-finish': {'settings-save', 'settings-secret-set'}, 'wizard-download-cancel': {'settings-model-download'},
-                'wizard-reload': {'settings-save', 'settings-service'},
+                'wizard-reload': {'settings-save', 'settings-service'}, 'wizard-disable-monitor': {'settings-save', 'settings-service'},
                 'keys': {'settings-secret-set'}, 'models': {'settings-model-download'}}
 GUARDED = {'settings-save', 'settings-service', 'settings-secret-set', 'settings-secret-remove', 'settings-model-download', 'settings-restore'}
 
@@ -219,6 +222,9 @@ with tempfile.TemporaryDirectory(dir='/tmp', prefix='falatrace-settings-fixture-
             sets = [q for q in requests if q['op'] == 'settings-secret-set']
             checks.append({'name': 'wizard-key-finish: the key is written once, after the configuration', 'pass': ops == ['settings-save', 'settings-secret-set']
                            and sets[0]['payload'] == {'name': 'OPENAI_API_KEY', 'value': 'sha256:' + hashlib.sha256(b'sk-synthetic-wizard-key').hexdigest()}})
+        if mode == 'wizard-disable-monitor':
+            applied = [q['payload'] for q in requests if q['op'] == 'settings-service']
+            checks.append({'name': 'wizard-disable-monitor: only the monitor is disabled', 'pass': applied == [{'action': 'calls-disable'}]})
         if mode == 'restore-reload':
             ops = [q['op'] for q in requests]
             checks.append({'name': 'restore-reload: the configuration is read again after the restore', 'pass': 'settings-restore' in ops and 'settings-read' in ops[ops.index('settings-restore') + 1:]})

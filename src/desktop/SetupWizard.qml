@@ -82,7 +82,10 @@ FtDialog {
     function keyReady() { const source = credential("OPENAI_API_KEY").source; return pendingKey !== "" || (!!source && source !== "missing") }
     function serviceActions() {
         const actions = []
+        const monitor = diag.services && diag.services.calls
         if (applyMonitor && value("callDetection.enabled") === true) actions.push("calls-apply")
+        // A monitor already installed keeps the configuration it started with: stop it when detection is turned off.
+        else if (value("callDetection.enabled") !== true && monitor && monitor.installed) actions.push("calls-disable")
         if (applyTimer && value("processing.autoEnqueue") === true) actions.push("sync-apply")
         if (applyTray) actions.push("tray-apply")
         return actions
@@ -115,7 +118,7 @@ FtDialog {
         pendingActions = pendingActions.slice(1)
         request("settings-service", { action: action }, { action: action })
     }
-    function serviceLabel(action) { return action === "calls-apply" ? t("Monitor de chamadas") : action === "sync-apply" ? t("Processamento em segundo plano") : action === "tray-apply" ? t("Bandeja") : action }
+    function serviceLabel(action) { return action === "calls-apply" || action === "calls-disable" ? t("Monitor de chamadas") : action === "sync-apply" ? t("Processamento em segundo plano") : action === "tray-apply" ? t("Bandeja") : action }
     function addResult(label, ok, detail) { results = results.concat([{ label: label, ok: ok, detail: detail }]) }
 
     function handleResponse(req, message) {
@@ -154,7 +157,7 @@ FtDialog {
             draft = ({})
             saveKey()
         } else if (req.op === "settings-service") {
-            addResult(serviceLabel(req.action), message.ok, message.ok ? t("Aplicado.") : message.error)
+            addResult(serviceLabel(req.action), message.ok, message.ok ? (req.action === "calls-disable" ? t("Desativado.") : t("Aplicado.")) : message.error)
             nextService()
         }
     }
