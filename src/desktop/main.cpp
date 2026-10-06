@@ -79,7 +79,10 @@ public:
     requestGenerations.insert(id, epoch);
     auto *timer = new QTimer(this);
     timer->setSingleShot(true);
-    timer->setInterval(op.startsWith("capture-") ? 120000 : 30000);
+    // Capture may wait on a device, and planning or queueing a recording reads the whole file to bind the
+    // consent to its hash: those get longer than the 30 s every other request has.
+    const bool readsRecording = op == "recording-process-plan" || op == "recording-process";
+    timer->setInterval(op.startsWith("capture-") ? 120000 : readsRecording ? 900000 : 30000);
     connect(timer, &QTimer::timeout, this, [this, id, epoch] {
       if (epoch == processGeneration && outstanding.contains(id)) {
         fail("A biblioteca demorou demais para responder.");
