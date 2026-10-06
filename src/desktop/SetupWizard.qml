@@ -32,6 +32,8 @@ FtDialog {
     property bool busy: hasPending("settings-save") || hasPending("settings-secret-set") || hasPending("settings-service")
     readonly property bool fresh: data.exists === false
 
+    // The review shows what the diagnostic says about exactly the choices it lists.
+    onStepChanged:if (step === 4 && visible && backend.available) diagnose()
     onOpened:{ generation += 1; step = 0; data = ({}); draft = ({}); diag = ({}); audioTest = null; catalog = ({}); downloads = ({}); consentAck = false; results = []; pendingKey = ""; error = ""; notice = ""; applyTray = false; load(); wizardNext.forceActiveFocus(Qt.TabFocusReason) }
     onClosed:{ languagePreview = ""; generation += 1; data = ({}); draft = ({}); pendingKey = ""; onboardingButton.forceActiveFocus(Qt.TabFocusReason) }
 
@@ -102,6 +104,17 @@ FtDialog {
         return ["OPENAI_API_KEY", "GEMINI_API_KEY"].filter(function(name){ return needsKey(name) && !(name === "OPENAI_API_KEY" ? keyReady() : savedKey(name)) })
     }
     function missingRequiredKey() { return missingKeys().length > 0 }
+    // Processing dependencies the diagnostic of the reviewed choices reports missing; keys are handled above.
+    function processingProblems() {
+        return (diag.checks || []).filter(function(item){ return ["whisper", "whisper-model", "ollama"].indexOf(item.id) >= 0 && item.status !== "ok" && item.status !== "skipped" })
+    }
+    // What will not run yet: the capture and the processing dependencies. Empty until the choices are diagnosed.
+    function pendingIssues() {
+        const issues = []
+        if (diag.recording && diag.recording.blockedReason) issues.push({ label: t("Captura"), detail: diag.recording.blockedReason })
+        for (const item of processingProblems()) issues.push({ label: item.label, detail: item.detail })
+        return issues
+    }
     function serviceActions() {
         const actions = []
         const monitor = diag.services && diag.services.calls
@@ -344,8 +357,9 @@ FtDialog {
         ScrollView { id:reviewScroll; clip:true; contentWidth:availableWidth
          ColumnLayout { width:reviewScroll.availableWidth; spacing:10
           Label { text:t("Revise antes de concluir"); color:ink; font.pixelSize:16; font.weight:Font.DemiBold }
-          Status { label:t("Captura"); status:"ok"; detail:(setupWizard.value("backend")==="gpu-screen-recorder"?t("Tela e áudio"):setupWizard.value("backend")==="obs"?"OBS":t("Só áudio"))+" · "+({both:t("microfone e áudio do sistema"),microphone:t("só microfone"),desktop:t("só áudio do sistema"),none:t("sem áudio")})[setupWizard.value("capture.audioSource")||"both"] }
-          Status { label:t("Processamento"); status:setupWizard.preset()==="local"?"ok":"warning"; detail:setupWizard.preset()==="local"?t("Tudo neste computador."):setupWizard.preset()==="hybrid"?t("Transcrição aqui; o texto vai para a OpenAI para resumir."):setupWizard.preset()==="cloud"?t("Áudio e texto vão para a OpenAI."):t("Combinação personalizada; veja Configurações.") }
+          Status { objectName:"wizardReviewCapture"; label:t("Captura"); status:setupWizard.diag.recording&&setupWizard.diag.recording.blockedReason?"warning":"ok"; detail:(setupWizard.value("backend")==="gpu-screen-recorder"?t("Tela e áudio"):setupWizard.value("backend")==="obs"?"OBS":t("Só áudio"))+" · "+({both:t("microfone e áudio do sistema"),microphone:t("só microfone"),desktop:t("só áudio do sistema"),none:t("sem áudio")})[setupWizard.value("capture.audioSource")||"both"]+(setupWizard.diag.recording&&setupWizard.diag.recording.blockedReason?"\n"+t(setupWizard.diag.recording.blockedReason):"") }
+          Status { objectName:"wizardReviewProcessing"; label:t("Processamento"); status:setupWizard.preset()==="local"&&!setupWizard.processingProblems().length?"ok":"warning"; detail:(setupWizard.preset()==="local"?t("Tudo neste computador."):setupWizard.preset()==="hybrid"?t("Transcrição aqui; o texto vai para a OpenAI para resumir."):setupWizard.preset()==="cloud"?t("Áudio e texto vão para a OpenAI."):t("Combinação personalizada; veja Configurações."))+setupWizard.processingProblems().map(function(item){ return "\n" + t(item.detail) }).join("") }
+          FtButton { objectName:"wizardShowMissing"; visible:setupWizard.processingProblems().length>0; text:t("Ver o que falta"); iconName:"back"; compact:true; variant:"outline"; onClicked:setupWizard.step=2 }
           Status { visible:setupWizard.pendingKey!==""; label:t("Chave da OpenAI"); status:"ok"; detail:t("Salva em arquivo privado ao concluir.") }
           Status { label:t("Gravação automática"); status:setupWizard.value("callDetection.enabled")===true&&setupWizard.value("callDetection.mode")==="record"?"warning":"ok"; detail:setupWizard.value("callDetection.enabled")!==true?t("Desligada."):setupWizard.value("callDetection.mode")==="record"?t("Grava sozinho as chamadas detectadas."):t("Só avisa.") }
           Label { text:t("Aplicar agora"); color:ink; font.pixelSize:16; font.weight:Font.DemiBold; Layout.topMargin:6 }
@@ -361,8 +375,10 @@ FtDialog {
 
         // 5 · Pronto
         ColumnLayout { spacing:10
-          Label { text:t("Tudo pronto"); color:ink; font.pixelSize:22; font.weight:Font.DemiBold }
+          // "Tudo pronto" only when every step worked and nothing the review found is still missing.
+          Label { objectName:"wizardDoneTitle"; text:setupWizard.pendingIssues().length||setupWizard.results.some(function(result){ return !result.ok })?t("Concluído, com pendências"):t("Tudo pronto"); color:ink; font.pixelSize:22; font.weight:Font.DemiBold }
           Repeater { model:setupWizard.results; Status { required property var modelData; label:modelData.label; status:modelData.ok?"ok":"warning"; detail:modelData.detail } }
+          Repeater { model:setupWizard.pendingIssues(); Status { required property var modelData; label:modelData.label; status:"warning"; detail:modelData.detail } }
           Label { text:t("Para gravar agora, use Gravar… no topo. As gravações aparecem na biblioteca; use Processar… numa gravação para transcrever e resumir."); color:muted; wrapMode:Text.WordWrap; Layout.fillWidth:true }
           Item { Layout.fillHeight:true }
         }

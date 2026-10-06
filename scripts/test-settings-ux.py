@@ -24,7 +24,7 @@ apps = [{'id':'slack','label':'Slack','kind':'app','defaultEnabled':True},{'id':
         {'id':'helium','label':'Helium','kind':'browser','defaultEnabled':True},{'id':'chromium','label':'Chromium','kind':'browser','defaultEnabled':True},
         {'id':'firefox','label':'Firefox','kind':'browser','defaultEnabled':True},{'id':'zoom','label':'Zoom','kind':'app','defaultEnabled':True},
         {'id':'discord','label':'Discord','kind':'app','defaultEnabled':False}]
-first = mode in ('first-run', 'wizard-flow', 'wizard-test-audio', 'wizard-english', 'wizard-key-cancel', 'wizard-key-finish', 'wizard-download-cancel', 'wizard-reload')
+first = mode in ('first-run', 'wizard-flow', 'wizard-test-audio', 'wizard-english', 'wizard-key-cancel', 'wizard-key-finish', 'wizard-download-cancel', 'wizard-reload', 'wizard-recommended-review')
 values = {'callDetection.enabled': not first, 'callDetection.mode':'record', 'callDetection.enqueueOnStop':True, 'callDetection.dryRun':False,
           'callDetection.entryDebounceSeconds':5, 'callDetection.exitTimeoutSeconds':15, 'callDetection.networkSampleSeconds':5,
           'callDetection.apps.slack':True,'callDetection.apps.zen':True,'callDetection.apps.helium':True,'callDetection.apps.chromium':True,
@@ -195,6 +195,11 @@ MODES = {
                           'setupWizard.step=4; setupWizard.finish(); check("Finish waits for the Gemini key the reviewed transcription needs", setupWizard.missingRequiredKey() && setupWizard.step===4 && setupWizard.error!=="" && !setupWizard.hasPending("settings-save"))',
                           'setupWizard.applyPreset("cloud"); setupWizard.finish()',
                           'check("a preset the saved keys cover lets Finish complete", setupWizard.step===5 && !setupWizard.missingRequiredKey())'),
+    'wizard-recommended-review': ('setupWizard.consentAck=true', 'setupWizard.recommend()',
+                                  'const row = findObject(setupWizard.contentItem, "wizardReviewProcessing"), missing = findObject(setupWizard.contentItem, "wizardShowMissing"); '
+                                  'check("review flags the local models that are missing", setupWizard.step===4 && !!row && row.status==="warning" && !!missing && missing.visible); '
+                                  'if (missing) missing.clicked(); check("review leads to the step that offers the downloads", setupWizard.step===2); setupWizard.step=4; setupWizard.finish()',
+                                  'const title = findObject(setupWizard.contentItem, "wizardDoneTitle"); check("the last page does not say all set while the models are missing", setupWizard.step===5 && !!title && title.text!=="Tudo pronto")'),
     'models-two': ('settingsDialog.open(); settingsDialog.goToSection(4)', 'settingsDialog.startDownload("whisper","tiny"); settingsDialog.startDownload("whisper","large-v3-turbo-q5_0")',
                    'settingsDialog.pollDownloads(); check("two downloads are tracked", !!settingsDialog.downloads["whisper:tiny"] && !!settingsDialog.downloads["whisper:large-v3-turbo-q5_0"])', ''),
     'integrations': ('settingsDialog.open(); settingsDialog.goToSection(5)', 'check("remote check available once configured", settingsData.readOnly.remoteConfigured); send("settings-remote-check",""); setSettingsField("remote.user", null); check("cleared optional field becomes a null change", settingsChanges()["remote.user"]===null)',
@@ -225,7 +230,7 @@ SIDE_EFFECTS = {'save': {'settings-save'}, 'services': {'settings-service'}, 'wi
                 'keys-refresh': {'settings-secret-set'}, 'wizard-download-finish': {'settings-model-download', 'settings-save'},
                 'wizard-key-fail': {'settings-save', 'settings-secret-set'}, 'wizard-download-pending': {'settings-model-download'},
                 'keys-lost': {'settings-secret-set'}, 'wizard-key-required': {'settings-save', 'settings-secret-set'},
-                'models-cloud': {'settings-model-download'}, 'wizard-gemini-key': {'settings-save'}}
+                'models-cloud': {'settings-model-download'}, 'wizard-gemini-key': {'settings-save'}, 'wizard-recommended-review': {'settings-save'}}
 GUARDED = {'settings-save', 'settings-service', 'settings-secret-set', 'settings-secret-remove', 'settings-model-download', 'settings-restore'}
 
 checks = []; screens = []
@@ -240,7 +245,8 @@ with tempfile.TemporaryDirectory(dir='/tmp', prefix='falatrace-settings-fixture-
         def timer(ms, body):
             return (f' Timer {{ interval: {ms}; running: true; repeat: false; onTriggered: {{ const a=[]; function check(name,pass){{a.push({{name:"{mode}: "+name,pass:!!pass}})}}; '
                     f'{body}; console.log("UX_ASSERTIONS "+JSON.stringify(a)) }} }}\n')
-        helpers = ' function wizardConsentGate() { return setupWizard.step!==0 || setupWizard.consentAck }\n'
+        helpers = (' function wizardConsentGate() { return setupWizard.step!==0 || setupWizard.consentAck }\n'
+                   ' function findObject(item, name) { if (!item) return null; if (item.objectName === name) return item; const kids = item.children || []; for (let i = 0; i < kids.length; i++) { const found = findObject(kids[i], name); if (found) return found } return null }\n')
         extra = '\n' + helpers + f' Timer {{ interval: 600; running: true; repeat: false; onTriggered: {{ {action} }} }}\n' + timer(1500, assertion) + timer(2300, follow) + timer(3100, final)
         (qml / 'Main.qml').write_text(base[:-1] + extra + '}\n'); copy_qml_siblings(qml)
         image = out / f'settings-{mode}.png'; receipt_path = root / f'{mode}-requests.json'

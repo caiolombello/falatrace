@@ -1243,6 +1243,8 @@ var EN = {
     "Falta a chave do Gemini que esta transcrição usa: salve-a em Configurações, em Chaves de API, ou escolha outra opção no passo Processamento.": "The Gemini key this transcription uses is missing: save it in Settings, under API keys, or pick another option in the Processing step.",
     "Chave do Gemini": "Gemini key",
     "A transcrição usa o Gemini. Salve a chave dele em Configurações, em Chaves de API, ou escolha uma das opções acima.": "Transcription uses Gemini. Save its key in Settings, under API keys, or pick one of the options above.",
+    "Ver o que falta": "See what is missing",
+    "Concluído, com pendências": "Done, with pending items",
     "Fora deste computador, use HTTPS: o resumo não envia a transcrição por HTTP a outro endereço.": "Outside this computer, use HTTPS: the summary does not send the transcript over HTTP to another address.",
     "Não foi possível cancelar o download; ele pode continuar em segundo plano. Tente de novo.": "Could not cancel the download; it may keep running in the background. Try again.",
     "Não foi possível consultar os serviços do usuário. Tente de novo.": "Could not query the user services. Try again.",
