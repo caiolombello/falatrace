@@ -48,7 +48,9 @@ export class ManualObsController {
     private readonly config: AppConfig["obs"],
     private readonly createClient: ManualObsClientFactory = defaultFactory,
     private readonly launchObs: () => Promise<void> = launchObsDetached,
-    private readonly wait: ManualObsWait = defaultWait
+    private readonly wait: ManualObsWait = defaultWait,
+    /** Where the password is resolved; the Studio's check passes the call monitor's environment. */
+    private readonly env: NodeJS.ProcessEnv = process.env
   ) {}
 
   async isRecording(): Promise<boolean> {
@@ -87,7 +89,7 @@ export class ManualObsController {
 
   private async connect(client: ManualObsClient): Promise<void> {
     const host = this.config.host === "::1" ? "[::1]" : this.config.host;
-    const password = (await readSecret("RECORDING_CLI_OBS_PASSWORD")) || this.config.password;
+    const password = (await readSecret("RECORDING_CLI_OBS_PASSWORD", this.env)) || this.config.password;
     try {
       await client.connect(`ws://${host}:${this.config.port}`, password);
     } catch (err) {

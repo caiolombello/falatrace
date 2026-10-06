@@ -248,14 +248,23 @@ export const readSecretFiles = async (files: SecretFiles = getSecretFiles()): Pr
   }));
 
 /**
- * The environment a processing unit starts with: the user manager's, then worker.env loaded
- * through EnvironmentFile=, whose assignments replace inherited ones. Diagnostics and the key
- * test resolve against it, so they report the credential processing really uses.
+ * The environment a unit starts with: the user manager's, then its file loaded through
+ * EnvironmentFile=, whose assignments replace inherited ones. Processing units load worker.env and
+ * the call monitor loads calls.env. Diagnostics and the key test resolve against it, so they report
+ * the credential the unit really uses.
  */
-export const unitEnvironment = (managerEnv: NodeJS.ProcessEnv, states: SecretFileState[]): NodeJS.ProcessEnv => {
-  const worker = states.find((state) => state.file === "worker.env");
-  return { ...managerEnv, ...Object.fromEntries(worker?.assignments ?? []) };
+export const unitEnvironment = (
+  managerEnv: NodeJS.ProcessEnv,
+  states: SecretFileState[],
+  file: "worker.env" | "calls.env" = "worker.env"
+): NodeJS.ProcessEnv => {
+  const loaded = states.find((state) => state.file === file);
+  return { ...managerEnv, ...Object.fromEntries(loaded?.assignments ?? []) };
 };
+
+/** The unit that reads each credential: provider keys in processing, the OBS password in the call monitor. */
+export const credentialUnitFile = (name: SecretName): "worker.env" | "calls.env" =>
+  name === "RECORDING_CLI_OBS_PASSWORD" ? "calls.env" : "worker.env";
 
 export type ResolvedSecret = { value?: string; source: Exclude<SecretSource, "config"> };
 
@@ -394,7 +403,7 @@ export const describeCredentials = async (
   const sessionEnv = options.sessionEnv || process.env;
   const managerEnv = options.managerEnv ?? null;
   const details = SECRET_NAMES.map((name): CredentialReport => {
-    const background = resolveSecretFrom(name, unitEnvironment(managerEnv || {}, states), states);
+    const background = resolveSecretFrom(name, unitEnvironment(managerEnv || {}, states, credentialUnitFile(name)), states);
     const session = resolveSecretFrom(name, sessionEnv, states);
     const savedInStudio = !!states.find((state) => state.file === "secrets.env" && state.usable)?.values.get(name);
     const source: SecretSource = background.source !== "missing" ? background.source

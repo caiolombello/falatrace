@@ -28,6 +28,18 @@ const clientFactory = (activeInitially = false) => {
 };
 
 describe("manual OBS recording control", () => {
+  test("the password comes from the environment the controller is given", async () => {
+    const used: unknown[] = [];
+    const client = {
+      async connect(_url: string, password?: string): Promise<void> { used.push(password); },
+      async disconnect(): Promise<void> {},
+      async call(): Promise<unknown> { return { outputActive: false }; }
+    } as unknown as ManualObsClient;
+    const controller = new ManualObsController(enabledConfig(), (() => client) as ManualObsClientFactory, undefined, undefined, { RECORDING_CLI_OBS_PASSWORD: "monitor-password" });
+    expect(await controller.isRecording()).toBe(false);
+    expect(used).toEqual(["monitor-password"]);
+  });
+
   test("cancels before StartRecord when the call ends during directory setup", async () => {
     const abort = new AbortController();
     const fake = clientFactory();

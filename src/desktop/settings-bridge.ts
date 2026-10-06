@@ -5,7 +5,7 @@ import {
   validateSettingsPatch
 } from "../config/settings";
 import { checkAutomation, checkProcessing, listAudioDevices, readServiceStatus } from "../config/setup-checks";
-import { parseManagerEnvironment, removeSecret, setSecret } from "../config/secrets";
+import { getSecretFiles, parseManagerEnvironment, readSecretFiles, removeSecret, setSecret, unitEnvironment } from "../config/secrets";
 import { defaultKeyTestDeps, testProviderKey, type KeyTestProvider } from "../config/credential-test";
 import { automaticRecordingBackend, diagnoseRecordingBackend } from "../recording/capabilities";
 import { translateCaptureMessage } from "../recording/messages";
@@ -104,7 +104,11 @@ export const defaultSettingsDeps: SettingsDeps = {
   removeSecret,
   testKey: (provider, configApiKey) => testProviderKey(provider, defaultKeyTestDeps(readManagerEnv, configApiKey)),
   remoteCheck: checkRemote,
-  obsCheck: (config) => new ManualObsController({ ...config.obs, enabled: true }).isRecording(),
+  // Tested with the password automatic recording gets: the call monitor's environment with calls.env.
+  obsCheck: async (config) => {
+    const env = unitEnvironment((await readManagerEnv()) || {}, await readSecretFiles(getSecretFiles()), "calls.env");
+    return new ManualObsController({ ...config.obs, enabled: true }, undefined, undefined, undefined, env).isRecording();
+  },
   audioTest: runAudioTest,
   backups: listConfigBackups,
   restore: restoreConfigBackup,

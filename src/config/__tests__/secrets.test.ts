@@ -122,6 +122,18 @@ test("diagnostics resolve keys in the environment a processing unit really gets"
   });
 });
 
+test("the OBS password is reported from the call monitor's environment, which loads calls.env", async () => {
+  await withFiles(async (files) => {
+    await fs.writeFile(files["calls.env"], "RECORDING_CLI_OBS_PASSWORD=calls-password\n", { mode: 0o600 });
+    const managerEnv = { RECORDING_CLI_OBS_PASSWORD: "manager-password", OPENAI_API_KEY: "manager-key" };
+    const report = await describeCredentials({ sessionEnv: {}, managerEnv, files });
+    // calls.env replaces the manager's value inside the monitor; processing keys still follow worker.env.
+    expect(report.details.find((detail) => detail.name === "RECORDING_CLI_OBS_PASSWORD")?.source).toBe("calls.env");
+    expect(report.openai).toBe("environment");
+    expect(JSON.stringify(report)).not.toMatch(/calls-password|manager-password|manager-key/);
+  });
+});
+
 test("saving is write-only, private and preserves other lines; removal touches only secrets.env", async () => {
   await withFiles(async (files) => {
     await setSecret("OPENAI_API_KEY", "sk-synthetic-private", files);
