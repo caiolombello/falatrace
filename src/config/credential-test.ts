@@ -7,7 +7,7 @@ import { getSecretFiles, readSecretFiles, resolveSecretFrom, unitEnvironment, ty
  * is billed by the providers for these calls. Only the outcome is returned.
  */
 export type KeyTestProvider = "openai" | "gemini";
-export type KeyTestStatus = "ok" | "rejected" | "limited" | "unreachable" | "missing";
+export type KeyTestStatus = "ok" | "rejected" | "limited" | "unreachable" | "missing" | "unknown";
 export type KeyTestResult = { provider: KeyTestProvider; status: KeyTestStatus; source: SecretSource; detail: string };
 
 export type KeyTestDeps = {
@@ -39,6 +39,11 @@ export const testProviderKey = async (provider: KeyTestProvider, deps: KeyTestDe
   const resolved = resolveSecretFrom(name, unitEnvironment(managerEnv || {}, states), states);
   const key = resolved.value || (provider === "openai" ? deps.configApiKey : undefined);
   const source: SecretSource = resolved.value ? resolved.source : key ? "config" : "missing";
+  // A key in the user manager's environment wins over the Studio's: without that environment the key
+  // background processing will use is unknown, so nothing is tested rather than possibly the wrong key.
+  if (!managerEnv) {
+    return { provider, source, status: "unknown", detail: "Não foi possível ler o ambiente dos serviços do usuário, então não dá para saber qual chave o processamento usa. Tente de novo." };
+  }
   if (!key) {
     return { provider, source, status: "missing", detail: "Nenhuma chave alcança o processamento em segundo plano. Salve a chave nesta seção." };
   }
