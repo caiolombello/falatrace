@@ -131,9 +131,18 @@ export const settingsErrorMessage = (op: string): string =>
                         : op.startsWith("settings-model") || op.startsWith("settings-ollama") ? "Não foi possível concluir o download. Nada foi instalado; tente novamente."
                           : "Não foi possível alterar o serviço. Confira se há uma gravação em andamento e o estado do systemd.";
 
-const OBS_CONNECTION_FIELDS = ["obs.enabled", "obs.host", "obs.port"];
 const OBS_DURING_CAPTURE = "Não altere a conexão com o OBS durante uma gravação ativa.";
+const TIMESHEET_DURING_CAPTURE = "Não ligue nem desligue o apontamento de horas durante uma gravação ativa.";
 const OBS_PASSWORD_DURING_CAPTURE = "Não altere a senha do OBS durante uma gravação ativa.";
+
+/**
+ * Settings that stopping a capture reads again, with the refusal shown when a save would change them
+ * mid-capture: the OBS connection it stops through, and whether it closes the time entry the start opened.
+ */
+const CAPTURE_BOUND_FIELDS = new Map([
+  ["obs.enabled", OBS_DURING_CAPTURE], ["obs.host", OBS_DURING_CAPTURE], ["obs.port", OBS_DURING_CAPTURE],
+  ["timesheet.enabled", TIMESHEET_DURING_CAPTURE]
+]);
 
 /** Run a change only while no capture runs, under the capture lock so that none starts during it. */
 const outsideCapture = async <T>(deps: SettingsDeps, refusal: string, change: () => Promise<T>): Promise<T> => {
@@ -155,6 +164,7 @@ export const AUTOMATIC_CAPTURE_BLOCKED = "A gravação automática não funciona
 export const SETTINGS_KNOWN_ERRORS = [
   "Não altere os serviços durante uma gravação ativa.",
   "Não altere a conexão com o OBS durante uma gravação ativa.",
+  "Não ligue nem desligue o apontamento de horas durante uma gravação ativa.",
   "Não altere a senha do OBS durante uma gravação ativa.",
   "Ative a gravação automática e salve antes de aplicar o monitor.",
   "Configuração mudou; reabra antes de salvar.",
@@ -226,17 +236,10 @@ export const handleSettingsOperation = async (
       initialize: payload.initialize === true,
       credentials: { managerEnv: await deps.managerEnv() }
     });
-    // Stopping a capture reaches OBS through the configured connection: while one runs, that connection
-    // stays as it started. The capture lock keeps a capture from starting during the save.
+    // Stopping a capture reads some settings again: while one runs, those stay as it started.
     const changes = payload.changes && typeof payload.changes === "object" ? Object.keys(payload.changes) : [];
-    if (!changes.some((field) => OBS_CONNECTION_FIELDS.includes(field))) return save();
-    const lease = await deps.lock("capture-control");
-    try {
-      if (await deps.captureActive()) throw new Error(OBS_DURING_CAPTURE);
-      return await save();
-    } finally {
-      await lease.release();
-    }
+    const bound = changes.find((field) => CAPTURE_BOUND_FIELDS.has(field));
+    return bound ? outsideCapture(deps, CAPTURE_BOUND_FIELDS.get(bound)!, save) : save();
   }
   if (op === "settings-diagnose") {
     const { config: saved } = await deps.loadConfig();

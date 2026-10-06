@@ -160,6 +160,15 @@ describe("settings bridge operations", () => {
     expect(idle.calls).toEqual(["lock:capture-control", "save", "release"]);
   });
 
+  test("the timesheet is not turned on or off while a capture runs, since stopping it closes the entry the start opened", async () => {
+    const busy = fakeDeps({ captureActive: async () => true });
+    await expect(handleSettingsOperation("settings-save", { revision: "r", changes: { "timesheet.enabled": false } }, busy.deps)).rejects.toThrow("apontamento de horas");
+    expect(busy.calls).toEqual(["lock:capture-control", "release"]);
+    const idle = fakeDeps();
+    await handleSettingsOperation("settings-save", { revision: "r", changes: { "timesheet.enabled": true } }, idle.deps);
+    expect(idle.calls).toEqual(["lock:capture-control", "save", "release"]);
+  });
+
   test("the OBS password is not set or removed while a capture runs, since stopping it authenticates again", async () => {
     for (const op of ["settings-secret-set", "settings-secret-remove"] as const) {
       const change = op === "settings-secret-set" ? "setSecret" : "removeSecret";
