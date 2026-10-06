@@ -11,6 +11,8 @@ var EN = {
     "Build local: ": "Local build: ",
     "Captura parada, com aviso: ": "Capture stopped, with a warning: ",
     "Ativado, mas parado": "Enabled, but stopped",
+    "Aplicar o monitor de chamadas": "Apply the call monitor",
+    "O monitor de chamadas não está rodando: nada será gravado automaticamente. Aplique o monitor em Serviços.": "The call monitor is not running: nothing will be recorded automatically. Apply the monitor in Services.",
     "Download cancelado.": "Download cancelled.",
     "Ollama configurado no worker remoto, em endereço não verificado daqui": "Ollama configured on the remote worker, at an address not checked from here",
     "Roda no worker remoto, com a configuração, as chaves e os modelos de lá; não verificado neste computador. Use Testar conexão em Integrações.": "Runs on the remote worker, with its own configuration, keys and models; not checked on this computer. Use Test connection in Integrations.",

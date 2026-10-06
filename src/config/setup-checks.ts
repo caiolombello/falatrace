@@ -282,7 +282,12 @@ export const checkAutomation = (
           : `Com o backend “${config.backend}”, a gravação automática usa o OBS, que está desativado. Escolha Só áudio ou Tela e áudio em Captura e áudio, ou ative o OBS.` });
     } else {
       const label = automatic === "audio" ? "só áudio" : automatic === "gpu-screen-recorder" ? "tela e áudio pelo GPU Screen Recorder" : "o OBS";
-      checks.push({ id: "automatic-backend", label: "Gravação automática", status: "ok", detail: `As chamadas detectadas serão gravadas com ${label}.` });
+      // Detection runs in the call monitor: while it is not running, nothing records on its own.
+      const calls = services?.calls;
+      checks.push(calls && !(calls.installed && calls.enabled && calls.active)
+        ? { id: "automatic-backend", label: "Gravação automática", status: "warning", action: "calls-apply",
+          detail: "O monitor de chamadas não está rodando: nada será gravado automaticamente. Aplique o monitor em Serviços." }
+        : { id: "automatic-backend", label: "Gravação automática", status: "ok", detail: `As chamadas detectadas serão gravadas com ${label}.` });
     }
   }
   if (config.processing.defaultTarget === "remote" && isPlaceholderRemoteHost(config.remote.host)) {

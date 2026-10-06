@@ -133,7 +133,10 @@ test("automation checks say what will really record and whether new recordings g
   // The shipped `simple` backend means OBS for automatic recording, and OBS starts disabled.
   expect(checkAutomation(config, services)[0]).toMatchObject({ id: "automatic-backend", status: "missing", action: "capture" });
   config.backend = "audio";
-  expect(checkAutomation(config, services)[0]).toMatchObject({ id: "automatic-backend", status: "ok", detail: expect.stringContaining("só áudio") });
+  // Saved but the monitor is not running yet: nothing records on its own.
+  expect(checkAutomation(config, services)[0]).toMatchObject({ id: "automatic-backend", status: "warning", action: "calls-apply" });
+  const running = { ...services, calls: { installed: true, enabled: true, active: true, outdated: false, staleConfig: false } };
+  expect(checkAutomation(config, running)[0]).toMatchObject({ id: "automatic-backend", status: "ok", detail: expect.stringContaining("só áudio") });
   config.backend = "gnome";
   expect(checkAutomation(config, services)[0]).toMatchObject({ status: "missing", detail: expect.stringContaining("não grava automaticamente") });
   config.backend = "audio";
