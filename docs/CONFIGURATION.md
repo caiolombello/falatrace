@@ -177,7 +177,7 @@ falatrace models ollama-pull qwen3.5:9b
 | --- | --- | --- | --- |
 | `studio.language` | `auto`, `pt-BR`, `en` | `auto` | `auto` uses Portuguese for `pt_*` and bare `C`/`POSIX` locales, English otherwise. |
 | `callDetection.networkSampleSeconds` | 1–60 | 5 | |
-| `callDetection.dryRun` | true, false | false | Detect and log without recording. |
+| `callDetection.dryRun` | true, false | false | Detect and log without recording or notifying; the diagnostics say so. |
 | `capture.startupTimeoutSeconds` | 5–300 | 90 | |
 | `features.namingTemplate` | `YYYY`, `MM`, `DD`, `HH`, `mm`, `[title]` and separators | `YYYY-MM-DD_HH-mm_[title]` | |
 | `gnome.framerate` | 1–60 | 30 | Legacy GNOME backends. |

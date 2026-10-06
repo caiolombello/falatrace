@@ -129,13 +129,14 @@ FtDialog {
     function serviceAction(action) { runSettingsService(action) }
     function checkAction(action) {
         if (action === "keys") goToSection(3)
+        else if (action === "detection") goToSection(0)
         else if (action === "capture") goToSection(1)
         else if (action === "remote") goToSection(5)
         else if (action === "whisper-model" || action === "ollama-model") goToSection(4)
         else if (action) runSettingsService(action)
     }
     function checkActionLabel(action) {
-        return action === "keys" ? t("Abrir Chaves de API") : action === "capture" ? t("Abrir Captura e áudio") : action === "remote" ? t("Abrir Integrações")
+        return action === "keys" ? t("Abrir Chaves de API") : action === "detection" ? t("Abrir Gravação automática") : action === "capture" ? t("Abrir Captura e áudio") : action === "remote" ? t("Abrir Integrações")
             : action === "whisper-model" || action === "ollama-model" ? t("Abrir Modelos") : action === "sync-apply" ? t("Ativar processamento em segundo plano")
             : action === "archive-apply" ? t("Ativar timer de arquivo") : action === "backup-apply" ? t("Ativar timer de backup")
             : action === "calls-apply" ? t("Aplicar o monitor de chamadas") : ""

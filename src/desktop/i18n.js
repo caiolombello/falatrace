@@ -1269,6 +1269,8 @@ var EN = {
     "As chamadas detectadas serão avisadas por notificação.": "Detected calls will be announced with a notification.",
     "Reconectado. Relendo a configuração…": "Reconnected. Reading the configuration again…",
     "O rascunho mudou depois desta verificação. Clique em Verificar agora para atualizar.": "The draft changed after this check. Click Check now to update it.",
+    "O modo de teste da detecção está ativado: o monitor só registra as chamadas detectadas, sem gravar nem avisar. Desative-o em Gravação automática.": "Detection test mode is on: the monitor only logs detected calls, without recording or notifying. Turn it off in Automatic recording.",
+    "Abrir Gravação automática": "Open Automatic recording",
     "Endereço do Ollama inválido": "Invalid Ollama address",
     "O endereço do Ollama na configuração é inválido. Corrija-o em Configurações, em Processamento e IA.": "The Ollama address in the configuration is invalid. Fix it in Settings, under Processing and AI.",
     "Este modelo já está sendo baixado. Aguarde o download em andamento terminar.": "This model is already downloading. Wait for the running download to finish.",

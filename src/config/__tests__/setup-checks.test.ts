@@ -188,7 +188,14 @@ test("automation checks say what will really record and whether new recordings g
   const notifying = { ...services, calls: { installed: true, enabled: true, active: true, outdated: false, staleConfig: false } };
   expect(checkAutomation(config, notifying)).toEqual([expect.objectContaining({ id: "call-notifications", status: "ok" })]);
   expect(checkAutomation(config, null)).toEqual([expect.objectContaining({ id: "call-notifications", status: "skipped" })]);
+  // In dry run the monitor only logs detected calls: no notification, and below no recording either.
+  config.callDetection.dryRun = true;
+  expect(checkAutomation(config, notifying)).toEqual([expect.objectContaining({ id: "call-notifications", status: "warning", action: "detection", detail: expect.stringContaining("modo de teste") })]);
   config.callDetection.mode = "record";
+  config.backend = "audio";
+  expect(checkAutomation(config, notifying)).toEqual([expect.objectContaining({ id: "automatic-backend", status: "warning", action: "detection", detail: expect.stringContaining("sem gravar") })]);
+  config.callDetection.dryRun = false;
+  config.backend = DEFAULT_CONFIG.backend;
   // The shipped `simple` backend means OBS for automatic recording, and OBS starts disabled.
   expect(checkAutomation(config, services)[0]).toMatchObject({ id: "automatic-backend", status: "missing", action: "capture" });
   config.backend = "audio";

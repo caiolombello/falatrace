@@ -277,6 +277,9 @@ export const readServiceStatus = async (
   };
 };
 
+/** In dry run the call monitor only logs the calls it detects: it neither records nor notifies. */
+const DETECTION_DRY_RUN = "O modo de teste da detecção está ativado: o monitor só registra as chamadas detectadas, sem gravar nem avisar. Desative-o em Gravação automática.";
+
 /**
  * Checks that combine settings with service state: what will really happen after a call,
  * whether new recordings will be processed and whether enabled copies have a timer.
@@ -296,6 +299,8 @@ export const checkAutomation = (
         detail: config.callDetection.mode === "obs"
           ? "O modo “Controlar o OBS” exige o OBS ativado em Integrações."
           : `Com o backend “${config.backend}”, a gravação automática usa o OBS, que está desativado. Escolha Só áudio ou Tela e áudio em Captura e áudio, ou ative o OBS.` });
+    } else if (config.callDetection.dryRun) {
+      checks.push({ id: "automatic-backend", label: "Gravação automática", status: "warning", action: "detection", detail: DETECTION_DRY_RUN });
     } else {
       const label = automatic === "audio" ? "só áudio" : automatic === "gpu-screen-recorder" ? "tela e áudio pelo GPU Screen Recorder" : "o OBS";
       // Detection runs in the call monitor: while it is not running, nothing records on its own,
@@ -313,13 +318,15 @@ export const checkAutomation = (
   // Notifications come from the call monitor too: while it is not running, no call is announced.
   if (config.callDetection.enabled && config.callDetection.mode === "notify-only") {
     const calls = services?.calls;
-    checks.push(!calls
-      ? { id: "call-notifications", label: "Aviso de chamadas", status: "skipped",
-        detail: "Estado do monitor de chamadas indisponível; não dá para confirmar que as chamadas serão avisadas." }
-      : !(calls.installed && calls.enabled && calls.active)
-        ? { id: "call-notifications", label: "Aviso de chamadas", status: "warning", action: "calls-apply",
-          detail: "O monitor de chamadas não está rodando: nenhuma chamada será avisada. Aplique o monitor em Serviços." }
-        : { id: "call-notifications", label: "Aviso de chamadas", status: "ok", detail: "As chamadas detectadas serão avisadas por notificação." });
+    checks.push(config.callDetection.dryRun
+      ? { id: "call-notifications", label: "Aviso de chamadas", status: "warning", action: "detection", detail: DETECTION_DRY_RUN }
+      : !calls
+        ? { id: "call-notifications", label: "Aviso de chamadas", status: "skipped",
+          detail: "Estado do monitor de chamadas indisponível; não dá para confirmar que as chamadas serão avisadas." }
+        : !(calls.installed && calls.enabled && calls.active)
+          ? { id: "call-notifications", label: "Aviso de chamadas", status: "warning", action: "calls-apply",
+            detail: "O monitor de chamadas não está rodando: nenhuma chamada será avisada. Aplique o monitor em Serviços." }
+          : { id: "call-notifications", label: "Aviso de chamadas", status: "ok", detail: "As chamadas detectadas serão avisadas por notificação." });
   }
   if (config.processing.defaultTarget === "remote" && isPlaceholderRemoteHost(config.remote.host)) {
     checks.push({ id: "remote-worker", label: "Worker remoto", status: "missing", action: "remote",
