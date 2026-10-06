@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
-import { createWriteStream, promises as fs } from "node:fs";
+import { promises as fs } from "node:fs";
+import type { FileHandle } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { DEFAULT_CONFIG } from "../config/defaults";
@@ -60,8 +61,9 @@ export type DownloadState = {
   updatedAt: string;
 };
 
+// A digest of the whole id: two long Ollama names that share a prefix never share a state file.
 const stateFile = (kind: DownloadKind, id: string): string =>
-  join(modelStateDir(), `${kind}-${Buffer.from(id).toString("hex").slice(0, 120)}.json`);
+  join(modelStateDir(), `${kind}-${createHash("sha256").update(id).digest("hex").slice(0, 32)}.json`);
 
 export const writeDownloadState = async (state: Omit<DownloadState, "updatedAt">): Promise<void> => {
   await fs.mkdir(modelStateDir(), { recursive: true, mode: 0o700 });
@@ -103,6 +105,8 @@ export type WhisperDownloadDeps = {
   directory: string;
   onProgress: (receivedBytes: number) => Promise<void> | void;
   signal?: AbortSignal;
+  /** Opens the partial file; tests swap in a device that fails writes. */
+  open?: (path: string) => Promise<FileHandle>;
 };
 
 /** Download, verify and publish one Whisper model. An existing verified file is reused. */
@@ -124,7 +128,9 @@ export const downloadWhisperModel = async (id: string, deps: WhisperDownloadDeps
   let received = 0;
   let lastReport = 0;
   try {
-    const output = createWriteStream(partial, { flags: "wx", mode: 0o600 });
+    // Awaited writes on a file handle: a full or failing disk rejects here instead of
+    // emitting an unhandled stream error that would end the downloader without a state.
+    const output = await (deps.open ?? ((path: string) => fs.open(path, "wx", 0o600)))(partial);
     const reader = response.body.getReader();
     try {
       for (;;) {
@@ -133,14 +139,14 @@ export const downloadWhisperModel = async (id: string, deps: WhisperDownloadDeps
         received += value.byteLength;
         if (received > model.bytes) throw new Error("O arquivo recebido é maior que o esperado.");
         hash.update(value);
-        if (!output.write(value)) await new Promise<void>((resolve) => output.once("drain", resolve));
+        for (let offset = 0; offset < value.byteLength;) offset += (await output.write(value, offset)).bytesWritten;
         if (received - lastReport >= 8 * 1024 * 1024) {
           lastReport = received;
           await deps.onProgress(received);
         }
       }
     } finally {
-      await new Promise<void>((resolve, reject) => output.end((error?: Error | null) => (error ? reject(error) : resolve())));
+      await output.close();
     }
     if (received !== model.bytes || hash.digest("hex") !== model.sha256) {
       throw new Error("O arquivo baixado não confere com o tamanho e o SHA-256 publicados; ele foi descartado.");

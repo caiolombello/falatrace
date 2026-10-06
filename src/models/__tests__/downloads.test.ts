@@ -99,3 +99,23 @@ test("download state files round-trip and are private", async () => {
   expect(await readDownloadState("whisper", "tiny")).toMatchObject({ state: "running", receivedBytes: 1, totalBytes: 2 });
   expect(await readDownloadState("ollama", "tiny")).toBeNull();
 });
+
+test("a failing disk ends the download with an error and leaves no partial file", async () => {
+  await withDir(async (dir) => {
+    const payload = Buffer.from("synthetic ggml payload ".repeat(1000));
+    await withSyntheticModel(payload, async () => {
+      const full = () => fs.open("/dev/full", "w");
+      await expect(downloadWhisperModel("tiny", { fetch: serve(payload), directory: dir, onProgress: () => undefined, open: full }))
+        .rejects.toThrow(/ENOSPC|no space/i);
+      expect(await fs.readdir(dir)).toEqual([]);
+    });
+  });
+});
+
+test("long model names that share a prefix keep separate download states", async () => {
+  const prefix = `registry.example.com/team/${"a".repeat(60)}`;
+  await writeDownloadState({ kind: "ollama", id: `${prefix}:one`, state: "running", receivedBytes: 1, totalBytes: 10 });
+  await writeDownloadState({ kind: "ollama", id: `${prefix}:two`, state: "running", receivedBytes: 2, totalBytes: 10 });
+  expect((await readDownloadState("ollama", `${prefix}:one`))?.receivedBytes).toBe(1);
+  expect((await readDownloadState("ollama", `${prefix}:two`))?.receivedBytes).toBe(2);
+});

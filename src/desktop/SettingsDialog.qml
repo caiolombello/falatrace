@@ -63,6 +63,8 @@ FtDialog {
     }
 
     // Models
+    // Stops the transient unit; the status poll that follows uses the model the bridge echoes back.
+    function cancelDownload(kind, id) { send("settings-model-cancel", "", { kind: kind, model: id }) }
     function downloadKey(kind, id) { return kind + ":" + id }
     function startDownload(kind, id) { confirmDownload = ""; settingsError = ""; send("settings-model-download", "", { kind: kind, model: id, consent: true }) }
     function pollDownloads() {
@@ -388,7 +390,7 @@ FtDialog {
             RowLayout { Layout.fillWidth:true; spacing:8
              FtButton { visible:!modelData.installed&&!(parent.parent.download&&parent.parent.download.state==="running"); text:t("Baixar"); compact:true; variant:"outline"; enabled:backend.available; onClicked:settingsDialog.confirmDownload=settingsDialog.downloadKey("whisper",modelData.id) }
              FtButton { visible:modelData.installed&&modelData.path!==settingsDraft["transcription.whisperCpp.modelPath"]; text:t("Usar este modelo"); compact:true; variant:"outline"; enabled:settingsEditable; onClicked:{ setSettingsField("transcription.whisperCpp.modelPath", modelData.path); if (settingsDraft["transcription.provider"]!=="whisper-cpp") setSettingsField("transcription.provider","whisper-cpp") } }
-             FtButton { visible:!!(parent.parent.download&&parent.parent.download.state==="running"); text:t("Cancelar"); compact:true; variant:"outline"; onClicked:send("settings-model-cancel","",{kind:"whisper",model:modelData.id}) }
+             FtButton { visible:!!(parent.parent.download&&parent.parent.download.state==="running"); text:t("Cancelar"); compact:true; variant:"outline"; onClicked:settingsDialog.cancelDownload("whisper",modelData.id) }
              StatusLine { visible:!!parent.parent.download; good:!!(parent.parent.download&&parent.parent.download.state!=="failed"); text:!parent.parent.download?"":parent.parent.download.state==="running"?settingsDialog.downloadProgress(parent.parent.download):parent.parent.download.state==="failed"?(t(parent.parent.download.error)||t("O download falhou.")):parent.parent.download.state==="completed"?t("Baixado e conferido."):"" }
             }
             ColumnLayout { visible:settingsDialog.confirmDownload===settingsDialog.downloadKey("whisper",modelData.id); Layout.fillWidth:true; spacing:6
@@ -410,6 +412,7 @@ FtDialog {
            Label { text:t("Modelo configurado: ")+parent.model; color:ink; Layout.fillWidth:true; wrapMode:Text.WordWrap }
            FtChip { visible:parent.installed; text:t("Instalado"); kind:"accent"; iconName:"check" }
            FtButton { visible:!parent.installed&&!(parent.download&&parent.download.state==="running"); text:t("Baixar pelo Ollama"); compact:true; variant:"outline"; enabled:backend.available&&!!parent.model; onClicked:settingsDialog.confirmDownload=settingsDialog.downloadKey("ollama",parent.model) }
+           FtButton { objectName:"ollamaCancel"; visible:!!(parent.download&&parent.download.state==="running"); text:t("Cancelar"); compact:true; variant:"outline"; onClicked:settingsDialog.cancelDownload("ollama",parent.model) }
            StatusLine { visible:!!parent.download; good:!!(parent.download&&parent.download.state!=="failed"); text:!parent.download?"":parent.download.state==="running"?settingsDialog.downloadProgress(parent.download):parent.download.state==="failed"?(t(parent.download.error)||t("O download falhou.")):t("Modelo instalado.") }
           }
           ColumnLayout { visible:settingsDialog.confirmDownload.indexOf("ollama:")===0; Layout.fillWidth:true; spacing:6
