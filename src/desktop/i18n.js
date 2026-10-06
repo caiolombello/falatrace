@@ -1235,6 +1235,7 @@ var EN = {
     "O backup no Proton Drive está ativado, mas o timer de backup está desativado ou parado. Aplique-o em Serviços.": "Proton Drive backup is on, but the backup timer is disabled or stopped. Apply it in Services.",
     "Estado do timer do arquivo de originais indisponível.": "Originals archive timer state unavailable.",
     "Estado do timer de backup indisponível.": "Backup timer state unavailable.",
+    "A gravação automática não funcionaria com esta configuração.": "Automatic recording would not work with this configuration.",
     "Fora deste computador, use HTTPS: o resumo não envia a transcrição por HTTP a outro endereço.": "Outside this computer, use HTTPS: the summary does not send the transcript over HTTP to another address.",
     "Não foi possível cancelar o download; ele pode continuar em segundo plano. Tente de novo.": "Could not cancel the download; it may keep running in the background. Try again.",
     "Não foi possível consultar os serviços do usuário. Tente de novo.": "Could not query the user services. Try again.",

@@ -131,6 +131,9 @@ export const settingsErrorMessage = (op: string): string =>
                         : op.startsWith("settings-model") || op.startsWith("settings-ollama") ? "Não foi possível concluir o download. Nada foi instalado; tente novamente."
                           : "Não foi possível alterar o serviço. Confira se há uma gravação em andamento e o estado do systemd.";
 
+/** Prefix of the refusal to apply the monitor; the capture check's reason follows it. */
+export const AUTOMATIC_CAPTURE_BLOCKED = "A gravação automática não funcionaria com esta configuração.";
+
 /** Errors whose text is safe and useful to show verbatim. */
 export const SETTINGS_KNOWN_ERRORS = [
   "Não altere os serviços durante uma gravação ativa.",
@@ -165,7 +168,8 @@ export const SETTINGS_KNOWN_ERRORS = [
 export const isDisplayableSettingsError = (op: string, text: string): boolean =>
   SETTINGS_KNOWN_ERRORS.includes(text) || /^(Campo não editável: |Valor inválido para )/.test(text) ||
   (op === "settings-audio-test" && (/^(Dispositivo de áudio indisponível|O microfone e o áudio do sistema|Gravar só áudio|Todas as fontes de áudio)/.test(text))) ||
-  (op === "settings-secret-set" && /^secrets\.env /.test(text));
+  (op === "settings-secret-set" && /^secrets\.env /.test(text)) ||
+  (op === "settings-service" && text.startsWith(`${AUTOMATIC_CAPTURE_BLOCKED} `));
 
 const parseRemoteCheck = (output: string) => {
   const lines = output.split("\n").map((line) => line.trim()).filter(Boolean);
@@ -318,6 +322,10 @@ export const handleSettingsOperation = async (
         if (!automatic || (automatic === "obs" && !config.obs.enabled)) {
           throw new Error("A gravação automática não tem um backend que funcione: escolha Só áudio ou Tela e áudio em Captura e áudio, ou ative o OBS.");
         }
+        // The same checks a capture start runs: a configuration that cannot record (no audio source,
+        // missing tools) is refused here instead of failing at every detected call.
+        const probe = await deps.recording({ ...config, backend: automatic });
+        if (typeof probe.blockedReason === "string") throw new Error(`${AUTOMATIC_CAPTURE_BLOCKED} ${translateCaptureMessage(probe.blockedReason)}`);
       }
       await deps.applyCalls(config);
     } else if (action === "calls-disable") {

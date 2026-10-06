@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { assertQaIsolation } from "../../../scripts/qa-isolation-guard";
 import { DEFAULT_CONFIG } from "../../config/defaults";
 import { parseRequest } from "../bridge";
-import { handleSettingsOperation, type SettingsDeps } from "../settings-bridge";
+import { handleSettingsOperation, isDisplayableSettingsError, type SettingsDeps } from "../settings-bridge";
 
 assertQaIsolation();
 const sourceRoot = join(import.meta.dir, "../../..");
@@ -71,7 +71,7 @@ describe("settings bridge operations", () => {
       .rejects.toThrow("Ative a gravação automática");
     expect(disabled.calls).not.toContain("applyCalls");
 
-    const enabled = fakeDeps();
+    const enabled = fakeDeps({ recording: async () => ({ selectedBackend: "audio", blockedReason: null }) });
     enabled.config.callDetection.enabled = true;
     await handleSettingsOperation("settings-service", { action: "calls-apply" }, enabled.deps);
     expect(enabled.calls).toEqual(["lock:capture-control", "applyCalls", "services", "release"]);
@@ -169,13 +169,38 @@ describe("settings bridge operations", () => {
   });
 
   test("the monitor is not applied when automatic recording has no usable backend", async () => {
-    const { deps, calls, config } = fakeDeps();
+    const { deps, calls, config } = fakeDeps({ recording: async () => ({ selectedBackend: "audio", blockedReason: null }) });
     config.callDetection.enabled = true;
     config.callDetection.mode = "record";
     await expect(handleSettingsOperation("settings-service", { action: "calls-apply" }, deps)).rejects.toThrow("backend que funcione");
     expect(calls).not.toContain("applyCalls");
     config.backend = "audio";
     await handleSettingsOperation("settings-service", { action: "calls-apply" }, deps);
+    expect(calls).toContain("applyCalls");
+  });
+
+  test("the monitor is not applied when the capture it would start cannot record", async () => {
+    const checked: Array<{ backend: string; audioSource: string }> = [];
+    const { deps, calls, config } = fakeDeps({
+      recording: async (probed) => {
+        checked.push({ backend: probed.backend, audioSource: probed.capture.audioSource });
+        return { selectedBackend: null, blockedReason: probed.capture.audioSource === "none" ? "Audio recording requires microphone or desktop audio" : null };
+      }
+    });
+    config.callDetection.enabled = true;
+    config.callDetection.mode = "record";
+    config.backend = "audio";
+    config.capture.audioSource = "none";
+    const refused = handleSettingsOperation("settings-service", { action: "calls-apply" }, deps);
+    await expect(refused).rejects.toThrow("A gravação automática não funcionaria com esta configuração. Gravar só áudio exige o microfone ou o áudio do sistema.");
+    expect(calls).not.toContain("applyCalls");
+    expect(isDisplayableSettingsError("settings-service", "A gravação automática não funcionaria com esta configuração. Gravar só áudio exige o microfone ou o áudio do sistema.")).toBe(true);
+    // The check runs on the backend automatic recording uses: OBS when the mode controls OBS.
+    config.capture.audioSource = "both";
+    config.callDetection.mode = "obs";
+    config.obs.enabled = true;
+    await handleSettingsOperation("settings-service", { action: "calls-apply" }, deps);
+    expect(checked).toEqual([{ backend: "audio", audioSource: "none" }, { backend: "obs", audioSource: "both" }]);
     expect(calls).toContain("applyCalls");
   });
 
