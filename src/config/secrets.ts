@@ -279,7 +279,11 @@ export const resolveSecretFrom = (name: string, env: NodeJS.ProcessEnv, states: 
   const fromEnv = envValue && !unreadable && !rejected.includes(envValue) ? envValue : undefined;
   const legacy = [fileValue("worker.env")?.trim(), fileValue("calls.env")?.trim()];
   if (fromEnv && !legacy.includes(fromEnv)) return { value: fromEnv, source: "environment" };
-  for (const file of ["secrets.env", "worker.env", "calls.env"] as const) {
+  // Of the legacy files, the one the reading unit loads wins: calls.env for the call monitor's OBS password.
+  const order = credentialUnitFile(name as SecretName) === "calls.env"
+    ? (["secrets.env", "calls.env", "worker.env"] as const)
+    : (["secrets.env", "worker.env", "calls.env"] as const);
+  for (const file of order) {
     const value = fileValue(file);
     if (value) return { value, source: file };
   }

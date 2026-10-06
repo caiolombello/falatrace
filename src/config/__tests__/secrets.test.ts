@@ -130,6 +130,15 @@ test("the OBS password is reported from the call monitor's environment, which lo
     // calls.env replaces the manager's value inside the monitor; processing keys still follow worker.env.
     expect(report.details.find((detail) => detail.name === "RECORDING_CLI_OBS_PASSWORD")?.source).toBe("calls.env");
     expect(report.openai).toBe("environment");
+    // Both legacy files set it: the monitor, which loads calls.env, gets that value; processing keys keep worker.env first.
+    await fs.writeFile(files["worker.env"], "RECORDING_CLI_OBS_PASSWORD=worker-password\nOPENAI_API_KEY=worker-key\n", { mode: 0o600 });
+    await fs.writeFile(files["calls.env"], "RECORDING_CLI_OBS_PASSWORD=calls-password\nOPENAI_API_KEY=calls-key\n", { mode: 0o600 });
+    const monitor = { RECORDING_CLI_OBS_PASSWORD: "calls-password", OPENAI_API_KEY: "calls-key" };
+    expect(await readSecret("RECORDING_CLI_OBS_PASSWORD", monitor, files)).toBe("calls-password");
+    expect(await readSecret("OPENAI_API_KEY", {}, files)).toBe("worker-key");
+    const both = await describeCredentials({ sessionEnv: {}, managerEnv: {}, files });
+    expect(both.details.find((detail) => detail.name === "RECORDING_CLI_OBS_PASSWORD")?.source).toBe("calls.env");
+    expect(both.openai).toBe("worker.env");
     expect(JSON.stringify(report)).not.toMatch(/calls-password|manager-password|manager-key/);
   });
 });
