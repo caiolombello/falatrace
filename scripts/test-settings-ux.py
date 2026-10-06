@@ -50,7 +50,7 @@ values = {'callDetection.enabled': not first, 'callDetection.mode':'record', 'ca
           'retention.localCompletedWorkDays':7,'retention.remoteIncomingDays':2,'retention.remoteResultsDays':30,'retention.remoteFailuresDays':30}
 revision = 'a' * 64
 # Assistant modes on an existing OpenAI setup that already has its key; wizard-key-required has none.
-key_present = mode in ('wizard-disable-monitor', 'wizard-disable-unknown', 'wizard-download-finish', 'wizard-download-pending', 'wizard-gemini-key')
+key_present = mode in ('wizard-disable-monitor', 'wizard-disable-unknown', 'wizard-download-finish', 'wizard-download-pending', 'wizard-gemini-key', 'wizard-lost')
 details = [{'name':'OPENAI_API_KEY','source':'secrets.env' if key_present else 'missing','sessionOnly':mode == 'keys','shadowsStudioKey':False,'savedInStudio':key_present},
            {'name':'GEMINI_API_KEY','source':'missing','sessionOnly':False,'shadowsStudioKey':False,'savedInStudio':False},
            {'name':'RECORDING_CLI_OBS_PASSWORD','source':'missing','sessionOnly':False,'shadowsStudioKey':False,'savedInStudio':False}]
@@ -99,6 +99,7 @@ for line in sys.stdin:
         v = {'action':p['action'],'services':services}
     elif op == 'settings-secret-set' and mode == 'keys-lost': continue
     elif op == 'settings-secret-test' and mode == 'keys-test-lost': continue
+    elif op == 'settings-save' and mode == 'wizard-lost': continue
     elif op == 'settings-secret-set' and mode == 'wizard-key-fail':
         print(json.dumps({'id':r['id'],'ok':False,'error':'secrets.env tem permissões amplas demais.'}), flush=True); continue
     elif op == 'settings-secret-set':
@@ -178,6 +179,10 @@ MODES = {
                   'settingsConnectionLost(); check("a lost connection unlocks the key fields", !settingsDialog.secretBusy)', ''),
     'keys-test-lost': ('settingsDialog.open(); settingsTabs.currentIndex=3', 'settingsDialog.testSecret("openai"); check("a key test in flight locks the Test buttons", settingsDialog.keyTestPending==="openai")',
                        'settingsConnectionLost(); check("a lost connection unlocks the Test buttons", settingsDialog.keyTestPending==="")', ''),
+    'wizard-lost': ('setupWizard.open(); setupWizard.consentAck=true; setupWizard.applyMonitor=false; setupWizard.applyTimer=false',
+                    'setupWizard.set("processing.notifyOnCompletion", false); setupWizard.step=4; setupWizard.finish(); check("Finish is saving", setupWizard.busy)',
+                    'settingsConnectionLost(); const next = findObject(setupWizard.footer, "wizardNext"); check("a lost connection stops the assistant with the outcome unknown", setupWizard.stale && setupWizard.error!=="" && !setupWizard.busy && !!next && !next.enabled)',
+                    'setupWizard.reconnected(); check("on reconnection the assistant reads the configuration again and keeps its choices", !setupWizard.stale && setupWizard.value("processing.notifyOnCompletion")===false)'),
     'wizard-key-required': ('setupWizard.open(); setupWizard.consentAck=true; setupWizard.applyMonitor=false; setupWizard.applyTimer=false',
                             'setupWizard.step=4; setupWizard.finish(); check("Finish waits for the OpenAI key the reviewed setup needs", setupWizard.missingRequiredKey() && setupWizard.step===4 && setupWizard.error!=="" && !setupWizard.hasPending("settings-save") && !setupWizard.hasPending("settings-secret-set"))',
                             'setupWizard.useKey("sk-synthetic-wizard-key"); setupWizard.finish()',
@@ -233,7 +238,8 @@ SIDE_EFFECTS = {'save': {'settings-save'}, 'services': {'settings-service'}, 'wi
                 'keys-refresh': {'settings-secret-set'}, 'wizard-download-finish': {'settings-model-download', 'settings-save'},
                 'wizard-key-fail': {'settings-save', 'settings-secret-set'}, 'wizard-download-pending': {'settings-model-download'},
                 'keys-lost': {'settings-secret-set'}, 'wizard-key-required': {'settings-save', 'settings-secret-set'},
-                'models-cloud': {'settings-model-download'}, 'wizard-gemini-key': {'settings-save'}, 'wizard-recommended-review': {'settings-save'}}
+                'models-cloud': {'settings-model-download'}, 'wizard-gemini-key': {'settings-save'}, 'wizard-recommended-review': {'settings-save'},
+                'wizard-lost': {'settings-save'}}
 GUARDED = {'settings-save', 'settings-service', 'settings-secret-set', 'settings-secret-remove', 'settings-model-download', 'settings-restore'}
 
 checks = []; screens = []
@@ -298,6 +304,9 @@ with tempfile.TemporaryDirectory(dir='/tmp', prefix='falatrace-settings-fixture-
         if mode in ('wizard-disable-monitor', 'wizard-disable-unknown'):
             applied = [q['payload'] for q in requests if q['op'] == 'settings-service']
             checks.append({'name': f'{mode}: only the monitor is disabled', 'pass': applied == [{'action': 'calls-disable'}]})
+        if mode == 'wizard-lost':
+            ops = [q['op'] for q in requests]
+            checks.append({'name': 'wizard-lost: the configuration is read again after reconnecting', 'pass': 'settings-save' in ops and 'settings-read' in ops[ops.index('settings-save') + 1:]})
         if mode == 'wizard-gemini-key':
             saves = [q['payload'] for q in requests if q['op'] == 'settings-save']
             checks.append({'name': 'wizard-gemini-key: nothing is saved until the setup no longer needs the missing key', 'pass': len(saves) == 1 and saves[0]['changes'].get('transcription.provider') == 'openai'})

@@ -1240,6 +1240,8 @@ var EN = {
     "Cole a chave da OpenAI no passo Processamento, ou escolha tudo neste computador, antes de concluir.": "Paste the OpenAI key in the Processing step, or choose everything on this computer, before finishing.",
     "Falta a chave da OpenAI que este processamento usa: cole-a no passo Processamento, ou escolha tudo neste computador.": "The OpenAI key this processing uses is missing: paste it in the Processing step, or choose everything on this computer.",
     "Salve a chave do Gemini em Configurações, em Chaves de API, ou escolha outra opção no passo Processamento, antes de concluir.": "Save the Gemini key in Settings, under API keys, or pick another option in the Processing step, before finishing.",
+    "Conexão perdida durante a operação; o resultado não foi confirmado. Ao reconectar, o assistente relê a configuração.": "Connection lost during the operation; the result was not confirmed. On reconnecting, the assistant reads the configuration again.",
+    "Serviço desconectado. Ao reconectar, o assistente relê a configuração.": "Service disconnected. On reconnecting, the assistant reads the configuration again.",
     "Falta a chave do Gemini que esta transcrição usa: salve-a em Configurações, em Chaves de API, ou escolha outra opção no passo Processamento.": "The Gemini key this transcription uses is missing: save it in Settings, under API keys, or pick another option in the Processing step.",
     "Chave do Gemini": "Gemini key",
     "A transcrição usa o Gemini. Salve a chave dele em Configurações, em Chaves de API, ou escolha uma das opções acima.": "Transcription uses Gemini. Save its key in Settings, under API keys, or pick one of the options above.",

@@ -535,6 +535,7 @@ ApplicationWindow {
         return (s.active?t("Ativo"):t("Parado"))+(s.enabled?t(", inicia com a sessão."):t(", não inicia com a sessão."))+(s.staleConfig?t(" Ainda usa a configuração anterior: aplique para valer."):"")+(s.outdated?t(" A pasta das gravações mudou: aplique de novo."):"")
     }
     function settingsConnectionLost() {
+        setupWizard.connectionLost()
         if(!settingsDialog.visible)return
         const saving=hasSettingsPending("settings-save")||hasSettingsPending("settings-service")
         settingsGeneration+=1;settingsNeedsReload=true
@@ -758,7 +759,7 @@ ApplicationWindow {
         function onFailed(message) { summaryConnectionLost();revisionConnectionLost();onboardingConnectionLost();settingsConnectionLost();if(agentDialog.visible)agentError=message; captureKnown = false; pending = {}; errorText = message; loading = false; resolving = false; detailLoading = false; operationPolling = false; captureBusy = false; contextLoading = false }
         function onAvailabilityChanged() {
             if (!backend.available) { summaryConnectionLost();revisionConnectionLost();onboardingConnectionLost();settingsConnectionLost();if(agentDialog.visible)agentError=t("Serviço desconectado; dados preservados. Feche e reconecte para continuar."); captureKnown = false; pending = {}; loading = false; resolving = false; detailLoading = false; operationPolling = false; captureBusy = false; contextLoading = false; notice = t("Serviço desconectado. Use Reconectar para continuar.") }
-            else { errorText = ""; notice = t("Serviço conectado."); if (!libraryFresh) send("list-cached", ""); send("capture-status", ""); send("jobs-list", ""); send("list", ""); send("ux-capabilities", ""); if (!settingsFirstRunChecked && !hasSettingsPending("settings-read")) send("settings-read", "") }
+            else { errorText = ""; notice = t("Serviço conectado."); setupWizard.reconnected(); if (!libraryFresh) send("list-cached", ""); send("capture-status", ""); send("jobs-list", ""); send("list", ""); send("ux-capabilities", ""); if (!settingsFirstRunChecked && !hasSettingsPending("settings-read")) send("settings-read", "") }
         }
         function onResponse(message) {
             const request = pending[message.id]

@@ -30,13 +30,27 @@ FtDialog {
     property string error: ""
     property string notice: ""
     property bool busy: hasPending("settings-save") || hasPending("settings-secret-set") || hasPending("settings-service")
+    // A lost connection drops the replies of whatever was in flight, so what was saved or applied is
+    // unknown: the assistant waits, keeping the choices made here, until it has read the configuration again.
+    property bool stale: false
     readonly property bool fresh: data.exists === false
 
     // The review shows what the diagnostic says about exactly the choices it lists.
     onStepChanged:if (step === 4 && visible && backend.available) diagnose()
-    onOpened:{ generation += 1; step = 0; data = ({}); draft = ({}); diag = ({}); audioTest = null; catalog = ({}); downloads = ({}); consentAck = false; results = []; pendingKey = ""; error = ""; notice = ""; applyTray = false; load(); wizardNext.forceActiveFocus(Qt.TabFocusReason) }
+    onOpened:{ generation += 1; stale = false; step = 0; data = ({}); draft = ({}); diag = ({}); audioTest = null; catalog = ({}); downloads = ({}); consentAck = false; results = []; pendingKey = ""; error = ""; notice = ""; applyTray = false; load(); wizardNext.forceActiveFocus(Qt.TabFocusReason) }
     onClosed:{ languagePreview = ""; generation += 1; data = ({}); draft = ({}); pendingKey = ""; onboardingButton.forceActiveFocus(Qt.TabFocusReason) }
 
+    function connectionLost() {
+        if (!visible) return
+        const working = busy
+        generation += 1; stale = true
+        error = working ? t("Conexão perdida durante a operação; o resultado não foi confirmado. Ao reconectar, o assistente relê a configuração.") : t("Serviço desconectado. Ao reconectar, o assistente relê a configuração.")
+    }
+    function reconnected() {
+        if (!visible || !stale) return
+        stale = false; error = ""
+        request("settings-read"); diagnose(); request("settings-model-catalog")
+    }
     function request(op, payload, extra) { return send(op, "", payload || ({}), Object.assign({ origin: "wizard", wizardGeneration: generation }, extra || ({}))) }
     // One status request in flight per download, so concurrent downloads all progress.
     function statusPending(key) { return Object.keys(pending).some(function(id){ return pending[id].origin === "wizard" && pending[id].op === "settings-model-status" && pending[id].downloadKey === key && pending[id].wizardGeneration === generation }) }
@@ -127,6 +141,7 @@ FtDialog {
         return actions
     }
     function finish() {
+        if (stale) return
         if (downloadBlocksFinish()) { error = t("Aguarde o download do modelo terminar, ou cancele-o, antes de concluir."); return }
         if (missingRequiredKey()) { error = missingKeys().indexOf("OPENAI_API_KEY") >= 0 ? t("Cole a chave da OpenAI no passo Processamento, ou escolha tudo neste computador, antes de concluir.") : t("Salve a chave do Gemini em Configurações, em Chaves de API, ou escolha outra opção no passo Processamento, antes de concluir."); return }
         error = ""; notice = ""; results = []
@@ -394,7 +409,7 @@ FtDialog {
         visible:setupWizard.step<5
         highlighted:enabled
         text:setupWizard.step===4?(setupWizard.busy?t("Concluindo…"):t("Concluir")):setupWizard.step===0?t("Configurar passo a passo"):t("Continuar")
-        enabled:backend.available&&!!setupWizard.data.revision&&!setupWizard.busy&&(setupWizard.step!==0||setupWizard.consentAck)&&(setupWizard.step!==4||(!setupWizard.downloadBlocksFinish()&&!setupWizard.missingRequiredKey()))
+        enabled:backend.available&&!!setupWizard.data.revision&&!setupWizard.busy&&!setupWizard.stale&&(setupWizard.step!==0||setupWizard.consentAck)&&(setupWizard.step!==4||(!setupWizard.downloadBlocksFinish()&&!setupWizard.missingRequiredKey()))
         onClicked:if (setupWizard.step===4) setupWizard.finish(); else setupWizard.step+=1
       }
     } }
