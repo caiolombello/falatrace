@@ -43,10 +43,14 @@ async function raw(path: string) {
     await file.close();
   }
 }
+const parsedUrl = (value: string): URL | undefined => {
+  try { return new URL(value); } catch { return undefined; }
+};
 function describeOnboarding(path: string, current: Awaited<ReturnType<typeof raw>>) {
   const config = mergeConfig(DEFAULT_CONFIG, current.value);
-  // An inactive Ollama option must not prevent reviewing a working OpenAI configuration.
-  const endpoint = config.summary.provider === 'ollama' ? new URL(config.summary.ollamaUrl) : undefined;
+  // An inactive Ollama option must not prevent reviewing a working OpenAI configuration, and a malformed
+  // active one from an older file is named instead of failing the review: the local migration replaces it.
+  const endpoint = config.summary.provider === 'ollama' ? parsedUrl(config.summary.ollamaUrl) : undefined;
   const local = !!endpoint && ['127.0.0.1', 'localhost', '[::1]'].includes(endpoint.hostname);
   const processingLocal = config.processing.defaultTarget === 'local';
   const archiveDestinations = config.archive.enabled
@@ -56,7 +60,7 @@ function describeOnboarding(path: string, current: Awaited<ReturnType<typeof raw
     revision: revisionFor(path, current), exists: current.exists,
     summaryProvider: config.summary.provider,
     // Keep this existing flag scoped to the summary endpoint, not all processing routes.
-    destination: endpoint ? `${endpoint.protocol}//${endpoint.host}` : 'OpenAI externo', local,
+    destination: endpoint ? `${endpoint.protocol}//${endpoint.host}` : config.summary.provider === 'ollama' ? 'Endereço do Ollama inválido' : 'OpenAI externo', local,
     transcriptionProvider: config.transcription.provider,
     transcriptionDestination: config.transcription.provider === 'whisper-cpp'
       ? (processingLocal ? 'Whisper.cpp neste computador' : 'Whisper.cpp no worker remoto')

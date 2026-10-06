@@ -167,6 +167,21 @@ test('an inactive malformed Ollama endpoint does not block OpenAI configuration 
   }
 });
 
+test('an active malformed Ollama endpoint from an older file is named, and the local migration replaces it', async () => {
+  const root = await fs.mkdtemp(join(tmpdir(), 'falatrace-onboarding-malformed-'));
+  const path = join(root, 'config.json');
+  try {
+    await fs.writeFile(path, JSON.stringify({ summary: { provider: 'ollama', ollamaUrl: 'http://[ollama' } }));
+    const draft = await readOnboarding(path);
+    expect(draft.destination).toBe('Endereço do Ollama inválido');
+    expect(draft.local).toBe(false);
+    const saved = await saveLocalOnboarding(draft.revision, path);
+    expect(saved.local).toBe(true);
+    expect(JSON.parse(await fs.readFile(path, 'utf8')).summary.ollamaUrl).toBe('http://127.0.0.1:11434');
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
 test('fresh link cleanup failure reports saved with a private leftover and releases the lease; a failed commit preserves the config', async () => {
   const root = await fs.mkdtemp(join(tmpdir(), 'falatrace-onboarding-commit-'));
   const path = join(root, 'config.json');
