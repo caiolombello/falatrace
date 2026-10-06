@@ -51,6 +51,20 @@ test("files are read only when they are private regular files of this user", asy
   });
 });
 
+test("a FIFO at a key file path is rejected without waiting for a writer", async () => {
+  await withFiles(async (files) => {
+    expect(Bun.spawnSync(["mkfifo", "-m", "600", files["worker.env"]]).exitCode).toBe(0);
+    const read = readSecretFile("worker.env", files["worker.env"]);
+    const result = await Promise.race([read, Bun.sleep(2_000).then(() => "blocked" as const)]);
+    if (result === "blocked") {
+      // Release the blocked open so the failed run does not hang the suite.
+      await fs.open(files["worker.env"], fs.constants.O_WRONLY | fs.constants.O_NONBLOCK).then((handle) => handle.close(), () => undefined);
+      await read.catch(() => undefined);
+    }
+    expect(result).toMatchObject({ exists: true, usable: false, problem: expect.stringContaining("arquivo comum") });
+  });
+});
+
 test("precedence: explicit environment, then the Studio file, then legacy files", () => {
   const state = (file: "secrets.env" | "worker.env" | "calls.env", value?: string) =>
     ({ file, path: file, exists: !!value, usable: !!value, tooOpen: false, values: new Map(value ? [["OPENAI_API_KEY", value]] : []) });

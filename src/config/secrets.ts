@@ -181,7 +181,8 @@ export const readSecretFile = async (file: SecretFileName, path: string): Promis
   const state: SecretFileState = { file, path, exists: false, usable: false, tooOpen: false, values: new Map() };
   let handle: FileHandle;
   try {
-    handle = await fs.open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    // O_NONBLOCK: a FIFO with no writer would block the open before its type can be checked.
+    handle = await fs.open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
     if (code === "ENOENT" || code === "ENOTDIR") return state;
