@@ -25,7 +25,7 @@ apps = [{'id':'slack','label':'Slack','kind':'app','defaultEnabled':True},{'id':
         {'id':'firefox','label':'Firefox','kind':'browser','defaultEnabled':True},{'id':'zoom','label':'Zoom','kind':'app','defaultEnabled':True},
         {'id':'discord','label':'Discord','kind':'app','defaultEnabled':False}]
 first = mode in ('first-run', 'wizard-flow', 'wizard-test-audio', 'wizard-english', 'wizard-key-cancel', 'wizard-key-finish', 'wizard-download-cancel', 'wizard-reload', 'wizard-recommended-review',
-                 'wizard-download-double')
+                 'wizard-download-double', 'wizard-use-installed')
 values = {'callDetection.enabled': not first, 'callDetection.mode':'record', 'callDetection.enqueueOnStop':True, 'callDetection.dryRun':False,
           'callDetection.entryDebounceSeconds':5, 'callDetection.exitTimeoutSeconds':15, 'callDetection.networkSampleSeconds':5,
           'callDetection.apps.slack':True,'callDetection.apps.zen':True,'callDetection.apps.helium':True,'callDetection.apps.chromium':True,
@@ -67,7 +67,7 @@ services = {'calls':{'installed':not first,'enabled':not first,'active':not firs
             'tray':{'installed':True,'enabled':True,'active':True,'outdated':False,'staleConfig':False},'sync':dict(timer),'archive':dict(timer),'backup':dict(timer)}
 catalog = {'whisper':{'directory':'/home/synthetic/models','source':'https://huggingface.co/','models':[
     {'id':'tiny','file':'ggml-tiny.bin','bytes':77691713,'sha256':'0'*64,'quality':'Muito rápido.','installed':False,'selected':False,'path':'/home/synthetic/models/ggml-tiny.bin'},
-    {'id':'large-v3-turbo-q5_0','file':'ggml-large-v3-turbo-q5_0.bin','bytes':574041195,'sha256':'1'*64,'quality':'Padrão.','recommended':True,'installed':False,'selected':False,'path':'/home/synthetic/models/ggml-large-v3-turbo-q5_0.bin'}]},
+    {'id':'large-v3-turbo-q5_0','file':'ggml-large-v3-turbo-q5_0.bin','bytes':574041195,'sha256':'1'*64,'quality':'Padrão.','recommended':True,'installed':mode == 'wizard-use-installed','selected':False,'path':'/home/synthetic/models/ggml-large-v3-turbo-q5_0.bin'}]},
     'ollama':{'url':'http://127.0.0.1:11434','loopback':True,'reachable':True,'installed':['qwen3.5:9b'],'configured':'qwen3.5:9b'}}
 log = []; cancelled = False
 for line in sys.stdin:
@@ -277,6 +277,9 @@ MODES = {
     'wizard-download-double': ('setupWizard.consentAck=true',
                                'setupWizard.step=2; const download = findObject(setupWizard.contentItem, "wizardDownloadModel"); for (let i = 0; i < 2; i++) if (download && download.enabled) download.clicked(); '
                                'check("the download button waits for the reply to the first click", !!download && !download.enabled)', '', ''),
+    'wizard-use-installed': ('setupWizard.consentAck=true',
+                             'setupWizard.step=2; const use = findObject(setupWizard.contentItem, "wizardUseModel"); check("an installed recommended model is offered when the configured file is missing", !!use && use.visible); '
+                             'if (use) use.clicked(); check("using it points transcription at the installed model", setupWizard.value("transcription.whisperCpp.modelPath")==="/home/synthetic/models/ggml-large-v3-turbo-q5_0.bin")', '', ''),
     'models-ollama-draft': ('settingsDialog.open()',
                             'setSettingsField("summary.provider", "ollama"); setSettingsField("summary.ollamaUrl", "http://127.0.0.1:11435"); setSettingsField("summary.ollamaModel", "llama4:8b"); settingsDialog.goToSection(4)',
                             'check("the list shows the Ollama at the unsaved address", !!settingsDialog.catalog.ollama && settingsDialog.catalog.ollama.url==="http://127.0.0.1:11435"); settingsDialog.startDownload("ollama", "llama4:8b"); '
@@ -392,6 +395,9 @@ with tempfile.TemporaryDirectory(dir='/tmp', prefix='falatrace-settings-fixture-
             checks.append({'name': f'{mode}: only the monitor is disabled', 'pass': applied == [{'action': 'calls-disable'}]})
         if mode == 'wizard-download-double':
             checks.append({'name': 'wizard-download-double: a double click starts one download', 'pass': [q['op'] for q in requests].count('settings-model-download') == 1})
+        if mode == 'wizard-use-installed':
+            diagnoses = [q['payload'] for q in requests if q['op'] == 'settings-diagnose']
+            checks.append({'name': 'wizard-use-installed: the choice is diagnosed as a draft', 'pass': any(d.get('changes', {}).get('transcription.whisperCpp.modelPath') == '/home/synthetic/models/ggml-large-v3-turbo-q5_0.bin' for d in diagnoses)})
         if mode == 'save-list-pending':
             ops = [q['op'] for q in requests]
             checks.append({'name': 'save-list-pending: a list pending from before the save does not stop the library from being listed again', 'pass': 'settings-save' in ops and 'list' in ops[ops.index('settings-save') + 1:]})

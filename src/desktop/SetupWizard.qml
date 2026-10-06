@@ -358,6 +358,11 @@ FtDialog {
             readonly property var model: setupWizard.recommendedModel()
             readonly property var download: model ? setupWizard.downloadState("whisper", model.id) : null
             Status { label:t("Modelo do Whisper"); status:parent.model&&parent.model.installed?"ok":"warning"; detail:parent.model&&parent.model.installed?t("Modelo recomendado instalado."):t("O modelo recomendado (")+(parent.model?parent.model.id:"")+", "+(parent.model?Math.round(parent.model.bytes/1048576):0)+t(" MiB) ainda não foi baixado.") }
+            // The recommended model is installed but the configured file is missing: offer the installed one.
+            RowLayout { visible:!!parent.model&&parent.model.installed&&setupWizard.value("transcription.whisperCpp.modelPath")!==parent.model.path&&setupWizard.check("whisper-model")!==null&&setupWizard.check("whisper-model").status==="missing"; spacing:8
+              FtButton { objectName:"wizardUseModel"; text:t("Usar este modelo"); compact:true; variant:"outline"; onClicked:{ setupWizard.set("transcription.whisperCpp.modelPath", parent.parent.model.path); setupWizard.diagnose() } }
+              Label { text:t("O arquivo de modelo configurado não existe; o modelo recomendado já está instalado."); color:muted; font.pixelSize:12; wrapMode:Text.WordWrap; Layout.fillWidth:true }
+            }
             RowLayout { visible:!!parent.model&&!parent.model.installed; spacing:8
               FtButton { objectName:"wizardDownloadModel"; text:parent.parent.download&&parent.parent.download.state==="running"?t("Baixando…"):t("Baixar o modelo recomendado"); compact:true; variant:"outline"; enabled:backend.available&&!setupWizard.hasPending("settings-model-download")&&!(parent.parent.download&&parent.parent.download.state==="running"); onClicked:setupWizard.request("settings-model-download",{kind:"whisper",model:parent.parent.model.id,consent:true}) }
               FtButton { objectName:"wizardCancelModel"; visible:!!(parent.parent.download&&parent.parent.download.state==="running"); text:t("Cancelar"); compact:true; variant:"outline"; onClicked:setupWizard.cancelDownload("whisper",parent.parent.model.id) }
