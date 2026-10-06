@@ -25,7 +25,8 @@ FtDialog {
     readonly property bool pickerAvailable: pickerLoader.status === Loader.Ready
     property var keyTests: ({})
     property string keyTestPending: ""
-    property bool secretBusy: false
+    // Derived from the requests in flight, so a lost connection never leaves the key fields locked.
+    readonly property bool secretBusy: hasSettingsPending("settings-secret-set") || hasSettingsPending("settings-secret-remove")
     property var remoteCheck: null
     property var obsCheck: null
     property var audioTest: null
@@ -40,7 +41,7 @@ FtDialog {
     onOpened:{settingsError="";settingsNotice="";resetExtras();settingsTabs.currentIndex=settingsFirstRun?0:settingsTabs.currentIndex;loadSettings(true);settingsTabs.forceActiveFocus(Qt.TabFocusReason)}
     onClosed:{languagePreview="";settingsGeneration+=1;settingsDraft=({});settingsData=({});settingsDiag=({});settingsFirstRun=false;resetExtras();onboardingButton.forceActiveFocus(Qt.TabFocusReason)}
 
-    function resetExtras() { keyTests=({}); keyTestPending=""; secretBusy=false; remoteCheck=null; obsCheck=null; audioTest=null; confirmDownload=""; confirmRestore=""; importSummary="" }
+    function resetExtras() { keyTests=({}); keyTestPending=""; remoteCheck=null; obsCheck=null; audioTest=null; confirmDownload=""; confirmRestore=""; importSummary="" }
     function draft(field) { return settingsDraft[field] }
     function goToSection(index) { settingsTabs.currentIndex = index; sectionLoaded(index) }
     function sectionLoaded(index) {
@@ -52,8 +53,8 @@ FtDialog {
     function fieldChanged(field) { return Object.prototype.hasOwnProperty.call(settingsChanges(), field) }
 
     // Keys
-    function saveSecret(name, value) { if (!value.trim()) return; secretBusy = true; settingsError = ""; settingsNotice = ""; send("settings-secret-set", "", { name: name, value: value.trim() }) }
-    function removeSecret(name) { secretBusy = true; settingsError = ""; settingsNotice = ""; send("settings-secret-remove", "", { name: name }) }
+    function saveSecret(name, value) { if (!value.trim()) return; settingsError = ""; settingsNotice = ""; send("settings-secret-set", "", { name: name, value: value.trim() }) }
+    function removeSecret(name) { settingsError = ""; settingsNotice = ""; send("settings-secret-remove", "", { name: name }) }
     function testSecret(service) { keyTestPending = service; const next = Object.assign({}, keyTests); delete next[service]; keyTests = next; send("settings-secret-test", "", { service: service }) }
     function secretSourceText(report) {
         if (!report || !report.name) return ""
@@ -138,7 +139,6 @@ FtDialog {
     function handleExtra(request, message) {
         const result = message.result
         if (request.op === "settings-secret-set" || request.op === "settings-secret-remove") {
-            secretBusy = false
             if (!message.ok) { settingsError = message.error; return }
             // The key file changed even when its status could not be read again: say so and ask for a reread.
             if (result.credentials) settingsData = Object.assign({}, settingsData, { credentials: result.credentials })

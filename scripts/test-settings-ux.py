@@ -95,6 +95,7 @@ for line in sys.stdin:
         services['calls']['staleConfig'] = False
         if p['action'] == 'sync-apply': services['sync'].update({'installed':True,'enabled':True,'active':True,'nextRunAt':'2026-10-05T12:00:00.000Z'})
         v = {'action':p['action'],'services':services}
+    elif op == 'settings-secret-set' and mode == 'keys-lost': continue
     elif op == 'settings-secret-set' and mode == 'wizard-key-fail':
         print(json.dumps({'id':r['id'],'ok':False,'error':'secrets.env tem permissões amplas demais.'}), flush=True); continue
     elif op == 'settings-secret-set':
@@ -167,6 +168,8 @@ MODES = {
                                'setupWizard.request("settings-model-download",{kind:"whisper",model:"large-v3-turbo-q5_0",consent:true})',
                                'setupWizard.set("processing.notifyOnCompletion", false); setupWizard.step=4; setupWizard.finish(); check("Finish waits while a model download runs", setupWizard.whisperDownloadRunning() && setupWizard.step===4 && !setupWizard.hasPending("settings-save") && setupWizard.error!==""); setupWizard.cancelDownload("whisper","large-v3-turbo-q5_0")',
                                'check("once the download stops, Finish is available again", !setupWizard.whisperDownloadRunning()); setupWizard.finish()'),
+    'keys-lost': ('settingsDialog.open(); settingsTabs.currentIndex=3', 'settingsDialog.saveSecret("OPENAI_API_KEY","sk-synthetic-lost-key"); check("a key save in flight locks the key fields", settingsDialog.secretBusy)',
+                  'settingsConnectionLost(); check("a lost connection unlocks the key fields", !settingsDialog.secretBusy)', ''),
     'wizard-key-fail': ('setupWizard.open(); setupWizard.consentAck=true',
                         'setupWizard.applyPreset("cloud"); setupWizard.useKey("sk-synthetic-wizard-key"); setupWizard.step=4; setupWizard.finish()',
                         'check("a failed key write keeps the assistant on review with the key and applies no service", setupWizard.step===4 && setupWizard.error!=="" && setupWizard.pendingKey!=="" && !setupWizard.hasPending("settings-service"))', ''),
@@ -203,7 +206,8 @@ SIDE_EFFECTS = {'save': {'settings-save'}, 'services': {'settings-service'}, 'wi
                 'wizard-disable-unknown': {'settings-save', 'settings-service'},
                 'keys': {'settings-secret-set'}, 'models': {'settings-model-download'}, 'models-two': {'settings-model-download'},
                 'keys-refresh': {'settings-secret-set'}, 'wizard-download-finish': {'settings-model-download', 'settings-save'},
-                'wizard-key-fail': {'settings-save', 'settings-secret-set'}, 'wizard-download-pending': {'settings-model-download'}}
+                'wizard-key-fail': {'settings-save', 'settings-secret-set'}, 'wizard-download-pending': {'settings-model-download'},
+                'keys-lost': {'settings-secret-set'}}
 GUARDED = {'settings-save', 'settings-service', 'settings-secret-set', 'settings-secret-remove', 'settings-model-download', 'settings-restore'}
 
 checks = []; screens = []
