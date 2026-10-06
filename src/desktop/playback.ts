@@ -1,7 +1,7 @@
 import { withHeavyAdmission, cliAdmissionWait } from '../runtime/heavy-admission';
 /** Asynchronous playback worker for the desktop application. */
 import { promises as fs } from "node:fs";
-import { basename, join, resolve } from "node:path";
+import { basename, isAbsolute, join, resolve } from "node:path";
 import { randomUUID, createHash } from "node:crypto";
 import { homedir } from "node:os";
 import { loadConfig } from "../../src/config/load";
@@ -16,7 +16,17 @@ import { transientCommand, transientUnitEnvironment } from "../runtime/systemd-u
 
 type State = { state: "running" | "completed" | "failed"; operationId: string; key: string; path?: string; location?: "local" | "vaio" | "proton"; message?: string };
 type Playback = State;
-const stateDir = (): string => join(process.env.XDG_RUNTIME_DIR || join(homedir(), ".cache"), "recording-cli", "desktop");
+/**
+ * The Studio and its playback units share this directory: a unit writes the result where the Studio reads
+ * it. The unit gets the Studio's directory explicitly, since the user manager's XDG_RUNTIME_DIR may name
+ * another directory, or be set where the Studio's is not.
+ */
+export const PLAYBACK_STATE_DIR = "FALATRACE_PLAYBACK_STATE_DIR";
+export const playbackStateDir = (env: NodeJS.ProcessEnv = process.env, home = homedir()): string => {
+  const given = env[PLAYBACK_STATE_DIR];
+  return given && isAbsolute(given) && !/\p{Cc}/u.test(given) ? given : join(env.XDG_RUNTIME_DIR || join(home, ".cache"), "recording-cli", "desktop");
+};
+const stateDir = (): string => playbackStateDir();
 const statePath = (id: string): string => join(stateDir(), `${validateJobId(id)}.json`);
 const safeMessage = (message: string): string => message.includes("SSHFS") || message.includes("Proton") ? "Não foi possível resolver a origem da reprodução" : "Não foi possível abrir a reprodução";
 
@@ -39,10 +49,14 @@ const lookup = async (key: string): Promise<{ config: Awaited<ReturnType<typeof 
 };
 const writeState = async (state: State): Promise<void> => { await ensureStateDir(); await writeJsonAtomic(statePath(state.operationId), state); };
 
-/** The playback unit finds the recording in the configuration this process reads: same PATH and XDG directories. */
-export const playbackRunArgs = (unit: string, launch: string[], operationId: string, source: string, env: NodeJS.ProcessEnv = process.env): string[] => [
+/**
+ * The playback unit finds the recording in the configuration this process reads (same PATH and XDG
+ * directories) and writes its result to this process's state directory.
+ */
+export const playbackRunArgs = (unit: string, launch: string[], operationId: string, source: string, env: NodeJS.ProcessEnv = process.env, home = homedir()): string[] => [
   "--user", `--unit=${unit}`, "--collect", "--property=Type=exec", "--property=Nice=10", "--property=RuntimeMaxSec=1800", "--property=TimeoutStopSec=30",
-  "--property=UMask=0077", ...transientUnitEnvironment(env), "--", ...transientCommand([...launch, "desktop", "playback", operationId, source])
+  "--property=UMask=0077", ...transientUnitEnvironment(env, home), `--setenv=${PLAYBACK_STATE_DIR}=${playbackStateDir(env, home)}`,
+  "--", ...transientCommand([...launch, "desktop", "playback", operationId, source])
 ];
 
 const active = new Map<string, string>();
