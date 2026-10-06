@@ -51,7 +51,7 @@ values = {'callDetection.enabled': not first, 'callDetection.mode':'record', 'ca
 revision = 'a' * 64
 # Assistant modes on an existing OpenAI setup that already has its key; wizard-key-required has none.
 key_present = mode in ('wizard-disable-monitor', 'wizard-disable-unknown', 'wizard-download-finish', 'wizard-download-pending', 'wizard-gemini-key', 'wizard-lost', 'wizard-ffmpeg-review', 'wizard-automation-review',
-                       'wizard-skip-services', 'wizard-monitor-stale', 'wizard-reread-fail', 'wizard-unknown-services')
+                       'wizard-skip-services', 'wizard-monitor-stale', 'wizard-reread-fail', 'wizard-unknown-services', 'wizard-ollama-pending')
 details = [{'name':'OPENAI_API_KEY','source':'secrets.env' if key_present else 'missing','sessionOnly':mode == 'keys','shadowsStudioKey':False,'savedInStudio':key_present},
            {'name':'GEMINI_API_KEY','source':'missing','sessionOnly':False,'shadowsStudioKey':False,'savedInStudio':False},
            {'name':'RECORDING_CLI_OBS_PASSWORD','source':'missing','sessionOnly':False,'shadowsStudioKey':False,'savedInStudio':False}]
@@ -189,8 +189,8 @@ MODES = {
                      'check("a saved key whose status could not be read again is reported as saved", settingsError==="" && settingsNotice.indexOf("arquivo privado")>=0 && settingsNotice.indexOf("releia")>=0)', ''),
     'wizard-download-finish': ('setupWizard.open(); setupWizard.consentAck=true; setupWizard.applyMonitor=false; setupWizard.applyTimer=false',
                                'setupWizard.request("settings-model-download",{kind:"whisper",model:"large-v3-turbo-q5_0",consent:true})',
-                               'setupWizard.set("processing.notifyOnCompletion", false); setupWizard.step=4; setupWizard.finish(); check("Finish waits while a model download runs", setupWizard.whisperDownloadRunning() && setupWizard.step===4 && !setupWizard.hasPending("settings-save") && setupWizard.error!==""); setupWizard.cancelDownload("whisper","large-v3-turbo-q5_0")',
-                               'check("once the download stops, Finish is available again", !setupWizard.whisperDownloadRunning()); setupWizard.finish()'),
+                               'setupWizard.set("processing.notifyOnCompletion", false); setupWizard.step=4; setupWizard.finish(); check("Finish waits while a model download runs", setupWizard.modelDownloadRunning() && setupWizard.step===4 && !setupWizard.hasPending("settings-save") && setupWizard.error!==""); setupWizard.cancelDownload("whisper","large-v3-turbo-q5_0")',
+                               'check("once the download stops, Finish is available again", !setupWizard.modelDownloadRunning()); setupWizard.finish()'),
     'keys-lost': ('settingsDialog.open(); settingsTabs.currentIndex=3', 'settingsDialog.saveSecret("OPENAI_API_KEY","sk-synthetic-lost-key"); check("a key save in flight locks the key fields", settingsDialog.secretBusy)',
                   'settingsConnectionLost(); check("a lost connection unlocks the key fields", !settingsDialog.secretBusy)', ''),
     'keys-test-lost': ('settingsDialog.open(); settingsTabs.currentIndex=3', 'settingsDialog.testSecret("openai"); check("a key test in flight locks the Test buttons", settingsDialog.keyTestPending==="openai")',
@@ -267,6 +267,9 @@ MODES = {
                        'setSettingsField("transcription.provider", "whisper-cpp"); settingsTabs.currentIndex=8; runSettingsDiagnose()',
                        'const outdated = findObject(settingsDialog.contentItem, "settingsDiagOutdated"); check("a diagnostic of the current draft is not flagged", !!outdated && !outdated.visible); '
                        'setSettingsField("summary.provider", "ollama"); check("an edit after the check flags the diagnostic as out of date", !!outdated && outdated.visible)', ''),
+    'wizard-ollama-pending': ('setupWizard.open(); setupWizard.consentAck=true; setupWizard.applyMonitor=false; setupWizard.applyTimer=false',
+                              'setupWizard.request("settings-model-download",{kind:"ollama",model:"qwen3.5:9b",consent:true,ollamaUrl:"http://127.0.0.1:11434"})',
+                              'setupWizard.step=4; setupWizard.finish(); check("Finish waits for an Ollama pull started here", setupWizard.downloads["ollama:qwen3.5:9b"].state==="running" && setupWizard.step===4 && setupWizard.error!=="")', ''),
     'models-ollama-draft': ('settingsDialog.open()',
                             'setSettingsField("summary.provider", "ollama"); setSettingsField("summary.ollamaUrl", "http://127.0.0.1:11435"); setSettingsField("summary.ollamaModel", "llama4:8b"); settingsDialog.goToSection(4)',
                             'check("the list shows the Ollama at the unsaved address", !!settingsDialog.catalog.ollama && settingsDialog.catalog.ollama.url==="http://127.0.0.1:11435"); settingsDialog.startDownload("ollama", "llama4:8b"); '
@@ -305,7 +308,8 @@ SIDE_EFFECTS = {'save': {'settings-save'}, 'services': {'settings-service'}, 'wi
                 'models-cloud': {'settings-model-download'}, 'wizard-gemini-key': {'settings-save'}, 'wizard-recommended-review': {'settings-save'},
                 'wizard-lost': {'settings-save'}, 'restore-pending': {'settings-restore'}, 'wizard-ffmpeg-review': {'settings-save'}, 'models-ollama-draft': {'settings-model-download'}, 'wizard-automation-review': {'settings-save'},
                 'wizard-skip-services': {'settings-save'}, 'wizard-monitor-stale': {'settings-save'},
-                'wizard-unknown-services': {'settings-save'}}
+                'wizard-unknown-services': {'settings-save'},
+                'wizard-ollama-pending': {'settings-model-download'}}
 GUARDED = {'settings-save', 'settings-service', 'settings-secret-set', 'settings-secret-remove', 'settings-model-download', 'settings-restore'}
 
 checks = []; screens = []

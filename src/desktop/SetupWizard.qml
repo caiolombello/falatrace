@@ -105,10 +105,10 @@ FtDialog {
     }
     function recommendedModel() { return ((catalog.whisper && catalog.whisper.models) || []).find(function(model){ return model.recommended }) || null }
     function downloadState(kind, id) { return downloads[kind + ":" + id] || null }
-    // A Whisper download started here sets the model path when it completes, so Finish waits for it,
-    // also while a download request has not been answered yet.
-    function whisperDownloadRunning() { return Object.keys(downloads).some(function(key){ return downloads[key].kind === "whisper" && downloads[key].state === "running" }) }
-    function downloadBlocksFinish() { return hasPending("settings-model-download") || whisperDownloadRunning() }
+    // Finish waits for every model download started here, also while its request has not been answered: a
+    // Whisper download sets the model path when it completes, and processing needs a pulled Ollama model.
+    function modelDownloadRunning() { return Object.keys(downloads).some(function(key){ return downloads[key].state === "running" }) }
+    function downloadBlocksFinish() { return hasPending("settings-model-download") || modelDownloadRunning() }
     function useKey(text) { pendingKey = String(text || "").trim() }
     function savedKey(name) { const source = credential(name).source; return !!source && source !== "missing" }
     function keyReady() { return pendingKey !== "" || savedKey("OPENAI_API_KEY") }
