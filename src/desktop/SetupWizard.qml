@@ -15,6 +15,8 @@ FtDialog {
     property var data: ({})
     property var draft: ({})
     property var diag: ({})
+    // Only the newest diagnostic is shown: an older one may describe choices made before it.
+    property int diagSeq: 0
     property var audioTest: null
     property var catalog: ({})
     property var downloads: ({})
@@ -37,7 +39,9 @@ FtDialog {
     // One status request in flight per download, so concurrent downloads all progress.
     function statusPending(key) { return Object.keys(pending).some(function(id){ return pending[id].origin === "wizard" && pending[id].op === "settings-model-status" && pending[id].downloadKey === key && pending[id].wizardGeneration === generation }) }
     function hasPending(op) { return Object.keys(pending).some(function(id){ return pending[id].origin === "wizard" && pending[id].op === op && pending[id].wizardGeneration === generation }) }
-    function load() { if (!backend.available) { error = t("Serviço indisponível. Reconecte e abra o assistente de novo."); return } request("settings-read"); request("settings-diagnose"); request("settings-model-catalog") }
+    function load() { if (!backend.available) { error = t("Serviço indisponível. Reconecte e abra o assistente de novo."); return } request("settings-read"); diagnose(); request("settings-model-catalog") }
+    // The checks follow the draft: a preset picked here is diagnosed before it is saved.
+    function diagnose() { diagSeq += 1; request("settings-diagnose", Object.keys(draft).length ? { changes: changes() } : ({}), { diagSeq: diagSeq }) }
     function value(field) { return Object.prototype.hasOwnProperty.call(draft, field) ? draft[field] : (data.values || ({}))[field] }
     function set(field, newValue) { const next = Object.assign({}, draft); next[field] = newValue; draft = next; if (field === "studio.language") languagePreview = newValue }
     function changes() {
@@ -50,11 +54,13 @@ FtDialog {
     function recommend() {
         // Least capture and no external destination: audio only, local processing, detection off.
         set("backend", "audio"); set("capture.audioSource", "both"); set("capture.microphone", "default"); set("capture.desktop", "default")
-        applyPreset("local"); set("callDetection.enabled", false); set("processing.autoEnqueue", false); set("processing.notifyOnCompletion", true)
+        setPreset("local"); set("callDetection.enabled", false); set("processing.autoEnqueue", false); set("processing.notifyOnCompletion", true)
         if (!value("backend") || ["audio", "gpu-screen-recorder", "obs"].indexOf(value("backend")) < 0) set("backend", "audio")
+        diagnose()
         step = 4
     }
-    function applyPreset(name) {
+    function applyPreset(name) { setPreset(name); diagnose() }
+    function setPreset(name) {
         if (name === "local") { set("transcription.provider", "whisper-cpp"); set("summary.provider", "ollama"); set("summary.ollamaUrl", "http://127.0.0.1:11434") }
         else if (name === "hybrid") { set("transcription.provider", "whisper-cpp"); set("summary.provider", "openai") }
         else { set("transcription.provider", "openai"); set("summary.provider", "openai") }
@@ -65,6 +71,8 @@ FtDialog {
         return tr === "whisper-cpp" && su === "ollama" ? "local" : tr === "whisper-cpp" && su === "openai" ? "hybrid" : tr === "openai" && su === "openai" ? "cloud" : "custom"
     }
     function check(id) { return ((diag.checks || []).concat(diag.automation || [])).find(function(item){ return item.id === id }) || null }
+    // The draft's Ollama model is missing; the diagnostic follows the draft, so a preset picked here counts.
+    function offersOllamaDownload() { const ollama = check("ollama"); return value("summary.provider") === "ollama" && !!ollama && ollama.status === "warning" }
     function credential(name) { return ((data.credentials && data.credentials.details) || []).find(function(detail){ return detail.name === name }) || ({}) }
     function needsKey(name) {
         if (name === "OPENAI_API_KEY") return value("transcription.provider") === "openai" || value("summary.provider") === "openai"
@@ -131,7 +139,7 @@ FtDialog {
             data = result
             if (["audio", "gpu-screen-recorder", "obs"].indexOf(result.values.backend) < 0) set("backend", "audio")
         } else if (req.op === "settings-diagnose") {
-            if (message.ok) diag = result
+            if (message.ok && req.diagSeq === diagSeq) diag = result
         } else if (req.op === "settings-model-catalog") {
             if (message.ok) catalog = result
         } else if (req.op === "settings-audio-test") {
@@ -148,7 +156,7 @@ FtDialog {
             const next = Object.assign({}, downloads); next[result.kind + ":" + result.id] = result; downloads = next
             if (result.state === "completed") {
                 if (result.kind === "whisper" && result.path) set("transcription.whisperCpp.modelPath", result.path)
-                request("settings-model-catalog"); request("settings-diagnose")
+                request("settings-model-catalog"); diagnose()
             }
         } else if (req.op === "settings-save") {
             if (!message.ok) { error = message.error; return }
@@ -282,8 +290,8 @@ FtDialog {
               Label { text:parent.parent.download?(parent.parent.download.state==="running"&&parent.parent.download.totalBytes?Math.floor(100*parent.parent.download.receivedBytes/parent.parent.download.totalBytes)+"%":parent.parent.download.state==="failed"?(t(parent.parent.download.error)||t("Falhou.")):parent.parent.download.state==="completed"?t("Conferido pelo SHA-256."):""):t("Baixa de huggingface.co e confere pelo SHA-256."); color:muted; font.pixelSize:12; wrapMode:Text.WordWrap; Layout.fillWidth:true }
             }
           }
-          Status { visible:setupWizard.value("summary.provider")==="ollama"; label:"Ollama"; status:setupWizard.check("ollama")?setupWizard.check("ollama").status:"skipped"; detail:setupWizard.check("ollama")?setupWizard.check("ollama").detail:"" }
-          RowLayout { visible:setupWizard.value("summary.provider")==="ollama"&&!!setupWizard.check("ollama")&&setupWizard.check("ollama").status==="warning"; spacing:8
+          Status { visible:setupWizard.value("summary.provider")==="ollama"; label:"Ollama"; status:setupWizard.check("ollama")?setupWizard.check("ollama").status:"skipped"; detail:setupWizard.check("ollama")?setupWizard.check("ollama").detail:t("Verificando este computador…") }
+          RowLayout { visible:setupWizard.offersOllamaDownload(); spacing:8
             readonly property var download: setupWizard.downloadState("ollama", String(setupWizard.value("summary.ollamaModel")||""))
             FtButton { text:parent.download&&parent.download.state==="running"?t("Baixando…"):t("Baixar ")+setupWizard.value("summary.ollamaModel")+t(" pelo Ollama"); compact:true; variant:"outline"; enabled:backend.available&&!(parent.download&&parent.download.state==="running"); onClicked:setupWizard.request("settings-model-download",{kind:"ollama",model:String(setupWizard.value("summary.ollamaModel")),consent:true}) }
             FtButton { visible:!!(parent.download&&parent.download.state==="running"); text:t("Cancelar"); compact:true; variant:"outline"; onClicked:setupWizard.cancelDownload("ollama",String(setupWizard.value("summary.ollamaModel"))) }

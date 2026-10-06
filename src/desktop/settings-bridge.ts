@@ -1,7 +1,8 @@
 import { loadConfig } from "../config/load";
 import { getConfigPath } from "../config/load";
 import {
-  exportSettings, listConfigBackups, readCredentialStatus, readImportFile, readSettings, restoreConfigBackup, saveSettings, validateSettingsPatch
+  exportSettings, listConfigBackups, previewSettings, readCredentialStatus, readImportFile, readSettings, restoreConfigBackup, saveSettings,
+  validateSettingsPatch
 } from "../config/settings";
 import { checkAutomation, checkProcessing, listAudioDevices, readServiceStatus } from "../config/setup-checks";
 import { parseManagerEnvironment, removeSecret, setSecret } from "../config/secrets";
@@ -196,7 +197,9 @@ export const handleSettingsOperation = async (
     });
   }
   if (op === "settings-diagnose") {
-    const { config } = await deps.loadConfig();
+    const { config: saved } = await deps.loadConfig();
+    // Unsaved choices from the assistant are checked as they would be saved; nothing is written.
+    const config = payload.changes === undefined ? saved : previewSettings(saved, payload.changes);
     const credentials = await deps.credentials(config, { managerEnv: await deps.managerEnv() });
     const [checks, audio, services, recording] = await Promise.all([
       deps.checks(config, credentials),

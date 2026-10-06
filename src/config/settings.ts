@@ -301,6 +301,16 @@ export const applySettingsPatch = (previous: JsonObject, fields: SettingsPatch):
   return next;
 };
 
+/**
+ * The configuration a patch would produce, checked by the same rules as saving but never
+ * written: the first-use assistant diagnoses the choices it has not saved yet.
+ */
+export const previewSettings = (config: AppConfig, patch: unknown): AppConfig => {
+  const merged = mergeConfig(DEFAULT_CONFIG, applySettingsPatch(config as unknown as JsonObject, validateSettingsPatch(patch, { allowEmpty: true })) as never);
+  validateConfig(merged);
+  return merged;
+};
+
 export async function saveSettings(
   revision: string,
   patch: unknown,

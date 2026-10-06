@@ -92,6 +92,23 @@ describe("settings bridge operations", () => {
     expect(Array.isArray(result.automation)).toBe(true);
   });
 
+  test("diagnostics check the assistant's unsaved choices without saving them", async () => {
+    const seen: string[][] = [];
+    const { deps, calls, config } = fakeDeps({
+      checks: async (checked) => { seen.push([checked.transcription.provider, checked.summary.provider, checked.summary.ollamaUrl]); return []; }
+    });
+    config.transcription.provider = "openai";
+    config.summary.provider = "openai";
+    config.summary.ollamaUrl = "http://localhost:11434";
+    await handleSettingsOperation("settings-diagnose", { changes: { "transcription.provider": "whisper-cpp", "summary.provider": "ollama", "summary.ollamaUrl": "http://127.0.0.1:11434" } }, deps);
+    await handleSettingsOperation("settings-diagnose", {}, deps);
+    expect(seen).toEqual([["whisper-cpp", "ollama", "http://127.0.0.1:11434"], ["openai", "openai", "http://localhost:11434"]]);
+    expect(config.summary.provider).toBe("openai");
+    expect(calls).not.toContain("save");
+    // Unsaved choices pass the same rules as saving.
+    await expect(handleSettingsOperation("settings-diagnose", { changes: { "openai.apiKey": "sk-synthetic" } }, deps)).rejects.toThrow("não editável");
+  });
+
   test("secrets are saved through the write-only path and never echoed", async () => {
     const { deps, calls } = fakeDeps();
     const saved = await handleSettingsOperation("settings-secret-set", { name: "OPENAI_API_KEY", value: "sk-synthetic-echo" }, deps);

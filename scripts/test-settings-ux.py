@@ -74,8 +74,12 @@ for line in sys.stdin:
     log.append({'op':op,'payload':logged}); open(receipt,'w').write(json.dumps(log))
     if op == 'settings-read': v = settings()
     elif op == 'settings-diagnose':
+        # Like the bridge, the checks follow the unsaved choices the assistant sends.
+        summary = p.get('changes', {}).get('summary.provider', values['summary.provider'])
         v = {'checks':[{'id':'ffmpeg','label':'FFmpeg','status':'ok','detail':'Encontrado.'},
-                       {'id':'whisper-model','label':'Modelo do Whisper','status':'missing','detail':'Não encontrado.','action':'whisper-model'}],
+                       {'id':'whisper-model','label':'Modelo do Whisper','status':'missing','detail':'Não encontrado.','action':'whisper-model'},
+                       {'id':'ollama','label':'Ollama','status':'warning','action':'ollama-model','detail':'Ollama respondeu, mas o modelo qwen3.5:9b não está instalado.'} if summary == 'ollama'
+                       else {'id':'summary-key','label':'Resumo · OPENAI_API_KEY','status':'missing','detail':'Chave não encontrada.'}],
              'automation':[{'id':'automatic-backend','label':'Gravação automática','status':'missing','detail':'Usa o OBS desativado.','action':'capture'}] if mode == 'services' else [],
              'audio':{'devices':[{'name':'alsa_input.synthetic-mic','description':'Microfone sintético','monitor':False},
                                  {'name':'alsa_output.synthetic.monitor','description':'Monitor sintético','monitor':True}],
@@ -134,6 +138,9 @@ MODES = {
     'wizard-disable-monitor': ('setupWizard.open(); setupWizard.consentAck=true; setupWizard.applyTimer=false',
                                'setupWizard.set("callDetection.enabled", false); setupWizard.step=4; setupWizard.finish()',
                                'check("turning detection off in the assistant stops the installed monitor", setupWizard.step===5 && setupWizard.results.some(function(r){return r.label==="Monitor de chamadas" && r.ok}))', ''),
+    'wizard-draft-ollama': ('setupWizard.open(); setupWizard.consentAck=true; setupWizard.step=2',
+                            'check("the saved OpenAI configuration has no Ollama check", !setupWizard.check("ollama") && !setupWizard.offersOllamaDownload()); setupWizard.applyPreset("local")',
+                            'check("picking the local preset diagnoses the draft and offers the missing Ollama model", setupWizard.check("ollama").status==="warning" && setupWizard.offersOllamaDownload())', ''),
     'wizard-reload': ('setupWizard.consentAck=true',
                       'setupWizard.recommend(); setupWizard.set("callDetection.enabled", true); setupWizard.set("callDetection.mode", "notify-only"); setupWizard.finish()',
                       'check("a save without values still applies the reviewed services", setupWizard.step===5 && setupWizard.results.some(function(r){return r.label==="Monitor de chamadas" && r.ok}))', ''),
@@ -230,6 +237,10 @@ with tempfile.TemporaryDirectory(dir='/tmp', prefix='falatrace-settings-fixture-
         if mode == 'wizard-disable-monitor':
             applied = [q['payload'] for q in requests if q['op'] == 'settings-service']
             checks.append({'name': 'wizard-disable-monitor: only the monitor is disabled', 'pass': applied == [{'action': 'calls-disable'}]})
+        if mode == 'wizard-draft-ollama':
+            diagnoses = [q['payload'] for q in requests if q['op'] == 'settings-diagnose']
+            checks.append({'name': 'wizard-draft-ollama: the preset is diagnosed as a draft, not saved', 'pass': len(diagnoses) >= 2 and 'changes' not in diagnoses[0]
+                           and diagnoses[-1].get('changes', {}).get('summary.provider') == 'ollama' and diagnoses[-1]['changes'].get('transcription.provider') == 'whisper-cpp'})
         if mode == 'restore-reload':
             ops = [q['op'] for q in requests]
             checks.append({'name': 'restore-reload: the configuration is read again after the restore', 'pass': 'settings-restore' in ops and 'settings-read' in ops[ops.index('settings-restore') + 1:]})

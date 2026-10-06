@@ -326,7 +326,7 @@ const ALLOWED_PAYLOAD: Partial<Record<Request["op"], string[]>> = {
   "revision-save": ["expectedRevision", "base", "operations"], "revision-undo": ["expectedRevision", "base"],
   "export-preview": ["format", "track"], "export-save": ["format", "track", "expectedRevision", "expectedBase", "expectedSnapshotSha256"],
   "onboarding-save-local": ["revision"],
-  "settings-save": ["revision", "changes", "initialize"], "settings-service": ["action"],
+  "settings-save": ["revision", "changes", "initialize"], "settings-diagnose": ["changes"], "settings-service": ["action"],
   "settings-secret-set": ["name", "value"], "settings-secret-remove": ["name"], "settings-secret-test": ["service"],
   "settings-restore": ["revision", "backup"], "settings-export": ["path"], "settings-import-read": ["path"],
   "settings-audio-test": ["seconds", "audioSource", "microphone", "desktop"],
