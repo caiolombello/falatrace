@@ -3,11 +3,12 @@ import { promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  exportSettings, isPlaceholderRemoteHost, listConfigBackups, readCredentialStatus, readImportFile, readSettings, restoreConfigBackup,
+  EXPORT_OVER_CONFIGURATION, exportSettings, isPlaceholderRemoteHost, listConfigBackups, readCredentialStatus, readImportFile, readSettings, restoreConfigBackup,
   saveSettings, validateSettingsPatch, VISUAL_REVIEW_DEFAULTS
 } from "../settings";
 import { CONFIG_BACKUPS_KEPT } from "../onboarding";
 import { DEFAULT_CONFIG } from "../defaults";
+import { getConfigPathCandidates } from "../load";
 
 const withRoot = async (run: (root: string) => Promise<void>) => {
   const root = await fs.mkdtemp(join(tmpdir(), "falatrace-settings-"));
@@ -240,6 +241,12 @@ test("export omits credentials and import returns only allowlisted, valid fields
     expect((await fs.stat(target)).mode & 0o777).toBe(0o600);
     await expect(exportSettings("relative.json", path)).rejects.toThrow(".json");
     await expect(exportSettings(join(root, "missing", "x.json"), path)).rejects.toThrow("não existe");
+    // Never over the active configuration, however it is spelled, nor over one that would become active.
+    await fs.symlink(root, join(root, "alias"));
+    for (const destination of [path, `${root}/./config.json`, `${root}//config.json`, join(root, "alias", "config.json"), ...getConfigPathCandidates()]) {
+      await expect(exportSettings(destination, path)).rejects.toThrow(EXPORT_OVER_CONFIGURATION);
+    }
+    expect(await fs.readFile(path, "utf8")).toContain("synthetic-private-sentinel");
 
     const incoming = join(root, "incoming.json");
     await fs.writeFile(incoming, JSON.stringify({ callDetection: { enabled: false, entryDebounceSeconds: 999 }, backend: "audio", future: 1, openai: { apiKey: "k" }, visualReview: { maxInferences: 5, maxPreviews: 6, period: "lifetime" } }));

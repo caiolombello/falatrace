@@ -143,6 +143,7 @@ export const SETTINGS_KNOWN_ERRORS = [
   "Escolha um arquivo .json com caminho absoluto.",
   "A pasta de destino não existe.",
   "O destino não é um arquivo comum.",
+  "Escolha outro arquivo: a exportação não substitui a configuração do FalaTrace.",
   "O arquivo não contém uma configuração.",
   "Cópia de segurança inválida.",
   "Arquivo inválido ou grande demais.",

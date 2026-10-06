@@ -20,7 +20,7 @@ A copy of a working setup is in [`config.example.json`](config.example.json). Mi
 - A save sends only the fields you changed. Each field is checked against an allowlist with its own rule; anything else in the file (unknown keys, secrets, settings the Studio does not edit) is kept byte for byte.
 - Every save is bound to the revision that was read. If the file changed in the meantime, the save is refused and you are asked to reload.
 - Before replacing an existing file, the previous one is copied to a private backup. **Backups and transfer** lists the backups and restores one; restoring also backs up the current file first.
-- **Export** writes the configuration without any key or password. **Import** loads only the fields the Studio edits into the draft, lists rejected values and ignored keys, and saves nothing until you click Save.
+- **Export** writes the configuration without any key or password, and never over the configuration in use. **Import** loads only the fields the Studio edits into the draft, lists rejected values and ignored keys, and saves nothing until you click Save.
 - Services read the configuration when they start. After changing recording, folder or interval settings, re-apply the call monitor and timers in **Services and diagnostics**; the diagnostics flag a service still running with an older configuration.
 
 ## API keys

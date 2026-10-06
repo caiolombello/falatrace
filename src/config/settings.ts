@@ -1,8 +1,8 @@
 import { constants, promises as fs } from "node:fs";
-import { dirname, isAbsolute, join } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { CALL_APPLICATIONS, CALL_APPLICATION_IDENTITIES } from "../calls/apps";
 import { DEFAULT_CONFIG, TRANSCRIPTION_PROMPT_MAX_LENGTH, type AppConfig } from "./defaults";
-import { getConfigPath, mergeConfig, validateConfig } from "./load";
+import { getConfigPath, getConfigPathCandidates, mergeConfig, validateConfig } from "./load";
 import { commitConfigChange, configBackupPattern, readConfigRevision } from "./onboarding";
 import { describeCredentials, type SecretFiles } from "./secrets";
 
@@ -363,9 +363,23 @@ const assertUserFile = (target: unknown): string => {
   return target;
 };
 
-/** Write the configuration without credentials (openai.apiKey, obs.password) to a user-chosen file. */
+export const EXPORT_OVER_CONFIGURATION = "Escolha outro arquivo: a exportação não substitui a configuração do FalaTrace.";
+
+/** Resolve links in the parent folder so two spellings of one file compare equal. */
+const canonicalPath = async (file: string): Promise<string> =>
+  join(await fs.realpath(dirname(file)).catch(() => resolve(dirname(file))), basename(file));
+
+/**
+ * Write the configuration without credentials (openai.apiKey, obs.password) to a user-chosen
+ * file. The active configuration, or one that would become active, is never a destination:
+ * saving goes through the revision check and backup, an export does not.
+ */
 export async function exportSettings(target: unknown, path = getConfigPath()) {
   const destination = assertUserFile(target);
+  const canonical = await canonicalPath(destination);
+  for (const configuration of new Set([path, ...getConfigPathCandidates()])) {
+    if (canonical === await canonicalPath(configuration)) throw new Error(EXPORT_OVER_CONFIGURATION);
+  }
   const current = await readConfigRevision(path);
   const value = structuredClone(current.value);
   if (value.openai && typeof value.openai === "object") delete value.openai.apiKey;

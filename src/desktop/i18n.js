@@ -1151,6 +1151,7 @@ var EN = {
     "Escolha um arquivo .json com caminho absoluto.": "Choose a .json file with an absolute path.",
     "A pasta de destino não existe.": "The destination folder does not exist.",
     "O destino não é um arquivo comum.": "The destination is not a regular file.",
+    "Escolha outro arquivo: a exportação não substitui a configuração do FalaTrace.": "Choose another file: an export never replaces the FalaTrace configuration.",
     "O arquivo não contém uma configuração.": "The file does not contain a configuration.",
     "Cópia de segurança inválida.": "Invalid backup.",
     "Arquivo inválido ou grande demais.": "Invalid or too large file.",

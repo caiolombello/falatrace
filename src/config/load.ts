@@ -22,6 +22,8 @@ export type LoadedConfig = {
 
 const pathPresent=(p:string)=>{try{lstatSync(p);return true;}catch(e){if((e as NodeJS.ErrnoException).code==='ENOENT')return false;throw e;}};
 export const getRequestedConfigDir=():string=>resolve(requestedDir);
+/** Every file getConfigPath can choose: writing one of them can replace or switch the active configuration. */
+export const getConfigPathCandidates = (): string[] => [...new Set([join(requestedDir, "config.json"), join(legacyDir, "config.json")])];
 export const getConfigPath = (): string => join(requestedDir !== legacyDir && !pathPresent(join(requestedDir,'config.json')) && existsSync(join(legacyDir,'config.json')) ? legacyDir : requestedDir,'config.json');
 
 export const ensureConfigDir = async (): Promise<void> => {
