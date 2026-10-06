@@ -73,7 +73,15 @@ test("running needs the consent of the exact plan, then creates and queues the j
     config.summary.provider = "openai";
     await expect(runRecordingProcessing(config, entry, { consent: true, consentKey: plan.consentKey }, deps)).rejects.toThrow("mudaram");
     config.summary.provider = "ollama";
-    expect(await runRecordingProcessing(config, entry, { consent: true, consentKey: plan.consentKey }, deps)).toEqual({ jobId: "223e4567-e89b-42d3-a456-426614174000", status: "queued", created: true });
+    // Same size and mtime, different bytes: the consent no longer matches.
+    const pinned = new Date(1700000000000);
+    await fs.utimes(path, pinned, pinned);
+    const pinnedPlan = await planRecordingProcessing(config, entry, deps);
+    await fs.writeFile(path, "xyz");
+    await fs.utimes(path, pinned, pinned);
+    await expect(runRecordingProcessing(config, entry, { consent: true, consentKey: pinnedPlan.consentKey }, deps)).rejects.toThrow("mudaram");
+    const fresh = await planRecordingProcessing(config, entry, deps);
+    expect(await runRecordingProcessing(config, entry, { consent: true, consentKey: fresh.consentKey }, deps)).toEqual({ jobId: "223e4567-e89b-42d3-a456-426614174000", status: "queued", created: true });
     expect(calls).toEqual(["enqueue", "queue:223e4567-e89b-42d3-a456-426614174000:run"]);
     const failed = job("failed", { sourcePath: path });
     const retry = fakeDeps(failed);

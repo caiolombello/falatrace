@@ -118,8 +118,9 @@ export const planRecordingProcessing = async (
   const durationSeconds = stat && action !== "none" ? await deps.duration(entry.sourcePath).catch(() => null) : null;
   // The worker is part of what the user approves: another host, user, port or identity asks again.
   const remote = target === "remote" ? { destination: getSshDestination(config), port: config.remote.port } : undefined;
+  // ctime and inode change on any write or replacement, even when size and mtime are put back.
   const consentKey = createHash("sha256").update(JSON.stringify([
-    entry.sourcePath, stat?.size ?? null, stat?.mtimeMs ?? null, action, latest?.id ?? null, target,
+    entry.sourcePath, stat?.size ?? null, stat?.mtimeMs ?? null, stat?.ctimeMs ?? null, stat?.ino ?? null, action, latest?.id ?? null, target,
     destinations.transcription, destinations.summary, config.summary.ollamaUrl,
     remote ? [remote.destination, remote.port, config.remote.identityFile ?? null] : null
   ])).digest("hex");
