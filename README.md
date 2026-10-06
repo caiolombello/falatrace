@@ -15,7 +15,7 @@ Alpha.12 extended automatic call detection to native Zoom, Teams for Linux, Chro
 
 Alpha.11 added human transcript/speaker corrections and undo, revised consumers and snapshot-bound exports, explicit local summary regeneration in the Studio, and safer onboarding save/cancel/recovery. Original artifacts, explicit provider settings and persistent limits are preserved. Removal planning is a non-executable dry-run; unified deletion, real-model quality and physical UX remain open. Headset/default-follow is not implemented. See [alpha.11 scope and verification](docs/ALPHA11.md).
 
-Landing: [Português](https://caiolombello.github.io/falatrace/) · [English](https://caiolombello.github.io/falatrace/en/). The Studio interface is currently Portuguese.
+Landing: [Português](https://caiolombello.github.io/falatrace/) · [English](https://caiolombello.github.io/falatrace/en/). The Studio interface is available in Portuguese and English: it follows the system language and can be switched in Settings.
 
 ## Install deliberately
 
@@ -28,6 +28,8 @@ bun run build
 make install-cli INSTALL_PREFIX="$HOME/.local"
 falatrace init
 ```
+
+`make install-studio` builds the Studio with the local Qt headers (system packages or `bun run desktop:setup`) and adds the `recording-studio` launcher, a menu entry and the icon, without sudo or downloads. Step by step from a fresh checkout to a processed recording: [quickstart](docs/QUICKSTART.md) ([português](docs/QUICKSTART.pt-BR.md)). Every option, its values and defaults: [configuration reference](docs/CONFIGURATION.md), with a working [example](docs/config.example.json).
 
 `make install` installs the CLI without implicitly running sudo/apt. OS dependencies are a separate explicit `make install-deps` action. Qt library, GTK/mpv playback, Whisper.cpp/models and desktop capture backends have additional requirements; verify them before choosing that workflow. Windows/macOS are not supported in this release scope.
 
@@ -57,9 +59,10 @@ Cancellation reaches transcription, extraction and summary requests; it cannot r
 
 Expired failed directories are cleaned only when they contain disposable recognized metadata and no media, unknown files, subdirectories or symlinks. Cleanup is conservative and can retain data for manual review. Use dry-run first.
 
-Local deletion moves local artifacts to Trash and reports that remote copies, archive catalog and auxiliary state are preserved. It does not promise remote erasure. Uninstall removes only the installed CLI:
+Local deletion moves local artifacts to Trash and reports that remote copies, archive catalog and auxiliary state are preserved. It does not promise remote erasure. Uninstall removes only the installed Studio and CLI:
 
 ```sh
+make uninstall-studio INSTALL_PREFIX="$HOME/.local"
 make uninstall INSTALL_PREFIX="$HOME/.local"
 ```
 
@@ -71,6 +74,7 @@ Configuration, recordings, jobs and backups remain. Removing optional services i
 bash scripts/test-offline.sh
 bun run typecheck
 bun run desktop:check
+bun run lint
 bun run build
 bun run benchmarks/offline.ts
 bun run benchmarks/synthetic-demo.ts /tmp/new-synthetic-demo-directory
@@ -78,7 +82,7 @@ bun run benchmarks/synthetic-demo.ts /tmp/new-synthetic-demo-directory
 
 The demo requires a new output directory and generates a three-second test video plus scripted transcript/model responses. It proves plumbing and cache reuse, not capture or semantic model quality. Never pass production media.
 
-Tests must run with synthetic HOME/XDG and fixture media. Some tests use local sockets and local rsync fixtures. Do not run integration tests with production credentials or active capture/cloud services. The audit harness blocks those commands and external fetches; it is included in scripts/test-offline.sh. The public CI workflow runs offline validation on main and pull requests. Action SHAs are pinned and token persistence disabled. Passing CI does not validate native capture or live providers.
+Tests must run with synthetic HOME/XDG and fixture media. Some tests use local sockets and local rsync fixtures. Do not run integration tests with production credentials or active capture/cloud services. The audit harness blocks those commands and external fetches; it is included in scripts/test-offline.sh. The public CI workflow runs offline validation on main and pull requests, plus the Studio journeys: the real QML rendered offscreen with PySide6 (pinned by hash in `scripts/studio-requirements.txt`) against synthetic bridges. Locally: `FALATRACE_QML_PYTHON=<python with PySide6> bash scripts/test-studio-journeys.sh`. Action SHAs are pinned and token persistence disabled. Passing CI does not validate native capture or live providers.
 
 MIT applies to code authored by Caio Barbieri; third-party notices and licenses remain unchanged. Dependencies, native runtimes and models are not bundled. Compiling a standalone binary locally is supported by the build command; distributing that binary requires a separate review of embedded runtime obligations. Native capture and real-model quality remain experimental. Preserve existing persisted `recording-cli` identifiers; legacy archive schema keys are retained for compatibility. No public history, private config or media belongs in the package.
 
@@ -91,6 +95,8 @@ The npm package is private because this alpha is distributed as source through G
 ## Studio and first use
 
 `bun run desktop` builds the Qt shell using an existing local SDK; `bun run desktop:setup` is a separate explicit dependency-download operation. The tested native runtime was Qt 6.10.2 + MpvQt on Linux; it is not bundled, and Ubuntu runtime compatibility is not universal. The legacy launcher/binary name `recording-studio` is retained. The Studio opens on a library overview, follows the desktop light/dark scheme (with a manual switch) and keeps capture state, **Gravar…**, **Parar captura** and **Pausar novas gravações** in its header; it also covers search, transcript review, summary/context, explicit capture confirmation and a return to the library. Closing the window keeps configured background services running; **Parar** ends the current capture, while **Pausar novas gravações** affects future automatic captures only.
+
+On first use the Studio opens a setup assistant; afterwards **Settings** edits every option, stores API keys in a private `secrets.env`, downloads verified Whisper models on request, tests the audio, applies the call monitor and background timers, and backs up, restores, exports and imports the configuration. **Process…** transcribes and summarizes any recording after showing where its audio and text go.
 
 Before recording: `falatrace init`, `falatrace config`, `falatrace record doctor`. Inspect the audio/provider settings and participants’ permission. Existing settings are preserved, including external providers. Check `calls status` and `record status`; use `calls pause` and `record stop` deliberately. No install/init command starts capture.
 

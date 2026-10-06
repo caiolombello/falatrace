@@ -1,24 +1,33 @@
 # Configuration and privacy
 
-## Settings (Studio)
+## First use and settings (Studio)
 
-Open **Configurações…** in the Studio sidebar. On a computer without a configuration file the Studio opens it once, on the first tab. Nothing is recorded, sent or installed until you save and, for the call monitor, apply.
+On a computer without a configuration file the Studio opens a six-step setup assistant: language and consent, capture (with a five-second audio test), processing (three presets, model downloads and the OpenAI key when needed), automatic recording, review, and the services to start. Nothing is saved, recorded, downloaded or installed until **Concluir**/**Finish**; the audio test and downloads only run from their own buttons. The first save writes every explicit choice, so a later default change cannot alter it. Step-by-step instructions: [quickstart](QUICKSTART.md).
 
-| Tab | What you can change |
+Afterwards, **Configurações…**/**Settings…** in the sidebar edits every option in ten sections. The full field list, values and defaults are in the [configuration reference](CONFIGURATION.md).
+
+| Section | What you can change |
 | --- | --- |
-| Gravação automática | Turn call detection on/off, notify-only or record, process on call end, entry/exit timing, and one switch per app (browsers; Slack, Zoom, Teams for Linux; Discord, Signal, Telegram and Element are opt-in). |
-| Captura e áudio | Backend (audio only, GPU Screen Recorder, OBS), audio sources, microphone and system-audio device (listed from PipeWire/PulseAudio), GPU encoder and video profile, recordings folder. |
-| Processamento e IA | Transcription (Whisper.cpp command/model, OpenAI or Gemini model, language), summary (Ollama URL/model or OpenAI model), local/remote execution, automatic processing. External destinations are flagged. |
-| Serviços e diagnóstico | Read-only checks (FFmpeg, Whisper.cpp and model file, Ollama on loopback and its installed models, API key presence, recording backend) and the call monitor/tray services: apply and restart, or disable. |
+| Gravação automática | Call detection on/off, notify-only, record or OBS, queue on call end, entry/exit timing, one switch per app (browsers; Slack, Zoom, Teams for Linux; Discord, Signal, Telegram and Element are opt-in). |
+| Captura e áudio | Backend (audio only, GPU Screen Recorder, OBS), audio sources and devices (listed from PipeWire/PulseAudio), a five-second audio test, encoder, profile, frame rate, recordings folder. |
+| Processamento e IA | Presets, transcription (Whisper.cpp command/model/threads, OpenAI or Gemini model, language, expected languages, vocabulary), summary (Ollama URL/model/limit or OpenAI model), local/remote execution, automatic processing and completion notifications. External destinations are flagged. |
+| Chaves de API | Save, test and remove `OPENAI_API_KEY`, `GEMINI_API_KEY` and the OBS WebSocket password. Write-only. |
+| Modelos | Download and verify official Whisper models; pull the Ollama model on this computer. Explicit consent per download. |
+| Integrações | OBS, remote worker (with an SSH connection test), originals archive, Proton Drive backup and legacy S3. |
+| Recursos opcionais | Timesheet, per-client AI context and the GNOME Calendar title. |
+| Avançado | Studio language, detection sampling and test mode, capture timeout, folder naming, legacy GNOME options, visual review limits, retention and the background check interval. |
+| Serviços e diagnóstico | Read-only checks with a link to the section that fixes each problem; apply, restart or disable the call monitor, tray and the processing, archive and backup timers. |
+| Backups e transferência | List and restore configuration backups; export without keys; import into the draft. |
 
-Saving sends only the fields you changed. The bridge accepts an explicit allowlist of fields and values; anything else (archive, S3, Proton, remote worker, timesheet, secrets and unknown keys) is preserved. The same revision check, private exact-byte backup and non-overwriting publication described below apply. API keys are never read into or written by the Studio: it reports whether `OPENAI_API_KEY`/`GEMINI_API_KEY` is defined in the session environment, in `~/.config/recording-cli/calls.env` or in the configuration, never the value.
+Saving sends only the fields you changed. The bridge accepts an explicit allowlist of fields and values; anything else (secrets and unknown keys) is preserved. The same revision check, private exact-byte backup and non-overwriting publication described below apply.
 
-The call monitor reads its configuration when it starts. After saving recording changes, use **Aplicar e reiniciar monitor**; the diagnostics flag a monitor still running with an older configuration or a unit whose writable recordings folder no longer matches. Service actions are refused while a capture is active and never start a recording themselves. Generated units point to the stable `~/.local/bin` link when it resolves to the running release, so they keep following updates.
+API keys are kept in `secrets.env` next to the configuration (permission 600) and reach background processing. The Studio and `falatrace keys` save, test and remove them but never read a value back; they report only the source in use (`secrets.env`, `worker.env`, `calls.env`, the user's systemd environment or a legacy `openai.apiKey` in the configuration) and warn when a key exists only in the Studio's session, when a key file is readable by other users, or when an older source shadows the Studio key.
+
+The call monitor and timers read their configuration when they start. After saving recording, folder or interval changes, apply them in **Serviços e diagnóstico**; the diagnostics flag a service still running with an older configuration. Service actions are refused while a capture is active and never start a recording themselves. Generated units point to the stable `~/.local/bin` link when it resolves to the running release, so they keep following updates.
 
 Diagnostics do not record, transcribe, download models or contact non-loopback hosts. A passing check is not proof of model quality or of a working real call.
 
 ## Routes and local processing choice
-
 
 Open **Rotas e privacidade…** (in Configurações → Processamento e IA) to review the current routes. Reading, closing, Escape and Cancel do not save it. This screen does not start recording, install models, execute providers or change running services.
 
@@ -32,7 +41,7 @@ After a read or save error, re-read the configuration before selecting and savin
 
 Configuration revisions are opaque 64-character tokens bound to the normalized configuration path, file existence and exact bytes. They detect a changed file or a changed legacy/XDG destination. They are a stale-draft check, not an authorization token or a universal filesystem CAS guarantee. Writers that do not cooperate with the same lease can still race at the filesystem publication boundary.
 
-If publication succeeds but removal of the screen's own staging file fails, the response reports `saved: true` and `cleanupPending: true`; Studio warns that a private temporary copy may remain. Failed publication does not report success. A backup can also remain after a later commit failure. No existing backup is automatically deleted.
+If publication succeeds but removal of the screen's own staging file fails, the response reports `saved: true` and `cleanupPending: true`; Studio warns that a private temporary copy may remain. Failed publication does not report success. A backup can also remain after a later commit failure. Each save keeps the 20 most recent backups and removes older ones; a backup created by the current save is never the one removed.
 
 Local retention cleanup removes eligible completed-job work data. It is not a complete recording erasure: remote copies, exports and other derivatives can remain. Preview eligible local work cleanup with `falatrace jobs cleanup --dry-run`; this screen does not execute cleanup. A complete erasure interface, human comprehension study and physical display/accessibility validation remain separate roadmap work.
 

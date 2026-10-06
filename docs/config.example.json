@@ -1,0 +1,47 @@
+{
+  "recordingsDir": "/home/you/Videos/Recordings",
+  "backend": "audio",
+  "capture": {
+    "audioSource": "both",
+    "microphone": "default",
+    "desktop": "default"
+  },
+  "callDetection": {
+    "enabled": true,
+    "mode": "record",
+    "entryDebounceSeconds": 5,
+    "exitTimeoutSeconds": 15,
+    "apps": {
+      "discord": false,
+      "signal": false,
+      "telegram": false,
+      "element": false
+    }
+  },
+  "transcription": {
+    "provider": "whisper-cpp",
+    "language": "auto",
+    "whisperCpp": {
+      "command": "whisper-cli",
+      "modelPath": "/home/you/.local/share/recording-cli/models/ggml-large-v3-turbo-q5_0.bin",
+      "threads": 8
+    }
+  },
+  "summary": {
+    "provider": "ollama",
+    "ollamaUrl": "http://127.0.0.1:11434",
+    "ollamaModel": "qwen3.5:9b"
+  },
+  "processing": {
+    "defaultTarget": "local",
+    "autoEnqueue": true,
+    "notifyOnCompletion": true,
+    "syncIntervalMinutes": 5
+  },
+  "retention": {
+    "localCompletedWorkDays": 7
+  },
+  "studio": {
+    "language": "auto"
+  }
+}

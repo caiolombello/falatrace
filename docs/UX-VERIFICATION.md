@@ -59,3 +59,19 @@ Verification on a Fedora host without the Ubuntu Qt SDK:
 - Rendered checks with a synthetic backend: light/dark, 1320×820 and 900×640, library overview, empty, loading, error, disconnected, recording, paused, missing media, block timing, every dialog; no horizontal overflow at either size; keyboard Tab order walked with real Qt key events.
 
 Limits: MpvQt video decoding and playback, the compiled `recording-studio` binary, real capture, physical keyboard/touch, screen readers (Orca), fractional scaling and high-contrast themes were not exercised. Model and user content remain plain text.
+
+## Settings, assistant, processing and English — unreleased
+
+The Studio QML is now split into component and dialog files. Journeys run the real QML through `scripts/studio-qml-runner.py`, a PySide6 port of `main.cpp` (same argv, JSONL validation, timeouts, reconnection and snapshot receipts), offscreen with software rendering and synthetic bridges. CI runs them with PySide6 6.11.2 pinned by hash. `bash scripts/test-studio-journeys.sh` runs all of them. They fail when the QML does not load or logs a `ReferenceError`; the settings, process, agent and local journeys also fail on `TypeError` and binding warnings.
+
+| Journey | Screens | Assertions | What it covers |
+| --- | --- | --- | --- |
+| `settings-ux` | 18 | 64 | First use opens the assistant; recommended defaults; audio test; all ten sections; presets; write-only keys (the value never appears in output; the receipt keeps only its SHA-256); model download with explicit consent; remote and OBS checks; nullable fields; services and timers; backup restore; save sends exactly the diff; compact layout; discard; saved English; live language preview and discard; assistant in English. A guard fails the journey on any save, service, key, download or restore the mode did not intend. |
+| `process-ux` | 6 | 21 | **Process…** for local, external, changed-plan, retry, nothing-to-do and completed recordings; `recording-process` is sent only after consent and only with the plan's consent key. |
+| `agent-ux` | 3 | 11 | Connection commands for the active agent grant only; none for revoked or provider grants; no authorization change. |
+| `desktop-ui` | 12 | 15 | Previous library, detail, consent and capture states, plus the main window in English. |
+| `local-ux`, `scope-ux`, `planner-ux`, `heavy-ux` | 31 | 73 | Unchanged journeys; the frames journey now waits for the preview and result instead of fixed delays. |
+
+`src/desktop/__tests__/i18n.test.ts` fails if any `t()` literal lacks an English entry, if an entry loses placeholders or joining spaces, or if real diagnostic, capture, queue, model and key-test messages come out in Portuguese.
+
+Limits: the shipped `recording-studio` binary, MpvQt playback, real capture, real providers and model downloads, physical keyboard and screen readers were not exercised. Native file dialogs are loaded on demand and were not opened. The system-Qt build path was not compiled on a machine with Qt 6.10 and MpvQt.

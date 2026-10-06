@@ -1,3 +1,18 @@
+## Unreleased — everything configurable from the Studio
+
+- **First-use assistant.** Six steps (language and consent, capture with a five-second audio test, processing presets with model downloads and the OpenAI key, automatic recording, review, services). Nothing is saved, recorded or installed before Finish, and the first save writes every explicit choice.
+- **Settings for every option** in ten sections, including the remote worker, OBS, archive, Proton Drive, S3, timesheet, AI context, calendar, retention and visual review limits. Path fields get a native picker; diagnostics link to the section that fixes each problem.
+- **API keys in the Studio.** Keys are saved write-only to a private `secrets.env` next to the configuration, reach background processing, and can be tested against the provider (model list only) and removed. The CLI gains `falatrace keys status|set|remove|test`. Diagnostics explain session-only keys, readable key files and shadowed keys.
+- **Model downloads on request.** Official Whisper models are downloaded in the background and verified by size and SHA-256; the Ollama model is pulled only from an Ollama on this computer. CLI: `falatrace models list|download|ollama-pull`.
+- **Services and timers.** Apply, restart or disable the call monitor, tray and the processing, archive and Proton backup timers, with next and last runs and a warning when a service still uses an older configuration. Desktop notifications when processing finishes or fails (`processing.notifyOnCompletion`).
+- **Process any recording.** **Process…** shows the plan (create, queue or retry), duration and where transcription and summary run, marks destinations that leave the computer, and queues only after consent bound to that plan.
+- **Connect an assistant.** For an active agent grant, the AI access dialog shows the command that registers FalaTrace's MCP server with Claude Code, Codex CLI or Gemini CLI. Nothing is installed or run by the Studio.
+- **English interface.** The Studio follows the system language (Portuguese or English) or `studio.language`; bridge messages are translated too, and a test keeps every string covered.
+- **Configuration backups.** Restore, export without keys and import into the draft. The 20 most recent backups are kept.
+- **Install from source.** `make install-studio` and `make uninstall-studio` add and remove the Studio, `recording-studio` launcher, menu entry and icon; `run.ts` falls back to the system Qt headers.
+- **Fixes.** The automatic backend follows the configured recording backend; a legacy recording can be stopped from the Studio; compiled binaries generate correct service commands; an unknown `backend` value is refused when the configuration loads; unused `features` defaults were removed.
+- **Docs and checks.** New [quickstart](docs/QUICKSTART.md), [configuration reference](docs/CONFIGURATION.md) and [example configuration](docs/config.example.json). CI runs Biome on the new modules and the offscreen Studio journeys with PySide6 pinned by hash.
+
 ## 0.2.0-alpha.13 — Studio settings and first-use setup
 
 - Add a **Configurações** dialog to the Studio with four tabs: automatic recording (per-app switches, mode, timing), capture and audio (backend, devices listed from PipeWire/PulseAudio, encoder, profile, recordings folder), processing and AI (transcription/summary providers, models, Ollama URL, local/remote, automatic processing) and services and diagnostics. It opens once automatically when no configuration exists.
