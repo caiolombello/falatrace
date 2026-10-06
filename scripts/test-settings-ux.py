@@ -50,7 +50,8 @@ values = {'callDetection.enabled': not first, 'callDetection.mode':'record', 'ca
           'retention.localCompletedWorkDays':7,'retention.remoteIncomingDays':2,'retention.remoteResultsDays':30,'retention.remoteFailuresDays':30}
 revision = 'a' * 64
 # Assistant modes on an existing OpenAI setup that already has its key; wizard-key-required has none.
-key_present = mode in ('wizard-disable-monitor', 'wizard-disable-unknown', 'wizard-download-finish', 'wizard-download-pending', 'wizard-gemini-key', 'wizard-lost', 'wizard-ffmpeg-review', 'wizard-automation-review')
+key_present = mode in ('wizard-disable-monitor', 'wizard-disable-unknown', 'wizard-download-finish', 'wizard-download-pending', 'wizard-gemini-key', 'wizard-lost', 'wizard-ffmpeg-review', 'wizard-automation-review',
+                       'wizard-skip-services')
 details = [{'name':'OPENAI_API_KEY','source':'secrets.env' if key_present else 'missing','sessionOnly':mode == 'keys','shadowsStudioKey':False,'savedInStudio':key_present},
            {'name':'GEMINI_API_KEY','source':'missing','sessionOnly':False,'shadowsStudioKey':False,'savedInStudio':False},
            {'name':'RECORDING_CLI_OBS_PASSWORD','source':'missing','sessionOnly':False,'shadowsStudioKey':False,'savedInStudio':False}]
@@ -61,7 +62,7 @@ def settings(): return {'revision':revision,'exists':not first,'values':values,'
                 'remoteConfigured':mode == 'integrations','summaryLocal':True,'visualPolicyDeclared':False,'legacyApiKeyInConfig':False,'obsPasswordInConfig':False},
     'credentials':credentials()}
 timer = {'installed':False,'enabled':False,'active':False,'outdated':False,'nextRunAt':None,'lastResult':None}
-services = {'calls':{'installed':not first,'enabled':not first,'active':not first,'outdated':False,'staleConfig':mode == 'services'},
+services = {'calls':{'installed':not first,'enabled':not first,'active':not first and mode != 'wizard-skip-services','outdated':False,'staleConfig':mode == 'services'},
             'tray':{'installed':True,'enabled':True,'active':True,'outdated':False,'staleConfig':False},'sync':dict(timer),'archive':dict(timer),'backup':dict(timer)}
 catalog = {'whisper':{'directory':'/home/synthetic/models','source':'https://huggingface.co/','models':[
     {'id':'tiny','file':'ggml-tiny.bin','bytes':77691713,'sha256':'0'*64,'quality':'Muito rápido.','installed':False,'selected':False,'path':'/home/synthetic/models/ggml-tiny.bin'},
@@ -87,7 +88,9 @@ for line in sys.stdin:
                        else {'id':'summary-key','label':'Resumo · OPENAI_API_KEY','status':'missing','detail':'Chave não encontrada.'}],
              'automation':[{'id':'automatic-backend','label':'Gravação automática','status':'missing','detail':'Usa o OBS desativado.','action':'capture'}] if mode == 'services' else
                           [{'id':'automatic-backend','label':'Gravação automática','status':'missing','action':'capture','detail':'O modo “Controlar o OBS” exige o OBS ativado em Integrações.'},
-                           {'id':'remote-worker','label':'Worker remoto','status':'missing','action':'remote','detail':'O processamento está marcado como remoto, mas nenhum worker foi configurado. Configure-o em Integrações ou volte para “Neste computador”.'}] if mode == 'wizard-automation-review' else [],
+                           {'id':'remote-worker','label':'Worker remoto','status':'missing','action':'remote','detail':'O processamento está marcado como remoto, mas nenhum worker foi configurado. Configure-o em Integrações ou volte para “Neste computador”.'}] if mode == 'wizard-automation-review' else
+                          [{'id':'automatic-backend','label':'Gravação automática','status':'warning','action':'calls-apply','detail':'O monitor de chamadas não está rodando: nada será gravado automaticamente. Aplique o monitor em Serviços.'},
+                           {'id':'processing-timer','label':'Processamento automático','status':'warning','action':'sync-apply','detail':'Gravações novas entram na fila, mas ficam pendentes até você processá-las: ative o processamento em segundo plano em Serviços.'}] if mode == 'wizard-skip-services' else [],
              'audio':{'devices':[{'name':'alsa_input.synthetic-mic','description':'Microfone sintético','monitor':False},
                                  {'name':'alsa_output.synthetic.monitor','description':'Monitor sintético','monitor':True}],
                       'defaultMicrophone':'alsa_input.synthetic-mic','defaultDesktop':'alsa_output.synthetic.monitor'},
@@ -233,6 +236,13 @@ MODES = {
                                  'check("the processing step shows the remote worker that is missing", setupWizard.step===2 && !!worker && worker.visible); setupWizard.step=4; setupWizard.finish()',
                                  'const title = findObject(setupWizard.contentItem, "wizardDoneTitle"), labels = setupWizard.pendingIssues().map(function(issue){ return issue.label }); '
                                  'check("the last page lists automatic recording and the remote worker", setupWizard.step===5 && !!title && title.text!=="Tudo pronto" && labels.indexOf("Gravação automática")>=0 && labels.indexOf("Worker remoto")>=0)', ''),
+    'wizard-skip-services': ('setupWizard.open(); setupWizard.consentAck=true',
+                             'setupWizard.step=4; const before = setupWizard.pendingIssues().map(function(issue){ return issue.label }); '
+                             'check("warnings that Finish fixes are not pending", before.indexOf("Gravação automática")<0 && before.indexOf("Processamento automático")<0); '
+                             'setupWizard.applyMonitor=false; setupWizard.applyTimer=false; const row = findObject(setupWizard.contentItem, "wizardReviewAutomation"), timer = findObject(setupWizard.contentItem, "wizardReviewProblem-processing-timer"); '
+                             'check("review flags the monitor and the processing timer left off", !!row && row.status==="warning" && row.detail.indexOf("não está rodando")>=0 && !!timer && timer.visible); setupWizard.finish()',
+                             'const title = findObject(setupWizard.contentItem, "wizardDoneTitle"), labels = setupWizard.pendingIssues().map(function(issue){ return issue.label }); '
+                             'check("the last page lists the monitor and the timer that were not applied", setupWizard.step===5 && !!title && title.text!=="Tudo pronto" && labels.indexOf("Gravação automática")>=0 && labels.indexOf("Processamento automático")>=0)', ''),
     'models-ollama-draft': ('settingsDialog.open()',
                             'setSettingsField("summary.provider", "ollama"); setSettingsField("summary.ollamaUrl", "http://127.0.0.1:11435"); setSettingsField("summary.ollamaModel", "llama4:8b"); settingsDialog.goToSection(4)',
                             'check("the list shows the Ollama at the unsaved address", !!settingsDialog.catalog.ollama && settingsDialog.catalog.ollama.url==="http://127.0.0.1:11435"); settingsDialog.startDownload("ollama", "llama4:8b"); '
@@ -269,7 +279,8 @@ SIDE_EFFECTS = {'save': {'settings-save'}, 'services': {'settings-service'}, 'wi
                 'wizard-key-fail': {'settings-save', 'settings-secret-set'}, 'wizard-download-pending': {'settings-model-download'},
                 'keys-lost': {'settings-secret-set'}, 'wizard-key-required': {'settings-save', 'settings-secret-set'},
                 'models-cloud': {'settings-model-download'}, 'wizard-gemini-key': {'settings-save'}, 'wizard-recommended-review': {'settings-save'},
-                'wizard-lost': {'settings-save'}, 'restore-pending': {'settings-restore'}, 'wizard-ffmpeg-review': {'settings-save'}, 'models-ollama-draft': {'settings-model-download'}, 'wizard-automation-review': {'settings-save'}}
+                'wizard-lost': {'settings-save'}, 'restore-pending': {'settings-restore'}, 'wizard-ffmpeg-review': {'settings-save'}, 'models-ollama-draft': {'settings-model-download'}, 'wizard-automation-review': {'settings-save'},
+                'wizard-skip-services': {'settings-save'}}
 GUARDED = {'settings-save', 'settings-service', 'settings-secret-set', 'settings-secret-remove', 'settings-model-download', 'settings-restore'}
 
 checks = []; screens = []

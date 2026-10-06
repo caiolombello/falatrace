@@ -125,11 +125,16 @@ FtDialog {
         const ids = value("processing.defaultTarget") === "remote" ? ["whisper", "whisper-model", "ollama", "remote-worker"] : ["ffmpeg", "whisper", "whisper-model", "ollama"]
         return (diag.checks || []).concat(diag.automation || []).filter(function(item){ return ids.indexOf(item.id) >= 0 && item.status !== "ok" && item.status !== "skipped" })
     }
-    // Automatic recording with a backend that cannot record on its own. A monitor that is not running yet
-    // is not listed: Finish applies it.
+    // Automation the diagnostic of the reviewed choices flags and Finish does not fix: Finish clears only a warning
+    // whose action it applies, the monitor or the processing timer. The remote worker counts as processing.
+    // After Finish the problems reviewed when it started stand, since the save clears the draft.
     function automationProblems() {
-        return (diag.automation || []).filter(function(item){ return item.id === "automatic-backend" && item.status === "missing" })
+        if (step === 5) return plannedProblems
+        const applied = serviceActions()
+        const problems = (diag.automation || []).filter(function(item){ return item.id !== "remote-worker" && (item.status === "missing" || item.status === "warning") && applied.indexOf(item.action) < 0 })
+        return problems
     }
+    function recordingProblem(item) { return item.id === "automatic-backend" }
     // What will not run yet: the capture, processing and automatic recording. Empty until the choices are diagnosed.
     function pendingIssues() {
         const issues = []
@@ -155,6 +160,7 @@ FtDialog {
         error = ""; notice = ""; results = []
         // Decided from what the person reviewed: the save clears the draft and may not return the new values.
         plannedActions = serviceActions()
+        plannedProblems = automationProblems()
         // An existing configuration with nothing changed only needs the key and services steps.
         if (!fresh && !Object.keys(changes()).length) { addResult(t("Configuração"), true, t("Sem alterações.")); saveKey(); return }
         request("settings-save", { revision: data.revision, changes: changes(), initialize: fresh })
@@ -170,6 +176,7 @@ FtDialog {
     }
     property var pendingActions: []
     property var plannedActions: []
+    property var plannedProblems: []
     // Stops the transient unit; the status poll that follows uses the model the bridge echoes back.
     function cancelDownload(kind, id) { request("settings-model-cancel", { kind: kind, model: id }) }
     function nextService() {
@@ -387,7 +394,9 @@ FtDialog {
           Status { objectName:"wizardReviewProcessing"; label:t("Processamento"); status:setupWizard.preset()==="local"&&!setupWizard.processingProblems().length?"ok":"warning"; detail:(setupWizard.preset()==="local"?t("Tudo neste computador."):setupWizard.preset()==="hybrid"?t("Transcrição aqui; o texto vai para a OpenAI para resumir."):setupWizard.preset()==="cloud"?t("Áudio e texto vão para a OpenAI."):t("Combinação personalizada; veja Configurações."))+setupWizard.processingProblems().map(function(item){ return "\n" + t(item.detail) }).join("") }
           FtButton { objectName:"wizardShowMissing"; visible:setupWizard.processingProblems().length>0; text:t("Ver o que falta"); iconName:"back"; compact:true; variant:"outline"; onClicked:setupWizard.step=2 }
           Status { visible:setupWizard.pendingKey!==""; label:t("Chave da OpenAI"); status:"ok"; detail:t("Salva em arquivo privado ao concluir.") }
-          Status { objectName:"wizardReviewAutomation"; label:t("Gravação automática"); status:(setupWizard.value("callDetection.enabled")===true&&setupWizard.value("callDetection.mode")==="record")||setupWizard.automationProblems().length?"warning":"ok"; detail:(setupWizard.value("callDetection.enabled")!==true?t("Desligada."):setupWizard.value("callDetection.mode")==="record"?t("Grava sozinho as chamadas detectadas."):t("Só avisa."))+setupWizard.automationProblems().map(function(item){ return "\n" + t(item.detail) }).join("") }
+          Status { objectName:"wizardReviewAutomation"; label:t("Gravação automática"); status:(setupWizard.value("callDetection.enabled")===true&&setupWizard.value("callDetection.mode")==="record")||setupWizard.automationProblems().some(setupWizard.recordingProblem)?"warning":"ok"; detail:(setupWizard.value("callDetection.enabled")!==true?t("Desligada."):setupWizard.value("callDetection.mode")==="record"?t("Grava sozinho as chamadas detectadas."):t("Só avisa."))+setupWizard.automationProblems().filter(setupWizard.recordingProblem).map(function(item){ return "\n" + t(item.detail) }).join("") }
+          Repeater { model:setupWizard.automationProblems().filter(function(item){ return !setupWizard.recordingProblem(item) })
+            Status { required property var modelData; objectName:"wizardReviewProblem-"+modelData.id; label:modelData.label; status:"warning"; detail:modelData.detail } }
           Label { text:t("Aplicar agora"); color:ink; font.pixelSize:16; font.weight:Font.DemiBold; Layout.topMargin:6 }
           WrappedCheck { visible:setupWizard.value("callDetection.enabled")===true; text:t("Iniciar o monitor de chamadas"); checked:setupWizard.applyMonitor; onToggled:setupWizard.applyMonitor=checked }
           WrappedCheck { visible:setupWizard.value("processing.autoEnqueue")===true; text:t("Ativar o processamento em segundo plano"); checked:setupWizard.applyTimer; onToggled:setupWizard.applyTimer=checked }
