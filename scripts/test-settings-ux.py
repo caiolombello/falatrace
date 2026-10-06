@@ -95,6 +95,8 @@ for line in sys.stdin:
         services['calls']['staleConfig'] = False
         if p['action'] == 'sync-apply': services['sync'].update({'installed':True,'enabled':True,'active':True,'nextRunAt':'2026-10-05T12:00:00.000Z'})
         v = {'action':p['action'],'services':services}
+    elif op == 'settings-secret-set' and mode == 'wizard-key-fail':
+        print(json.dumps({'id':r['id'],'ok':False,'error':'secrets.env tem permissões amplas demais.'}), flush=True); continue
     elif op == 'settings-secret-set':
         details[0].update({'source':'secrets.env','savedInStudio':True,'sessionOnly':False}); v = {'name':p['name'],'saved':True,'credentials':credentials()}
         # Saved, but the status could not be read again.
@@ -165,6 +167,9 @@ MODES = {
                                'setupWizard.request("settings-model-download",{kind:"whisper",model:"large-v3-turbo-q5_0",consent:true})',
                                'setupWizard.set("processing.notifyOnCompletion", false); setupWizard.step=4; setupWizard.finish(); check("Finish waits while a model download runs", setupWizard.whisperDownloadRunning() && setupWizard.step===4 && !setupWizard.hasPending("settings-save") && setupWizard.error!==""); setupWizard.cancelDownload("whisper","large-v3-turbo-q5_0")',
                                'check("once the download stops, Finish is available again", !setupWizard.whisperDownloadRunning()); setupWizard.finish()'),
+    'wizard-key-fail': ('setupWizard.open(); setupWizard.consentAck=true',
+                        'setupWizard.applyPreset("cloud"); setupWizard.useKey("sk-synthetic-wizard-key"); setupWizard.step=4; setupWizard.finish()',
+                        'check("a failed key write keeps the assistant on review with the key and applies no service", setupWizard.step===4 && setupWizard.error!=="" && setupWizard.pendingKey!=="" && !setupWizard.hasPending("settings-service"))', ''),
     'models': ('settingsDialog.open(); settingsDialog.goToSection(4)', 'check("catalog loaded on demand", !!settingsDialog.catalog.whisper && settingsDialog.catalog.whisper.models.length===2); settingsDialog.confirmDownload="whisper:tiny"; settingsDialog.startDownload("whisper","tiny")',
                'check("download progress tracked", !!settingsDialog.downloads["whisper:tiny"] && settingsDialog.downloads["whisper:tiny"].state==="running"); settingsDialog.cancelDownload("whisper","tiny")',
                'check("cancelling refreshes the stopped download without an error", settingsError==="" && settingsDialog.downloads["whisper:tiny"].state==="failed")'),
@@ -195,7 +200,8 @@ SIDE_EFFECTS = {'save': {'settings-save'}, 'services': {'settings-service'}, 'wi
                 'wizard-reload': {'settings-save', 'settings-service'}, 'wizard-disable-monitor': {'settings-save', 'settings-service'},
                 'wizard-disable-unknown': {'settings-save', 'settings-service'},
                 'keys': {'settings-secret-set'}, 'models': {'settings-model-download'}, 'models-two': {'settings-model-download'},
-                'keys-refresh': {'settings-secret-set'}, 'wizard-download-finish': {'settings-model-download', 'settings-save'}}
+                'keys-refresh': {'settings-secret-set'}, 'wizard-download-finish': {'settings-model-download', 'settings-save'},
+                'wizard-key-fail': {'settings-save', 'settings-secret-set'}}
 GUARDED = {'settings-save', 'settings-service', 'settings-secret-set', 'settings-secret-remove', 'settings-model-download', 'settings-restore'}
 
 checks = []; screens = []
@@ -240,6 +246,9 @@ with tempfile.TemporaryDirectory(dir='/tmp', prefix='falatrace-settings-fixture-
             sets = [q for q in requests if q['op'] == 'settings-secret-set']
             checks.append({'name': 'keys: the key went to the bridge once', 'pass': len(sets) == 1 and sets[0]['payload']['name'] == 'OPENAI_API_KEY' and sets[0]['payload']['value'] == 'sha256:' + hashlib.sha256(b'sk-synthetic-ui-key').hexdigest()})
             checks.append({'name': 'keys: the key never appears in Studio output', 'pass': 'sk-synthetic-ui-key' not in r.stderr})
+        if mode == 'wizard-key-fail':
+            ops = [q['op'] for q in requests]
+            checks.append({'name': 'wizard-key-fail: the key write is tried once and no service follows it', 'pass': ops.count('settings-secret-set') == 1 and 'settings-service' not in ops})
         if mode == 'keys-refresh':
             checks.append({'name': 'keys-refresh: the key never appears in Studio output', 'pass': 'sk-synthetic-refresh-key' not in r.stderr})
         if mode == 'wizard-download-finish':

@@ -114,9 +114,8 @@ FtDialog {
     }
     function saveKey() {
         if (!pendingKey) { runServices(); return }
-        const key = pendingKey
-        pendingKey = ""
-        request("settings-secret-set", { name: "OPENAI_API_KEY", value: key })
+        // The key stays in memory until it is written, so a failed write can be retried from the review step.
+        request("settings-secret-set", { name: "OPENAI_API_KEY", value: pendingKey })
     }
     function runServices() {
         pendingActions = plannedActions
@@ -149,8 +148,12 @@ FtDialog {
         } else if (req.op === "settings-audio-test") {
             audioTest = message.ok ? result : { error: message.error }
         } else if (req.op === "settings-secret-set") {
-            addResult(t("Chave da OpenAI"), message.ok, message.ok ? t("Salva em arquivo privado.") : message.error)
-            if (message.ok && result.credentials) data = Object.assign({}, data, { credentials: result.credentials })
+            // Without the key the reviewed setup cannot run: stay on the review step with the key, apply no
+            // service and report nothing as ready; Finish tries again.
+            if (!message.ok) { error = message.error; step = 4; return }
+            pendingKey = ""
+            addResult(t("Chave da OpenAI"), true, t("Salva em arquivo privado."))
+            if (result.credentials) data = Object.assign({}, data, { credentials: result.credentials })
             runServices()
         } else if (req.op === "settings-model-cancel") {
             if (!message.ok) { error = message.error; return }
