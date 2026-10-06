@@ -166,7 +166,13 @@ export const installStudio = async (options: InstallOptions = {}): Promise<Insta
     log(`${paths.alias} já existe e foi mantido.`);
   }
   await writeFileAtomic(paths.desktopEntry, desktopEntry(paths), 0o644);
-  await writeFileAtomic(paths.icon, await fs.readFile(join(repo, "docs/assets/falatrace-avatar.svg")), 0o644);
+  // The icon name is shared with release packages: replace it only when it is ours, absent or REPLACE=1.
+  if (options.replace || (await ownedOrAbsent(paths.icon, MARKER))) {
+    const svg = await fs.readFile(join(repo, "docs/assets/falatrace-avatar.svg"), "utf8");
+    await writeFileAtomic(paths.icon, `${svg.trimEnd()}\n<!-- ${MARKER} -->\n`, 0o644);
+  } else {
+    log(`${paths.icon} já existe e foi mantido.`);
+  }
   if (options.refreshCaches !== false) await refresh(paths);
   log(`FalaTrace Studio instalado em ${paths.studioDir}.`);
   log(`Abra pelo menu de aplicativos ou rode ${paths.launcher}.`);
@@ -188,7 +194,7 @@ export const uninstallStudio = async (options: Pick<InstallOptions, "paths" | "l
   await remove(paths.alias, !!alias?.isSymbolicLink() && (await fs.readlink(paths.alias)) === paths.launcher);
   await remove(paths.launcher, await ownedOrAbsent(paths.launcher, MARKER));
   await remove(paths.desktopEntry, await ownedOrAbsent(paths.desktopEntry, DESKTOP_MARKER));
-  await remove(paths.icon, true);
+  await remove(paths.icon, await ownedOrAbsent(paths.icon, MARKER));
   const studio = await fs.lstat(paths.studioDir).catch(() => null);
   await remove(paths.studioDir, !!studio?.isDirectory() && (await exists(join(paths.studioDir, STUDIO_MARKER_FILE))));
   if (options.refreshCaches !== false) await refresh(paths);

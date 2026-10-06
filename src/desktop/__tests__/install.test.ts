@@ -41,6 +41,7 @@ test("install copies the shell and QML, and the launcher starts it in packaged m
     expect(await fs.readlink(paths.alias)).toBe(paths.launcher);
     expect(await fs.readFile(paths.desktopEntry, "utf8")).toBe(desktopEntry(paths));
     expect(await fs.readFile(paths.icon, "utf8")).toContain("FalaTrace avatar");
+    expect(await fs.readFile(paths.icon, "utf8")).toEndWith(`<!-- ${MARKER} -->\n`);
 
     const launched = Bun.spawn([paths.launcher], { stdout: "ignore", stderr: "pipe" });
     expect(await launched.exited).toBe(0);
@@ -64,6 +65,25 @@ test("files another installer wrote are kept unless replacing is explicit", asyn
     expect(await fs.readFile(paths.launcher, "utf8")).toContain("release launcher");
     await installStudio({ ...options, replace: true });
     expect(await fs.readFile(paths.launcher, "utf8")).toContain(MARKER);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test("an icon from another install is neither replaced nor removed", async () => {
+  const { root, paths, options } = await fixture();
+  try {
+    await fs.mkdir(paths.binDir, { recursive: true });
+    await fs.writeFile(paths.cli, "#!/bin/sh\n", { mode: 0o755 });
+    await fs.mkdir(join(paths.icon, ".."), { recursive: true });
+    await fs.writeFile(paths.icon, "<svg><title>release icon</title></svg>\n");
+    await installStudio(options);
+    expect(await fs.readFile(paths.icon, "utf8")).toBe("<svg><title>release icon</title></svg>\n");
+    const removed = await uninstallStudio({ paths, refreshCaches: false, log: () => undefined });
+    expect(removed).not.toContain(paths.icon);
+    expect(await fs.readFile(paths.icon, "utf8")).toBe("<svg><title>release icon</title></svg>\n");
+    await installStudio({ ...options, replace: true });
+    expect(await fs.readFile(paths.icon, "utf8")).toContain(MARKER);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }
