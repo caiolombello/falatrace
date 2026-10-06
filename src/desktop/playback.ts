@@ -12,6 +12,7 @@ import { writeJsonAtomic } from "../../src/jobs/store";
 import { validateJobId } from "../../src/jobs/types";
 import { acquireSingleton } from "../../src/runtime/singleton";
 import { getServiceLaunchCommand } from "../runtime/launcher";
+import { transientUnitEnvironment } from "../runtime/systemd-units";
 
 type State = { state: "running" | "completed" | "failed"; operationId: string; key: string; path?: string; location?: "local" | "vaio" | "proton"; message?: string };
 type Playback = State;
@@ -38,6 +39,12 @@ const lookup = async (key: string): Promise<{ config: Awaited<ReturnType<typeof 
 };
 const writeState = async (state: State): Promise<void> => { await ensureStateDir(); await writeJsonAtomic(statePath(state.operationId), state); };
 
+/** The playback unit finds the recording in the configuration this process reads: same PATH and XDG directories. */
+export const playbackRunArgs = (unit: string, launch: string[], operationId: string, source: string, env: NodeJS.ProcessEnv = process.env): string[] => [
+  "--user", `--unit=${unit}`, "--collect", "--property=Type=exec", "--property=Nice=10", "--property=RuntimeMaxSec=1800", "--property=TimeoutStopSec=30",
+  "--property=UMask=0077", ...transientUnitEnvironment(env), "--", ...launch, "desktop", "playback", operationId, source
+];
+
 const active = new Map<string, string>();
 export const queuePlayback = async (key: string): Promise<State> => {
   const source = validateKey(key);
@@ -60,7 +67,7 @@ export const queuePlayback = async (key: string): Promise<State> => {
   const unit = `recording-studio-playback-${operationId}`;
   try {
     const launch = getServiceLaunchCommand();
-    await runCommand("systemd-run", ["--user", `--unit=${unit}`, "--collect", "--property=Type=exec", "--property=Nice=10", "--property=RuntimeMaxSec=1800", "--property=TimeoutStopSec=30", "--property=UMask=0077", `--setenv=PATH=${process.env.PATH || ""}`, "--", ...launch, "desktop", "playback", operationId, source], { timeoutMs: 15_000 });
+    await runCommand("systemd-run", playbackRunArgs(unit, launch, operationId, source), { timeoutMs: 15_000 });
   } catch { const state: State = { state: "failed", operationId, key: source, message: "Não foi possível iniciar a reprodução" }; await writeState(state); return state; }
   active.set(source, operationId);
   return { state: "running", operationId, key: source };

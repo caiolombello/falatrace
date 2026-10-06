@@ -8,6 +8,8 @@ import { buildSyncUnits, buildWorkerUnit, uninstallSyncTimer } from "../../jobs/
 import { buildProtonBackupUnits, uninstallProtonBackupTimer } from "../../proton/service";
 import { buildCallMonitorUnit, uninstallCallMonitorService } from "../../calls/service";
 import { buildTrayUnit, uninstallTrayService } from "../../tray/service";
+import { queueAlignedSubtitles } from "../../subtitles/service";
+import { playbackRunArgs } from "../../desktop/playback";
 import { cliEntryForBun, getServiceLaunchCommand } from "../launcher";
 import { execStart, quoteSystemd, quoteSystemdPath, removeUserUnits, userUnitDir } from "../systemd-units";
 
@@ -55,6 +57,20 @@ test("every generated unit uses the same launch command", () => {
     buildSyncUnits(config, launch).service, buildProtonBackupUnits(config, launch).service, buildArchiveUnits(config, launch).service
   ];
   for (const unit of units) expect(unit).toContain('ExecStart="/home/u/.local/bin/falatrace" ');
+});
+
+test("subtitles and playback units started by the Studio read the configuration the Studio reads", async () => {
+  const runs: string[][] = [];
+  await queueAlignedSubtitles("123e4567-e89b-42d3-a456-426614174000", async (command, args) => { runs.push([command, ...args]); return { stdout: "", stderr: "" }; });
+  const env = { PATH: "/usr/bin", XDG_CONFIG_HOME: "/custom/config", XDG_STATE_HOME: "/custom/state", XDG_DATA_HOME: "/custom/data" };
+  const playback = playbackRunArgs("recording-studio-playback-1", ["/x/falatrace"], "123e4567-e89b-42d3-a456-426614174000", "/rec/a.mkv", env);
+  const [subtitles = []] = runs;
+  const subtitleOptions = subtitles.slice(0, subtitles.indexOf("--"));
+  for (const name of ["XDG_CONFIG_HOME", "XDG_STATE_HOME", "XDG_DATA_HOME"]) {
+    expect(subtitleOptions).toContain(`--setenv=${name}=${process.env[name]}`);
+    expect(playback.slice(0, playback.indexOf("--"))).toContain(`--setenv=${name}=${env[name as keyof typeof env]}`);
+  }
+  expect(playback.slice(playback.indexOf("--"))).toEqual(["--", "/x/falatrace", "desktop", "playback", "123e4567-e89b-42d3-a456-426614174000", "/rec/a.mkv"]);
 });
 
 /** The user manager's UnitPath for a configuration directory, in systemd's order. */

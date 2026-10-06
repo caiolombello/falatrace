@@ -230,7 +230,8 @@ describe("tray integration", () => {
     expect(buildCliActionRunArgs(
       "start-recording",
       ["/home/user/.local/bin/recording-cli"],
-      "123-456"
+      "123-456",
+      { PATH: "/usr/bin" }
     )).toEqual([
       "--user",
       "--quiet",
@@ -238,6 +239,7 @@ describe("tray integration", () => {
       "--wait",
       "--pipe",
       "--unit=recording-cli-tray-action-123-456",
+      "--setenv=PATH=/usr/bin",
       "--",
       "/home/user/.local/bin/recording-cli",
       "record",
@@ -261,7 +263,8 @@ describe("tray integration", () => {
   test("launches the production studio without a terminal or TUI fallback", () => {
     const args = buildStudioLaunchArgs(
       "/home/user/.local/bin/recording-studio",
-      "123-456"
+      "123-456",
+      { PATH: "/usr/bin" }
     );
     expect(args).toEqual([
       "--user",
@@ -269,6 +272,7 @@ describe("tray integration", () => {
       "--collect",
       "--property=Type=exec",
       "--unit=recording-cli-studio-123-456",
+      "--setenv=PATH=/usr/bin",
       "--",
       "/home/user/.local/bin/recording-studio"
     ]);
@@ -325,18 +329,36 @@ describe("tray integration", () => {
     expect(buildTerminalLaunchArgs(
       { path: "/usr/bin/konsole", args: ["-e"] },
       ["/home/user/.local/bin/recording-cli", "tui"],
-      "123-456"
+      "123-456",
+      { PATH: "/usr/bin" }
     )).toEqual([
       "--user",
       "--quiet",
       "--collect",
       "--unit=recording-cli-terminal-123-456",
+      "--setenv=PATH=/usr/bin",
       "--",
       "/usr/bin/konsole",
       "-e",
       "/home/user/.local/bin/recording-cli",
       "tui"
     ]);
+  });
+
+  test("what the tray starts through the user manager reads the configuration the tray reads", () => {
+    // The tray unit carries the installer's XDG directories; the units it starts must get them too.
+    const env = { PATH: "/usr/bin", XDG_CONFIG_HOME: "/custom/config", XDG_STATE_HOME: "/custom/state", XDG_DATA_HOME: "/custom/data" };
+    const launches = [
+      buildCliActionRunArgs("stop-recording", ["/home/user/.local/bin/recording-cli"], "1", env),
+      buildStudioLaunchArgs("/home/user/.local/bin/recording-studio", "1", env),
+      buildTerminalLaunchArgs({ path: "/usr/bin/konsole", args: ["-e"] }, ["/home/user/.local/bin/recording-cli", "tui"], "1", env)
+    ];
+    for (const args of launches) {
+      const options = args.slice(0, args.indexOf("--"));
+      expect(options).toEqual(expect.arrayContaining([
+        "--setenv=XDG_CONFIG_HOME=/custom/config", "--setenv=XDG_STATE_HOME=/custom/state", "--setenv=XDG_DATA_HOME=/custom/data"
+      ]));
+    }
   });
 
   test("embeds syntactically valid Python", () => {

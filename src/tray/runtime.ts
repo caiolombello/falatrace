@@ -22,6 +22,7 @@ import {
 } from "./presentation";
 import { INDICATOR_SCRIPT } from "./python";
 import { getServiceLaunchCommand } from "../runtime/launcher";
+import { transientUnitEnvironment } from "../runtime/systemd-units";
 
 const MONITOR_SERVICE = "recording-cli-calls.service";
 const FALLBACK_REFRESH_MS = 15_000;
@@ -50,10 +51,13 @@ const cliActionCommand: Record<CliTrayAction, readonly [string, string]> = {
   "resume-automation": ["calls", "resume"]
 };
 
+// The tray reads the configuration of the XDG directories its unit was installed with; what it
+// starts through the user manager gets them too, so both act on the same configuration and state.
 export const buildCliActionRunArgs = (
   action: CliTrayAction,
   launchCommand: string[],
-  unitSuffix: string
+  unitSuffix: string,
+  env: NodeJS.ProcessEnv = process.env
 ): string[] => [
   "--user",
   "--quiet",
@@ -61,6 +65,7 @@ export const buildCliActionRunArgs = (
   "--wait",
   "--pipe",
   `--unit=recording-cli-tray-action-${unitSuffix}`,
+  ...transientUnitEnvironment(env),
   "--",
   ...launchCommand,
   ...cliActionCommand[action]
@@ -90,12 +95,14 @@ const findTerminal = async (): Promise<(typeof terminalCandidates)[number]> => {
 export const buildTerminalLaunchArgs = (
   terminal: (typeof terminalCandidates)[number],
   command: string[],
-  unitSuffix: string
+  unitSuffix: string,
+  env: NodeJS.ProcessEnv = process.env
 ): string[] => [
   "--user",
   "--quiet",
   "--collect",
   `--unit=recording-cli-terminal-${unitSuffix}`,
+  ...transientUnitEnvironment(env),
   "--",
   terminal.path,
   ...terminal.args,
@@ -104,13 +111,15 @@ export const buildTerminalLaunchArgs = (
 
 export const buildStudioLaunchArgs = (
   command: string,
-  unitSuffix: string
+  unitSuffix: string,
+  env: NodeJS.ProcessEnv = process.env
 ): string[] => [
   "--user",
   "--quiet",
   "--collect",
   "--property=Type=exec",
   `--unit=recording-cli-studio-${unitSuffix}`,
+  ...transientUnitEnvironment(env),
   "--",
   command
 ];
