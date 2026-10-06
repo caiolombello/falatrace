@@ -14,6 +14,7 @@
     "desktop:setup": "bun run src/desktop/setup.ts",
     "desktop:build": "bun run src/desktop/run.ts --build",
     "desktop:check": "tsc --noEmit --project src/desktop/tsconfig.json",
+    "desktop:install": "bun run src/desktop/install.ts",
     "start": "bun run dist/index.js"
   },
   "dependencies": {

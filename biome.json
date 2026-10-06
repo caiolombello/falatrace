@@ -14,6 +14,8 @@
 			"src/config/__tests__/credential-test.test.ts",
 			"src/config/__tests__/secrets.test.ts",
 			"src/desktop/model-bridge.ts",
+			"src/desktop/install.ts",
+			"src/desktop/__tests__/install.test.ts",
 			"src/desktop/settings-bridge.ts",
 			"src/desktop/__tests__/i18n.test.ts",
 			"src/desktop/__tests__/model-bridge.test.ts",

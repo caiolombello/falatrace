@@ -127,7 +127,7 @@ export const launchRecordingStudio = async (
     await fs.access(command, fsConstants.X_OK);
   } catch {
     throw new Error(
-      `FalaTrace Studio não está instalado em ${command}. Execute novamente o instalador do FalaTrace.`
+      `FalaTrace Studio não está instalado em ${command}. Execute novamente o instalador do FalaTrace ou, a partir do código-fonte, make install-studio.`
     );
   }
 

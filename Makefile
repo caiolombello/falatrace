@@ -7,7 +7,7 @@ DIST_DIR := dist
 ENTRY := $(DIST_DIR)/index.js
 STANDALONE_ENTRY := $(DIST_DIR)/$(APP_NAME)
 
-.PHONY: help install-deps install-cli install uninstall build build-standalone
+.PHONY: help install-deps install-cli install uninstall build build-standalone install-studio uninstall-studio
 
 help:
 	@echo "Targets:"
@@ -17,6 +17,9 @@ help:
 	@echo "  install-cli   Install CLI executable into $(BIN_DIR)"
 	@echo "  install       install-cli (system dependencies are an explicit separate step)"
 	@echo "  uninstall     Remove CLI executable"
+	@echo "  install-studio  Build the Studio with local Qt and add launcher, menu entry and icon"
+	@echo "                  (needs install-cli; REPLACE=1 replaces a launcher another installer wrote)"
+	@echo "  uninstall-studio Remove only what install-studio created"
 
 install-deps:
 	sudo apt-get update
@@ -37,3 +40,11 @@ install: install-cli
 
 uninstall:
 	rm -f "$(BIN_DIR)/$(APP_NAME)"
+
+# Qt headers: system packages (qt6-base-dev, qt6-base-dev-tools, qt6-declarative-dev,
+# libmpvqt-dev) or the SDK from `bun run desktop:setup`. No sudo, no downloads.
+install-studio: install-cli
+	INSTALL_PREFIX="$(INSTALL_PREFIX)" bun run src/desktop/install.ts $(if $(REPLACE),--replace,)
+
+uninstall-studio:
+	INSTALL_PREFIX="$(INSTALL_PREFIX)" bun run src/desktop/install.ts --uninstall

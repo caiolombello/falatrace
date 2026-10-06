@@ -274,7 +274,7 @@ describe("tray integration", () => {
   test("reports a clear error when the production studio is not installed", async () => {
     const missingCommand = `/tmp/recording-studio-missing-${process.pid}`;
     await expect(launchRecordingStudio(missingCommand)).rejects.toThrow(
-      `FalaTrace Studio não está instalado em ${missingCommand}. Execute novamente o instalador do FalaTrace.`
+      `FalaTrace Studio não está instalado em ${missingCommand}. Execute novamente o instalador do FalaTrace ou, a partir do código-fonte, make install-studio.`
     );
   });
 

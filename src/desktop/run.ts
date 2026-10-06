@@ -9,9 +9,14 @@ import { join, resolve } from "node:path";
 const root = import.meta.dir;
 const sdk = process.env.RECORDING_DESKTOP_SDK || join(homedir(), ".cache/recording-cli/desktop-sdk/root");
 const build = resolve(root, "../../dist/desktop");
-const include = join(sdk, "usr/include");
+// Headers come from the desktop:setup SDK when present, otherwise from the system packages
+// (qt6-base-dev, qt6-base-dev-tools, qt6-declarative-dev, libmpvqt-dev). Libraries are
+// always the system ones: the SDK only carries headers and moc.
+const sdkMoc = join(sdk, "usr/lib/qt6/libexec/moc");
+const useSdk = await Bun.file(sdkMoc).exists();
+const include = useSdk ? join(sdk, "usr/include") : "/usr/include";
 const qt = join(include, "x86_64-linux-gnu/qt6");
-const moc = join(sdk, "usr/lib/qt6/libexec/moc");
+const moc = useSdk ? sdkMoc : "/usr/lib/qt6/libexec/moc";
 const executable = join(build, "recording-studio");
 const pendingPath = join(build, "build-pending");
 const run = async (args: string[]): Promise<void> => {
@@ -19,7 +24,7 @@ const run = async (args: string[]): Promise<void> => {
   const code = await child.exited;
   if (code !== 0) throw new Error(`Comando falhou (${code}): ${args[0]}`);
 };
-if (!(await Bun.file(moc).exists())) throw new Error("SDK Qt ausente. Execute bun run desktop:setup.");
+if (!(await Bun.file(moc).exists())) throw new Error("Qt 6 de desenvolvimento ausente. Instale qt6-base-dev, qt6-base-dev-tools, qt6-declarative-dev e libmpvqt-dev, ou execute bun run desktop:setup.");
 await fs.mkdir(build, { recursive: true });
 const source = join(root, "main.cpp");
 // The Studio QML is split across files loaded at runtime (plus the i18n.js dictionary); all
