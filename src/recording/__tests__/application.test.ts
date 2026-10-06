@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { DEFAULT_CONFIG } from "../../config/defaults";
 import type { RecordingSession } from "../session";
-import { readCaptureStatus, startCapture, stopCapture } from "../application";
+import { captureHoldsDevices, readCaptureStatus, startCapture, stopCapture } from "../application";
 
 test("starts the managed capture and opens the same manual time entry as the CLI", async () => {
   const config = structuredClone(DEFAULT_CONFIG);
@@ -95,6 +95,44 @@ test("reports audio warnings discovered while a managed capture is active", asyn
   expect(status.active).toBe(true);
   expect(status.audio.selected).toEqual(session.audio);
   expect(status.warning).toContain("volume zero");
+});
+
+test("a managed capture whose state cannot be read still counts as holding the devices", async () => {
+  const config = structuredClone(DEFAULT_CONFIG);
+  config.capture.audioSource = "none";
+  const session: RecordingSession = {
+    version: 1,
+    id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+    owner: "manual",
+    backend: "audio",
+    phase: "recording",
+    outputPath: "/tmp/unknown.mka",
+    startedAt: "2026-09-08T12:00:00.000Z"
+  };
+  const controller = {
+    inspect: async () => { throw new Error("state unreadable"); },
+    health: async () => ({ active: true }),
+    recover: async () => session,
+    stop: async () => session,
+    acknowledge: async () => undefined
+  };
+  const status = await readCaptureStatus(config, {
+    sessionStore: { read: async () => session },
+    readLegacyState: async () => null,
+    createController: () => controller,
+    readAutomationState: async () => ({ version: 1, paused: false })
+  });
+  expect(status).toMatchObject({ session, active: false, unconfirmed: true, warning: expect.stringContaining("Não foi possível confirmar") });
+  expect(captureHoldsDevices(status)).toBe(true);
+  // A capture that is known to have ended frees the devices, as before.
+  const ended = await readCaptureStatus(config, {
+    sessionStore: { read: async () => session },
+    readLegacyState: async () => null,
+    createController: () => ({ ...controller, inspect: async () => ({ session, active: false }) }),
+    readAutomationState: async () => ({ version: 1, paused: false })
+  });
+  expect(ended.unconfirmed).toBeUndefined();
+  expect(captureHoldsDevices(ended)).toBe(false);
 });
 
 test("finalizes a managed call before acknowledging its persisted capture session", async () => {

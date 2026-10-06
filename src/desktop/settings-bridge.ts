@@ -8,7 +8,7 @@ import { parseManagerEnvironment, removeSecret, setSecret } from "../config/secr
 import { defaultKeyTestDeps, testProviderKey, type KeyTestProvider } from "../config/credential-test";
 import { automaticRecordingBackend, diagnoseRecordingBackend } from "../recording/capabilities";
 import { translateCaptureMessage } from "../recording/messages";
-import { readCaptureStatus } from "../recording/application";
+import { captureHoldsDevices, readCaptureStatus } from "../recording/application";
 import { runAudioTest } from "../recording/audio-test";
 import { ManualObsController } from "../recording/obs-recording";
 import { acquireSingleton } from "../runtime/singleton";
@@ -87,7 +87,7 @@ export const defaultSettingsDeps: SettingsDeps = {
   audioDevices: listAudioDevices,
   services: readServiceStatus,
   recording: diagnoseRecordingBackend,
-  captureActive: async () => (await readCaptureStatus((await loadConfig()).config)).active,
+  captureActive: async () => captureHoldsDevices(await readCaptureStatus((await loadConfig()).config)),
   lock: acquireSingleton,
   applyCalls: installCallMonitorService,
   disableCalls: uninstallCallMonitorService,

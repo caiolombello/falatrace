@@ -16,7 +16,7 @@ import { basename, resolve, join, dirname } from "node:path";
 import { loadConfig } from "../../src/config/load";
 import { configureDefaultAudio } from "../../src/config/audio";
 import { acquireSingleton } from "../../src/runtime/singleton";
-import { readCaptureStatus, startCapture, stopCapture } from "../../src/recording/application";
+import { captureHoldsDevices, readCaptureStatus, startCapture, stopCapture } from "../../src/recording/application";
 import { queueSelectedJob } from "../../src/jobs/queue";
 import { planRecordingProcessing, runRecordingProcessing } from "../jobs/manual";
 import { readMeetingContext } from "../../src/knowledge/meetings";
@@ -520,7 +520,7 @@ const handle = async (request: Request): Promise<unknown> => {
       if (request.op === "audio-defaults") {
         const captureLease = await acquireSingleton("capture-control");
         try {
-          if ((await readCaptureStatus(config)).active) throw new Error("Não altere o áudio durante uma captura ativa.");
+          if (captureHoldsDevices(await readCaptureStatus(config))) throw new Error("Não altere o áudio durante uma captura ativa.");
           const configuration = await configureDefaultAudio();
           invalidateLibrary();
           return { ...await readCaptureStatus((await loadConfig()).config), configuration };

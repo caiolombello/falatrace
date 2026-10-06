@@ -37,6 +37,8 @@ export type CaptureApplicationDependencies = {
 export type CaptureStatus = {
   session: RecordingSession | null;
   active: boolean;
+  /** A managed session exists but its state could not be read: it may still own the devices. */
+  unconfirmed?: boolean;
   warning?: string;
   audio: {
     configured: Pick<
@@ -60,6 +62,9 @@ export type StopCaptureResult = {
   warning?: string;
 };
 
+/** Whether anything may be using the capture devices; an unreadable session counts as busy. */
+export const captureHoldsDevices = (status: CaptureStatus): boolean => status.active || status.unconfirmed === true;
+
 const legacyCaptureError = (): Error =>
   new Error(
     "Há uma gravação legada em andamento. Pare-a antes de iniciar outra; o estado foi preservado."
@@ -73,6 +78,7 @@ export const readCaptureStatus = async (
   const managed = await store.read();
   let session = managed;
   let active = false;
+  let unconfirmed = false;
   let warning: string | undefined;
   let selected: AudioSources | undefined;
   let audioError: string | undefined;
@@ -94,6 +100,7 @@ export const readCaptureStatus = async (
         selected = session.audio;
       }
     } catch {
+      unconfirmed = !active;
       warning = "Não foi possível confirmar o estado da captura. O estado persistido foi preservado.";
     }
   }
@@ -147,6 +154,7 @@ export const readCaptureStatus = async (
   return {
     session,
     active,
+    ...(unconfirmed ? { unconfirmed: true } : {}),
     ...(warning ? { warning } : {}),
     audio: {
       configured: {
