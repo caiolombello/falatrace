@@ -1,5 +1,7 @@
 # Completion goal and finite roadmap
 
+Alpha.14 checkpoint, 2026-10-06: every option, API keys, model downloads, services and timers are managed from the Studio, with a guided first use, destinations shown before manual processing, an English interface and an install path from source (`make install-studio`). This covers the configuration and disclosure parts of the provider/privacy onboarding item; whether new users can explain where their data goes has not been checked with people. It also adds a source install path for the Studio to the portable release item. CI now renders the real QML offscreen; native journey validation on a physical desktop remains open.
+
 Alpha.13 checkpoint, 2026-10-05: the Studio has a full settings dialog (automatic recording, capture and audio, processing and AI, services and diagnostics) with guided first use, closing the configuration part of the provider/privacy onboarding item. Native journey validation on a physical desktop remains open.
 
 Alpha.12 checkpoint, 2026-10-05: explicit Chromium, Chrome, Brave, Edge, Vivaldi, Opera, Firefox, native Zoom and Teams for Linux identities (Discord, Signal, Telegram and Element opt-in) are implemented with classifier fixtures, closing the identity part of gap-batch item 2. Native acceptance per app/desktop/backend tuple remains open; see [compatibility](COMPATIBILITY.md).

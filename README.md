@@ -5,11 +5,13 @@
 
 # FalaTrace — experimental Linux source alpha
 
-Linux tools for authorized recording, meeting search and notes linked to source timestamps. FalaTrace 0.2.0-alpha.13 is an experimental source alpha. General native capture, desktop compatibility, model quality and redistributed binaries remain unqualified; specific synthetic checks are listed in the release notes.
+Linux tools for authorized recording, meeting search and notes linked to source timestamps. FalaTrace 0.2.0-alpha.14 is an experimental source alpha. General native capture, desktop compatibility, model quality and redistributed binaries remain unqualified; specific synthetic checks are listed in the release notes.
 
 ## Current verification
 
-Alpha.13 adds a full **Configurações** dialog to the Studio (automatic recording, capture and audio, processing and AI, services and diagnostics) with a guided first use; saves touch only changed allowlisted fields and API keys stay outside the app. See [alpha.13 scope and verification](docs/ALPHA13.md).
+Alpha.14 makes the Studio the place to set everything up: a guided first-use assistant, settings for every option, write-only API keys in a private `secrets.env` that background jobs read, verified model downloads on request, service and timer controls, **Process…** for any recording with destinations shown before consent, assistant connection commands, an English interface and `make install-studio`. The real QML runs offscreen in CI against synthetic bridges; the native binary, real capture and real providers were not exercised. See [alpha.14 scope and verification](docs/ALPHA14.md).
+
+Alpha.13 added a full **Configurações** dialog to the Studio (automatic recording, capture and audio, processing and AI, services and diagnostics) with a guided first use; saves touch only changed allowlisted fields and API keys stay outside the app. See [alpha.13 scope and verification](docs/ALPHA13.md).
 
 Alpha.12 extended automatic call detection to native Zoom, Teams for Linux, Chromium, Chrome, Brave, Edge, Vivaldi, Opera and Firefox (Discord, Signal, Telegram and Element are opt-in) and redesigns the Studio; the new app identities are fixture-tested, not natively validated. See [alpha.12 scope and verification](docs/ALPHA12.md).
 
@@ -19,7 +21,7 @@ Landing: [Português](https://caiolombello.github.io/falatrace/) · [English](ht
 
 ## Install deliberately
 
-Requires Bun, FFmpeg and the dependencies in `package.json`. Bun 1.4.0 with bun.lock is the tested installation path. A fresh node_modules installation of 17 exact locked packages from a local cache, plus standalone build/install/init/uninstall, passed. Download on a machine without a cache remains untested. The legacy pnpm lock is not the canonical installation path.
+Requires Bun, FFmpeg and the dependencies in `package.json`. Bun 1.4.0 with bun.lock is the tested installation path. A fresh node_modules installation of the then 17 exact locked packages from a local cache, plus standalone build/install/init/uninstall, passed; the lock now also pins Biome, a development-only linter, with its optional per-platform binaries. Download on a machine without a cache remains untested. The legacy pnpm lock is not the canonical installation path.
 
 ```sh
 bun install --frozen-lockfile --ignore-scripts

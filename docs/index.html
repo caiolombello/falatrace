@@ -27,7 +27,7 @@
 <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
 <link rel="stylesheet" href="style.css">
 <script src="site.js" defer></script>
-<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"FalaTrace","description":"Gravações de chamadas no Linux, resumos que apontam para a fonte e contexto limitado para agentes de IA.","applicationCategory":"MultimediaApplication","operatingSystem":"Linux","softwareVersion":"0.2.0-alpha.13","license":"https://opensource.org/licenses/MIT","url":"https://caiolombello.github.io/falatrace/","downloadUrl":"https://github.com/caiolombello/falatrace/releases/tag/v0.2.0-alpha.13","sameAs":"https://github.com/caiolombello/falatrace","inLanguage":"pt-BR","author":{"@type":"Person","name":"Caio Barbieri"},"offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"FalaTrace","description":"Gravações de chamadas no Linux, resumos que apontam para a fonte e contexto limitado para agentes de IA.","applicationCategory":"MultimediaApplication","operatingSystem":"Linux","softwareVersion":"0.2.0-alpha.14","license":"https://opensource.org/licenses/MIT","url":"https://caiolombello.github.io/falatrace/","downloadUrl":"https://github.com/caiolombello/falatrace/releases/tag/v0.2.0-alpha.14","sameAs":"https://github.com/caiolombello/falatrace","inLanguage":"pt-BR","author":{"@type":"Person","name":"Caio Barbieri"},"offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}</script>
 </head>
 <body>
 <a class="skip-link" href="#main">Ir para o conteúdo</a>
@@ -53,8 +53,8 @@
 <div class="announce">
  <div class="wrap announce-inner">
   <span class="announce-badge">Novo</span>
-  <p>Alpha.13: configurações completas e primeiro uso guiado no Studio, com diagnóstico de dependências e serviços.</p>
-  <a href="https://github.com/caiolombello/falatrace/releases/tag/v0.2.0-alpha.13">Ver novidades <span aria-hidden="true">↗</span></a>
+  <p>Alpha.14: tudo configurável no Studio, com assistente de primeiro uso, chaves de API, download de modelos verificados e interface em inglês.</p>
+  <a href="https://github.com/caiolombello/falatrace/releases/tag/v0.2.0-alpha.14">Ver novidades <span aria-hidden="true">↗</span></a>
  </div>
 </div>
 
@@ -84,7 +84,7 @@
    <h1 id="hero-title">Lembre o que foi decidido.<br><em>Confira onde foi dito.</em></h1>
    <p class="hero-lead">O FalaTrace grava as chamadas que você configurar, transcreve com processamento local por padrão e liga resumos e notas ao trecho da gravação. Quando sua IA precisa de contexto, consulta só o necessário — com horário e origem para você conferir.</p>
    <div class="cta-row">
-    <a class="btn btn-lg" href="#comecar">Instalar a alpha.13 <span aria-hidden="true">↓</span></a>
+    <a class="btn btn-lg" href="#comecar">Instalar a alpha.14 <span aria-hidden="true">↓</span></a>
     <a class="btn btn-lg btn-ghost" href="https://github.com/caiolombello/falatrace">Ver código no GitHub <span aria-hidden="true">↗</span></a>
    </div>
    <ul class="hero-facts">
@@ -161,13 +161,13 @@
 
    <article class="feature" aria-labelledby="step-1">
     <div class="feature-copy">
-     <p class="step"><span class="step-number">01</span>Gravar <span class="badge-new">Novo na alpha.13</span></p>
+     <p class="step"><span class="step-number">01</span>Gravar <span class="badge-new">Novo na alpha.14</span></p>
      <h3 id="step-1">Grava as chamadas que você escolher.</h3>
      <p>Ative regras para gravar quando Slack, Zoom, Chromium, Firefox, Zen, Helium e outros apps usarem microfone ou câmera — ou inicie a captura manualmente. O estado da gravação fica sempre visível.</p>
      <ul class="checks">
       <li>A detecção fica desligada até você ativar; o modo inicial só notifica.</li>
       <li>“Pausar novas gravações” e “Parar” são ações separadas.</li>
-      <li>Configure gravação, captura, IA e serviços numa tela do Studio, que mostra o que falta instalar.</li>
+      <li>Um assistente guia o primeiro uso, e as Configurações cobrem gravação, captura, IA, chaves de API, modelos e serviços.</li>
       <li>Microfone e áudio do sistema em faixas separadas; tela via OBS ou GPU Screen Recorder.</li>
      </ul>
     </div>
@@ -330,7 +330,7 @@
      <figcaption><span class="tag tag-real">UI real · alpha.5</span>Acesso para IA: autorização, saldo e preview de frame.</figcaption>
     </figure>
    </div>
-   <p class="fine">As capturas são de alphas anteriores; o Studio foi redesenhado na alpha.12 e ganhou Configurações na alpha.13, então a aparência atual é diferente. Clique em uma imagem para ampliar.</p>
+   <p class="fine">As capturas são de alphas anteriores; o Studio foi redesenhado na alpha.12, ganhou Configurações na alpha.13 e um assistente de primeiro uso na alpha.14, então a aparência atual é diferente. Clique em uma imagem para ampliar.</p>
   </div>
  </section>
 
@@ -361,9 +361,9 @@
     <article class="status-card">
      <h3><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check-circle"/></svg>Verificado offline</h3>
      <ul>
-      <li><strong>801 testes</strong> sem falhas na alpha.13, com dados sintéticos.</li>
+      <li><strong>931 testes</strong> sem falhas na alpha.14, com dados sintéticos.</li>
       <li>Instalação com lockfile, configuração que não sobrescreve a sua e desinstalação que preserva dados.</li>
-      <li>Jornada de resumo do Studio aprovada em 8 de 8 casos com QML real em Qt offscreen (alpha.11).</li>
+      <li>Oito jornadas do Studio com QML real em Qt offscreen, 323 verificações, rodando no CI (alpha.14).</li>
      </ul>
     </article>
     <article class="status-card status-open">
@@ -377,24 +377,24 @@
    </div>
    <div class="compat">
     <table>
-     <caption>Compatibilidade na alpha.13</caption>
+     <caption>Compatibilidade na alpha.14</caption>
      <thead><tr><th scope="col">Recurso</th><th scope="col">Situação</th></tr></thead>
      <tbody>
       <tr><th scope="row">Detecção automática no Slack, Zoom, Teams for Linux, Chromium, Chrome, Brave, Edge, Vivaldi, Opera, Firefox, Zen e Helium<small>Por sinais locais de microfone ou câmera; não identifica o serviço da chamada. Os apps novos da alpha.12 foram testados com dados sintéticos.</small></th><td><span class="state state-ok"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check-circle"/></svg>Disponível</span></td></tr>
       <tr><th scope="row">Discord, Signal, Telegram e Element<small>Desligados por padrão, porque também levam ligações pessoais; ative um a um na configuração.</small></th><td><span class="state state-ok"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check-circle"/></svg>Opcional</span></td></tr>
-      <tr><th scope="row">Configurações completas no Studio<small>Gravação, captura, processamento e serviços, com diagnóstico. Chaves de API ficam fora do app.</small></th><td><span class="state state-ok"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check-circle"/></svg>Disponível</span></td></tr>
+      <tr><th scope="row">Configurações completas no Studio<small>Todas as opções, chaves de API em arquivo privado, download de modelos verificados e serviços, com diagnóstico.</small></th><td><span class="state state-ok"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check-circle"/></svg>Disponível</span></td></tr>
       <tr><th scope="row">Gravação manual (áudio via FFmpeg, OBS, GPU Screen Recorder)<small>Depende do backend e do desktop.</small></th><td><span class="state state-ok"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check-circle"/></svg>Disponível</span></td></tr>
       <tr><th scope="row">Transcrição com Whisper.cpp local, OpenAI ou Gemini</th><td><span class="state state-ok"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check-circle"/></svg>Disponível</span></td></tr>
       <tr><th scope="row">Resumos com Ollama local ou OpenAI<small>Qualidade dos modelos não validada.</small></th><td><span class="state state-ok"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check-circle"/></svg>Disponível</span></td></tr>
-      <tr><th scope="row">Studio desktop (Qt)<small>Interface em português.</small></th><td><span class="state state-ok"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check-circle"/></svg>Disponível</span></td></tr>
+      <tr><th scope="row">Studio desktop (Qt)<small>Interface em português e inglês.</small></th><td><span class="state state-ok"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check-circle"/></svg>Disponível</span></td></tr>
       <tr><th scope="row">Windows e macOS</th><td><span class="state state-out"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-ban"/></svg>Fora do escopo</span></td></tr>
      </tbody>
     </table>
    </div>
    <ul class="doc-links">
-    <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.13/docs/ALPHA13.md">Escopo e verificação da alpha.13 <span aria-hidden="true">↗</span></a></li>
-    <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.13/docs/COMPATIBILITY.md">Matriz de compatibilidade <span aria-hidden="true">↗</span></a></li>
-    <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.13/docs/ROADMAP.md">Roadmap <span aria-hidden="true">↗</span></a></li>
+    <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.14/docs/ALPHA14.md">Escopo e verificação da alpha.14 <span aria-hidden="true">↗</span></a></li>
+    <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.14/docs/COMPATIBILITY.md">Matriz de compatibilidade <span aria-hidden="true">↗</span></a></li>
+    <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.14/docs/ROADMAP.md">Roadmap <span aria-hidden="true">↗</span></a></li>
    </ul>
   </div>
  </section>
@@ -404,39 +404,43 @@
    <div class="start-copy">
     <div class="section-head">
      <p class="eyebrow">Comece pelo código</p>
-     <h2 id="start-title">Instale a alpha.13 em poucos comandos.</h2>
+     <h2 id="start-title">Instale a alpha.14 em poucos comandos.</h2>
      <p>A alpha é distribuída como código-fonte para Linux. Nenhum destes comandos inicia uma gravação: a automação é ativada à parte, depois que você revisar regras e consentimento.</p>
     </div>
     <h3>Você vai precisar de</h3>
     <ul class="reqs">
      <li><strong>Linux</strong> com <strong>Bun 1.4</strong> e <strong>FFmpeg</strong></li>
      <li>Opcional: <strong>Whisper.cpp</strong> e <strong>Ollama</strong> para processar localmente</li>
-     <li>Opcional: SDK <strong>Qt 6</strong> para o Studio, via <code>bun run desktop:setup</code></li>
+     <li>Opcional: <strong>Qt 6.10</strong> com MpvQt para o Studio, pelos pacotes do sistema ou <code>bun run desktop:setup</code></li>
     </ul>
     <ul class="start-links">
-     <li><a href="https://github.com/caiolombello/falatrace/releases/download/v0.2.0-alpha.13/falatrace-0.2.0-alpha.13-source.tar.gz">Baixar código-fonte (.tar.gz)</a></li>
-     <li><a href="https://github.com/caiolombello/falatrace/releases/download/v0.2.0-alpha.13/falatrace-0.2.0-alpha.13-source.sha256">Conferir SHA-256</a></li>
-     <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.13/skills/README.md">Instalar a skill nos seus agentes <span aria-hidden="true">↗</span></a></li>
-     <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.13/README.md">Guia completo no README <span aria-hidden="true">↗</span></a></li>
+     <li><a href="https://github.com/caiolombello/falatrace/releases/download/v0.2.0-alpha.14/falatrace-0.2.0-alpha.14-source.tar.gz">Baixar código-fonte (.tar.gz)</a></li>
+     <li><a href="https://github.com/caiolombello/falatrace/releases/download/v0.2.0-alpha.14/falatrace-0.2.0-alpha.14-source.sha256">Conferir SHA-256</a></li>
+     <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.14/skills/README.md">Instalar a skill nos seus agentes <span aria-hidden="true">↗</span></a></li>
+     <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.14/docs/QUICKSTART.pt-BR.md">Guia de início rápido <span aria-hidden="true">↗</span></a></li>
+     <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.14/README.md">Guia completo no README <span aria-hidden="true">↗</span></a></li>
     </ul>
    </div>
    <div>
     <div class="code-card">
      <div class="code-bar"><span>Terminal</span><span class="copy-status" id="install-status" role="status"></span><button class="copy-btn" type="button" data-copy-target="install-code" data-copy-status="install-status" data-copied="Copiado" data-failed="Não foi possível copiar" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-copy"/></svg>Copiar comandos</button></div>
-     <pre id="install-code" tabindex="0" role="region" aria-label="Comandos de instalação"><code><span class="c"># 1. Baixe o código e fixe a versão alpha.13</span>
+     <pre id="install-code" tabindex="0" role="region" aria-label="Comandos de instalação"><code><span class="c"># 1. Baixe o código e fixe a versão alpha.14</span>
 git clone https://github.com/caiolombello/falatrace.git
 cd falatrace
-git switch --detach v0.2.0-alpha.13
+git switch --detach v0.2.0-alpha.14
 
 <span class="c"># 2. Instale a CLI em ~/.local/bin</span>
 bun install --frozen-lockfile --ignore-scripts
 make install-cli INSTALL_PREFIX="$HOME/.local"
 
-<span class="c"># 3. Crie a configuração e confira o ambiente (não grava nada)</span>
+<span class="c"># 3. Opcional: instale o Studio; na primeira abertura, um assistente configura tudo</span>
+make install-studio
+
+<span class="c"># 4. Sem o Studio: crie a configuração e confira o ambiente (não grava nada)</span>
 falatrace init
 falatrace record doctor</code></pre>
     </div>
-    <p class="note-safe"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-shield"/></svg><span><code>init</code> só cria a configuração se ela não existir; configurações existentes são preservadas. <code>record doctor</code> apenas inspeciona os backends.</span></p>
+    <p class="note-safe"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-shield"/></svg><span><code>init</code> só cria a configuração se ela não existir; configurações existentes são preservadas. <code>record doctor</code> apenas inspeciona os backends. <code>make install-studio</code> não usa sudo nem baixa nada.</span></p>
    </div>
   </div>
  </section>
@@ -483,7 +487,7 @@ falatrace record doctor</code></pre>
     </details>
     <details>
      <summary>Em que idioma está a interface?</summary>
-     <div class="faq-answer"><p>A interface do Studio está em português. A CLI, a skill para agentes e a documentação técnica estão em inglês.</p></div>
+     <div class="faq-answer"><p>O Studio está em português e inglês: segue o idioma do sistema e pode ser trocado nas Configurações. A CLI, a skill para agentes e a documentação técnica estão em inglês.</p></div>
     </details>
    </div>
   </div>
@@ -493,10 +497,10 @@ falatrace record doctor</code></pre>
   <div class="wrap">
    <svg class="mark" aria-hidden="true" focusable="false"><use href="#mark"/></svg>
    <h2 id="cta-title">Pare de procurar o que já foi dito.</h2>
-   <p>Instale a alpha.13, configure no seu ritmo e dê às suas IAs contexto com fonte.</p>
+   <p>Instale a alpha.14, configure no seu ritmo e dê às suas IAs contexto com fonte.</p>
    <div class="cta-row">
-    <a class="btn btn-lg" href="#comecar">Instalar a alpha.13</a>
-    <a class="btn btn-lg btn-ghost" href="https://github.com/caiolombello/falatrace/releases/tag/v0.2.0-alpha.13">Ver release no GitHub <span aria-hidden="true">↗</span></a>
+    <a class="btn btn-lg" href="#comecar">Instalar a alpha.14</a>
+    <a class="btn btn-lg btn-ghost" href="https://github.com/caiolombello/falatrace/releases/tag/v0.2.0-alpha.14">Ver release no GitHub <span aria-hidden="true">↗</span></a>
    </div>
   </div>
  </section>
@@ -512,25 +516,25 @@ falatrace record doctor</code></pre>
    <h2 id="footer-project">Projeto</h2>
    <ul>
     <li><a href="https://github.com/caiolombello/falatrace">Código no GitHub</a></li>
-    <li><a href="https://github.com/caiolombello/falatrace/releases/tag/v0.2.0-alpha.13">Release alpha.13</a></li>
-    <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.13/CHANGELOG.md">Changelog</a></li>
-    <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.13/docs/ROADMAP.md">Roadmap</a></li>
+    <li><a href="https://github.com/caiolombello/falatrace/releases/tag/v0.2.0-alpha.14">Release alpha.14</a></li>
+    <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.14/CHANGELOG.md">Changelog</a></li>
+    <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.14/docs/ROADMAP.md">Roadmap</a></li>
    </ul>
   </nav>
   <nav aria-labelledby="footer-docs">
    <h2 id="footer-docs">Documentação</h2>
    <ul>
-    <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.13/README.md">README</a></li>
-    <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.13/docs/COMPATIBILITY.md">Compatibilidade</a></li>
-    <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.13/skills/README.md">Skill para agentes</a></li>
-    <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.13/SECURITY.md">Segurança</a></li>
+    <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.14/README.md">README</a></li>
+    <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.14/docs/COMPATIBILITY.md">Compatibilidade</a></li>
+    <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.14/skills/README.md">Skill para agentes</a></li>
+    <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.14/SECURITY.md">Segurança</a></li>
    </ul>
   </nav>
   <nav aria-labelledby="footer-legal">
    <h2 id="footer-legal">Licença</h2>
    <ul>
-    <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.13/LICENSE">MIT</a></li>
-    <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.13/THIRD-PARTY-NOTICES.md">Avisos de terceiros</a></li>
+    <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.14/LICENSE">MIT</a></li>
+    <li><a href="https://github.com/caiolombello/falatrace/blob/v0.2.0-alpha.14/THIRD-PARTY-NOTICES.md">Avisos de terceiros</a></li>
    </ul>
   </nav>
  </div>

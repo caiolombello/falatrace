@@ -7,7 +7,7 @@ compatibility: Linux; installed falatrace CLI and optional FalaTrace Studio. Exi
 
 # FalaTrace: recordings with traceable evidence
 
-Packaged with FalaTrace 0.2.0-alpha.13. Check the installed CLI version before using current behavior. Speaker-turn text is automatic output for review, separate from the canonical transcript; unavailable subtitle-operation status is uncertainty, not proof that generation finished.
+Packaged with FalaTrace 0.2.0-alpha.14. Check the installed CLI version before using current behavior. Speaker-turn text is automatic output for review, separate from the canonical transcript; unavailable subtitle-operation status is uncertainty, not proof that generation finished.
 
 Use the installed executable; prefer `falatrace`, falling back to the compatible `recording-cli` alias. Verify `--version` and `help` before selecting commands. Do not install, initialize or overwrite config automatically. Read [commands and output contracts](references/commands.md) for exact syntax, formats and mutation boundaries; read [visual evidence](references/visual-evidence.md) when transcript evidence is insufficient.
 
