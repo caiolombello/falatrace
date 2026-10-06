@@ -1,6 +1,6 @@
 import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { runCommand } from "../jobs/command";
 import { getServiceLaunchCommand } from "./launcher";
 
@@ -27,6 +27,21 @@ export const execStart = (args: string[]): string => args.map(quoteSystemd).join
 export const userUnitDir = (): string => join(homedir(), ".config", "systemd", "user");
 
 export const serviceLaunchCommand = (): string[] => getServiceLaunchCommand();
+
+/** The user manager may not share this process's XDG directories, so transient units get them explicitly. */
+const XDG_DIRECTORIES = ["XDG_CONFIG_HOME", "XDG_STATE_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME"] as const;
+
+/**
+ * `systemd-run --setenv` arguments for a transient unit that must read the same configuration and
+ * write the same state as this process: its PATH and the XDG directories it was started with.
+ */
+export const transientUnitEnvironment = (env: NodeJS.ProcessEnv = process.env): string[] => [
+  `--setenv=PATH=${env.PATH || ""}`,
+  ...XDG_DIRECTORIES.flatMap((name) => {
+    const value = env[name];
+    return value && isAbsolute(value) && !/\p{Cc}/u.test(value) ? [`--setenv=${name}=${value}`] : [];
+  })
+];
 
 /** systemctl's wording when a unit was never installed or is already gone. */
 const MISSING_UNIT = /does not exist|not loaded|No such file or directory|not found/i;

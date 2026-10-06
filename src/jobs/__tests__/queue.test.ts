@@ -48,6 +48,8 @@ test("queues only the selected job in a detached constrained systemd unit", asyn
   expect(calls[0]!.args).toContain("--property=Type=exec");
   expect(calls[0]!.args).toContain("--property=UMask=0077");
   expect(calls[0]!.args).toContain("--property=Nice=10");
+  // The job reads the configuration and writes the state of the process that queued it.
+  for (const name of ["XDG_CONFIG_HOME", "XDG_STATE_HOME", "XDG_DATA_HOME"]) expect(calls[0]!.args).toContain(`--setenv=${name}=${process.env[name]}`);
   expect(calls[0]!.args).toContain("--property=RuntimeMaxSec=5400");
   expect(calls[0]!.args).toContain("--property=MemoryMax=2G");
   expect(calls[0]!.args).toContain(

@@ -14,6 +14,7 @@ import { DIARIZATION_MODEL, DIARIZATION_AUDIO_ENCODING, diarizeAudioWithOpenAI, 
 import { DiarizationStore, transcriptChecksum, validSpeakerLabel, type DiarizationResult, type DiarizationStatus } from "./store";
 import { readReviewedView, saveRevision, type RevisionBase, type RevisionHead } from "../revisions";
 import { getServiceLaunchCommand } from "../runtime/launcher";
+import { transientUnitEnvironment } from "../runtime/systemd-units";
 
 export const readCanonicalTranscript = async (job: JobRecord): Promise<Transcript> => {
   if (job.state !== "completed") throw new Error("Aguarde a transcrição terminar antes de identificar os falantes");
@@ -70,7 +71,7 @@ export const queueDiarization = async (id: string, dependencies: QueueDiarizatio
       await (dependencies.run || runCommand)("systemd-run", ["--user", `--unit=${unitName(id)}`, "--collect", "--property=Type=exec", "--property=Nice=10",
         "--property=RuntimeMaxSec=5400", "--property=TimeoutStopSec=30", "--property=UMask=0077", "--property=MemoryMax=1G",
         `--property=EnvironmentFile=-${join(homedir(), ".config/recording-cli/worker.env")}`,
-        `--setenv=PATH=${process.env.PATH || ""}`, "--description=Identify recording speakers", "--", ...command, "diarization", "create", id], { timeoutMs: 15_000 });
+        ...transientUnitEnvironment(), "--description=Identify recording speakers", "--", ...command, "diarization", "create", id], { timeoutMs: 15_000 });
     } catch {
       await store.writeOperation({ version: 1, jobId: id, state: "failed", startedAt: new Date().toISOString(), message: "Não foi possível iniciar a identificação de falantes" });
       throw new Error("Não foi possível iniciar a identificação de falantes");

@@ -43,6 +43,11 @@ test("downloads require consent, start a transient unit and never contact a remo
   expect(started).toMatchObject({ state: "running", unit: `${modelUnitName("whisper", "tiny")}.service` });
   const launch = runs.find((run) => run[0] === "systemd-run") ?? [];
   expect(launch.slice(launch.indexOf("--") + 1)).toEqual(["/opt/falatrace/falatrace", "models", "download", "tiny"]);
+  // The unit reads the configuration and writes the state this Studio uses, whatever the manager's XDG paths.
+  for (const name of ["XDG_CONFIG_HOME", "XDG_STATE_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME"]) {
+    expect(process.env[name]).toBeTruthy();
+    expect(launch).toContain(`--setenv=${name}=${process.env[name]}`);
+  }
   config.summary.ollamaUrl = "https://ollama.example.com";
   await expect(handleModelOperation("settings-model-download", { kind: "ollama", model: "qwen3.5:9b", consent: true }, value)).rejects.toThrow("neste computador");
 });

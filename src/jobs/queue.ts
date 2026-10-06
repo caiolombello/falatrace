@@ -9,6 +9,7 @@ import {
   validateJobRecord
 } from "./types";
 import { getServiceLaunchCommand } from "../runtime/launcher";
+import { transientUnitEnvironment } from "../runtime/systemd-units";
 
 export type QueueSelectedJobResult = {
   id: string;
@@ -112,7 +113,7 @@ export const queueSelectedJob = async (
           "--property=UMask=0077",
           "--property=MemoryMax=2G",
           `--property=EnvironmentFile=-${join(homedir(), ".config/recording-cli/worker.env")}`,
-          `--setenv=PATH=${process.env.PATH || ""}`,
+          ...transientUnitEnvironment(),
           "--description=Process selected recording job",
           "--",
           ...launchCommand(),
