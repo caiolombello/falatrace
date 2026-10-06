@@ -98,6 +98,39 @@ test("service status reads the unit files from the directory the user manager lo
   }
 });
 
+test("service status is unknown, not stopped, when systemd cannot answer for the units", async () => {
+  const root = await fs.mkdtemp(join(tmpdir(), "falatrace-service-status-"));
+  try {
+    const config = structuredClone(DEFAULT_CONFIG);
+    const configPath = join(root, "config.json");
+    await fs.writeFile(configPath, "{}");
+    const units = buildSyncUnits(config, ["/x/falatrace"]);
+    await fs.writeFile(join(root, "recording-cli-sync.service"), units.service);
+    await fs.writeFile(join(root, "recording-cli-sync.timer"), units.timer);
+    // is-enabled reads unit files without the user manager; the other probes need it.
+    const unanswered = (message: string) => async (_command: string, args: string[]) => {
+      if (args[1] === "is-enabled") return { stdout: "enabled\n", stderr: "" };
+      throw new Error(message);
+    };
+    for (const message of [
+      "systemctl failed with code 1: Failed to connect to bus: No medium found",
+      "systemctl failed with code 1: Failed to connect to user scope bus via local transport: No such file or directory",
+      "systemctl timed out after 5000ms: "
+    ]) {
+      await expect(readServiceStatus(config, configPath, unanswered(message) as never, root)).rejects.toThrow(message);
+    }
+    // A unit systemd answered for is reported as it said.
+    const inactive = async (_command: string, args: string[]) => {
+      if (args[1] === "is-enabled") return { stdout: "enabled\n", stderr: "" };
+      if (args[1] === "is-active") throw new Error("systemctl failed with code 3: inactive");
+      return { stdout: "\n", stderr: "" };
+    };
+    expect((await readServiceStatus(config, configPath, inactive as never, root)).sync).toMatchObject({ installed: true, enabled: true, active: false });
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
 test("service status flags a unit with stale paths and a config newer than the running monitor", async () => {
   const root = await fs.mkdtemp(join(tmpdir(), "falatrace-service-status-"));
   try {

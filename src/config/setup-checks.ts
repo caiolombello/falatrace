@@ -5,7 +5,7 @@ import { runCommand } from "../jobs/command";
 import { resolveExecutable } from "../recording/obsLauncher";
 import { automaticRecordingBackend } from "../recording/capabilities";
 import { buildCallMonitorUnit } from "../calls/service";
-import { quoteSystemd, userUnitDir } from "../runtime/systemd-units";
+import { isBusUnreachableError, quoteSystemd, userUnitDir } from "../runtime/systemd-units";
 import { isPlaceholderRemoteHost } from "./settings";
 import type { CredentialReport, SecretFileName, SecretSource } from "./secrets";
 
@@ -181,12 +181,23 @@ export const TIMER_UNITS = {
 } as const;
 export type TimerName = keyof typeof TIMER_UNITS;
 
+/**
+ * A failed probe counts as a "no" only when systemctl answered with an exit code of its own. One that
+ * could not reach the user manager, ran past its timeout or did not start knows nothing about the
+ * unit, so it fails the whole status read and the Studio shows the services as unknown, not stopped.
+ */
+const answeredOr = <T>(fallback: T) => (error: unknown): T => {
+  const text = error instanceof Error ? error.message : String(error);
+  if (!/ failed with code \d+:/.test(text) || isBusUnreachableError(error)) throw error;
+  return fallback;
+};
+
 const unitState = async (run: typeof runCommand, verb: "is-enabled" | "is-active", unit: string): Promise<boolean> =>
-  run("systemctl", ["--user", verb, unit], { timeoutMs: 5_000 }).then(({ stdout }) => ["enabled", "active"].includes(stdout.trim()), () => false);
+  run("systemctl", ["--user", verb, unit], { timeoutMs: 5_000 }).then(({ stdout }) => ["enabled", "active"].includes(stdout.trim()), answeredOr(false));
 
 const showUnix = async (run: typeof runCommand, unit: string, property: string): Promise<number | null> =>
   run("systemctl", ["--user", "show", unit, "-p", property, "--value", "--timestamp=unix"], { timeoutMs: 5_000 })
-    .then(({ stdout }) => { const match = stdout.trim().match(/^@(\d+)$/); return match ? Number(match[1]) * 1000 : null; }, () => null);
+    .then(({ stdout }) => { const match = stdout.trim().match(/^@(\d+)$/); return match ? Number(match[1]) * 1000 : null; }, answeredOr(null));
 
 /**
  * A timestamp to the millisecond. `--timestamp=unix` stops at whole seconds, so a monitor
@@ -197,11 +208,11 @@ const showMillis = async (run: typeof runCommand, unit: string, property: string
     .then(({ stdout }) => {
       const match = stdout.trim().match(/(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2})\.(\d{3})\d{3} UTC$/);
       return match ? Date.parse(`${match[1]}T${match[2]}.${match[3]}Z`) : null;
-    }, () => null);
+    }, answeredOr(null));
 
 const showValue = async (run: typeof runCommand, unit: string, property: string): Promise<string | null> =>
   run("systemctl", ["--user", "show", unit, "-p", property, "--value"], { timeoutMs: 5_000 })
-    .then(({ stdout }) => stdout.trim().slice(0, 80) || null, () => null);
+    .then(({ stdout }) => stdout.trim().slice(0, 80) || null, answeredOr(null));
 
 const readTimer = async (
   name: TimerName,

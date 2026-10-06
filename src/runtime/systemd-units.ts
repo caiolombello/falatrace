@@ -89,8 +89,13 @@ export const persistentUnitWritablePaths = (folders: Array<"state" | "data" | "d
 
 /** systemctl's wording when a unit was never installed or is already gone. */
 const MISSING_UNIT = /does not exist|not loaded|No such file or directory|not found/i;
-/** The user manager could not be reached: nothing is known about the unit, even when errno reads ENOENT. */
-const BUS_UNREACHABLE = /Failed to connect to (?:the )?bus|Failed to get D-Bus connection|Transport endpoint is not connected/i;
+/**
+ * The user manager could not be reached: nothing is known about the unit, even when errno reads ENOENT.
+ * systemd 256 and later say "Failed to connect to user scope bus via local transport".
+ */
+const BUS_UNREACHABLE = /Failed to connect to (?:[\w ]+ )?bus\b|Failed to get D-Bus connection|Transport endpoint is not connected/i;
+
+export const isBusUnreachableError = (error: unknown): boolean => BUS_UNREACHABLE.test(error instanceof Error ? error.message : String(error));
 
 /** A systemctl failure that only says the unit is not there: stopping or disabling it is already done. */
 export const isMissingUnitError = (error: unknown): boolean => {
