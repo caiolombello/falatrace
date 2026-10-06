@@ -44,9 +44,9 @@ export const installPaths = (env: NodeJS.ProcessEnv = process.env, home = homedi
 const shellQuote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
 // Desktop entry Exec arguments are double-quoted; inside them ", `, $ and \ are escaped with a
 // backslash, and the string-level escaping doubles every backslash again (spec: "\\\\" is one
-// literal backslash).
+// literal backslash). A literal % is written %% so it is never read as a field code.
 const desktopQuote = (value: string): string =>
-  `"${value.replace(/["`$\\]/g, (character) => (character === "\\" ? "\\\\\\\\" : `\\\\${character}`))}"`;
+  `"${value.replace(/["`$\\]/g, (character) => (character === "\\" ? "\\\\\\\\" : `\\\\${character}`)).replaceAll("%", "%%")}"`;
 
 export const launcherScript = (paths: InstallPaths): string => `#!/bin/sh
 # ${MARKER}. Remove with: make uninstall-studio

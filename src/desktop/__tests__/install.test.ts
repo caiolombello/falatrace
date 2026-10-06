@@ -20,6 +20,11 @@ const fixture = async () => {
   return { root, paths, output, options };
 };
 
+test("a percent sign in the install path is escaped in the menu entry", () => {
+  const paths = installPaths({ INSTALL_PREFIX: "/opt/fala%trace", XDG_DATA_HOME: "/home/u/.local/share" }, "/home/u");
+  expect(desktopEntry(paths)).toContain('Exec="/opt/fala%%trace/bin/recording-studio"\n');
+});
+
 test("install refuses to run before the CLI is installed", async () => {
   const { root, options } = await fixture();
   try {
