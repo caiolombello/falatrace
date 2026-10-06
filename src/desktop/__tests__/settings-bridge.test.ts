@@ -160,6 +160,22 @@ describe("settings bridge operations", () => {
     expect(idle.calls).toEqual(["lock:capture-control", "save", "release"]);
   });
 
+  test("the OBS password is not set or removed while a capture runs, since stopping it authenticates again", async () => {
+    for (const op of ["settings-secret-set", "settings-secret-remove"] as const) {
+      const change = op === "settings-secret-set" ? "setSecret" : "removeSecret";
+      const busy = fakeDeps({ captureActive: async () => true });
+      await expect(handleSettingsOperation(op, { name: "RECORDING_CLI_OBS_PASSWORD", value: "synthetic-obs" }, busy.deps)).rejects.toThrow("senha do OBS");
+      expect(busy.calls).toEqual(["lock:capture-control", "release"]);
+      // Other keys are not read when a capture stops.
+      const other = fakeDeps({ captureActive: async () => true });
+      await handleSettingsOperation(op, { name: "OPENAI_API_KEY", value: "synthetic-key" }, other.deps);
+      expect(other.calls).toEqual([`${change}:OPENAI_API_KEY`]);
+      const idle = fakeDeps();
+      await handleSettingsOperation(op, { name: "RECORDING_CLI_OBS_PASSWORD", value: "synthetic-obs" }, idle.deps);
+      expect(idle.calls).toEqual(["lock:capture-control", `${change}:RECORDING_CLI_OBS_PASSWORD`, "release"]);
+    }
+  });
+
   test("the OBS password is tested only with the user manager's environment", async () => {
     const seen: NodeJS.ProcessEnv[] = [];
     const obsCheck: SettingsDeps["obsCheck"] = async (_config, env) => { seen.push(env); return false; };

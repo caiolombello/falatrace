@@ -133,6 +133,18 @@ export const settingsErrorMessage = (op: string): string =>
 
 const OBS_CONNECTION_FIELDS = ["obs.enabled", "obs.host", "obs.port"];
 const OBS_DURING_CAPTURE = "Não altere a conexão com o OBS durante uma gravação ativa.";
+const OBS_PASSWORD_DURING_CAPTURE = "Não altere a senha do OBS durante uma gravação ativa.";
+
+/** Run a change only while no capture runs, under the capture lock so that none starts during it. */
+const outsideCapture = async <T>(deps: SettingsDeps, refusal: string, change: () => Promise<T>): Promise<T> => {
+  const lease = await deps.lock("capture-control");
+  try {
+    if (await deps.captureActive()) throw new Error(refusal);
+    return await change();
+  } finally {
+    await lease.release();
+  }
+};
 
 export const OBS_PASSWORD_UNKNOWN = "Não foi possível ler o ambiente dos serviços do usuário, então não dá para saber qual senha o monitor de chamadas usa. Tente de novo.";
 
@@ -143,6 +155,7 @@ export const AUTOMATIC_CAPTURE_BLOCKED = "A gravação automática não funciona
 export const SETTINGS_KNOWN_ERRORS = [
   "Não altere os serviços durante uma gravação ativa.",
   "Não altere a conexão com o OBS durante uma gravação ativa.",
+  "Não altere a senha do OBS durante uma gravação ativa.",
   "Ative a gravação automática e salve antes de aplicar o monitor.",
   "Configuração mudou; reabra antes de salvar.",
   "Nenhuma alteração para salvar.",
@@ -262,12 +275,15 @@ export const handleSettingsOperation = async (
       return { needsReload: true };
     }
   };
+  // Stopping an OBS capture authenticates with its password again: while one runs, the password stays.
+  const secretChange = <T>(change: () => Promise<T>): Promise<T> =>
+    payload.name === "RECORDING_CLI_OBS_PASSWORD" ? outsideCapture(deps, OBS_PASSWORD_DURING_CAPTURE, change) : change();
   if (op === "settings-secret-set") {
-    await deps.setSecret(payload.name, payload.value);
+    await secretChange(() => deps.setSecret(payload.name, payload.value));
     return { name: payload.name, saved: true, ...(await refreshedCredentials()) };
   }
   if (op === "settings-secret-remove") {
-    const result = await deps.removeSecret(payload.name);
+    const result = await secretChange(() => deps.removeSecret(payload.name));
     return { name: payload.name, ...result, ...(await refreshedCredentials()) };
   }
   if (op === "settings-secret-test") {

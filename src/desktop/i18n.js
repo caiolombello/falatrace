@@ -1274,6 +1274,7 @@ var EN = {
     "Endereço do Ollama inválido": "Invalid Ollama address",
     "O endereço do Ollama na configuração é inválido. Corrija-o em Configurações, em Processamento e IA.": "The Ollama address in the configuration is invalid. Fix it in Settings, under Processing and AI.",
     "Não altere a conexão com o OBS durante uma gravação ativa.": "Do not change the OBS connection during an active recording.",
+    "Não altere a senha do OBS durante uma gravação ativa.": "Do not change the OBS password during an active recording.",
     "O arquivo de modelo configurado não existe; o modelo recomendado já está instalado.": "The configured model file does not exist; the recommended model is already installed.",
     "Este modelo já está sendo baixado. Aguarde o download em andamento terminar.": "This model is already downloading. Wait for the running download to finish.",
     "Não foi possível falar com o provedor agora. Confira a rede e tente de novo.": "Could not reach the provider right now. Check the network and try again.",
