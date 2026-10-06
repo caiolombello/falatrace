@@ -96,7 +96,10 @@ export const handleModelOperation = async (
   }
   if (payload.consent !== true) throw new Error("Confirme o download antes de começar.");
   const { config } = await deps.loadConfig();
-  if (target.kind === "ollama" && !isLoopbackOllama(config.summary.ollamaUrl)) {
+  // The assistant pulls into the Ollama of the setup it is reviewing, which may not be saved yet. Any
+  // endpoint must be on this computer, and the pull uses exactly the one checked here.
+  const ollamaUrl = typeof payload.ollamaUrl === "string" ? payload.ollamaUrl : config.summary.ollamaUrl;
+  if (target.kind === "ollama" && !isLoopbackOllama(ollamaUrl)) {
     throw new Error("O download pelo Ollama só é feito para um Ollama neste computador.");
   }
   const active = await unitActive(deps.run, unit);
@@ -105,7 +108,7 @@ export const handleModelOperation = async (
   if (active) return { kind: target.kind, id: target.id, state: "running", unit: `${unit}.service` };
   const total = target.kind === "whisper" ? findWhisperModel(target.id).bytes : null;
   await writeDownloadState({ kind: target.kind, id: target.id, state: "running", receivedBytes: 0, totalBytes: total });
-  const command = target.kind === "whisper" ? ["models", "download", target.id] : ["models", "ollama-pull", target.id];
+  const command = target.kind === "whisper" ? ["models", "download", target.id] : ["models", "ollama-pull", target.id, "--url", ollamaUrl];
   try {
     await deps.run("systemd-run", [
       "--user", `--unit=${unit}`, "--collect", "--property=Type=exec", "--property=Nice=10",

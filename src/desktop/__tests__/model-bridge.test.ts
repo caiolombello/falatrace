@@ -52,6 +52,26 @@ test("downloads require consent, start a transient unit and never contact a remo
   await expect(handleModelOperation("settings-model-download", { kind: "ollama", model: "qwen3.5:9b", consent: true }, value)).rejects.toThrow("neste computador");
 });
 
+test("an Ollama pull uses the endpoint checked here, such as the assistant's unsaved local one", async () => {
+  const { value, runs, config } = deps("/synthetic/models", { launch: () => ["/opt/falatrace-$release/falatrace"] });
+  const pulled = () => {
+    const launches = runs.filter((run) => run[0] === "systemd-run");
+    const launch = launches[launches.length - 1] ?? [];
+    return launch.slice(launch.indexOf("--") + 1);
+  };
+  // Saved remote endpoint, reviewed local preset: the pull goes to the drafted loopback Ollama.
+  config.summary.ollamaUrl = "https://ollama.example.com";
+  await handleModelOperation("settings-model-download", { kind: "ollama", model: "qwen3.5:9b", consent: true, ollamaUrl: "http://127.0.0.1:11434" }, value);
+  // systemd would expand "$release": the command carries a literal dollar sign.
+  expect(pulled()).toEqual(["/opt/falatrace-$$release/falatrace", "models", "ollama-pull", "qwen3.5:9b", "--url", "http://127.0.0.1:11434"]);
+  await expect(handleModelOperation("settings-model-download", { kind: "ollama", model: "qwen3.5:9b", consent: true, ollamaUrl: "http://ollama.lan:11434" }, value))
+    .rejects.toThrow("neste computador");
+  // Without a drafted endpoint, the saved one is checked and named explicitly.
+  config.summary.ollamaUrl = "http://127.0.0.1:11435";
+  await handleModelOperation("settings-model-download", { kind: "ollama", model: "qwen3.5:9b", consent: true }, value);
+  expect(pulled().slice(-2)).toEqual(["--url", "http://127.0.0.1:11435"]);
+});
+
 test("a download whose unit ended without a final state is reported as interrupted", async () => {
   const { value } = deps("/synthetic/models");
   await writeDownloadState({ kind: "whisper", id: "base", state: "running", receivedBytes: 10, totalBytes: 100 });

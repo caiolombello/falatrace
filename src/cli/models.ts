@@ -7,7 +7,8 @@ import {
 export const MODELS_HELP = `Models (explicit downloads only):
   models list                    Whisper models with size, SHA-256 and install state
   models download <id>           Download and verify one Whisper model (see models list)
-  models ollama-pull <model>     Ask the local Ollama server to pull a model
+  models ollama-pull <model> [--url <loopback URL>]
+                                 Ask the local Ollama server to pull a model
 `;
 
 const formatBytes = (bytes: number): string => `${(bytes / 1024 / 1024).toFixed(0)} MiB`;
@@ -61,9 +62,13 @@ export const runModelsCli = async (args: string[]): Promise<void> => {
   }
   if (subcommand === "ollama-pull") {
     if (!target) throw new Error("Informe o modelo, por exemplo: models ollama-pull qwen3.5:9b");
-    const { config } = await loadConfig();
+    // The Studio names the endpoint it checked; the pull itself still refuses anything off this computer.
+    const urlIndex = args.indexOf("--url", 3);
+    const named = urlIndex >= 0 ? args[urlIndex + 1] : undefined;
+    if (urlIndex >= 0 && !named) throw new Error("Informe o endereço do Ollama depois de --url.");
+    const baseUrl = named ?? (await loadConfig()).config.summary.ollamaUrl;
     try {
-      await pullOllamaModel(config.summary.ollamaUrl, target, {
+      await pullOllamaModel(baseUrl, target, {
         fetch,
         onProgress: (completed, total) => writeDownloadState({ kind: "ollama", id: target, state: "running", receivedBytes: completed, totalBytes: total })
       });

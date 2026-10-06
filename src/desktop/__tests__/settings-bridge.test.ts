@@ -217,6 +217,9 @@ describe("settings bridge operations", () => {
     expect(() => parseRequest({ id: 4, op: "settings-export", payload: { path: "relative.json" } })).toThrow("payload inválido");
     expect(() => parseRequest({ id: 4, op: "settings-restore", payload: { revision: "a".repeat(64), backup: "../x" } })).toThrow("payload inválido");
     expect(() => parseRequest({ id: 4, op: "settings-model-download", payload: { kind: "pip", model: "x" } })).toThrow("payload inválido");
+    // The assistant names the Ollama endpoint of its draft; the model bridge checks it is on this computer.
+    expect(parseRequest({ id: 4, op: "settings-model-download", payload: { kind: "ollama", model: "x", consent: true, ollamaUrl: "http://127.0.0.1:11434" } }).payload?.ollamaUrl).toBe("http://127.0.0.1:11434");
+    expect(() => parseRequest({ id: 4, op: "settings-model-download", payload: { kind: "ollama", model: "x", ollamaUrl: "http://127.0.0.1:11434\n" } })).toThrow("payload inválido");
     expect(() => parseRequest({ id: 4, op: "settings-audio-test", payload: { seconds: 60 } })).toThrow("payload inválido");
     expect(() => parseRequest({ id: 4, op: "agent-connect", payload: { grantId: "123e4567-e89b-42d3-a456-426614174000", client: "vim" } })).toThrow("payload inválido");
     expect(parseRequest({ id: 5, op: "settings-secret-test", payload: { service: "gemini" } }).op).toBe("settings-secret-test");
