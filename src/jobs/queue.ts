@@ -9,7 +9,7 @@ import {
   validateJobRecord
 } from "./types";
 import { getServiceLaunchCommand } from "../runtime/launcher";
-import { transientUnitEnvironment } from "../runtime/systemd-units";
+import { transientCommand, transientUnitEnvironment } from "../runtime/systemd-units";
 
 export type QueueSelectedJobResult = {
   id: string;
@@ -116,10 +116,7 @@ export const queueSelectedJob = async (
           ...transientUnitEnvironment(),
           "--description=Process selected recording job",
           "--",
-          ...launchCommand(),
-          "jobs",
-          "process",
-          id
+          ...transientCommand([...launchCommand(), "jobs", "process", id])
         ],
         { timeoutMs: 15_000 }
       );

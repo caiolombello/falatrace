@@ -12,7 +12,7 @@ import { writeJsonAtomic } from "../../src/jobs/store";
 import { validateJobId } from "../../src/jobs/types";
 import { acquireSingleton } from "../../src/runtime/singleton";
 import { getServiceLaunchCommand } from "../runtime/launcher";
-import { transientUnitEnvironment } from "../runtime/systemd-units";
+import { transientCommand, transientUnitEnvironment } from "../runtime/systemd-units";
 
 type State = { state: "running" | "completed" | "failed"; operationId: string; key: string; path?: string; location?: "local" | "vaio" | "proton"; message?: string };
 type Playback = State;
@@ -42,7 +42,7 @@ const writeState = async (state: State): Promise<void> => { await ensureStateDir
 /** The playback unit finds the recording in the configuration this process reads: same PATH and XDG directories. */
 export const playbackRunArgs = (unit: string, launch: string[], operationId: string, source: string, env: NodeJS.ProcessEnv = process.env): string[] => [
   "--user", `--unit=${unit}`, "--collect", "--property=Type=exec", "--property=Nice=10", "--property=RuntimeMaxSec=1800", "--property=TimeoutStopSec=30",
-  "--property=UMask=0077", ...transientUnitEnvironment(env), "--", ...launch, "desktop", "playback", operationId, source
+  "--property=UMask=0077", ...transientUnitEnvironment(env), "--", ...transientCommand([...launch, "desktop", "playback", operationId, source])
 ];
 
 const active = new Map<string, string>();

@@ -11,7 +11,21 @@ import { buildTrayUnit, uninstallTrayService } from "../../tray/service";
 import { queueAlignedSubtitles } from "../../subtitles/service";
 import { playbackRunArgs } from "../../desktop/playback";
 import { cliEntryForBun, getServiceLaunchCommand } from "../launcher";
-import { execStart, quoteSystemd, quoteSystemdPath, removeUserUnits, userUnitDir } from "../systemd-units";
+import { execStart, quoteSystemd, quoteSystemdPath, removeUserUnits, transientCommand, userUnitDir } from "../systemd-units";
+
+test("command arguments never expand environment variables in units or transient commands", () => {
+  // systemd expands $NAME and the braced form in command lines, even quoted; "$$" is a literal dollar sign.
+  const braced = "$" + "{release}";
+  expect(execStart([`/opt/falatrace-${braced}/falatrace`, "$HOME"])).toBe(`"/opt/falatrace-$${braced}/falatrace" "$$HOME"`);
+  const config = structuredClone(DEFAULT_CONFIG);
+  const launch = ["/opt/falatrace-$release/falatrace"];
+  for (const unit of [buildCallMonitorUnit(config, launch), buildTrayUnit(launch), buildWorkerUnit(config, launch), buildSyncUnits(config, launch).service]) {
+    expect(unit).toContain('ExecStart="/opt/falatrace-$$release/falatrace" ');
+  }
+  expect(transientCommand([`/rec/a $HOME ${braced}.mkv`])).toEqual([`/rec/a $$HOME $${braced}.mkv`]);
+  const playback = playbackRunArgs("recording-studio-playback-1", launch, "123e4567-e89b-42d3-a456-426614174000", "/rec/$cost.mkv", {});
+  expect(playback.slice(playback.indexOf("--") + 1)).toEqual(["/opt/falatrace-$$release/falatrace", "desktop", "playback", "123e4567-e89b-42d3-a456-426614174000", "/rec/$$cost.mkv"]);
+});
 
 test("unit arguments are quoted and never act as systemd specifiers", () => {
   expect(quoteSystemd('/a b/"c"\\d%h')).toBe('"/a b/\\"c\\"\\\\d%%h"');

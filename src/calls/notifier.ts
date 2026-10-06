@@ -1,4 +1,5 @@
 import { runCommand } from "../jobs/command";
+import { transientCommand } from "../runtime/systemd-units";
 import { callApplicationLabel } from "./apps";
 import type { CallApplication } from "./types";
 
@@ -20,8 +21,7 @@ const notify = async (args: string[]): Promise<void> => {
       "--collect",
       `--unit=recording-cli-notify-${unitSuffix}`,
       "--",
-      "/usr/bin/notify-send",
-      ...args
+      ...transientCommand(["/usr/bin/notify-send", ...args])
     ],
     { timeoutMs: 5_000 }
   );

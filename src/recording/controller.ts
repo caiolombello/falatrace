@@ -7,6 +7,7 @@ import { runCommand } from "../jobs/command";
 import { probeMedia } from "../jobs/media";
 import { validateJobId } from "../jobs/types";
 import { acquireSingleton } from "../runtime/singleton";
+import { transientCommand } from "../runtime/systemd-units";
 import { buildCaptureCommand, inspectAudioSources, resolveGpuRecorder } from "./capture";
 import { ManualObsController, ObsStartUncertain, RecordingStartCancelled } from "./obs-recording";
 import { formatName } from "./naming";
@@ -229,7 +230,7 @@ export class RecordingController {
           if (options.signal?.aborted || await options.shouldContinue?.() === false) throw new RecordingStartCancelled("Recording start cancelled");
           await this.run("systemd-run", ["--user", "--quiet", `--unit=${unitName(id)}`,
             "--property=Type=exec", "--property=KillSignal=SIGINT", "--property=TimeoutStopSec=30",
-            "--property=UMask=0077", "--property=Restart=no", ...envArgs, "--", command, ...commandArgs], { timeoutMs: 15_000 });
+            "--property=UMask=0077", "--property=Restart=no", ...envArgs, "--", ...transientCommand([command, ...commandArgs])], { timeoutMs: 15_000 });
           const deadline = Date.now() + this.config.capture.startupTimeoutSeconds * 1_000;
           while (true) {
             if (options.signal?.aborted || await options.shouldContinue?.() === false) {

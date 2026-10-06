@@ -22,7 +22,16 @@ export const quoteSystemd = (value: string): string => `"${escapeSystemd(value)}
 export const quoteSystemdPath = (path: string): string =>
   path.startsWith("~/") ? `"%h/${escapeSystemd(path.slice(2))}"` : quoteSystemd(path);
 
-export const execStart = (args: string[]): string => args.map(quoteSystemd).join(" ");
+/**
+ * systemd expands $NAME and ${NAME} in command lines, quoted or not, and reads "$$" as a literal
+ * dollar sign. Every argument we pass is literal.
+ */
+const escapeDollar = (value: string): string => value.replaceAll("$", () => "$$");
+
+export const execStart = (args: string[]): string => args.map((arg) => quoteSystemd(escapeDollar(arg))).join(" ");
+
+/** The command after systemd-run's "--": the user manager expands it like ExecStart= by default. */
+export const transientCommand = (args: string[]): string[] => args.map(escapeDollar);
 
 /** The unit directory systemd derives from an environment: $XDG_CONFIG_HOME/systemd/user, else ~/.config/systemd/user. */
 const configUnitDir = (env: NodeJS.ProcessEnv, home: string): string => {

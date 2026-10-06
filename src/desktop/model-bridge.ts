@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { loadConfig } from "../config/load";
 import { runCommand } from "../jobs/command";
 import { getServiceLaunchCommand } from "../runtime/launcher";
-import { isMissingUnitError, transientUnitEnvironment } from "../runtime/systemd-units";
+import { isMissingUnitError, transientCommand, transientUnitEnvironment } from "../runtime/systemd-units";
 import {
   WHISPER_MODELS, WHISPER_SOURCE, findWhisperModel, isLoopbackOllama, isVerifiedWhisperModel, readDownloadState,
   validateOllamaModelName, whisperModelsDir, writeDownloadState, type DownloadKind
@@ -113,7 +113,7 @@ export const handleModelOperation = async (
       // The download reads the same configuration and writes the state this Studio polls.
       ...transientUnitEnvironment(),
       "--description=Download a FalaTrace model",
-      "--", ...deps.launch(), ...command
+      "--", ...transientCommand([...deps.launch(), ...command])
     ], { timeoutMs: 15_000 });
   } catch (error) {
     await writeDownloadState({ kind: target.kind, id: target.id, state: "failed", receivedBytes: 0, totalBytes: total, error: "Não foi possível iniciar o download." });

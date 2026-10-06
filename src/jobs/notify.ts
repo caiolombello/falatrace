@@ -1,6 +1,7 @@
 import { basename, dirname } from "node:path";
 import type { AppConfig } from "../config/defaults";
 import { runCommand } from "./command";
+import { transientCommand } from "../runtime/systemd-units";
 import type { JobRecord } from "./types";
 
 let sequence = 0;
@@ -18,6 +19,6 @@ export const notifyJobOutcome = async (config: AppConfig, job: JobRecord, run: t
     : ["Processamento falhou", `${name}: abra o FalaTrace Studio para ver o motivo e tentar de novo.`];
   await run("systemd-run", [
     "--user", "--quiet", "--wait", "--collect", `--unit=recording-cli-notify-job-${process.pid}-${Date.now()}-${sequence++}`,
-    "--", "notify-send", "--app-name", "FalaTrace", "--icon", "media-record", title, body
+    "--", ...transientCommand(["notify-send", "--app-name", "FalaTrace", "--icon", "media-record", title, body])
   ], { timeoutMs: 5_000 }).catch(() => undefined);
 };

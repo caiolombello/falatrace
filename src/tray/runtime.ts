@@ -22,7 +22,7 @@ import {
 } from "./presentation";
 import { INDICATOR_SCRIPT } from "./python";
 import { getServiceLaunchCommand } from "../runtime/launcher";
-import { transientUnitEnvironment } from "../runtime/systemd-units";
+import { transientCommand, transientUnitEnvironment } from "../runtime/systemd-units";
 
 const MONITOR_SERVICE = "recording-cli-calls.service";
 const FALLBACK_REFRESH_MS = 15_000;
@@ -67,8 +67,7 @@ export const buildCliActionRunArgs = (
   `--unit=recording-cli-tray-action-${unitSuffix}`,
   ...transientUnitEnvironment(env),
   "--",
-  ...launchCommand,
-  ...cliActionCommand[action]
+  ...transientCommand([...launchCommand, ...cliActionCommand[action]])
 ];
 
 const getLaunchCommand = (): string[] => getServiceLaunchCommand();
@@ -104,9 +103,7 @@ export const buildTerminalLaunchArgs = (
   `--unit=recording-cli-terminal-${unitSuffix}`,
   ...transientUnitEnvironment(env),
   "--",
-  terminal.path,
-  ...terminal.args,
-  ...command
+  ...transientCommand([terminal.path, ...terminal.args, ...command])
 ];
 
 export const buildStudioLaunchArgs = (
@@ -121,7 +118,7 @@ export const buildStudioLaunchArgs = (
   `--unit=recording-cli-studio-${unitSuffix}`,
   ...transientUnitEnvironment(env),
   "--",
-  command
+  ...transientCommand([command])
 ];
 
 /**
