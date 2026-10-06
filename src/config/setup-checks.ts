@@ -310,6 +310,17 @@ export const checkAutomation = (
           : { id: "automatic-backend", label: "Gravação automática", status: "ok", detail: `As chamadas detectadas serão gravadas com ${label}.` });
     }
   }
+  // Notifications come from the call monitor too: while it is not running, no call is announced.
+  if (config.callDetection.enabled && config.callDetection.mode === "notify-only") {
+    const calls = services?.calls;
+    checks.push(!calls
+      ? { id: "call-notifications", label: "Aviso de chamadas", status: "skipped",
+        detail: "Estado do monitor de chamadas indisponível; não dá para confirmar que as chamadas serão avisadas." }
+      : !(calls.installed && calls.enabled && calls.active)
+        ? { id: "call-notifications", label: "Aviso de chamadas", status: "warning", action: "calls-apply",
+          detail: "O monitor de chamadas não está rodando: nenhuma chamada será avisada. Aplique o monitor em Serviços." }
+        : { id: "call-notifications", label: "Aviso de chamadas", status: "ok", detail: "As chamadas detectadas serão avisadas por notificação." });
+  }
   if (config.processing.defaultTarget === "remote" && isPlaceholderRemoteHost(config.remote.host)) {
     checks.push({ id: "remote-worker", label: "Worker remoto", status: "missing", action: "remote",
       detail: "O processamento está marcado como remoto, mas nenhum worker foi configurado. Configure-o em Integrações ou volte para “Neste computador”." });

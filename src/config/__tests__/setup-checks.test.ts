@@ -183,7 +183,11 @@ test("automation checks say what will really record and whether new recordings g
   const services = { calls: { installed: false, enabled: false, active: false, outdated: false, staleConfig: false }, tray: { installed: false, enabled: false, active: false, outdated: false, staleConfig: false }, sync: idleTimer, archive: idleTimer, backup: idleTimer };
   expect(checkAutomation(config, services)).toEqual([]);
   config.callDetection.enabled = true;
-  expect(checkAutomation(config, services)).toEqual([]);
+  // Notifications come from the call monitor too: while it is not running, no call is announced.
+  expect(checkAutomation(config, services)).toEqual([expect.objectContaining({ id: "call-notifications", status: "warning", action: "calls-apply" })]);
+  const notifying = { ...services, calls: { installed: true, enabled: true, active: true, outdated: false, staleConfig: false } };
+  expect(checkAutomation(config, notifying)).toEqual([expect.objectContaining({ id: "call-notifications", status: "ok" })]);
+  expect(checkAutomation(config, null)).toEqual([expect.objectContaining({ id: "call-notifications", status: "skipped" })]);
   config.callDetection.mode = "record";
   // The shipped `simple` backend means OBS for automatic recording, and OBS starts disabled.
   expect(checkAutomation(config, services)[0]).toMatchObject({ id: "automatic-backend", status: "missing", action: "capture" });

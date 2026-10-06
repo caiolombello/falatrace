@@ -113,7 +113,8 @@ test("diagnostic labels and details are translated in every state", async () => 
     checkAutomation(config((c) => { c.callDetection.enabled = true; c.callDetection.mode = "record"; c.backend = "gpu-screen-recorder"; }), services({}, monitor)),
     checkAutomation(config((c) => { c.callDetection.enabled = true; c.callDetection.mode = "record"; c.backend = "audio"; }), services({}, { ...monitor, active: false })),
     checkAutomation(config((c) => { c.archive.enabled = true; c.proton.enabled = true; }), services({ installed: true, enabled: true })),
-    checkAutomation(config((c) => { c.archive.enabled = true; c.proton.enabled = true; c.processing.autoEnqueue = true; }), null)
+    checkAutomation(config((c) => { c.archive.enabled = true; c.proton.enabled = true; c.processing.autoEnqueue = true; }), null),
+    ...[null, monitor, { ...monitor, active: false }].flatMap((calls) => checkAutomation(config((c) => { c.callDetection.enabled = true; c.callDetection.mode = "notify-only"; }), services({}, calls)))
   ];
   const checks = [...runs.flat(), ...automation.flat()];
   expect(checks.length).toBeGreaterThan(15);

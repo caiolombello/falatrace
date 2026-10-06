@@ -134,7 +134,7 @@ FtDialog {
         const problems = (diag.automation || []).filter(function(item){ return item.id !== "remote-worker" && (item.status === "missing" || item.status === "warning") && applied.indexOf(item.action) < 0 })
         return problems
     }
-    function recordingProblem(item) { return item.id === "automatic-backend" }
+    function recordingProblem(item) { return ["automatic-backend", "call-notifications"].indexOf(item.id) >= 0 }
     // What will not run yet: the capture, processing and automatic recording. Empty until the choices are diagnosed.
     function pendingIssues() {
         const issues = []
