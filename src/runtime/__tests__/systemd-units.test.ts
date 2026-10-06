@@ -61,6 +61,14 @@ test("a unit that fails to stop keeps its files; one that is already gone does n
     await expect(removeUserUnits(["recording-cli-sync.timer"], ["recording-cli-sync.timer"], failing, root)).rejects.toThrow("Access denied");
     expect(await fs.readdir(root)).toEqual(["recording-cli-sync.timer"]);
 
+    // "No such file or directory" from an unreachable user bus says nothing about the unit.
+    const noBus = async (_command: string, args: string[]) => {
+      if (args.includes("disable")) throw new Error("systemctl failed with code 1: Failed to connect to bus: No such file or directory");
+      return { stdout: "", stderr: "" };
+    };
+    await expect(removeUserUnits(["recording-cli-sync.timer"], ["recording-cli-sync.timer"], noBus, root)).rejects.toThrow("Failed to connect to bus");
+    expect(await fs.readdir(root)).toEqual(["recording-cli-sync.timer"]);
+
     const missing = async (_command: string, args: string[]) => {
       if (args.includes("disable")) throw new Error("systemctl failed with code 1: Failed to disable unit: Unit file recording-cli-sync.timer does not exist.");
       return { stdout: "", stderr: "" };

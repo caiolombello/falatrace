@@ -123,8 +123,9 @@ export const settingsErrorMessage = (op: string): string =>
                 : op === "settings-backups" || op === "settings-restore" ? "Não foi possível restaurar a cópia escolhida. Nenhuma alteração foi feita."
                   : op === "settings-export" ? "Não foi possível exportar. Confira a pasta escolhida."
                     : op === "settings-import-read" ? "Não foi possível ler o arquivo escolhido. Use uma configuração JSON exportada pelo FalaTrace."
-                      : op.startsWith("settings-model") || op.startsWith("settings-ollama") ? "Não foi possível concluir o download. Nada foi instalado; tente novamente."
-                        : "Não foi possível alterar o serviço. Confira se há uma gravação em andamento e o estado do systemd.";
+                      : op === "settings-model-cancel" ? "Não foi possível cancelar o download; ele pode continuar em segundo plano. Tente de novo."
+                        : op.startsWith("settings-model") || op.startsWith("settings-ollama") ? "Não foi possível concluir o download. Nada foi instalado; tente novamente."
+                          : "Não foi possível alterar o serviço. Confira se há uma gravação em andamento e o estado do systemd.";
 
 /** Errors whose text is safe and useful to show verbatim. */
 export const SETTINGS_KNOWN_ERRORS = [
@@ -152,6 +153,7 @@ export const SETTINGS_KNOWN_ERRORS = [
   "O download pelo Ollama só é feito para um Ollama neste computador.",
   "Modelo desconhecido.",
   "Nome de modelo do Ollama inválido.",
+  "Não foi possível consultar os serviços do usuário. Tente de novo.",
   "A gravação automática não tem um backend que funcione: escolha Só áudio ou Tela e áudio em Captura e áudio, ou ative o OBS."
 ];
 

@@ -30,6 +30,14 @@ export const serviceLaunchCommand = (): string[] => getServiceLaunchCommand();
 
 /** systemctl's wording when a unit was never installed or is already gone. */
 const MISSING_UNIT = /does not exist|not loaded|No such file or directory|not found/i;
+/** The user manager could not be reached: nothing is known about the unit, even when errno reads ENOENT. */
+const BUS_UNREACHABLE = /Failed to connect to (?:the )?bus|Failed to get D-Bus connection|Transport endpoint is not connected/i;
+
+/** A systemctl failure that only says the unit is not there: stopping or disabling it is already done. */
+export const isMissingUnitError = (error: unknown): boolean => {
+  const text = error instanceof Error ? error.message : String(error);
+  return MISSING_UNIT.test(text) && !BUS_UNREACHABLE.test(text);
+};
 
 /**
  * Disable and stop units, remove their files and reload. A unit that is already missing is
@@ -44,7 +52,7 @@ export const removeUserUnits = async (
 ): Promise<string[]> => {
   for (const unit of stopUnits) {
     await run("systemctl", ["--user", "disable", "--now", unit]).catch((error: unknown) => {
-      if (!MISSING_UNIT.test(error instanceof Error ? error.message : String(error))) throw error;
+      if (!isMissingUnitError(error)) throw error;
     });
   }
   const removed: string[] = [];

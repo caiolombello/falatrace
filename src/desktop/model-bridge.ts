@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { loadConfig } from "../config/load";
 import { runCommand } from "../jobs/command";
 import { getServiceLaunchCommand } from "../runtime/launcher";
+import { isMissingUnitError } from "../runtime/systemd-units";
 import {
   WHISPER_MODELS, WHISPER_SOURCE, findWhisperModel, isLoopbackOllama, isVerifiedWhisperModel, readDownloadState,
   validateOllamaModelName, whisperModelsDir, writeDownloadState, type DownloadKind
@@ -42,10 +43,13 @@ export const defaultModelDeps: ModelDeps = {
 export const modelUnitName = (kind: DownloadKind, id: string): string =>
   `recording-cli-model-${kind}-${createHash("sha256").update(id).digest("hex").slice(0, 12)}`;
 
-const unitActive = async (run: typeof runCommand, unit: string): Promise<boolean> => {
-  const result = await run("systemctl", ["--user", "show", `${unit}.service`, "--property=ActiveState"], { timeoutMs: 5_000 }).catch(() => ({ stdout: "", stderr: "" }));
-  return /^ActiveState=(active|activating)$/m.test(result.stdout);
+/** Whether the download unit runs; null when the user manager could not be asked. */
+const unitActive = async (run: typeof runCommand, unit: string): Promise<boolean | null> => {
+  const result = await run("systemctl", ["--user", "show", `${unit}.service`, "--property=ActiveState"], { timeoutMs: 5_000 }).catch(() => null);
+  return result === null ? null : /^ActiveState=(active|activating)$/m.test(result.stdout);
 };
+
+export const UNIT_STATE_UNKNOWN = "Não foi possível consultar os serviços do usuário. Tente de novo.";
 
 const parseTarget = (payload: Record<string, unknown>): { kind: DownloadKind; id: string } => {
   if (payload.kind === "whisper") return { kind: "whisper", id: findWhisperModel(payload.model).id };
@@ -79,11 +83,15 @@ export const handleModelOperation = async (
   if (op === "settings-model-status") {
     const [state, active] = await Promise.all([readDownloadState(target.kind, target.id), unitActive(deps.run, unit)]);
     // A unit that ended without a final state was interrupted; never report it as running forever.
-    if (state?.state === "running" && !active) return { ...state, state: "failed", error: "O download foi interrompido. Tente novamente." };
+    // When systemd cannot be asked, the last recorded state stands.
+    if (state?.state === "running" && active === false) return { ...state, state: "failed", error: "O download foi interrompido. Tente novamente." };
     return state || { kind: target.kind, id: target.id, state: active ? "running" : "idle", receivedBytes: 0, totalBytes: null };
   }
   if (op === "settings-model-cancel") {
-    await deps.run("systemctl", ["--user", "stop", `${unit}.service`], { timeoutMs: 10_000 }).catch(() => undefined);
+    // A unit that already ended counts as cancelled; any other failure leaves the download running and is reported.
+    await deps.run("systemctl", ["--user", "stop", `${unit}.service`], { timeoutMs: 10_000 }).catch((error: unknown) => {
+      if (!isMissingUnitError(error)) throw error;
+    });
     return { kind: target.kind, id: target.id, cancelled: true };
   }
   if (payload.consent !== true) throw new Error("Confirme o download antes de começar.");
@@ -91,7 +99,10 @@ export const handleModelOperation = async (
   if (target.kind === "ollama" && !isLoopbackOllama(config.summary.ollamaUrl)) {
     throw new Error("O download pelo Ollama só é feito para um Ollama neste computador.");
   }
-  if (await unitActive(deps.run, unit)) return { kind: target.kind, id: target.id, state: "running", unit: `${unit}.service` };
+  const active = await unitActive(deps.run, unit);
+  // Without an answer from systemd a second copy of a running download could start.
+  if (active === null) throw new Error(UNIT_STATE_UNKNOWN);
+  if (active) return { kind: target.kind, id: target.id, state: "running", unit: `${unit}.service` };
   const total = target.kind === "whisper" ? findWhisperModel(target.id).bytes : null;
   await writeDownloadState({ kind: target.kind, id: target.id, state: "running", receivedBytes: 0, totalBytes: total });
   const command = target.kind === "whisper" ? ["models", "download", target.id] : ["models", "ollama-pull", target.id];

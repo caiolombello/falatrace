@@ -69,6 +69,24 @@ test("status and cancel keep working while the configuration cannot be loaded", 
   await expect(handleModelOperation("settings-model-download", { kind: "whisper", model: "small", consent: true }, value)).rejects.toThrow("inválido");
 });
 
+test("a cancel systemd refuses is reported, and an unreachable systemd changes no download", async () => {
+  const { value, runs } = deps("/synthetic/models");
+  const refuse = (message: string) => async (command: string, args: string[]) => { runs.push([command, ...args]); throw new Error(`systemctl failed with code 1: ${message}`); };
+  // The download unit may still be running: the cancel fails instead of claiming success.
+  value.run = refuse("Failed to connect to bus: No such file or directory");
+  await expect(handleModelOperation("settings-model-cancel", { kind: "whisper", model: "base" }, value)).rejects.toThrow("Failed to connect to bus");
+  // A unit that already ended is cancelled.
+  value.run = refuse("Failed to stop recording-cli-model-whisper-x.service: Unit recording-cli-model-whisper-x.service not loaded.");
+  expect(await handleModelOperation("settings-model-cancel", { kind: "whisper", model: "base" }, value)).toEqual({ kind: "whisper", id: "base", cancelled: true });
+  // With no answer from systemd, a running download keeps its state and no second copy starts.
+  value.run = refuse("Connection timed out");
+  await writeDownloadState({ kind: "whisper", id: "base", state: "running", receivedBytes: 7, totalBytes: 100 });
+  expect(await handleModelOperation("settings-model-status", { kind: "whisper", model: "base" }, value)).toMatchObject({ state: "running", receivedBytes: 7 });
+  runs.length = 0;
+  await expect(handleModelOperation("settings-model-download", { kind: "whisper", model: "base", consent: true }, value)).rejects.toThrow("consultar os serviços");
+  expect(runs.some((run) => run[0] === "systemd-run")).toBe(false);
+});
+
 test("a Whisper model counts as installed only when a SHA-256 check accepted that exact file", async () => {
   const directory = await fs.mkdtemp(join(tmpdir(), "falatrace-model-verified-"));
   const model = findWhisperModel("tiny");
