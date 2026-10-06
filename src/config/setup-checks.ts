@@ -22,6 +22,7 @@ export type CredentialStatus = {
   gemini: SecretSource | string;
   details?: CredentialReport[];
   files?: Array<{ file: SecretFileName; tooOpen: boolean; usable: boolean; problem?: string; exists: boolean }>;
+  managerEnvironment?: "read" | "unavailable";
 };
 
 export type SetupProbe = {
@@ -63,6 +64,8 @@ export const credentialLabel = (source: string): string =>
           : source === "config" ? "definida no config.json, formato antigo"
             : "não encontrada";
 
+export const MANAGER_ENVIRONMENT_UNKNOWN = "O ambiente dos serviços do usuário não pôde ser lido: uma chave definida nele não aparece aqui e teria prioridade.";
+
 const keyCheck = (
   id: string,
   label: string,
@@ -73,12 +76,14 @@ const keyCheck = (
 ): SetupCheck => {
   const source = name === "OPENAI_API_KEY" ? credentials.openai : credentials.gemini;
   const report = credentials.details?.find((detail) => detail.name === name);
+  // A key in the user manager's environment wins over the files: without that environment it is unknown.
+  const managerUnknown = credentials.managerEnvironment === "unavailable" ? [MANAGER_ENVIRONMENT_UNKNOWN] : [];
   if (source === "missing") {
-    return { id, label, status: "missing", action: "keys", detail: report?.sessionOnly
+    return { id, label, status: "missing", action: "keys", detail: [report?.sessionOnly
       ? `${name} existe só no ambiente desta sessão do Studio; o processamento em segundo plano não a recebe. Salve a chave em Chaves de API.`
-      : missingDetail };
+      : missingDetail, ...managerUnknown].join(" ") };
   }
-  const notes: string[] = [];
+  const notes: string[] = [...managerUnknown];
   if (credentials.files?.find((file) => file.file === source)?.tooOpen) notes.push(`${source} pode ser lido por outros usuários: ajuste a permissão para 600.`);
   if (report?.shadowsStudioKey) notes.push(`Uma chave ${credentialLabel(source)} tem prioridade sobre a salva pelo Studio.`);
   if (source === "config") notes.push("Salve a chave pelo Studio para tirá-la do config.json.");

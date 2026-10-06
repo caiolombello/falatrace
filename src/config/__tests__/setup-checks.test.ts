@@ -282,3 +282,15 @@ test("key checks explain session-only keys, open permissions and keys hidden fro
   }, probe());
   expect(shadowed.find((check) => check.id === "transcription-key")).toMatchObject({ status: "warning", detail: expect.stringContaining("prioridade") });
 });
+
+test("key checks do not vouch for a key while the user manager's environment is unknown", async () => {
+  const config = structuredClone(DEFAULT_CONFIG);
+  config.transcription.provider = "openai";
+  config.summary.provider = "openai";
+  const found = await checkProcessing(config, { openai: "secrets.env", gemini: "missing", managerEnvironment: "unavailable" }, probe());
+  expect(found.find((check) => check.id === "transcription-key")).toMatchObject({ status: "warning", action: "keys", detail: expect.stringContaining("teria prioridade") });
+  const missing = await checkProcessing(config, { openai: "missing", gemini: "missing", managerEnvironment: "unavailable" }, probe());
+  expect(missing.find((check) => check.id === "summary-key")).toMatchObject({ status: "missing", detail: expect.stringContaining("não aparece aqui") });
+  const read = await checkProcessing(config, { openai: "secrets.env", gemini: "missing", managerEnvironment: "read" }, probe());
+  expect(read.find((check) => check.id === "transcription-key")).toMatchObject({ status: "ok" });
+});

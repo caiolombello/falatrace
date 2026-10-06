@@ -387,6 +387,7 @@ FtDialog {
         SectionPage {
           SettingsHint { text:t("As chaves ficam num arquivo privado (permissão 600) ao lado da configuração e valem para todo processamento, inclusive em segundo plano. O Studio nunca mostra uma chave salva.") }
           StatusLine { visible:!!(settingsData.readOnly&&settingsData.readOnly.legacyApiKeyInConfig); good:false; text:t("Há uma chave da OpenAI no config.json, formato antigo. Salve-a aqui; depois você pode removê-la do arquivo.") }
+          StatusLine { objectName:"keysManagerUnknown"; visible:!!(settingsData.credentials&&settingsData.credentials.managerEnvironment==="unavailable"); good:false; text:t("O ambiente dos serviços do usuário não pôde ser lido: uma chave definida nele não aparece aqui e teria prioridade.") }
           Repeater { model:((settingsData.credentials&&settingsData.credentials.files)||[]).filter(function(f){ return f.exists&&(f.tooOpen||!f.usable) })
            StatusLine { required property var modelData; good:false; text:modelData.file+(modelData.usable?t(" pode ser lido por outros usuários: ajuste a permissão para 600."):" "+(t(modelData.problem||"")||t("não pôde ser usado."))) }
           }

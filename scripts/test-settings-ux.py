@@ -54,7 +54,7 @@ key_present = mode in ('wizard-disable-monitor', 'wizard-disable-unknown', 'wiza
 details = [{'name':'OPENAI_API_KEY','source':'secrets.env' if key_present else 'missing','sessionOnly':mode == 'keys','shadowsStudioKey':False,'savedInStudio':key_present},
            {'name':'GEMINI_API_KEY','source':'missing','sessionOnly':False,'shadowsStudioKey':False,'savedInStudio':False},
            {'name':'RECORDING_CLI_OBS_PASSWORD','source':'missing','sessionOnly':False,'shadowsStudioKey':False,'savedInStudio':False}]
-def credentials(): return {'openai':details[0]['source'],'gemini':'missing','details':details,'files':[],'managerEnvironment':'unavailable'}
+def credentials(): return {'openai':details[0]['source'],'gemini':'missing','details':details,'files':[],'managerEnvironment':'unavailable' if mode == 'keys-manager-unknown' else 'read'}
 def settings(): return {'revision':revision,'exists':not first,'values':values,'apps':apps,'nullable':['remote.user','remote.identityFile','s3.profile'],
     'emptyAllowed':['transcription.openaiPrompt','s3.bucket','s3.prefix'],
     'readOnly':{'backendOutsideList':'simple' if values['backend'] == 'simple' else None,'backendExplicit':not first,'obsEnabled':False,
@@ -172,7 +172,8 @@ MODES = {
     'tab-processing': ('settingsDialog.open(); settingsTabs.currentIndex=2', 'settingsDialog.applyPreset("local"); check("preset changes providers in the draft", settingsChanges()["transcription.provider"]==="whisper-cpp" && settingsChanges()["summary.provider"]==="ollama"); '
                        'setSettingsField("transcription.openaiPrompt",""); check("a cleared vocabulary is saved as empty text", settingsChanges()["transcription.openaiPrompt"]===""); '
                        'setSettingsField("summary.ollamaModel",""); check("a cleared required field stays an unfinished edit", !Object.prototype.hasOwnProperty.call(settingsChanges(),"summary.ollamaModel"))', '', ''),
-    'keys': ('settingsDialog.open(); settingsTabs.currentIndex=3', 'check("session-only key explained", settingsDialog.secretSourceText(settingsData.credentials.details[0]).indexOf("só no ambiente desta sessão")>=0); settingsDialog.saveSecret("OPENAI_API_KEY","sk-synthetic-ui-key")',
+    'keys': ('settingsDialog.open(); settingsTabs.currentIndex=3', 'check("session-only key explained", settingsDialog.secretSourceText(settingsData.credentials.details[0]).indexOf("só no ambiente desta sessão")>=0); '
+             'const unknown = findObject(settingsDialog.contentItem, "keysManagerUnknown"); check("no precedence warning while the user services\' environment is read", !!unknown && !unknown.visible); settingsDialog.saveSecret("OPENAI_API_KEY","sk-synthetic-ui-key")',
              'check("saved key reported by source only", settingsData.credentials.details[0].savedInStudio===true && settingsNotice.indexOf("arquivo privado")>=0); settingsDialog.testSecret("openai")', 'check("key test result shown", !!settingsDialog.keyTests.openai && settingsDialog.keyTests.openai.status==="ok")'),
     'keys-refresh': ('settingsDialog.open(); settingsTabs.currentIndex=3', 'settingsDialog.saveSecret("OPENAI_API_KEY","sk-synthetic-refresh-key")',
                      'check("a saved key whose status could not be read again is reported as saved", settingsError==="" && settingsNotice.indexOf("arquivo privado")>=0 && settingsNotice.indexOf("releia")>=0)', ''),
@@ -221,6 +222,8 @@ MODES = {
                              'if (missing) missing.clicked(); const ffmpeg = findObject(setupWizard.contentItem, "wizardProblem-ffmpeg"); check("the processing step shows what is missing", setupWizard.step===2 && !!ffmpeg && ffmpeg.visible); setupWizard.step=4; setupWizard.finish()',
                              'const title = findObject(setupWizard.contentItem, "wizardDoneTitle"); check("the last page lists FFmpeg instead of saying all set", setupWizard.step===5 && !!title && title.text!=="Tudo pronto" && setupWizard.pendingIssues().some(function(issue){ return issue.label==="FFmpeg" })); '
                              'setupWizard.set("processing.defaultTarget", "remote"); check("jobs sent to the remote worker do not need FFmpeg here", !setupWizard.processingProblems().length)', ''),
+    'keys-manager-unknown': ('settingsDialog.open(); settingsTabs.currentIndex=3',
+                             'const unknown = findObject(settingsDialog.contentItem, "keysManagerUnknown"); check("keys warn that a key in the unread user services\' environment would win", !!unknown && unknown.visible)', '', ''),
     'models-ollama-draft': ('settingsDialog.open()',
                             'setSettingsField("summary.provider", "ollama"); setSettingsField("summary.ollamaUrl", "http://127.0.0.1:11435"); setSettingsField("summary.ollamaModel", "llama4:8b"); settingsDialog.goToSection(4)',
                             'check("the list shows the Ollama at the unsaved address", !!settingsDialog.catalog.ollama && settingsDialog.catalog.ollama.url==="http://127.0.0.1:11435"); settingsDialog.startDownload("ollama", "llama4:8b"); '

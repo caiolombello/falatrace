@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { DEFAULT_CONFIG, type AppConfig } from "../../config/defaults";
-import { checkAutomation, checkProcessing, type SetupProbe } from "../../config/setup-checks";
+import { checkAutomation, checkProcessing, MANAGER_ENVIRONMENT_UNKNOWN, type SetupProbe } from "../../config/setup-checks";
 import { testProviderKey } from "../../config/credential-test";
 import { describeDestinations } from "../../jobs/manual";
 import { WHISPER_MODELS } from "../../models/downloads";
@@ -148,4 +148,5 @@ test("capture, queue, model, key-test and destination messages are translated", 
   }
   english((await testProviderKey("openai", { fetch: (async () => new Response("{}")) as unknown as typeof fetch, managerEnv: async () => ({}), files: [], configApiKey: undefined } as never)).detail);
   english(OBS_PASSWORD_UNKNOWN);
+  english(MANAGER_ENVIRONMENT_UNKNOWN);
 });

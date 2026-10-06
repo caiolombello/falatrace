@@ -1261,6 +1261,7 @@ var EN = {
     "A chave existe, mas a conta está sem créditos ou no limite de uso. Confira o faturamento da API.": "The key exists, but the account has no credits or hit its usage limit. Check the API billing.",
     "Não foi possível ler o ambiente dos serviços do usuário, então não dá para saber qual chave o processamento usa. Tente de novo.": "The user services' environment could not be read, so the key background processing uses is unknown. Try again.",
     "Não foi possível ler o ambiente dos serviços do usuário, então não dá para saber qual senha o monitor de chamadas usa. Tente de novo.": "The user services' environment could not be read, so the password the call monitor uses is unknown. Try again.",
+    "O ambiente dos serviços do usuário não pôde ser lido: uma chave definida nele não aparece aqui e teria prioridade.": "The user services' environment could not be read: a key set there is not shown here and would take precedence.",
     "Este modelo já está sendo baixado. Aguarde o download em andamento terminar.": "This model is already downloading. Wait for the running download to finish.",
     "Não foi possível falar com o provedor agora. Confira a rede e tente de novo.": "Could not reach the provider right now. Check the network and try again.",
     "Nenhuma chave alcança o processamento em segundo plano. Salve a chave nesta seção.": "No key reaches background processing. Save the key in this section.",
