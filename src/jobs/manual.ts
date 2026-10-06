@@ -122,7 +122,7 @@ export const runRecordingProcessing = async (
   entry: { sourcePath: string; sourceExists: boolean; jobs: JobRecord[] },
   consent: { consent: boolean; consentKey: string },
   deps: ManualProcessDeps = defaultManualProcessDeps()
-): Promise<{ jobId: string; status: QueueSelectedJobResult["status"]; created: boolean }> => {
+): Promise<{ jobId: string; status: QueueSelectedJobResult["status"]; created: boolean; warning?: string }> => {
   if (consent.consent !== true) throw new Error("Confirme o destino antes de processar.");
   const plan = await planRecordingProcessing(config, entry, deps);
   if (plan.consentKey !== consent.consentKey) throw new Error("A gravação ou as configurações mudaram. Revise o destino de novo.");
@@ -135,5 +135,5 @@ export const runRecordingProcessing = async (
     created = true;
   }
   const queued = await deps.queue(jobId!, { retry: plan.action === "retry" });
-  return { jobId: jobId!, status: queued.status, created };
+  return { jobId: jobId!, status: queued.status, created, ...(queued.warning ? { warning: queued.warning } : {}) };
 };

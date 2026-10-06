@@ -295,7 +295,7 @@ ApplicationWindow {
     function closeAgentAccess() { cancelProvider(); if (activeGrant.id && hasPending("agent-frames")) send("agent-cancel", selected.key, {grantId:activeGrant.id}); agentDialog.close() }
     property string cliVersion: ""
     property var releaseInfo: ({})
-    property bool uxModal: settingsDialog.visible || setupWizard.visible || aboutDialog.visible || captureConsent.visible || framesDialog.visible || onboardingDialog.visible || agentDialog.visible || recordingTools.visible || reviewDialog.visible || exportDialog.visible || summaryDialog.visible
+    property bool uxModal: settingsDialog.visible || setupWizard.visible || processDialog.visible || aboutDialog.visible || captureConsent.visible || framesDialog.visible || onboardingDialog.visible || agentDialog.visible || recordingTools.visible || reviewDialog.visible || exportDialog.visible || summaryDialog.visible
     function summaryBusy() { return summaryRunning || hasPending("summary-plan") || hasPending("summary-run") }
     function summaryPlanText() {
         const p=summaryPlan
@@ -661,7 +661,7 @@ ApplicationWindow {
     }
     function backToLibrary() {
         if(revisionPending() || hasPending("export-save"))return
-        summaryDialog.close(); reviewDialog.close(); exportDialog.close(); reviewGeneration+=1; exportGeneration+=1
+        summaryDialog.close(); reviewDialog.close(); exportDialog.close(); processDialog.close(); reviewGeneration+=1; exportGeneration+=1
         closeAgentAccess(); framesDialog.close(); cancelFramePreview()
         generation += 1; sourceReferenceSeconds = -1; selected = ({}); detail = {transcript: {segments: [], text: "", timing: "none"}, diarization: {state: "idle"}}
         detailLoading = false; resolving = false; contextLoading = false; contextText = ""; contextCopyText = ""; contextPath = ""; contextCitations = []
@@ -671,7 +671,7 @@ ApplicationWindow {
     }
     function selectRecording(item) { showVisualSummary=false;
         if(revisionPending() || hasPending("export-save"))return
-        summaryDialog.close(); reviewDialog.close(); exportDialog.close(); reviewGeneration+=1; exportGeneration+=1
+        summaryDialog.close(); reviewDialog.close(); exportDialog.close(); processDialog.close(); reviewGeneration+=1; exportGeneration+=1
         closeAgentAccess(); framesDialog.close(); cancelFramePreview()
         generation += 1; sourceReferenceSeconds = -1
         selected = item
@@ -720,6 +720,7 @@ ApplicationWindow {
     property alias exportTrack: exportDialog.exportTrack
     AboutDialog { id: aboutDialog }
     CaptureConsentDialog { id: captureConsent }
+    ProcessRecordingDialog { id: processDialog }
     Shortcut { sequence: "Escape"; enabled: !!selected.key && !uxModal; onActivated: backToLibrary() }
     Timer { interval: processingWait || summaryRunning || hasPending("frames-preview") || hasPending("frames-confirm") ? 500 : 2000; running: backend.available; repeat: true; onTriggered: { if (!hasPending("processing-status")) send("processing-status", "") } }
     Label { z: 100; anchors.bottom: parent.bottom; anchors.bottomMargin: 48; anchors.horizontalCenter: parent.horizontalCenter; width: Math.min(parent.width - 32, implicitWidth); visible: !!processingWait; text: processingWait; textFormat: Text.PlainText; wrapMode: Text.WordWrap; color: warningColor; padding: 10; leftPadding: 14; rightPadding: 14; background: Rectangle { color: surface; radius: 10; border.width: 1; border.color: warningColor } }
@@ -749,6 +750,7 @@ ApplicationWindow {
             if (request.op.startsWith("summary-") && request.op!=="summary-cancel" && (request.generation!==generation || request.summaryGeneration!==summaryGeneration))return
             if (request.op.startsWith("onboarding-") && request.onboardingGeneration !== onboardingGeneration) return
             if (request.op.startsWith("settings-")) { handleSettingsResponse(request, message); return }
+            if (request.op.startsWith("recording-process")) { processDialog.handleResponse(request, message); return }
             if (!message.ok && (request.op.startsWith("agent-")||request.op.startsWith("provider-"))) { agentError=message.error; return }
             if (!message.ok && request.op === "processing-status") { processingWait = "Estado do processamento indisponível; nenhuma alteração na captura."; return }
             if (!message.ok && request.op.startsWith("onboarding-")) { if(request.op==="onboarding-save-local")onboardingSaveUncertain=true;invalidateOnboarding(message.error+" Releia a configuração e confirme sua escolha antes de salvar novamente.");return }
@@ -1237,6 +1239,7 @@ ApplicationWindow {
                                 FtChip { visible: !!selected.backup && selected.backup !== "none"; text: "Cópias: " + String(selected.backup || "").replace("+", " + ").toUpperCase() }
                             }
                         }
+                        FtButton { id:processButton; objectName:"processButton"; compact:true; iconName:"spark"; iconOnly:compactLayout; text:"Processar…"; Layout.alignment:Qt.AlignTop; visible:!!selected.key && ["completed","processing","transferring"].indexOf(detail.status || selected.status) < 0; enabled:backend.available && !detailLoading; Accessible.name:"Ver para onde vão o áudio e o texto e processar esta gravação"; onClicked:processDialog.open() }
                         FtButton { id:agentAccessButton; objectName:"agentAccessButton"; compact:true; iconName:"key"; iconOnly:compactLayout; text:"Acesso para IA…"; Layout.alignment:Qt.AlignTop; enabled:backend.available && !!selected.recordingId; onClicked:openAgentAccess() }
                         FtButton { objectName:"framesButton"; compact:true; iconName:"frames"; iconOnly:compactLayout; text: mockFramesEnabled ? "Frames · mock local…" : "Análise visual local…"; Layout.alignment:Qt.AlignTop; enabled: backend.available && (mockFramesEnabled || realFramesEnabled) && !!selected.key; onClicked: { cancelFramePreview(); framesDialog.open() } ToolTip.visible: hovered; ToolTip.text: mockFramesEnabled ? "Ensaio sintético explícito, sem provider real." : "Preview local; análise e novo resumo somente após consentimento explícito." }
                     }
