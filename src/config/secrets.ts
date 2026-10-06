@@ -21,7 +21,8 @@ import { acquireSingleton } from "../runtime/singleton";
  * process environment repeats those values; a value equal to a legacy file is ranked as
  * that file, which lets a key saved in the Studio replace an older one everywhere. systemd
  * also loads a legacy file this module rejects, so values found in a rejected file are
- * dropped from the environment and never used.
+ * dropped from the environment and never used; when a rejected file cannot be read in full,
+ * no environment value is trusted.
  * Values are never logged, returned to the UI or written anywhere but secrets.env.
  */
 export const SECRET_NAMES = ["OPENAI_API_KEY", "GEMINI_API_KEY", "RECORDING_CLI_OBS_PASSWORD"] as const;
@@ -30,8 +31,12 @@ export type SecretFileName = "secrets.env" | "worker.env" | "calls.env";
 export type SecretSource = "environment" | SecretFileName | "config" | "missing";
 
 const MAX_SECRET_FILE_BYTES = 64 * 1024;
-/** Upper bound for reading a rejected legacy file only to recognise its values. */
-const MAX_REJECTED_FILE_BYTES = 4 * 1024 * 1024;
+/**
+ * A rejected legacy file is read in full to recognise its values, up to the size systemd itself
+ * reads for EnvironmentFile= (READ_FULL_BYTES_MAX). Past that, or when it cannot be read in full,
+ * no environment value can be told apart from its values, so none is trusted.
+ */
+const MAX_REJECTED_FILE_BYTES = 64 * 1024 * 1024 - 1;
 const MAX_SECRET_LENGTH = 4096;
 
 export const isSecretName = (value: unknown): value is SecretName =>
@@ -57,6 +62,10 @@ export type SecretFileState = {
   values: Map<string, string>;
   /** Values of a rejected legacy file, kept only so resolution can drop them from the environment. */
   rejectedValues?: Map<string, string>;
+  /** A rejected legacy file that could not be read in full: environment values are not trusted. */
+  rejectedUnreadable?: boolean;
+  /** Every assignment systemd loads from a legacy file through EnvironmentFile=, usable or not. */
+  assignments?: Map<string, string>;
 };
 
 const unquote = (raw: string): string => {
@@ -160,9 +169,11 @@ export const parseEnvFile = (content: string): Map<string, string> => {
   return values;
 };
 
+const credentialValues = (assignments: Map<string, string>): Map<string, string> =>
+  new Map([...assignments].filter(([, value]) => value !== "" && !/\p{Cc}/u.test(value)));
+
 /** Credentials from a KEY=value file: empty values and values with control characters are left out. */
-export const parseSecretLines = (content: string): Map<string, string> =>
-  new Map([...parseEnvFile(content)].filter(([, value]) => value !== "" && !/\p{Cc}/u.test(value)));
+export const parseSecretLines = (content: string): Map<string, string> => credentialValues(parseEnvFile(content));
 
 const currentUid = (): number | undefined => (typeof process.getuid === "function" ? process.getuid() : undefined);
 
@@ -188,7 +199,9 @@ export const readSecretFile = async (file: SecretFileName, path: string): Promis
     else if (stat.size > MAX_SECRET_FILE_BYTES) state.problem = "é grande demais; ignorado";
     if (state.problem) return state;
     state.tooOpen = (stat.mode & 0o044) !== 0;
-    state.values = parseSecretLines((await handle.readFile()).toString("utf8"));
+    const assignments = parseEnvFile((await handle.readFile()).toString("utf8"));
+    state.values = credentialValues(assignments);
+    if (file !== "secrets.env") state.assignments = assignments;
     state.usable = true;
     return state;
   } finally {
@@ -199,30 +212,50 @@ export const readSecretFile = async (file: SecretFileName, path: string): Promis
 /**
  * Units load worker.env and calls.env through EnvironmentFile= even when this module rejects
  * them, so their environment repeats the rejected values. Read such a file the way systemd
- * does (following links) only to recognise those values; they are never used.
+ * does (following links, in full) only to recognise those values; they are never used.
  */
-const readRejectedValues = async (path: string): Promise<Map<string, string>> => {
-  let handle: FileHandle | undefined;
+const readRejectedValues = async (path: string): Promise<{ values: Map<string, string>; complete: boolean }> => {
+  let handle: FileHandle;
   try {
     handle = await fs.open(path, constants.O_RDONLY | constants.O_NONBLOCK);
+  } catch (error) {
+    // What this user cannot open, the user's own systemd cannot load either.
+    const code = (error as NodeJS.ErrnoException).code;
+    return { values: new Map(), complete: code === "ENOENT" || code === "ENOTDIR" || code === "EACCES" };
+  }
+  try {
     const stat = await handle.stat();
-    if (!stat.isFile()) return new Map();
-    const buffer = Buffer.alloc(Math.min(stat.size, MAX_REJECTED_FILE_BYTES));
-    const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
-    return parseSecretLines(buffer.subarray(0, bytesRead).toString("utf8"));
+    if (stat.isDirectory()) return { values: new Map(), complete: true };
+    if (!stat.isFile() || stat.size > MAX_REJECTED_FILE_BYTES) return { values: new Map(), complete: false };
+    return { values: parseEnvFile((await handle.readFile()).toString("utf8")), complete: true };
   } catch {
-    return new Map();
+    return { values: new Map(), complete: false };
   } finally {
-    await handle?.close().catch(() => undefined);
+    await handle.close().catch(() => undefined);
   }
 };
 
 export const readSecretFiles = async (files: SecretFiles = getSecretFiles()): Promise<SecretFileState[]> =>
   Promise.all((["secrets.env", "worker.env", "calls.env"] as const).map(async (file) => {
     const state = await readSecretFile(file, files[file]);
-    if (file !== "secrets.env" && state.exists && !state.usable) state.rejectedValues = await readRejectedValues(files[file]);
+    if (file !== "secrets.env" && state.exists && !state.usable) {
+      const rejected = await readRejectedValues(files[file]);
+      state.rejectedValues = rejected.values;
+      state.assignments = rejected.values;
+      if (!rejected.complete) state.rejectedUnreadable = true;
+    }
     return state;
   }));
+
+/**
+ * The environment a processing unit starts with: the user manager's, then worker.env loaded
+ * through EnvironmentFile=, whose assignments replace inherited ones. Diagnostics and the key
+ * test resolve against it, so they report the credential processing really uses.
+ */
+export const unitEnvironment = (managerEnv: NodeJS.ProcessEnv, states: SecretFileState[]): NodeJS.ProcessEnv => {
+  const worker = states.find((state) => state.file === "worker.env");
+  return { ...managerEnv, ...Object.fromEntries(worker?.assignments ?? []) };
+};
 
 export type ResolvedSecret = { value?: string; source: Exclude<SecretSource, "config"> };
 
@@ -230,9 +263,11 @@ export type ResolvedSecret = { value?: string; source: Exclude<SecretSource, "co
 export const resolveSecretFrom = (name: string, env: NodeJS.ProcessEnv, states: SecretFileState[]): ResolvedSecret => {
   const fileValue = (file: SecretFileName) => states.find((state) => state.file === file && state.usable)?.values.get(name);
   const envValue = env[name]?.trim() || undefined;
-  // A unit that loads a rejected legacy file repeats its values: drop them, never use them.
+  // A unit that loads a rejected legacy file repeats its values: drop them, never use them. When
+  // such a file could not be read in full, its values cannot be told apart: trust no environment value.
   const rejected = states.map((state) => state.rejectedValues?.get(name)?.trim());
-  const fromEnv = envValue && !rejected.includes(envValue) ? envValue : undefined;
+  const unreadable = states.some((state) => state.rejectedUnreadable);
+  const fromEnv = envValue && !unreadable && !rejected.includes(envValue) ? envValue : undefined;
   const legacy = [fileValue("worker.env")?.trim(), fileValue("calls.env")?.trim()];
   if (fromEnv && !legacy.includes(fromEnv)) return { value: fromEnv, source: "environment" };
   for (const file of ["secrets.env", "worker.env", "calls.env"] as const) {
@@ -359,7 +394,7 @@ export const describeCredentials = async (
   const sessionEnv = options.sessionEnv || process.env;
   const managerEnv = options.managerEnv ?? null;
   const details = SECRET_NAMES.map((name): CredentialReport => {
-    const background = resolveSecretFrom(name, managerEnv || {}, states);
+    const background = resolveSecretFrom(name, unitEnvironment(managerEnv || {}, states), states);
     const session = resolveSecretFrom(name, sessionEnv, states);
     const savedInStudio = !!states.find((state) => state.file === "secrets.env" && state.usable)?.values.get(name);
     const source: SecretSource = background.source !== "missing" ? background.source
@@ -377,7 +412,7 @@ export const describeCredentials = async (
     openai: sourceOf("OPENAI_API_KEY"),
     gemini: sourceOf("GEMINI_API_KEY"),
     details,
-    files: states.map(({ values: _values, rejectedValues: _rejected, ...state }) => state),
+    files: states.map(({ values: _values, rejectedValues: _rejected, assignments: _assignments, rejectedUnreadable: _unreadable, ...state }) => state),
     managerEnvironment: managerEnv ? "read" : "unavailable"
   };
 };

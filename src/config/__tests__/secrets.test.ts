@@ -94,6 +94,34 @@ test("a rejected legacy file cannot reach processing through a unit's environmen
   });
 });
 
+test("a rejected key file too large to read in full makes every environment value untrusted", async () => {
+  await withFiles(async (files) => {
+    // More than systemd's limit of comments-like padding, then a key at the very end.
+    await fs.writeFile(files["worker.env"], "", { mode: 0o600 });
+    await fs.truncate(files["worker.env"], 64 * 1024 * 1024);
+    await fs.appendFile(files["worker.env"], "\nOPENAI_API_KEY=sk-late\n");
+    await fs.chmod(files["worker.env"], 0o664);
+    expect(await readSecret("OPENAI_API_KEY", { OPENAI_API_KEY: "sk-late" }, files)).toBeUndefined();
+    expect(await readSecret("OPENAI_API_KEY", { OPENAI_API_KEY: "sk-other" }, files)).toBeUndefined();
+    await setSecret("OPENAI_API_KEY", "studio-key", files);
+    expect(await readSecret("OPENAI_API_KEY", { OPENAI_API_KEY: "sk-late" }, files)).toBe("studio-key");
+  });
+});
+
+test("diagnostics resolve keys in the environment a processing unit really gets", async () => {
+  await withFiles(async (files) => {
+    // worker.env, loaded by EnvironmentFile=, replaces the manager's value inside the unit.
+    await fs.writeFile(files["worker.env"], "OPENAI_API_KEY=worker-key\n", { mode: 0o600 });
+    const managerEnv = { OPENAI_API_KEY: "manager-key", GEMINI_API_KEY: "manager-gemini" };
+    expect(await describeCredentials({ sessionEnv: {}, managerEnv, files })).toMatchObject({ openai: "worker.env", gemini: "environment" });
+    await setSecret("OPENAI_API_KEY", "studio-key", files);
+    const report = await describeCredentials({ sessionEnv: {}, managerEnv, files });
+    expect(report.openai).toBe("secrets.env");
+    expect(report.details.find((detail) => detail.name === "OPENAI_API_KEY")).toMatchObject({ shadowsStudioKey: false });
+    expect(JSON.stringify(report)).not.toMatch(/worker-key|manager-key|studio-key|manager-gemini/);
+  });
+});
+
 test("saving is write-only, private and preserves other lines; removal touches only secrets.env", async () => {
   await withFiles(async (files) => {
     await setSecret("OPENAI_API_KEY", "sk-synthetic-private", files);

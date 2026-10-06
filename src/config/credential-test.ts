@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import { getSecretFiles, readSecretFiles, resolveSecretFrom, type SecretFiles, type SecretSource } from "./secrets";
+import { getSecretFiles, readSecretFiles, resolveSecretFrom, unitEnvironment, type SecretFiles, type SecretSource } from "./secrets";
 
 /**
  * Explicit, user-initiated credential check. It contacts the provider once with a
@@ -36,7 +36,7 @@ export const testProviderKey = async (provider: KeyTestProvider, deps: KeyTestDe
   const name = provider === "openai" ? "OPENAI_API_KEY" : "GEMINI_API_KEY";
   const states = await readSecretFiles(deps.files);
   const managerEnv = await deps.managerEnv().catch(() => null);
-  const resolved = resolveSecretFrom(name, managerEnv || {}, states);
+  const resolved = resolveSecretFrom(name, unitEnvironment(managerEnv || {}, states), states);
   const key = resolved.value || (provider === "openai" ? deps.configApiKey : undefined);
   const source: SecretSource = resolved.value ? resolved.source : key ? "config" : "missing";
   if (!key) {
