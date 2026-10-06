@@ -38,7 +38,7 @@ import { DiarizationStore, type DiarizationResult } from "../../src/diarization/
 import { nameDiarizationSpeaker, queueDiarization, readCanonicalTranscript, readDiarizationStatus, resultStatus } from "../../src/diarization/service";
 
 import { readOnboarding, saveLocalOnboarding } from "../config/onboarding";
-import { SETTINGS_KNOWN_ERRORS, SETTINGS_OPERATIONS, handleSettingsOperation, settingsErrorMessage, type SettingsOperation } from "./settings-bridge";
+import { SETTINGS_OPERATIONS, handleSettingsOperation, isDisplayableSettingsError, settingsErrorMessage, type SettingsOperation } from "./settings-bridge";
 import { prepareMockFramePreview } from "../visual/mock-preview";
 import { MockFrameReview } from "../visual/review-flow";
 const frameReview = new MockFrameReview();
@@ -96,7 +96,7 @@ const safeError = (op: string, error: unknown): string => {
     "A gravação ainda não possui contexto disponível.", "Muitas operações pendentes; tente novamente."
   ];
   if (known.includes(text)) return text;
-  if (op.startsWith("settings-")) return SETTINGS_KNOWN_ERRORS.includes(text) || /^(Campo não editável: |Valor inválido para )/.test(text) ? text : settingsErrorMessage(op);
+  if (op.startsWith("settings-")) return isDisplayableSettingsError(op, text) ? text : settingsErrorMessage(op);
   if (op.startsWith("summary-")) return error instanceof RevisionConflictError ? "A revisão ou sua origem mudou. Prepare um novo plano antes de gerar; o original foi preservado." : "Resumo não confirmado ou cancelado. Confira modelo local, destino, limite e consentimento. Não repita uma tentativa incerta; releia antes de preparar outro plano. Original preservado.";
   if (op.startsWith("revision-")) return error instanceof RevisionConflictError ? "A revisão ou sua origem mudou. Releia antes de salvar; sua edição não foi aplicada." : "Não foi possível confirmar a revisão. Releia o resultado antes de tentar novamente.";
   if (op.startsWith("export-")) return "Não foi possível confirmar a exportação. Atualize a prévia e confira a origem e a revisão antes de salvar novamente.";

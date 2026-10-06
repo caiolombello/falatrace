@@ -206,6 +206,14 @@ describe("settings through the production desktop bridge", () => {
       expect(Array.isArray(diagnose.result.checks)).toBe(true);
       const written = JSON.parse(await fs.readFile(config, "utf8"));
       expect(written).toEqual({ openai: { apiKey: "synthetic-private-settings-sentinel" }, future: 1, callDetection: { enabled: true, apps: { firefox: false } } });
+
+      // A key file other users can change is refused with the reason, not a generic failure.
+      const secrets = join(config, "..", "secrets.env");
+      await fs.writeFile(secrets, "# synthetic\n", { mode: 0o600 });
+      await fs.chmod(secrets, 0o664);
+      const [refused] = await run(env, [{ id: 1, op: "settings-secret-set", payload: { name: "OPENAI_API_KEY", value: "synthetic-private-settings-sentinel-key" } }]);
+      expect(refused).toMatchObject({ ok: false, error: "secrets.env outros usuários podem alterá-lo; ignorado. Corrija o arquivo antes de salvar." });
+      expect(await fs.readFile(secrets, "utf8")).toBe("# synthetic\n");
     } finally {
       await fs.rm(root, { recursive: true, force: true });
     }
