@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { promises as fs } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { CallMonitorStatus } from "../../calls/status";
 import { presentTrayStatus } from "../presentation";
 import { INDICATOR_SCRIPT } from "../python";
@@ -6,8 +9,10 @@ import {
   buildCliActionRunArgs,
   buildStudioLaunchArgs,
   buildTerminalLaunchArgs,
+  findStudioLauncher,
   launchRecordingStudio,
   monitorStateFromSystemdProperties,
+  studioLauncherCandidates,
   trayActionIsAllowed
 } from "../runtime";
 import { buildTrayUnit } from "../service";
@@ -276,6 +281,26 @@ describe("tray integration", () => {
     await expect(launchRecordingStudio(missingCommand)).rejects.toThrow(
       `FalaTrace Studio não está instalado em ${missingCommand}. Execute novamente o instalador do FalaTrace ou, a partir do código-fonte, make install-studio.`
     );
+  });
+
+  test("finds the Studio next to the installed CLI before ~/.local/bin", async () => {
+    const root = await fs.mkdtemp(join(tmpdir(), "falatrace-tray-studio-"));
+    try {
+      const prefixBin = join(root, "opt", "bin");
+      const home = join(root, "home");
+      const fallback = join(home, ".local", "bin", "recording-studio");
+      await fs.mkdir(prefixBin, { recursive: true });
+      await fs.mkdir(join(home, ".local", "bin"), { recursive: true });
+      const candidates = studioLauncherCandidates(join(prefixBin, "falatrace"), home);
+      expect(candidates).toEqual([join(prefixBin, "recording-studio"), fallback]);
+      expect(await findStudioLauncher(candidates)).toBe(fallback);
+      await fs.writeFile(fallback, "#!/bin/sh\n", { mode: 0o755 });
+      expect(await findStudioLauncher(candidates)).toBe(fallback);
+      await fs.writeFile(join(prefixBin, "recording-studio"), "#!/bin/sh\n", { mode: 0o755 });
+      expect(await findStudioLauncher(candidates)).toBe(join(prefixBin, "recording-studio"));
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
   });
 
   test("reports a safe error when systemd cannot start the studio unit", async () => {

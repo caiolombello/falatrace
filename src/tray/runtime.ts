@@ -115,17 +115,30 @@ export const buildStudioLaunchArgs = (
   command
 ];
 
+/**
+ * Where recording-studio may be: next to the running CLI first, which follows any
+ * INSTALL_PREFIX given to make install-studio, then the default ~/.local/bin.
+ */
+export const studioLauncherCandidates = (execPath = process.execPath, home = homedir()): string[] =>
+  [...new Set([join(dirname(execPath), "recording-studio"), join(home, ".local", "bin", "recording-studio")])];
+
+const isExecutable = (path: string): Promise<boolean> => fs.access(path, fsConstants.X_OK).then(() => true, () => false);
+
+export const findStudioLauncher = async (candidates = studioLauncherCandidates()): Promise<string> => {
+  for (const candidate of candidates) if (await isExecutable(candidate)) return candidate;
+  return candidates[candidates.length - 1];
+};
+
 export const launchRecordingStudio = async (
-  command = join(homedir(), ".local", "bin", "recording-studio"),
+  launcher?: string,
   runner: (
     executable: string,
     args: string[],
     options: { timeoutMs: number }
   ) => Promise<unknown> = runCommand
 ): Promise<void> => {
-  try {
-    await fs.access(command, fsConstants.X_OK);
-  } catch {
+  const command = launcher ?? await findStudioLauncher();
+  if (!(await isExecutable(command))) {
     throw new Error(
       `FalaTrace Studio não está instalado em ${command}. Execute novamente o instalador do FalaTrace ou, a partir do código-fonte, make install-studio.`
     );
