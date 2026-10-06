@@ -2,7 +2,7 @@ import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { runCommand } from "../jobs/command";
-import { execStart, serviceLaunchCommand } from "../runtime/systemd-units";
+import { execStart, isMissingUnitError, serviceLaunchCommand } from "../runtime/systemd-units";
 import { checkTrayDependencies } from "./runtime";
 
 const SERVICE_NAME = "recording-cli-tray.service";
@@ -33,11 +33,13 @@ export const installTrayService = async (): Promise<string> => {
   return unitPath;
 };
 
-export const uninstallTrayService = async (): Promise<string> => {
+/** Like the call monitor: only a unit that is already gone lets removal go on after a failed stop. */
+export const uninstallTrayService = async (run: typeof runCommand = runCommand): Promise<string> => {
   const unitPath = getUnitPath();
-  await runCommand("systemctl", ["--user", "disable", "--now", SERVICE_NAME])
-    .catch(() => undefined);
+  await run("systemctl", ["--user", "disable", "--now", SERVICE_NAME]).catch((error: unknown) => {
+    if (!isMissingUnitError(error)) throw error;
+  });
   await fs.rm(unitPath, { force: true });
-  await runCommand("systemctl", ["--user", "daemon-reload"]);
+  await run("systemctl", ["--user", "daemon-reload"]);
   return unitPath;
 };

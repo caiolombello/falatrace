@@ -1,13 +1,13 @@
 import { expect, test } from "bun:test";
 import { promises as fs } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_CONFIG } from "../../config/defaults";
 import { buildArchiveUnits } from "../../archive/service";
 import { buildSyncUnits, buildWorkerUnit } from "../../jobs/service";
 import { buildProtonBackupUnits } from "../../proton/service";
-import { buildCallMonitorUnit } from "../../calls/service";
-import { buildTrayUnit } from "../../tray/service";
+import { buildCallMonitorUnit, uninstallCallMonitorService } from "../../calls/service";
+import { buildTrayUnit, uninstallTrayService } from "../../tray/service";
 import { cliEntryForBun, getServiceLaunchCommand } from "../launcher";
 import { execStart, quoteSystemd, quoteSystemdPath, removeUserUnits } from "../systemd-units";
 
@@ -78,6 +78,27 @@ test("a unit that fails to stop keeps its files; one that is already gone does n
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }
+});
+
+test("the call monitor and tray are not reported removed while systemd cannot stop them", async () => {
+  const unitDir = join(homedir(), ".config", "systemd", "user");
+  const units = ["recording-cli-calls.service", "recording-cli-tray.service"].map((name) => join(unitDir, name));
+  await fs.mkdir(unitDir, { recursive: true });
+  for (const unit of units) await fs.writeFile(unit, "x");
+  const refusing = (message: string) => async (_command: string, args: string[]) => {
+    if (args.includes("disable") || args.includes("stop")) throw new Error(`systemctl failed with code 1: ${message}`);
+    return { stdout: "", stderr: "" };
+  };
+  // A monitor that keeps running would keep recording: its files stay and the failure is reported.
+  const noBus = refusing("Failed to connect to bus: No such file or directory");
+  await expect(uninstallCallMonitorService(noBus)).rejects.toThrow("Failed to connect to bus");
+  await expect(uninstallTrayService(noBus)).rejects.toThrow("Failed to connect to bus");
+  for (const unit of units) expect(await Bun.file(unit).exists()).toBe(true);
+  // Units that are already gone do not block removal.
+  const gone = refusing("Unit recording-cli-calls.service not loaded.");
+  expect(await uninstallCallMonitorService(gone)).toBe(units[0]);
+  expect(await uninstallTrayService(gone)).toBe(units[1]);
+  for (const unit of units) expect(await Bun.file(unit).exists()).toBe(false);
 });
 
 test("uninstall commands still run while the configuration is broken", async () => {

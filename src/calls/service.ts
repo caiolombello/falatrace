@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { AppConfig } from "../config/defaults";
 import { runCommand } from "../jobs/command";
-import { execStart, quoteSystemd, serviceLaunchCommand } from "../runtime/systemd-units";
+import { execStart, isMissingUnitError, quoteSystemd, serviceLaunchCommand } from "../runtime/systemd-units";
 
 const getLaunchCommand = (): string[] => serviceLaunchCommand();
 
@@ -45,14 +45,18 @@ export const installCallMonitorService = async (config: AppConfig): Promise<stri
   return unitPath;
 };
 
-export const uninstallCallMonitorService = async (): Promise<string> => {
+/**
+ * Stop and remove the monitor. A monitor that fails to stop keeps recording with the configuration
+ * it started with, so only a unit that is already gone lets removal go on; any other failure stops
+ * here, before the files are removed and the monitor reported disabled.
+ */
+export const uninstallCallMonitorService = async (run: typeof runCommand = runCommand): Promise<string> => {
   const unitPath = getUnitPath();
-  await runCommand("systemctl", ["--user", "disable", "--now", "recording-cli-calls.service"])
-    .catch(() => undefined);
-  await runCommand("systemctl", ["--user", "stop", "recording-cli-network-probe.service"])
-    .catch(() => undefined);
+  const unlessMissing = (error: unknown): void => { if (!isMissingUnitError(error)) throw error; };
+  await run("systemctl", ["--user", "disable", "--now", "recording-cli-calls.service"]).catch(unlessMissing);
+  await run("systemctl", ["--user", "stop", "recording-cli-network-probe.service"]).catch(unlessMissing);
   await fs.rm(unitPath, { force: true });
   await fs.rm(getNetworkProbeUnitPath(), { force: true });
-  await runCommand("systemctl", ["--user", "daemon-reload"]);
+  await run("systemctl", ["--user", "daemon-reload"]);
   return unitPath;
 };
