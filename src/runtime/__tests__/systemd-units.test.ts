@@ -3,9 +3,9 @@ import { promises as fs } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_CONFIG } from "../../config/defaults";
-import { buildArchiveUnits } from "../../archive/service";
-import { buildSyncUnits, buildWorkerUnit } from "../../jobs/service";
-import { buildProtonBackupUnits } from "../../proton/service";
+import { buildArchiveUnits, uninstallArchiveTimer } from "../../archive/service";
+import { buildSyncUnits, buildWorkerUnit, uninstallSyncTimer } from "../../jobs/service";
+import { buildProtonBackupUnits, uninstallProtonBackupTimer } from "../../proton/service";
 import { buildCallMonitorUnit, uninstallCallMonitorService } from "../../calls/service";
 import { buildTrayUnit, uninstallTrayService } from "../../tray/service";
 import { cliEntryForBun, getServiceLaunchCommand } from "../launcher";
@@ -78,6 +78,20 @@ test("a unit that fails to stop keeps its files; one that is already gone does n
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }
+});
+
+test("disabling a timer also stops a run of its service that is in progress", async () => {
+  const runs: string[][] = [];
+  const record = async (command: string, args: string[]) => { runs.push([command, ...args]); return { stdout: "", stderr: "" }; };
+  await uninstallSyncTimer(record);
+  await uninstallArchiveTimer(record);
+  await uninstallProtonBackupTimer(record);
+  const stops = runs.filter((run) => run.includes("stop") || run.includes("disable")).map((run) => run.slice(2).join(" "));
+  expect(stops).toEqual([
+    "disable --now recording-cli-sync.timer", "stop recording-cli-sync.service",
+    "disable --now recording-cli-archive.timer", "stop recording-cli-archive.service",
+    "disable --now recording-cli-proton-backup.timer", "stop recording-cli-proton-backup.service"
+  ]);
 });
 
 test("the call monitor and tray are not reported removed while systemd cannot stop them", async () => {

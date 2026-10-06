@@ -24,5 +24,5 @@ export const installProtonBackupTimer = async (config: AppConfig): Promise<strin
 };
 
 /** Stop periodic Proton backups. Existing remote copies and the backup ledger are kept. */
-export const uninstallProtonBackupTimer = async (): Promise<string[]> =>
-  removeUserUnits(["recording-cli-proton-backup.timer", "recording-cli-proton-backup.service"], ["recording-cli-proton-backup.timer"]);
+export const uninstallProtonBackupTimer = async (run: typeof runCommand = runCommand): Promise<string[]> =>
+  removeUserUnits(["recording-cli-proton-backup.timer", "recording-cli-proton-backup.service"], ["recording-cli-proton-backup.timer", "recording-cli-proton-backup.service"], run);

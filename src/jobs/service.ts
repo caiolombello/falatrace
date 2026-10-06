@@ -39,5 +39,5 @@ export const installSyncTimer = async (config: AppConfig): Promise<string[]> => 
 };
 
 /** Stop periodic processing. Queued jobs are kept and can still be processed manually. */
-export const uninstallSyncTimer = async (): Promise<string[]> =>
-  removeUserUnits(["recording-cli-sync.timer", "recording-cli-sync.service"], ["recording-cli-sync.timer"]);
+export const uninstallSyncTimer = async (run: typeof runCommand = runCommand): Promise<string[]> =>
+  removeUserUnits(["recording-cli-sync.timer", "recording-cli-sync.service"], ["recording-cli-sync.timer", "recording-cli-sync.service"], run);

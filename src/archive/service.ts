@@ -31,5 +31,5 @@ export const installArchiveTimer = async (config: AppConfig): Promise<string[]> 
 };
 
 /** Stop periodic original-media copies. Existing copies and the archive catalog are kept. */
-export const uninstallArchiveTimer = async (): Promise<string[]> =>
-  removeUserUnits(["recording-cli-archive.timer", "recording-cli-archive.service"], ["recording-cli-archive.timer"]);
+export const uninstallArchiveTimer = async (run: typeof runCommand = runCommand): Promise<string[]> =>
+  removeUserUnits(["recording-cli-archive.timer", "recording-cli-archive.service"], ["recording-cli-archive.timer", "recording-cli-archive.service"], run);

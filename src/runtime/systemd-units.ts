@@ -40,9 +40,10 @@ export const isMissingUnitError = (error: unknown): boolean => {
 };
 
 /**
- * Disable and stop units, remove their files and reload. A unit that is already missing is
- * not an error; any other failure stops here, before the files are removed, so a unit that
- * keeps running is never reported as disabled.
+ * Disable and stop units, remove their files and reload. Timers are disabled and stopped; the
+ * services they start have no [Install] section and are stopped, so a run in progress does not
+ * outlive the removal. A unit that is already missing is not an error; any other failure stops
+ * here, before the files are removed, so a unit that keeps running is never reported as disabled.
  */
 export const removeUserUnits = async (
   unitFiles: string[],
@@ -51,7 +52,8 @@ export const removeUserUnits = async (
   unitDir = userUnitDir()
 ): Promise<string[]> => {
   for (const unit of stopUnits) {
-    await run("systemctl", ["--user", "disable", "--now", unit]).catch((error: unknown) => {
+    const args = unit.endsWith(".timer") ? ["--user", "disable", "--now", unit] : ["--user", "stop", unit];
+    await run("systemctl", args).catch((error: unknown) => {
       if (!isMissingUnitError(error)) throw error;
     });
   }
