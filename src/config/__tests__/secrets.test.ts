@@ -3,7 +3,7 @@ import { promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  describeCredentials, parseManagerEnvironment, parseSecretLines, readSecret, readSecretFile, redactResolvedSecrets,
+  describeCredentials, parseEnvFile, parseManagerEnvironment, parseSecretLines, readSecret, readSecretFile, redactResolvedSecrets,
   removeSecret, resolveSecretFrom, setSecret, type SecretFiles
 } from "../secrets";
 
@@ -26,6 +26,15 @@ test("env lines accept export, quotes and comments and ignore anything else", ()
   expect(Object.fromEntries(values)).toEqual({
     OPENAI_API_KEY: "sk-synthetic one", GEMINI_API_KEY: 'g"x', RECORDING_CLI_OBS_PASSWORD: "plain-value"
   });
+});
+
+test("key files are read with the rules systemd uses for EnvironmentFile=", () => {
+  const values = parseEnvFile([
+    "A=sk-\\abc", "B=pass\\", "word", 'C="g-\\q \\" \\\\"', "D='it''s'", "  E = spaced value  ", "; comment",
+    'F="multi', 'line"', "export G=exported"
+  ].join("\n"));
+  expect(Object.fromEntries(values)).toEqual({ A: "sk-abc", B: "password", C: 'g-\\q " \\', D: "its", E: "spaced value", F: "multi\nline", G: "exported" });
+  expect(parseSecretLines('F="multi\nline"\nH=ok').has("F")).toBe(false);
 });
 
 test("files are read only when they are private regular files of this user", async () => {
@@ -60,6 +69,11 @@ test("precedence: explicit environment, then the Studio file, then legacy files"
 
 test("a rejected legacy file cannot reach processing through a unit's environment", async () => {
   await withFiles(async (files, root) => {
+    // systemd unescapes this to "sk-escaped" before the unit sees it.
+    await fs.writeFile(join(root, "escaped.env"), "OPENAI_API_KEY=sk-\\escaped\n", { mode: 0o600 });
+    await fs.chmod(join(root, "escaped.env"), 0o664);
+    expect(await readSecret("OPENAI_API_KEY", { OPENAI_API_KEY: "sk-escaped" }, { ...files, "worker.env": join(root, "escaped.env") })).toBeUndefined();
+
     await fs.writeFile(files["worker.env"], "OPENAI_API_KEY=from-open-worker\n", { mode: 0o600 });
     await fs.chmod(files["worker.env"], 0o664);
     await fs.writeFile(join(root, "target.env"), "GEMINI_API_KEY=from-linked-calls\n", { mode: 0o600 });

@@ -68,17 +68,101 @@ const unquote = (raw: string): string => {
   return value;
 };
 
-/** Parse KEY=value lines (optional `export`, quotes, comments); unknown lines are ignored. */
-export const parseSecretLines = (content: string): Map<string, string> => {
+const LINE_END = "\n\r";
+const BLANK = " \t\n\r";
+
+/**
+ * Parse an environment file with the rules systemd's EnvironmentFile= uses (env-file.c), so a
+ * value read here is the value a unit receives: lines starting with # or ; are comments;
+ * unquoted values drop surrounding blanks, honour backslash escapes and continue on a
+ * trailing backslash; single quotes are verbatim; double quotes unescape only ", \, ` and $;
+ * quoted values may span lines. A leading `export ` is accepted, as in a shell.
+ */
+export const parseEnvFile = (content: string): Map<string, string> => {
   const values = new Map<string, string>();
-  for (const line of content.split(/\r?\n/)) {
-    const match = line.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=(.*)$/);
-    if (!match) continue;
-    const value = unquote(match[2]);
-    if (value && !/\p{Cc}/u.test(value)) values.set(match[1], value);
+  type State = "preKey" | "key" | "preValue" | "value" | "valueEscape" | "single" | "double" | "doubleEscape" | "comment" | "commentEscape";
+  let state: State = "preKey";
+  let key = "";
+  let value = "";
+  let keyBlank = -1;
+  let valueBlank = -1;
+  const push = () => {
+    const name = (keyBlank >= 0 ? key.slice(0, keyBlank) : key).replace(/^export[ \t]+/, "");
+    if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) values.set(name, value);
+    key = "";
+    value = "";
+    keyBlank = -1;
+    valueBlank = -1;
+  };
+  for (const c of content) {
+    switch (state) {
+      case "preKey":
+        if (c === "#" || c === ";") state = "comment";
+        else if (!BLANK.includes(c)) { state = "key"; key = c; keyBlank = -1; }
+        break;
+      case "key":
+        if (LINE_END.includes(c)) { state = "preKey"; key = ""; }
+        else if (c === "=") { state = "preValue"; valueBlank = -1; }
+        else {
+          if (!BLANK.includes(c)) keyBlank = -1;
+          else if (keyBlank < 0) keyBlank = key.length;
+          key += c;
+        }
+        break;
+      case "preValue":
+        if (LINE_END.includes(c)) { state = "preKey"; push(); }
+        else if (c === "'") state = "single";
+        else if (c === '"') state = "double";
+        else if (c === "\\") state = "valueEscape";
+        else if (!BLANK.includes(c)) { state = "value"; value += c; }
+        break;
+      case "value":
+        if (LINE_END.includes(c)) {
+          state = "preKey";
+          if (valueBlank >= 0) value = value.slice(0, valueBlank);
+          push();
+        } else if (c === "\\") { state = "valueEscape"; valueBlank = -1; }
+        else {
+          if (!BLANK.includes(c)) valueBlank = -1;
+          else if (valueBlank < 0) valueBlank = value.length;
+          value += c;
+        }
+        break;
+      case "valueEscape":
+        state = "value";
+        if (!LINE_END.includes(c)) value += c;
+        break;
+      case "single":
+        if (c === "'") state = "preValue";
+        else value += c;
+        break;
+      case "double":
+        if (c === '"') state = "preValue";
+        else if (c === "\\") state = "doubleEscape";
+        else value += c;
+        break;
+      case "doubleEscape":
+        state = "double";
+        if ('"\\`$'.includes(c)) value += c;
+        else if (c !== "\n") value += `\\${c}`;
+        break;
+      case "comment":
+        if (c === "\\") state = "commentEscape";
+        else if (LINE_END.includes(c)) state = "preKey";
+        break;
+      case "commentEscape":
+        state = LINE_END.includes(c) ? "preKey" : "comment";
+        break;
+    }
   }
+  if (state === "value" && valueBlank >= 0) value = value.slice(0, valueBlank);
+  if (["preValue", "value", "valueEscape", "single", "double", "doubleEscape"].includes(state)) push();
   return values;
 };
+
+/** Credentials from a KEY=value file: empty values and values with control characters are left out. */
+export const parseSecretLines = (content: string): Map<string, string> =>
+  new Map([...parseEnvFile(content)].filter(([, value]) => value !== "" && !/\p{Cc}/u.test(value)));
 
 const currentUid = (): number | undefined => (typeof process.getuid === "function" ? process.getuid() : undefined);
 
