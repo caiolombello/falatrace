@@ -63,3 +63,17 @@ test('agent bridge resolves normal library path key to registered recording UUID
  expect(()=>parseRequest({id:3,op:'agent-authorize',payload:{recipientId:'https://invalid',data:['context'],consent:true}})).toThrow();
  expect(()=>parseRequest({id:4,op:'agent-frames',payload:{grantId:id,timestamps:[-1]}})).toThrow();
 });
+
+describe("speaker name suggestion requests", () => {
+  const id = "123e4567-e89b-42d3-a456-426614174042";
+  test("the microphone needs no consent; the conversation needs consent bound to a destination key", () => {
+    expect(parseRequest({ id: 1, op: "speakers-suggest", key: id, payload: { conversation: false } }).payload).toEqual({ conversation: false });
+    const consented = { conversation: true, consent: true, consentKey: "b".repeat(64) };
+    expect(parseRequest({ id: 2, op: "speakers-suggest", key: id, payload: consented }).payload).toEqual(consented);
+    for (const payload of [
+      {}, { conversation: "yes" }, { conversation: true }, { conversation: true, consent: true },
+      { conversation: true, consent: false, consentKey: "b".repeat(64) }, { conversation: true, consent: true, consentKey: "not-a-key" },
+      { conversation: false, label: "Ana" }, { conversation: false, model: "gpt-6-luna" }
+    ]) expect(() => parseRequest({ id: 3, op: "speakers-suggest", key: id, payload })).toThrow("payload inválido");
+  });
+});

@@ -30,7 +30,17 @@
 			"src/recording/messages.ts",
 			"src/recording/__tests__/audio-test.test.ts",
 			"src/runtime/systemd-units.ts",
-			"src/runtime/__tests__/systemd-units.test.ts"
+			"src/runtime/__tests__/systemd-units.test.ts",
+			"src/speakers/conversation.ts",
+			"src/speakers/messages.ts",
+			"src/speakers/microphone.ts",
+			"src/speakers/record.ts",
+			"src/speakers/service.ts",
+			"src/speakers/store.ts",
+			"src/speakers/__tests__/conversation.test.ts",
+			"src/speakers/__tests__/microphone.test.ts",
+			"src/speakers/__tests__/service.test.ts",
+			"src/desktop/__tests__/speakers-bridge.test.ts"
 		]
 	},
 	"formatter": { "enabled": false },

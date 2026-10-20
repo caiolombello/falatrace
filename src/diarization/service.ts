@@ -15,6 +15,7 @@ import { DiarizationStore, transcriptChecksum, validSpeakerLabel, type Diarizati
 import { readReviewedView, saveRevision, type RevisionBase, type RevisionHead } from "../revisions";
 import { getServiceLaunchCommand } from "../runtime/launcher";
 import { transientCommand, transientUnitEnvironment } from "../runtime/systemd-units";
+import { recordMicrophoneAfterDiarization } from "../speakers/record";
 
 export const readCanonicalTranscript = async (job: JobRecord): Promise<Transcript> => {
   if (job.state !== "completed") throw new Error("Aguarde a transcrição terminar antes de identificar os falantes");
@@ -123,6 +124,8 @@ const createDiarizationOwned = async (
     const latest = await readCanonicalTranscript(await new JobStore().get(id));
     if (transcriptChecksum(latest.text) !== result.transcriptSha256) throw new Error("A transcrição mudou durante a identificação; tente novamente");
     await store.save(result);
+    // Local only: compares the microphone and computer tracks to suggest the owner's name.
+    await recordMicrophoneAfterDiarization(job, canonical, media.path, after, store);
     if (ignoredZeroDurationTurns || ignoredEmptyTextTurns) await fs.rename(rawResponsePath, join(store.root, `${id}.provider-response.json`));
     await fs.rm(join(store.root, `${id}.failed-response.json`), { force: true });
     await fs.rm(workDir, { recursive: true, force: true });

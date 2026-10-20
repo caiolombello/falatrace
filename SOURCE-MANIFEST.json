@@ -20,8 +20,8 @@
     },
     {
       "path": "CHANGELOG.md",
-      "sha256": "957cbe801f876a95d16b85090516e8f5a7864106df8f24f67ca6c9db431c718b",
-      "bytes": 16619
+      "sha256": "4117d1732adb982084d86646f7023b3c5d1b98e3c31f443a1c68a4ee885523b7",
+      "bytes": 18216
     },
     {
       "path": "LICENSE",
@@ -70,8 +70,8 @@
     },
     {
       "path": "biome.json",
-      "sha256": "4e18987ad652f2c2a2a3776e85a2ba107662b57fe59b5dcfaabe7422b76bee2f",
-      "bytes": 1351
+      "sha256": "8601863ce96d68a4bd3848449cb8c74c6bafe5d4c2ec7751bd8821390a4e8217",
+      "bytes": 1732
     },
     {
       "path": "branding/README.md",
@@ -205,13 +205,13 @@
     },
     {
       "path": "docs/CONFIGURATION.md",
-      "sha256": "65fe57a24956b759861045622cedb27f94bf6ad405abddf96c4f7f84d1c06dba",
-      "bytes": 14703
+      "sha256": "054272c22759573d7097a699ac3df9f389e27cffd4ef583d1f3f987f9b7139b5",
+      "bytes": 14818
     },
     {
       "path": "docs/HUMAN-REVIEW-EXPORT.md",
-      "sha256": "1d437d8ef0438795cf4ef63b75692dedcdbc7d38cd56f1494fce17394d054d48",
-      "bytes": 7633
+      "sha256": "ac20af04a9001fd18e1dfc3d03896d04bde8a59b4be4174128d87bc89b68e53e",
+      "bytes": 9548
     },
     {
       "path": "docs/LOCAL-AGENT-RETRIEVAL-CONTRACT.md",
@@ -250,8 +250,8 @@
     },
     {
       "path": "docs/ROADMAP.md",
-      "sha256": "3f822be449b88b6e2a81a0fb1c0570e06a9bcfa9c95f293f45eb8534f82192ca",
-      "bytes": 16529
+      "sha256": "19a74cd48e3427b5e140e6c81750455c45d594597d910b5549b70e40d9bcc425",
+      "bytes": 16909
     },
     {
       "path": "docs/TIMESHEETS.md",
@@ -514,9 +514,14 @@
       "bytes": 63026
     },
     {
+      "path": "scripts/test-speakers-ux.py",
+      "sha256": "e389decb95979110b5eec16ea76c8b50ed702e50dbe11c7c3290aa207e3a74d6",
+      "bytes": 14073
+    },
+    {
       "path": "scripts/test-studio-journeys.sh",
-      "sha256": "ec1c85873e3210c596e1f44f4ce79a40e55b6bb78259df378fd6358687984c51",
-      "bytes": 1262
+      "sha256": "2861aa1e55f685e8390fce252ae0a8e16f6800124cce8267a80aa7b2d93992a2",
+      "bytes": 1274
     },
     {
       "path": "skills/README.md",
@@ -840,8 +845,8 @@
     },
     {
       "path": "src/cli/index.ts",
-      "sha256": "adecbc2881d37d9a9273b19d6fe3f1a82ed08c7249818b4ed8c971a8d8e571e8",
-      "bytes": 60991
+      "sha256": "896443b2bbaea0d647c350a9ed720a40634ebee26448f3877ba466a5d00f625e",
+      "bytes": 63063
     },
     {
       "path": "src/cli/keys.ts",
@@ -1025,8 +1030,8 @@
     },
     {
       "path": "src/desktop/Main.qml",
-      "sha256": "b4c8b7696916090936631f20b63493e0805dc96639e44d9f5437bca247638086",
-      "bytes": 148208
+      "sha256": "4ef0bde44ff8d6fac8cef869e029af4169c92edeac18c98a76b9e30f7d5cb947",
+      "bytes": 157679
     },
     {
       "path": "src/desktop/OnboardingDialog.qml",
@@ -1104,6 +1109,11 @@
       "bytes": 45980
     },
     {
+      "path": "src/desktop/SpeakerSuggestDialog.qml",
+      "sha256": "f1d81a3df923bd594fb43440e69fd8971d61dbc624cc147fa9a2d88aae703050",
+      "bytes": 4169
+    },
+    {
       "path": "src/desktop/SummaryDialog.qml",
       "sha256": "baa0dd06d96dff72b6aed1de28fb04cb4a12faefb7100cdab590deae5afc4886",
       "bytes": 6975
@@ -1135,8 +1145,8 @@
     },
     {
       "path": "src/desktop/__tests__/i18n.test.ts",
-      "sha256": "fe5d3f6b048351eb0197eb84e84fc966deb2c353a517de2092d4b7368784ed68",
-      "bytes": 11626
+      "sha256": "0cb8085ba3d76e3e62245bf967c37e52cc700485ec799c9c6d89995356a3a3be",
+      "bytes": 11938
     },
     {
       "path": "src/desktop/__tests__/install.test.ts",
@@ -1159,19 +1169,24 @@
       "bytes": 24675
     },
     {
+      "path": "src/desktop/__tests__/speakers-bridge.test.ts",
+      "sha256": "577741ba7d3cdf150663a1463d7c600d4c6adf5f2ef0dccbfff8be6b8d3244f5",
+      "bytes": 7416
+    },
+    {
       "path": "src/desktop/__tests__/studio-summary-bridge.test.ts",
       "sha256": "d0f0c4f1cc35429416e8c1eb78538503b7983e6d6dbbd111805f7bc83976ecd8",
       "bytes": 10360
     },
     {
       "path": "src/desktop/bridge.test.ts",
-      "sha256": "14050dd3d46b8707e23cef60a57291e0ca6582218777f6a8958a73ec82682c59",
-      "bytes": 4325
+      "sha256": "d57247dbf085114925627405cdb018208879fad1dc011ce0db6bbadb988eaf81",
+      "bytes": 5373
     },
     {
       "path": "src/desktop/bridge.ts",
-      "sha256": "69fc49e2c726bdef2a378aa817c18c258b601ec7ff148832fb4bb71eb91a9808",
-      "bytes": 55618
+      "sha256": "0e3c4b0a5cd1db0ef933d399fc304dc42a47ebf226f7d1ff33dbf3e436eb92dd",
+      "bytes": 57079
     },
     {
       "path": "src/desktop/diarization-view.test.ts",
@@ -1180,8 +1195,8 @@
     },
     {
       "path": "src/desktop/i18n.js",
-      "sha256": "54f981073de37229fa1762d9daad1645c7d8ccca9937e20eb11eda464c43399c",
-      "bytes": 141527
+      "sha256": "aad328251cbbd596b211c511d4d43542fd9245da3c35750672d0d2b2a60da4f8",
+      "bytes": 148892
     },
     {
       "path": "src/desktop/install.ts",
@@ -1285,8 +1300,8 @@
     },
     {
       "path": "src/diarization/service.ts",
-      "sha256": "fa95142bb803978a825d16f1732536bac2dd4599567d5fc2b35b9b22da667001",
-      "bytes": 11192
+      "sha256": "5fe34d625444bbda2905dc18aca7801f2e2fe4733386575bd12a772ad90f0c9a",
+      "bytes": 11441
     },
     {
       "path": "src/diarization/store.ts",
@@ -1669,6 +1684,11 @@
       "bytes": 1044
     },
     {
+      "path": "src/recording/__tests__/legacy-stop.test.ts",
+      "sha256": "2e4ef1bb753c3973a14cc7253ad8f1bab6d1de2c3bfc4c7da9ee95a4f45ea85b",
+      "bytes": 1569
+    },
+    {
       "path": "src/recording/__tests__/obs-recording.test.ts",
       "sha256": "7325ad7e643848a8241dc3af8b4c1552a25b038683d7d365d664ce70dc321804",
       "bytes": 6953
@@ -1740,8 +1760,8 @@
     },
     {
       "path": "src/recording/legacy-stop.ts",
-      "sha256": "25ae6bad8cad04276ccd732617ed4ae22ac8f6b37d4e76ab41c85c22950121eb",
-      "bytes": 2633
+      "sha256": "c0fae099df6df8d7cd9e2b677198d5e1f9f6bc16c686cf7906508d76fbc43c66",
+      "bytes": 3258
     },
     {
       "path": "src/recording/messages.ts",
@@ -1857,6 +1877,51 @@
       "path": "src/s3/upload.ts",
       "sha256": "5a99c332e6fb10b7e417d832bfce98925d76588013aba0a25b82a0a79978ae6f",
       "bytes": 2584
+    },
+    {
+      "path": "src/speakers/__tests__/conversation.test.ts",
+      "sha256": "b4afe7c9f2f5e69fd5d6f79dda67cdd737fa3c9ecb04c68927a01cb954015d7b",
+      "bytes": 6417
+    },
+    {
+      "path": "src/speakers/__tests__/microphone.test.ts",
+      "sha256": "dbe8411e73b4e87c9a19dd2ffefdd5ef1e7173ff18809f75ce4b0bdfee555f7e",
+      "bytes": 7812
+    },
+    {
+      "path": "src/speakers/__tests__/service.test.ts",
+      "sha256": "f968ae6610c425eb10ffa1fcd18f486523b9fa6727fe48059735aa717fd5c853",
+      "bytes": 11940
+    },
+    {
+      "path": "src/speakers/conversation.ts",
+      "sha256": "f2061d453664064bc23042450031b022800593bda4a3f5e109479aa37391fd42",
+      "bytes": 12731
+    },
+    {
+      "path": "src/speakers/messages.ts",
+      "sha256": "2ce619e7f50a4dec0237a83f72ddf8b609ae675c8aa2fe4daef8605cba1fbafb",
+      "bytes": 2692
+    },
+    {
+      "path": "src/speakers/microphone.ts",
+      "sha256": "1cefdcfc9dc018fadd602a218792d8da59115ccf22e9d56ceed403cae0d339e4",
+      "bytes": 11565
+    },
+    {
+      "path": "src/speakers/record.ts",
+      "sha256": "98c801ddbca480fd104590ff602d737c053aab04b5ce57c613973ae9813db3b5",
+      "bytes": 5550
+    },
+    {
+      "path": "src/speakers/service.ts",
+      "sha256": "4e3c89169fb20fc0a8f6c2660a898214666a7dc1c120153c035d1f19a39f529f",
+      "bytes": 14829
+    },
+    {
+      "path": "src/speakers/store.ts",
+      "sha256": "8a2c2ea9bd3ec4a3721ce9591ae7196d68d7c5ce4db6b00e743e3ea4cde8ed6f",
+      "bytes": 8413
     },
     {
       "path": "src/subtitles/__tests__/aligned.test.ts",
