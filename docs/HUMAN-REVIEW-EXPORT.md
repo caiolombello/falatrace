@@ -41,6 +41,36 @@ If the first diarization appears after text-only edits, the acoustic base can
 expand once while preserving that history. An old editor must reread the new
 base. An existing acoustic hash is never silently reassigned to another result.
 
+## Speaker name suggestions — unreleased
+
+The Speakers tab can suggest names for the diarized speakers (S01, S02…). A
+suggestion never changes a label: **Usar** opens the review above prefilled, and
+**Aplicar sugestões** saves one ordinary revision for speakers that still have the
+diarizer's default label and a single suggested name. Undo works as for any edit.
+
+- **Microphone (local).** Right after a diarization, and on request, FalaTrace
+  compares the levels of the microphone and computer tracks of its own captures.
+  The speaker heard on the microphone while the computer is quiet is suggested as
+  the owner, with the account's full name or "Você". Recordings without separate
+  tracks, without computer audio or with more than two microphone speakers get a
+  reason instead. Untitled three-track files are accepted only when the first
+  track carries the other two.
+- **Conversation (explicit).** Only when you tick it in **Sugerir nomes…**, the
+  diarizer's turns, the S01/S02 labels and the owner's name (when the microphone
+  found it) go to the configured summary model, which is shown before sending.
+  One request, no automatic retry. A returned name is kept only when its quote is
+  a literal excerpt of the cited turn and contains every word of the name; the
+  owner's name is never attributed to another speaker. A name said in a meeting
+  can still belong to someone else, so check before applying.
+
+Suggestions are stored privately beside the diarization
+(`$XDG_DATA_HOME/recording-cli/diarization/<id>.speakers.json`, mode 0600) and
+bind to the exact diarization file: a new diarization makes them stale. CLI:
+`speakers suggest <id> [--conversation]`, `speakers queue <id>` and
+`speakers status <id>`. Offline checks cover the scoring, quote validation,
+consent binding, the production bridge and an offscreen Studio journey; real
+voices, calls and provider quality are unverified.
+
 ## Derived results and scope
 
 Saving invalidates controlled compact client context before publishing the

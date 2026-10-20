@@ -85,6 +85,9 @@ ApplicationWindow {
     property string playbackOperation: ""
     property bool operationPolling: false
     property bool diarizationQueued: false
+    property bool speakersQueued: false
+    // Name suggestions for the diarized speakers; nothing is applied without a revision.
+    property var speakerSuggestions: detail.speakerSuggestions || ({state: "unavailable", items: []})
     property string initialTranscriptTiming: ""
     property string transcriptTiming: detail.transcript.timing
     property int transcriptSegments: (detail.transcript.segments || []).length
@@ -319,7 +322,7 @@ ApplicationWindow {
     function closeAgentAccess() { cancelProvider(); if (activeGrant.id && hasPending("agent-frames")) send("agent-cancel", selected.key, {grantId:activeGrant.id}); agentDialog.close() }
     property string cliVersion: ""
     property var releaseInfo: ({})
-    property bool uxModal: settingsDialog.visible || setupWizard.visible || processDialog.visible || aboutDialog.visible || captureConsent.visible || framesDialog.visible || onboardingDialog.visible || agentDialog.visible || recordingTools.visible || reviewDialog.visible || exportDialog.visible || summaryDialog.visible
+    property bool uxModal: settingsDialog.visible || setupWizard.visible || processDialog.visible || aboutDialog.visible || captureConsent.visible || framesDialog.visible || onboardingDialog.visible || agentDialog.visible || recordingTools.visible || reviewDialog.visible || exportDialog.visible || summaryDialog.visible || speakerSuggestDialog.visible
     function summaryBusy() { return summaryRunning || hasPending("summary-plan") || hasPending("summary-run") }
     function summaryPlanText() {
         const p=summaryPlan
@@ -650,6 +653,54 @@ ApplicationWindow {
     function diarizationKey() { return detail.diarizationId || detail.jobId || "" }
     function hasPending(op) { return Object.keys(pending).some(id => pending[id].op === op) }
     function revisionPending() { return hasPending("revision-save") || hasPending("revision-undo") }
+    function suggestionsFor(speakerId) { return (speakerSuggestions.items || []).filter(function(item){return item.speakerId===speakerId}) }
+    function suggestionName(item) { return item.name || (item.self ? t("Você") : "") }
+    function suggestionDetail(item) {
+        if (item.source === "microphone") return tf("microfone · %1% da fala", Math.round(Number(item.localShare || 0) * 100))
+        const quote = item.evidence && item.evidence.length ? item.evidence[0].quote : ""
+        return t("conversa") + (quote ? " · “" + quote + "”" : "")
+    }
+    function speakerUnnamed(row) { return !row.label || /^Falante \d+$/.test(row.label) }
+    // One distinct name per speaker still without a name; disagreeing sources stay for the person to decide.
+    function applicableSuggestions() {
+        const operations = []
+        for (const row of speakerRows) {
+            if (!speakerUnnamed(row)) continue
+            const names = suggestionsFor(row.speakerId).map(suggestionName).filter(function(name){return !!name})
+            const distinct = names.filter(function(name, index){return names.findIndex(function(other){return other.toLowerCase() === name.toLowerCase()}) === index})
+            if (distinct.length === 1) operations.push({kind: "speaker-label", speakerId: row.speakerId, label: distinct[0]})
+        }
+        return operations
+    }
+    function applySpeakerSuggestions() {
+        const operations = applicableSuggestions()
+        if (!operations.length || !detail.review || revisionPending() || !backend.available) return
+        reviewGeneration+=1; clearDerivedView(); reviewError=""
+        send("revision-save",diarizationKey(),{expectedRevision:detail.review.revision.revision,base:detail.review.revision.base,operations:operations})
+    }
+    function requestSpeakerSuggestions(conversation) {
+        const id = diarizationKey()
+        if (!backend.available || !id || speakersQueued) return
+        const destination = speakerSuggestions.destination || ({})
+        const payload = conversation ? {conversation: true, consent: true, consentKey: destination.consentKey || ""} : {conversation: false}
+        if (send("speakers-suggest", id, payload) >= 0) speakersQueued = true
+    }
+    function speakerConversationText() {
+        const destination = speakerSuggestions.destination || ({})
+        if (!destination.model) return t("Também procurar nomes citados na conversa (modelo de resumo indisponível)")
+        if (destination.provider === "openai") return tf("Também procurar nomes citados na conversa, enviando as falas para a OpenAI · %1 (provedor externo)", destination.model)
+        return destination.external ? tf("Também procurar nomes citados na conversa, enviando as falas para o Ollama em %1 · %2 (fora deste computador)", destination.endpoint, destination.model)
+            : tf("Também procurar nomes citados na conversa com o Ollama local · %1", destination.model)
+    }
+    function speakerSuggestionStatus() {
+        const state = speakerSuggestions
+        if (!state || state.state === "unavailable" || state.state === "idle") return ""
+        const parts = [t(state.message || "")]
+        if (state.microphone && state.microphone.message) parts.push(t("Microfone: ") + t(state.microphone.message))
+        if (state.conversation && state.conversation.message) parts.push(t("Conversa: ") + t(state.conversation.message))
+        if (state.conversation && state.conversation.partial) parts.push(tf("Conversa: só %1 de %2 falas couberam no envio.", state.conversation.sentTurns, state.conversation.totalTurns))
+        return parts.filter(function(part){return !!part}).join(" ")
+    }
     function clearDerivedView() { contextLoading=false; contextText=""; contextCopyText=""; contextPath=""; contextCitations=[]; showVisualSummary=false; exportResult=({}); exportGeneration+=1 }
     function openReview(kind, target) {
         if (!backend.available || !detail.review || revisionPending()) return
@@ -702,7 +753,7 @@ ApplicationWindow {
     }
     function backToLibrary() {
         if(revisionPending() || hasPending("export-save"))return
-        summaryDialog.close(); reviewDialog.close(); exportDialog.close(); processDialog.close(); reviewGeneration+=1; exportGeneration+=1
+        summaryDialog.close(); reviewDialog.close(); exportDialog.close(); processDialog.close(); speakerSuggestDialog.close(); reviewGeneration+=1; exportGeneration+=1
         closeAgentAccess(); framesDialog.close(); cancelFramePreview()
         generation += 1; sourceReferenceSeconds = -1; selected = ({}); detail = {transcript: {segments: [], text: "", timing: "none"}, diarization: {state: "idle"}}
         detailLoading = false; resolving = false; contextLoading = false; contextText = ""; contextCopyText = ""; contextPath = ""; contextCitations = []
@@ -712,14 +763,14 @@ ApplicationWindow {
     }
     function selectRecording(item) { showVisualSummary=false;
         if(revisionPending() || hasPending("export-save"))return
-        summaryDialog.close(); reviewDialog.close(); exportDialog.close(); processDialog.close(); reviewGeneration+=1; exportGeneration+=1
+        summaryDialog.close(); reviewDialog.close(); exportDialog.close(); processDialog.close(); speakerSuggestDialog.close(); reviewGeneration+=1; exportGeneration+=1
         closeAgentAccess(); framesDialog.close(); cancelFramePreview()
         generation += 1; sourceReferenceSeconds = -1
         selected = item
         detail = {transcript: {segments: [], text: "", timing: "none"}, diarization: {state: "idle"}}
         detailLoading = true; errorText = ""; notice = ""; subtitleQueued = false
         mediaReady = false; pendingPath = ""; position = 0; duration = 0; location = ""
-        resolving = false; playbackOperation = ""; operationPolling = false; initialTranscriptTiming = ""; diarizationQueued = false
+        resolving = false; playbackOperation = ""; operationPolling = false; initialTranscriptTiming = ""; diarizationQueued = false; speakersQueued = false
         contextText = ""; contextCopyText = ""; contextPath = ""; contextCitations = []; contextLoading = false
         if (playerInitialized) video.commandAsync(["stop"])
         send("detail", item.key)
@@ -762,6 +813,7 @@ ApplicationWindow {
     AboutDialog { id: aboutDialog }
     CaptureConsentDialog { id: captureConsent }
     ProcessRecordingDialog { id: processDialog }
+    SpeakerSuggestDialog { id: speakerSuggestDialog }
     Shortcut { sequence: "Escape"; enabled: !!selected.key && !uxModal; onActivated: backToLibrary() }
     Timer { interval: processingWait || summaryRunning || hasPending("frames-preview") || hasPending("frames-confirm") ? 500 : 2000; running: backend.available; repeat: true; onTriggered: { if (!hasPending("processing-status")) send("processing-status", "") } }
     Label { z: 100; anchors.bottom: parent.bottom; anchors.bottomMargin: 48; anchors.horizontalCenter: parent.horizontalCenter; width: Math.min(parent.width - 32, implicitWidth); visible: !!processingWait; text: t(processingWait); textFormat: Text.PlainText; wrapMode: Text.WordWrap; color: warningColor; padding: 10; leftPadding: 14; rightPadding: 14; background: Rectangle { color: surface; radius: 10; border.width: 1; border.color: warningColor } }
@@ -780,7 +832,7 @@ ApplicationWindow {
             const next = Object.assign({}, pending)
             delete next[message.id]
             pending = next
-            if (["detail", "resolve", "playback-status", "context-meeting", "diarization-name", "subtitles", "diarization","revision-save","revision-undo","export-preview","export-save"].includes(request.op) && request.generation !== generation) return
+            if (["detail", "resolve", "playback-status", "context-meeting", "diarization-name", "subtitles", "diarization", "speakers-suggest","revision-save","revision-undo","export-preview","export-save"].includes(request.op) && request.generation !== generation) return
             if (["detail","context-meeting","revision-save","revision-undo"].includes(request.op) && request.reviewGeneration !== reviewGeneration) return
             if(request.op.startsWith("export-") && request.exportGeneration!==exportGeneration)return
             if (request.op === "playback-status") operationPolling = false
@@ -801,7 +853,7 @@ ApplicationWindow {
             if (!message.ok && request.op.startsWith("frames-")) { uxError = message.error; return }
             if (!message.ok && request.op.startsWith("revision-")) { reviewNeedsReload=true;reviewError=message.error+t(" Releia os dados antes de tentar novamente.");errorText=reviewError;detailLoading=true;send("detail",selected.key);return }
             if (!message.ok && request.op.startsWith("export-")) { exportError=message.error;exportResult=({});return }
-            if (!message.ok) { errorText = message.error; notice = ""; captureBusy = false; contextLoading = false; if (request.op === "subtitles") subtitleQueued = false; if (request.op === "diarization") diarizationQueued = false; if (request.op === "resolve" || request.op === "playback-status") { resolving = false; playbackOperation = "" } return }
+            if (!message.ok) { errorText = message.error; notice = ""; captureBusy = false; contextLoading = false; if (request.op === "subtitles") subtitleQueued = false; if (request.op === "diarization") diarizationQueued = false; if (request.op === "speakers-suggest") speakersQueued = false; if (request.op === "resolve" || request.op === "playback-status") { resolving = false; playbackOperation = "" } return }
             const result = message.result
             if(request.op === "summary-plan") {summaryPlan=result;summaryConsent.checked=false;summaryError=""
             } else if(request.op === "summary-run") {summaryRunning=false;summaryCompleted=true;notice=t("Resumo novo ligado à revisão; confira a fonte. Original preservado.");summaryDialog.close();clearDerivedView();detailLoading=true;send("detail",selected.key)
@@ -873,6 +925,10 @@ ApplicationWindow {
                 if (diarizationQueued && result.diarization.state === "review") notice = t("Falantes identificados. Abra a aba Falantes para revisar.")
                 else if (diarizationQueued && result.diarization.state === "failed") { notice = ""; errorText = result.diarization.message || t("A identificação não foi concluída.") }
                 diarizationQueued = result.diarization.state === "running"
+                const suggestionState = result.speakerSuggestions ? result.speakerSuggestions.state : ""
+                if (speakersQueued && suggestionState === "ready") notice = t("Sugestões de nomes prontas. Confira na aba Falantes antes de aplicar.")
+                else if (speakersQueued && suggestionState === "failed") { notice = ""; errorText = t(result.speakerSuggestions.message || "") || t("A busca de nomes não foi concluída.") }
+                speakersQueued = suggestionState === "running"
                 if (smokeDiarization && (result.diarization.turns || []).length > 0) tabs.currentIndex = 2
                 if (subtitleQueued && result.subtitleState === "ready") { subtitleQueued = false; notice = t("Legendas prontas.") }
                 else if (result.subtitleState === "running") subtitleQueued = true
@@ -888,11 +944,15 @@ ApplicationWindow {
                 diarizationQueued = true
                 detail = Object.assign({}, detail, {diarization: {state: "running", message: t("Identificação automática em preparação…")}, diarizationId: result.id})
                 notice = t("Identificação de falantes em preparação.")
+            } else if (request.op === "speakers-suggest") {
+                speakersQueued = true
+                detail = Object.assign({}, detail, {speakerSuggestions: Object.assign({}, speakerSuggestions, {state: "running", message: "Procurando nomes em segundo plano"})})
+                notice = t("Sugestões de nomes em preparação. Nada é aplicado sem você.")
             }
         }
     }
     Timer {
-        interval: 5000; repeat: true; running: backend.available && !!selected.key && (subtitleQueued || diarizationQueued || ["pending", "transferring", "queued", "processing"].includes(selected.status) || !!smokeKey)
+        interval: 5000; repeat: true; running: backend.available && !!selected.key && (subtitleQueued || diarizationQueued || speakersQueued || ["pending", "transferring", "queued", "processing"].includes(selected.status) || !!smokeKey)
         onTriggered: { if (!detailLoading) { detailLoading = true; send("detail", selected.key) } }
     }
     Timer {
@@ -1601,24 +1661,54 @@ ApplicationWindow {
                                     Label { textFormat: Text.PlainText; text: t(detail.diarization.message || "") || t("Identifique os falantes para revisar suas participações nesta gravação."); color: detail.diarization.state === "failed" ? errorColor : muted; font.pixelSize: 12; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                                     Label { visible: (detail.diarization.turns || []).length > 0; text: t("Transcrição mostra a vista revisada; o original é preservado. Os horários das falas pertencem ao diarizador."); color: muted; font.pixelSize: 12; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                                     FtOverline { text: t("Nomes dos falantes"); visible: speakerRows.length > 0 }
+                                    RowLayout {
+                                        Layout.fillWidth: true; spacing: 8; visible: speakerRows.length > 0
+                                        Item { Layout.fillWidth: true }
+                                        FtButton { id: speakerApplyButton; objectName: "speakerApplySuggestions"; visible: applicableSuggestions().length > 0; text: t("Aplicar sugestões"); compact: true; variant: "secondary"; iconName: "check"; implicitHeight: 30
+                                            Accessible.name: t("Aplicar as sugestões aos falantes ainda sem nome, como revisão humana")
+                                            enabled: backend.available && !revisionPending() && !!detail.review; onClicked: applySpeakerSuggestions() }
+                                        FtButton { id: speakerSuggestButton; objectName: "speakerSuggestButton"; text: speakersQueued ? t("Procurando nomes…") : t("Sugerir nomes…"); compact: true; variant: "outline"; iconName: "spark"; implicitHeight: 30
+                                            Accessible.name: t("Sugerir nomes dos falantes pelo microfone e, se você autorizar, pela conversa")
+                                            enabled: backend.available && !speakersQueued && !revisionPending() && !!detail.review && speakerSuggestions.state !== "unavailable"; onClicked: speakerSuggestDialog.open() }
+                                    }
+                                    Label { objectName: "speakerSuggestionStatus"; visible: speakerRows.length > 0 && !!speakerSuggestionStatus(); text: speakerSuggestionStatus(); textFormat: Text.PlainText; color: speakerSuggestions.state === "failed" ? errorColor : muted; font.pixelSize: 12; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                                     ListView {
                                         id:revisionSpeakersList; objectName:"revisionSpeakersList"
                                         visible: speakerRows.length > 0
-                                        Layout.fillWidth: true; Layout.preferredHeight: Math.min(132, speakerRows.length * 44); model: speakerRows; clip: true; spacing: 2
+                                        Layout.fillWidth: true; Layout.preferredHeight: Math.min(236, speakerRows.reduce(function(total, row){return total + 44 + suggestionsFor(row.speakerId).length * 30}, 0)); model: speakerRows; clip: true; spacing: 2
                                         ScrollBar.vertical: ScrollBar {}
                                         delegate: ItemDelegate {
                                             id: speakerItem
                                             required property var modelData
-                                            width: ListView.view.width; height: 42
+                                            property var suggestions: suggestionsFor(modelData.speakerId)
+                                            width: ListView.view.width; height: 42 + suggestions.length * 30
                                             enabled: backend.available && !!selected.key
                                             leftPadding: 8; rightPadding: 4
-                                            Accessible.name: modelData.label || t("Falante incerto")
+                                            Accessible.name: (modelData.label || t("Falante incerto")) + (suggestions.length ? t(", com sugestão de nome") : "")
                                             background: Rectangle { radius: 8; color: speakerItem.hovered ? hoverSurface : "transparent"; border.width: speakerItem.visualFocus ? 2 : 0; border.color: accent }
-                                            contentItem: RowLayout {
-                                                spacing: 8
-                                                FtChip { text: speakerItem.modelData.speakerId; kind: "accent"; maximumWidth: 90 }
-                                                Label { text:speakerItem.modelData.label||t("Falante incerto"); textFormat:Text.PlainText; color:speakerItem.modelData.label ? ink : muted; Layout.fillWidth:true; elide:Text.ElideRight }
-                                                FtButton { objectName:"speakerReview-"+speakerItem.modelData.speakerId; text:t("Revisar"); compact:true; variant:"ghost"; iconName:"edit"; implicitHeight: 30; Accessible.name:t("Revisar nome do falante ")+speakerItem.modelData.speakerId; enabled:backend.available&&!revisionPending()&&!!detail.review; onClicked:openReview("speaker-label",speakerItem.modelData) }
+                                            contentItem: ColumnLayout {
+                                                spacing: 0
+                                                RowLayout {
+                                                    spacing: 8; Layout.fillWidth: true; Layout.preferredHeight: 34
+                                                    FtChip { text: speakerItem.modelData.speakerId; kind: "accent"; maximumWidth: 90 }
+                                                    Label { text:speakerItem.modelData.label||t("Falante incerto"); textFormat:Text.PlainText; color:speakerItem.modelData.label ? ink : muted; Layout.fillWidth:true; elide:Text.ElideRight }
+                                                    FtButton { objectName:"speakerReview-"+speakerItem.modelData.speakerId; text:t("Revisar"); compact:true; variant:"ghost"; iconName:"edit"; implicitHeight: 30; Accessible.name:t("Revisar nome do falante ")+speakerItem.modelData.speakerId; enabled:backend.available&&!revisionPending()&&!!detail.review; onClicked:openReview("speaker-label",speakerItem.modelData) }
+                                                }
+                                                Repeater {
+                                                    model: speakerItem.suggestions
+                                                    delegate: RowLayout {
+                                                        id: suggestionRow
+                                                        required property var modelData
+                                                        Layout.fillWidth: true; Layout.preferredHeight: 30; spacing: 8
+                                                        Label { id: suggestionLabel; objectName: "speakerSuggestion-" + speakerItem.modelData.speakerId + "-" + suggestionRow.modelData.source; text: t("Sugestão: ") + suggestionName(suggestionRow.modelData) + " · " + suggestionDetail(suggestionRow.modelData); textFormat: Text.PlainText; color: muted; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight; leftPadding: 4
+                                                            HoverHandler { id: suggestionHover }
+                                                            ToolTip.visible: suggestionHover.hovered && suggestionLabel.truncated; ToolTip.text: suggestionLabel.text; ToolTip.delay: 400 }
+                                                        FtButton { objectName: "speakerUseSuggestion-" + speakerItem.modelData.speakerId + "-" + suggestionRow.modelData.source; text: t("Usar"); compact: true; variant: "ghost"; iconName: "edit"; implicitHeight: 26
+                                                            Accessible.name: tf("Revisar o nome sugerido %1 para o falante %2", suggestionName(suggestionRow.modelData), speakerItem.modelData.speakerId)
+                                                            enabled: backend.available && !revisionPending() && !!detail.review
+                                                            onClicked: openReview("speaker-label", {speakerId: speakerItem.modelData.speakerId, label: suggestionName(suggestionRow.modelData)}) }
+                                                    }
+                                                }
                                             }
                                         }
                                     }

@@ -1,0 +1,98 @@
+import { expect, test } from "bun:test";
+import { createHash } from "node:crypto";
+import { promises as fs } from "node:fs";
+import { join } from "node:path";
+import { assertQaIsolation } from "../../../scripts/qa-isolation-guard";
+import { DEFAULT_CONFIG } from "../../config/defaults";
+import type { JobRecord, Transcript } from "../../jobs/types";
+import { alignCanonicalTranscript } from "../../diarization/alignment";
+import { DIARIZATION_MODEL } from "../../diarization/openai";
+import { DiarizationStore, transcriptChecksum } from "../../diarization/store";
+import { conversationDestination, destinationKey } from "../../speakers/conversation";
+import { SPEAKER_MESSAGES } from "../../speakers/messages";
+import { readDiarizationContext } from "../../speakers/record";
+import { SpeakerSuggestionStore } from "../../speakers/store";
+
+assertQaIsolation();
+const repo = join(import.meta.dir, "../../..");
+const id = "55555555-5555-4555-8555-555555555555";
+const digest = (text: string) => createHash("sha256").update(text).digest("hex");
+type Reply = { id: number; ok: boolean; result?: any; error?: string };
+
+const fixture = async () => {
+  const root = await fs.mkdtemp(join(process.env.TMPDIR!, "speakers-bridge-"));
+  const env: NodeJS.ProcessEnv = { ...process.env, BUN_RUNTIME_TRANSPILER_CACHE_PATH: "0" };
+  for (const [key, name] of [["HOME", "home"], ["XDG_CONFIG_HOME", "config"], ["XDG_STATE_HOME", "state"], ["XDG_DATA_HOME", "data"], ["XDG_RUNTIME_DIR", "runtime"], ["XDG_CACHE_HOME", "cache"], ["TMPDIR", "tmp"]] as const) {
+    env[key] = join(root, name);
+    await fs.mkdir(env[key]!, { mode: 0o700 });
+  }
+  assertQaIsolation(env);
+  const recordings = join(root, "home", "recordings");
+  const media = join(recordings, "call.mkv");
+  const artifactDir = join(recordings, "call.recording", id);
+  await fs.mkdir(artifactDir, { recursive: true, mode: 0o700 });
+  await fs.writeFile(media, "synthetic-media", { mode: 0o600 });
+  await fs.mkdir(join(env.XDG_CONFIG_HOME!, "recording-cli"), { recursive: true, mode: 0o700 });
+  await fs.writeFile(join(env.XDG_CONFIG_HOME!, "recording-cli/config.json"), `${JSON.stringify({ recordingsDir: recordings })}\n`, { mode: 0o600 });
+  const job: JobRecord = { version: 1, id, createdAt: "2026-10-20T00:00:00Z", updatedAt: "2026-10-20T00:00:00Z",
+    source: { originalName: "call.mkv", mediaFile: "source.mkv", size: 15, sha256: digest("synthetic-media") },
+    transcription: { provider: "whisper-cpp", model: "synthetic-local", language: "pt" }, summary: { provider: "ollama", model: "qwen3.5:9b" },
+    sourcePath: media, artifactDir, target: "local", state: "completed" };
+  await fs.mkdir(join(env.XDG_STATE_HOME!, "recording-cli/jobs"), { recursive: true, mode: 0o700 });
+  await fs.writeFile(join(env.XDG_STATE_HOME!, "recording-cli/jobs", `${id}.json`), JSON.stringify(job), { mode: 0o600 });
+  const text = "Bom dia. Aqui é a Ana.";
+  const canonical: Transcript = { version: 1, provider: "whisper-cpp", model: "synthetic-local", language: "pt", text, segments: [{ start: 0, end: 8, text }] };
+  await fs.writeFile(join(artifactDir, "transcript.json"), JSON.stringify(canonical), { mode: 0o600 });
+  const turns = [{ start: 0, end: 4, text: "Bom dia.", speaker: "S01" }, { start: 4, end: 8, text: "Aqui é a Ana.", speaker: "S02" }];
+  const diarization = new DiarizationStore(join(env.XDG_DATA_HOME!, "recording-cli", "diarization"));
+  await diarization.save({ version: 1, jobId: id, mediaSha256: job.source.sha256, transcriptSha256: transcriptChecksum(text), provider: "openai", model: DIARIZATION_MODEL,
+    generatedAt: "2026-10-20T00:10:00Z", duration: 8, labels: { S01: "Falante 1", S02: "Falante 2" }, acousticValidation: "pending", turns, alignment: alignCanonicalTranscript(canonical, turns) });
+  const context = (await readDiarizationContext(job, canonical, diarization))!;
+  const store = new SpeakerSuggestionStore(diarization);
+  await store.save({ version: 1, ...context.binding,
+    microphone: { generatedAt: "2026-10-20T00:11:00Z", state: "ready", layout: "titled", selfSpeakers: ["S01"], selfName: "Pessoa Dona", speakers: [
+      { speakerId: "S01", localSeconds: 4, remoteSeconds: 0, localShare: 1 }, { speakerId: "S02", localSeconds: 0, remoteSeconds: 4, localShare: 0 }] },
+    conversation: { generatedAt: "2026-10-20T00:12:00Z", provider: "ollama", model: "qwen3.5:9b", endpoint: "http://127.0.0.1:11434", external: false, state: "ready",
+      partial: false, sentTurns: 2, totalTurns: 2, inputBytes: 200, suggestions: [{ speakerId: "S02", name: "Ana", evidence: [{ turnId: "t000001", quote: "Aqui é a Ana" }] }] } });
+  return { root, env, media, store, cleanup: () => fs.rm(root, { recursive: true, force: true }) };
+};
+
+const bridge = async (env: NodeJS.ProcessEnv, request: unknown): Promise<Reply> => {
+  assertQaIsolation(env);
+  const child = Bun.spawn(["/usr/bin/python3", "-I", join(repo, "scripts/qa-run.py"), process.execPath, "run", "--preload", join(repo, "scripts/offline-network.ts"), join(repo, "src/desktop/bridge.ts")],
+    { cwd: repo, env, stdin: "pipe", stdout: "pipe", stderr: "pipe" });
+  child.stdin.write(JSON.stringify(request) + "\n");
+  child.stdin.end();
+  const [stdout, stderr, exit] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited]);
+  expect(exit).toBe(0);
+  expect(stderr).toBe("");
+  return JSON.parse(stdout.trim());
+};
+
+test("the production bridge shows stored suggestions and refuses a stale destination or an unavailable background service", async () => {
+  const context = await fixture();
+  try {
+    const detail = await bridge(context.env, { id: 1, op: "detail", key: context.media });
+    expect(detail.ok).toBe(true);
+    const key = destinationKey(conversationDestination(structuredClone(DEFAULT_CONFIG)));
+    expect(detail.result.speakerSuggestions).toMatchObject({
+      state: "ready", message: SPEAKER_MESSAGES.ready,
+      items: [
+        { speakerId: "S01", source: "microphone", self: true, name: "Pessoa Dona", localShare: 1 },
+        { speakerId: "S02", source: "conversation", self: false, name: "Ana", evidence: [{ turnId: "t000001", quote: "Aqui é a Ana" }] }
+      ],
+      destination: { provider: "ollama", model: "qwen3.5:9b", external: false, consentKey: key }
+    });
+    // Labels are untouched until a revision applies a suggestion.
+    expect(detail.result.review.speakerLabels).toEqual({ S01: "Falante 1", S02: "Falante 2" });
+    const stale = await bridge(context.env, { id: 2, op: "speakers-suggest", key: id, payload: { conversation: true, consent: true, consentKey: "b".repeat(64) } });
+    expect(stale).toEqual({ id: 2, ok: false, error: SPEAKER_MESSAGES.destinationChanged });
+    expect(await context.store.readOperation(id)).toBeUndefined();
+    // systemd-run is blocked in the QA environment: the start failure is explained and recorded.
+    const local = await bridge(context.env, { id: 3, op: "speakers-suggest", key: id, payload: { conversation: false } });
+    expect(local).toEqual({ id: 3, ok: false, error: SPEAKER_MESSAGES.startFailed });
+    const after = await bridge(context.env, { id: 4, op: "detail", key: context.media });
+    expect(after.result.speakerSuggestions).toMatchObject({ state: "failed", message: SPEAKER_MESSAGES.startFailed });
+    expect(after.result.speakerSuggestions.items).toHaveLength(2);
+  } finally { await context.cleanup(); }
+}, 30_000);

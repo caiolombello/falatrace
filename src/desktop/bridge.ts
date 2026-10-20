@@ -35,6 +35,8 @@ import { TimeEntryStore } from "../../src/timesheet/store";
 import { formatHours } from "../../src/timesheet/format";
 import { ArchiveStore } from "../../src/archive/store";
 import { DiarizationStore, type DiarizationResult } from "../../src/diarization/store";
+import { queueSpeakerSuggestions, readSpeakerSuggestionView } from "../speakers/service";
+import { SPEAKER_KNOWN_ERRORS } from "../speakers/messages";
 import { nameDiarizationSpeaker, queueDiarization, readCanonicalTranscript, readDiarizationStatus, resultStatus } from "../../src/diarization/service";
 
 import { readOnboarding, saveLocalOnboarding } from "../config/onboarding";
@@ -63,8 +65,8 @@ export const handleRealFrameOperation=async(flow:StudioVisualFlow,request:Reques
 
 import { setAutomationPaused } from "../calls/control";
 
-const OPERATIONS = ["summary-plan", "summary-run", "summary-cancel","provider-authorize","provider-analyze","provider-cancel","agent-cancel","agent-status","agent-authorize","agent-pause","agent-resume","agent-revoke","agent-frames","agent-connect","recording-process-plan","recording-process","processing-status", "ux-capabilities", "list-cached", "onboarding-read", "onboarding-save-local", ...SETTINGS_OPERATIONS, "frames-check-models", "frames-scope", "frames-plan", "frames-preview-plan", "frames-preview", "frames-confirm", "frames-cancel", "list", "detail", "resolve", "playback-status", "subtitles", "diarization", "automation-pause", "automation-resume", "capture-status", "capture-start", "capture-stop", "capture-recover", "audio-defaults", "jobs-list", "job-process", "job-retry", "diarization-name", "context-meeting", "revision-save", "revision-undo", "export-preview", "export-save"] as const;
-export type Request = { id: number; op: typeof OPERATIONS[number]; key?: string; payload?: {maxRequests?:number;expectedRevision?:number;expectedSnapshotSha256?:string;base?:RevisionBase;expectedBase?:RevisionBase;operations?:RevisionOperation[];format?:"json"|"markdown"|"srt"|"vtt";track?:"transcript"|"diarization";provider?:'openai'|'google';model?:string;analysis?:import('../provider-analysis/contracts').AnalysisOptions;context?:boolean;maxFrames?:number;maxBytes?:number;requestId?:string;grantId?:string;recipientId?:string;data?:Array<'context'|'frames'>;timestamps?:number[]; title?: string; speakerId?: string; label?: string; maxCharacters?: number; query?: string; offset?: number; question?: string; seconds?: number; previewId?: string; consent?: boolean; revision?: string; visionModel?: string; summaryModel?: string; capabilityId?: string; consentKey?: string; planId?:string; consentTranscript?:boolean; scopeId?:string; startSeconds?:number; endSeconds?:number; changes?: Record<string, unknown>; action?: string; audioSource?: string; microphone?: string; desktop?: string; name?: string; value?: string; service?: string; backup?: string; path?: string; kind?: string; ollamaUrl?: string; initialize?: boolean; client?: string } };
+const OPERATIONS = ["summary-plan", "summary-run", "summary-cancel","provider-authorize","provider-analyze","provider-cancel","agent-cancel","agent-status","agent-authorize","agent-pause","agent-resume","agent-revoke","agent-frames","agent-connect","recording-process-plan","recording-process","processing-status", "ux-capabilities", "list-cached", "onboarding-read", "onboarding-save-local", ...SETTINGS_OPERATIONS, "frames-check-models", "frames-scope", "frames-plan", "frames-preview-plan", "frames-preview", "frames-confirm", "frames-cancel", "list", "detail", "resolve", "playback-status", "subtitles", "diarization", "automation-pause", "automation-resume", "capture-status", "capture-start", "capture-stop", "capture-recover", "audio-defaults", "jobs-list", "job-process", "job-retry", "diarization-name", "speakers-suggest", "context-meeting", "revision-save", "revision-undo", "export-preview", "export-save"] as const;
+export type Request = { id: number; op: typeof OPERATIONS[number]; key?: string; payload?: {maxRequests?:number;expectedRevision?:number;expectedSnapshotSha256?:string;base?:RevisionBase;expectedBase?:RevisionBase;operations?:RevisionOperation[];format?:"json"|"markdown"|"srt"|"vtt";track?:"transcript"|"diarization";provider?:'openai'|'google';model?:string;analysis?:import('../provider-analysis/contracts').AnalysisOptions;context?:boolean;maxFrames?:number;maxBytes?:number;requestId?:string;grantId?:string;recipientId?:string;data?:Array<'context'|'frames'>;timestamps?:number[]; title?: string; speakerId?: string; label?: string; maxCharacters?: number; query?: string; offset?: number; question?: string; seconds?: number; previewId?: string; consent?: boolean; revision?: string; visionModel?: string; summaryModel?: string; capabilityId?: string; consentKey?: string; planId?:string; consentTranscript?:boolean; scopeId?:string; startSeconds?:number; endSeconds?:number; changes?: Record<string, unknown>; action?: string; audioSource?: string; microphone?: string; desktop?: string; name?: string; value?: string; service?: string; backup?: string; path?: string; kind?: string; ollamaUrl?: string; initialize?: boolean; client?: string; conversation?: boolean } };
 type Response = { id: number; ok: true; result: unknown } | { id: number; ok: false; error: string };
 const MAX_LINE = 1024 * 1024;
 const UUID = /^[a-f0-9-]{36}$/i;
@@ -97,6 +99,7 @@ const safeError = (op: string, error: unknown): string => {
     "A gravação ainda não possui contexto disponível.", "Muitas operações pendentes; tente novamente."
   ];
   if (known.includes(text)) return text;
+  if (op === "speakers-suggest") return SPEAKER_KNOWN_ERRORS.includes(text) ? text : "Não foi possível pedir sugestões de nomes. Os nomes atuais foram preservados.";
   if (op.startsWith("settings-")) return isDisplayableSettingsError(op, text) ? text : settingsErrorMessage(op);
   if (op.startsWith("summary-")) return error instanceof RevisionConflictError ? "A revisão ou sua origem mudou. Prepare um novo plano antes de gerar; o original foi preservado." : "Resumo não confirmado ou cancelado. Confira modelo local, destino, limite e consentimento. Não repita uma tentativa incerta; releia antes de preparar outro plano. Original preservado.";
   if (op.startsWith("revision-")) return error instanceof RevisionConflictError ? "A revisão ou sua origem mudou. Releia antes de salvar; sua edição não foi aplicada." : "Não foi possível confirmar a revisão. Releia o resultado antes de tentar novamente.";
@@ -258,7 +261,7 @@ const list = async (): Promise<unknown> => {
   return { items };
 };
 const detail = async (key: string): Promise<unknown> => {
-  const { entry } = await findEntry(key);
+  const { config, entry } = await findEntry(key);
   const jobStore = new JobStore();
   entry.jobs = await Promise.all(entry.jobs.map(job => jobStore.get(job.id).catch(() => job)));
   if (entry.archive) entry.archive = (await new ArchiveStore().get(entry.archive.id).catch(() => entry.archive)) || undefined;
@@ -276,6 +279,8 @@ const detail = async (key: string): Promise<unknown> => {
   // a 10-minute transcript block is not enough evidence to invent word timing.
   const diarization: DiarizationView = diarizationResult ? buildDiarizationView(diarizationResult)
     : job && canonical ? await readDiarizationStatus(job, canonical) : { state: "idle" };
+  // Suggestions only; applying one goes through revision-save like any human edit.
+  const speakerSuggestions = job && canonical && diarizationResult ? await readSpeakerSuggestionView(config, job, canonical).catch(() => undefined) : undefined;
   const captions = canonical && job?.state !== "completed" ? parsePlayerTranscript(canonical) : originalTranscript;
   const boundary = reviewed?buildReviewedBoundary(reviewed,captions,diarization):buildTranscriptBoundary(canonical, captions, diarization);
   let subtitleState = originalTranscript.timing === "segment" ? "ready" : "idle";
@@ -291,7 +296,7 @@ const detail = async (key: string): Promise<unknown> => {
   if (job && entry.jobs[0] && entry.jobs[0].id !== job.id) presentation.artifactStatus += " · conteúdo de tarefa anterior";
   if (job && reviewed) { await assertCurrentReviewedView(job, reviewed); await assertCurrentSummaryPresentation(job,currentSummary); }
   return { key: entry.sourcePath, recordingId:registeredAgentRecordingId(entry), ...presentation, status: entry.jobs[0]?.state || statusOf(entry), backup: backupOf(entry), artifacts, transcriptProvenance: reviewed?.original.provenance || readable?.artifact.provenance, artifactMessage: currentSummary ? "Resumo de modelo vinculado à revisão humana atual; o original foi preservado. Hashes verificam origem, não qualidade semântica." : reviewed?.derivedStale ? "Revisão humana aplicada. O resumo e a revisão visual anteriores estão desatualizados; nenhum modelo foi chamado para refazê-los." : readable && job?.state !== "completed" ? "Transcrição pronta e verificada. O processamento posterior não foi concluído; o resumo está indisponível. Não é necessário repetir a transcrição." : "", ...boundary, summary: artifacts?.summary.state!=="ready" ? "" : summary, visualReview, summaryInfo: currentSummary ? `${currentSummary.provenance.provider.provider}/${currentSummary.provenance.provider.model} · revisão ${currentSummary.revision.revision} · autoria: modelo` : job ? `${job.summary.provider}/${job.summary.model} · ${job.summary.provider === "openai" ? "provedor externo" : "Ollama: endpoint configurado"}` : "", timesheet, subtitleState, subtitleMessage,
-    ...(job && canonical ? { jobId: job.id, ...(job.state === "completed" ? { diarizationId: job.id } : {}) } : {}), ...(subtitleId ? { subtitleId } : {}) };
+    ...(job && canonical ? { jobId: job.id, ...(job.state === "completed" ? { diarizationId: job.id } : {}) } : {}), ...(subtitleId ? { subtitleId } : {}), ...(speakerSuggestions ? { speakerSuggestions } : {}) };
 };
 const resolvePlayback = async (key: string): Promise<unknown> => {
   const { config, entry } = await findEntry(key);
@@ -333,7 +338,7 @@ const ALLOWED_PAYLOAD: Partial<Record<Request["op"], string[]>> = {
   "settings-model-catalog": ["ollamaUrl"], "settings-model-download": ["kind", "model", "consent", "ollamaUrl"],
   "settings-model-status": ["kind", "model"], "settings-model-cancel": ["kind", "model"],
   "recording-process": ["consent", "consentKey"],
-  "capture-start": ["title"], "diarization-name": ["speakerId", "label"], "context-meeting": ["maxCharacters", "query", "offset"]
+  "capture-start": ["title"], "diarization-name": ["speakerId", "label"], "speakers-suggest": ["conversation", "consent", "consentKey"], "context-meeting": ["maxCharacters", "query", "offset"]
 };
 export const parseRequest = (value: unknown): Request => {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("request inválido");
@@ -397,6 +402,8 @@ export const parseRequest = (value: unknown): Request => {
   if(payload.data!==undefined&&(!Array.isArray(payload.data)||!payload.data.length||payload.data.length>2||payload.data.some(x=>!['context','frames'].includes(x))))throw Error('payload inválido');
   if(payload.timestamps!==undefined&&(!Array.isArray(payload.timestamps)||payload.timestamps.length>6||payload.timestamps.some(x=>typeof x!=='number'||!Number.isFinite(x)||x<0||x>86400)))throw Error('payload inválido');
   if (payload.consent !== undefined && typeof payload.consent !== "boolean") throw new Error("payload inválido");
+  // Sending the turns to a model needs consent bound to the destination the Studio showed.
+  if (request.op === "speakers-suggest" && (typeof payload.conversation !== "boolean" || (payload.conversation && (payload.consent !== true || typeof payload.consentKey !== "string" || !/^[a-f0-9]{64}$/.test(payload.consentKey))))) throw new Error("payload inválido");
   if ((request.op as string).startsWith("summary-")) {
     if (typeof request.key!=="string" || !UUID.test(request.key) || typeof payload.requestId!=="string" || !UUID.test(payload.requestId)) throw Error("payload inválido");
     if (request.op==="summary-plan" && (!Number.isSafeInteger(payload.maxRequests) || Number(payload.maxRequests)<1 || Number(payload.maxRequests)>8)) throw Error("payload inválido");
@@ -582,6 +589,11 @@ const handle = async (request: Request): Promise<unknown> => {
   if (request.op === "resolve") return resolvePlayback(request.key);
   if (request.op === "playback-status") return readPlayback(request.key);
   if (request.op === "diarization") return queueDiarization(request.key);
+  if (request.op === "speakers-suggest") {
+    if (!UUID.test(request.key)) throw new Error("Informe o id UUID da gravação");
+    const conversation = request.payload?.conversation === true;
+    return queueSpeakerSuggestions((await loadConfig()).config, request.key, { conversation, ...(conversation ? { consentKey: request.payload!.consentKey! } : {}) });
+  }
   return subtitles(request.key);
 };
 export const runDesktopBridge = async (): Promise<void> => {

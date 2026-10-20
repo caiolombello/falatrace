@@ -1,3 +1,10 @@
+## Unreleased — speaker name suggestions
+
+- **Who recorded, from the microphone.** After a diarization, FalaTrace compares the microphone and computer tracks of its own captures (titled ffmpeg tracks, or GPU Screen Recorder's untitled mix/microphone/desktop order after a level check) and suggests the account's full name, or "Você", for the speaker heard on the microphone while the computer is quiet. Local only; single-track recordings, recordings without computer audio and more than two microphone speakers get an explanation instead of a suggestion.
+- **Names said in the conversation, on request.** **Sugerir nomes…** in the Speakers tab can also send the diarizer's turns to the configured summary model (OpenAI or Ollama, shown before sending, one call, no automatic retry) to find introductions and direct address. A suggestion is kept only when its quote is a literal excerpt of the cited turn and contains every word of the name; the owner's name is never given to another speaker.
+- **Nothing changes by itself.** Suggestions live beside the diarization and go stale when it is replaced. **Usar** opens the review prefilled; **Aplicar sugestões** saves one ordinary human revision for speakers still without a name and an unambiguous suggestion. CLI: `speakers suggest|queue|status`.
+- **Checks.** Unit tests for track layouts, level parsing, scoring, quote validation and consent binding; a real-ffmpeg capture fixture; the production bridge; and a new offscreen Studio journey (`scripts/test-speakers-ux.py`). Real calls, real voices and provider quality were not exercised.
+
 ## 0.2.0-alpha.14 — everything configurable from the Studio
 
 - **First-use assistant.** Six steps (language and consent, capture with a five-second audio test, processing presets with model downloads and the OpenAI key, automatic recording, review, services). Nothing is saved or installed before Finish, the OpenAI key included, and the first save writes every explicit choice.

@@ -9,6 +9,7 @@ import { WHISPER_MODELS } from "../../models/downloads";
 import { translateCaptureMessage } from "../../recording/messages";
 import { waitMessage } from "../../runtime/heavy-admission";
 import { OBS_PASSWORD_UNKNOWN, SETTINGS_KNOWN_ERRORS, settingsErrorMessage, SETTINGS_OPERATIONS } from "../settings-bridge";
+import { SPEAKER_KNOWN_ERRORS } from "../../speakers/messages";
 
 /**
  * The Studio's English comes from src/desktop/i18n.js, keyed by the Portuguese text.
@@ -72,6 +73,11 @@ test("patterns compile and translate the parts that are Portuguese", () => {
 test("settings errors the bridge can show are translated", () => {
   for (const message of SETTINGS_KNOWN_ERRORS) english(message);
   for (const op of SETTINGS_OPERATIONS) english(settingsErrorMessage(op));
+});
+
+test("speaker name suggestion messages the bridge can show are translated", () => {
+  for (const message of SPEAKER_KNOWN_ERRORS) english(message);
+  english("Não foi possível pedir sugestões de nomes. Os nomes atuais foram preservados.");
 });
 
 const probe = (overrides: Partial<SetupProbe> = {}): SetupProbe => ({
