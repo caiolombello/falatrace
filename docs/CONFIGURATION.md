@@ -31,6 +31,7 @@ A copy of a working setup is in [`config.example.json`](config.example.json). Mi
 | `OPENAI_API_KEY` | OpenAI transcription or summaries, speaker identification, AI timesheet classification. |
 | `GEMINI_API_KEY` | Gemini transcription. |
 | `RECORDING_CLI_OBS_PASSWORD` | The OBS WebSocket password. |
+| `GOOGLE_CLIENT_SECRET` | The secret of your own Google OAuth desktop client, for the Google Calendar sign-in (see Integrations). |
 
 Keys are write-only: the Studio and the CLI save, test and remove them, and report only where each one comes from. The first source that has a value wins:
 
@@ -130,6 +131,19 @@ falatrace models ollama-pull qwen3.5:9b
 **Voice recognition** (`eres2net-base`, about 48 MiB) is downloaded only on request, from the Models section or with `falatrace models voice-download eres2net-base`: the sherpa-onnx native runtime from its npm package (`sherpa-onnx-linux-x64` 1.13.8) and the 3D-Speaker ERes2Net speaker-embedding model from the sherpa-onnx release, both Apache-2.0. The archive, each runtime file and the model are checked against pinned sizes and SHA-256 before they are published under `~/.local/share/recording-cli/models/voice/`, and the runtime is loaded only while its files are the ones that check recorded. Linux x86-64 only. It is not a project dependency and is never installed with FalaTrace.
 
 ### Integrations
+
+**Google Calendar** reads the event a recording belongs to: its title goes into the summary, as with the GNOME calendar, and the names invited to it can complete names said in the conversation when you ask for speaker name suggestions. Only the recording's time window is sent to Google; invited names are never stored in the job or sent with the summary. It uses an OAuth client of your own Google Cloud project, since FalaTrace ships none: create a project, enable the Google Calendar API, set up the consent screen and create an OAuth client of type **Desktop app**. Save its ID here and its secret as `GOOGLE_CLIENT_SECRET` (API keys or this section), then **Connect Google account**: the browser opens Google's consent page and returns to a one-shot server on `127.0.0.1` (PKCE). The scopes are `openid email` and `calendar.events.owned.readonly`. Only the refresh token is kept, in `~/.local/state/recording-cli/google/oauth.json` (0600); **Disconnect** revokes it and deletes the file. While the consent screen is in testing mode, Google ends the access after 7 days; published without verification it shows a warning and accepts up to 100 users.
+
+| Field | Values | Default | Notes |
+| --- | --- | --- | --- |
+| `google.clientId` | empty, or an ID ending in `.apps.googleusercontent.com` | empty | The client of your own Cloud project. |
+| `google.calendar` | true, false | false | Uses the connected account for meeting titles and invited names; with GNOME Calendar also on, Google is tried first. |
+
+```sh
+falatrace google connect      # prints the consent URL and opens the browser
+falatrace google status
+falatrace google disconnect
+```
 
 | Field | Values | Default | Notes |
 | --- | --- | --- | --- |

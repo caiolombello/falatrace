@@ -60,8 +60,11 @@ diarizer's default label and a single suggested name. Undo works as for any edit
   found it) go to the configured summary model, which is shown before sending.
   One request, no automatic retry. A returned name is kept only when its quote is
   a literal excerpt of the cited turn and contains every word of the name; the
-  owner's name is never attributed to another speaker. A name said in a meeting
-  can still belong to someone else, so check before applying.
+  owner's name is never attributed to another speaker. With the Google Calendar
+  on (Integrations), the request also lists the names invited to the recording's
+  event; a guest's full name is accepted when a quoted word belongs to that guest
+  only. A name said in a meeting can still belong to someone else, so check before
+  applying.
 
 - **Known voices (local, off by default).** With `speakers.voices` on and voice
   recognition downloaded from Models, each diarized speaker gets a 512-number

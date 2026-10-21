@@ -1,3 +1,4 @@
+import { isGoogleClientId } from "../google/client-id";
 import { existsSync, lstatSync, promises as fs } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
@@ -53,6 +54,7 @@ type PartialConfig = Omit<
   | "summary"
   | "calendar"
   | "speakers"
+  | "google"
   | "callDetection"
   | "timesheet"
   | "aiContext"
@@ -75,6 +77,7 @@ type PartialConfig = Omit<
   summary?: Partial<AppConfig["summary"]>;
   calendar?: Partial<AppConfig["calendar"]>;
   speakers?: Partial<AppConfig["speakers"]>;
+  google?: Partial<AppConfig["google"]>;
   callDetection?: Omit<Partial<AppConfig["callDetection"]>, "apps"> & {
     apps?: Partial<AppConfig["callDetection"]["apps"]>;
   };
@@ -136,6 +139,7 @@ export const mergeConfig = (base: AppConfig, override: PartialConfig): AppConfig
   summary: { ...base.summary, ...override.summary },
   calendar: { ...base.calendar, ...override.calendar },
   speakers: { ...base.speakers, ...override.speakers },
+  google: { ...base.google, ...override.google },
   callDetection: {
     ...base.callDetection,
     ...override.callDetection,
@@ -233,6 +237,12 @@ export const validateConfig = (config: AppConfig): void => {
   }
   if (typeof config.speakers.voices !== "boolean") {
     throw new Error("speakers.voices must be a boolean");
+  }
+  if (typeof config.google.clientId !== "string" || (config.google.clientId !== "" && !isGoogleClientId(config.google.clientId))) {
+    throw new Error("google.clientId must be empty or a Google OAuth client ID ending in .apps.googleusercontent.com");
+  }
+  if (typeof config.google.calendar !== "boolean") {
+    throw new Error("google.calendar must be a boolean");
   }
   if (config.remote.host.startsWith("-") || !/^[A-Za-z0-9._:-]+$/.test(config.remote.host)) {
     throw new Error("remote.host contains unsupported characters");

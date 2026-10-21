@@ -76,6 +76,7 @@ for line in sys.stdin:
  elif op=='settings-model-catalog':v={'whisper':{'directory':'/tmp/models','source':'https://huggingface.co/','models':[]},'ollama':{'url':'http://127.0.0.1:11434','loopback':True,'reachable':False,'installed':[],'configured':'qwen3.5:9b'},'voice':{'id':'eres2net-base','bytes':50683414,'directory':'/tmp/models/voice','supported':True,'installed':False,'sources':['registry.npmjs.org','github.com'],'enabled':False}}
  elif op=='settings-voices-list':v={'people':people}
  elif op=='settings-voices-delete':people=[person for person in people if person['id']!=r['payload'].get('personId')];v={'people':people,'removed':1}
+ elif op=='settings-google-status':v={'connected':True,'email':'dono@example.com','connectedAt':'2026-10-21T10:00:00Z','clientConfigured':True,'calendar':True,'flow':'idle'}
  elif op in ('settings-model-download','settings-model-status'):v={'kind':'voice','id':'eres2net-base','state':'running','receivedBytes':1048576,'totalBytes':50683414}
  elif op=='detail':v=detail
  elif op=='revision-save':v={'version':1,'revision':1,'base':r['payload']['base']}
@@ -107,6 +108,21 @@ MODES = {
  Timer { interval: 900; running: true; repeat: false; onTriggered: settingsDialog.open() }
  Timer { interval: 1100; running: true; repeat: false; onTriggered: settingsDialog.goToSection(4) }
 ''', 1900),
+    # Settings › Integrations with a connected Google account (connecting would open a browser: not clicked).
+    'google': ('''
+ Timer { interval: 900; running: true; repeat: false; onTriggered: settingsDialog.open() }
+ Timer { interval: 1100; running: true; repeat: false; onTriggered: settingsDialog.goToSection(5) }
+ Timer { interval: 1600; running: true; repeat: false; onTriggered: {
+  const a=[]; function check(name,pass){a.push({name:name,pass:!!pass})}
+  const root = settingsDialog.contentItem
+  const line = uxFind(root, "googleStatusLine")
+  check("the connected account is named", line && line.visible && line.text === "Conectado como dono@example.com.")
+  check("connecting again and disconnecting are offered", uxFind(root, "googleConnect").text === "Conectar de novo" && uxFind(root, "googleDisconnect").visible)
+  check("the calendar option and the client fields are there", !!uxFind(root, "googleCalendar") && !!uxFind(root, "googleClientId"))
+  check("reading the section sends no sign-in", !hasSettingsPending("settings-google-connect") && !hasSettingsPending("settings-google-disconnect"))
+  console.log("UX_ASSERTIONS "+JSON.stringify(a))
+ } }
+''', 2000),
     'voices': ('''
  Timer { interval: 900; running: true; repeat: false; onTriggered: settingsDialog.open() }
  Timer { interval: 1100; running: true; repeat: false; onTriggered: settingsDialog.goToSection(4) }
@@ -238,6 +254,9 @@ checks.append({'name': 'deleting a voice names exactly that person',
                'pass': [request['payload'] for request in voices if request['op'] == 'settings-voices-delete'] == [{'personId': '00000000-0000-4000-8000-000000000001'}]})
 checks.append({'name': 'opening the voice settings only reads',
                'pass': all(request['op'] not in ('settings-model-download', 'settings-voices-delete', 'settings-save') for request in requests['settings'])})
+checks.append({'name': 'the Google section only reads the connection state',
+               'pass': any(request['op'] == 'settings-google-status' for request in requests['google']) and
+               all(request['op'] not in ('settings-google-connect', 'settings-google-disconnect', 'settings-save') for request in requests['google'])})
 checks.append({'name': 'viewing the tab or the dialog sends no revision and no suggestion request',
                'pass': all(request['op'] not in ('revision-save', 'speakers-suggest') for mode in ('tab', 'dialog', 'english') for request in requests[mode])})
 failed = [check for check in checks if not check['pass']]

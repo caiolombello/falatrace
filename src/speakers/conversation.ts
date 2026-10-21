@@ -58,6 +58,7 @@ Sugira um nome para um falante somente com evidência explícita:
 Não use nomes apenas citados em terceira pessoa, nem nomes de empresas, produtos, clientes ou equipes. Não deduza pelo assunto, cargo ou estilo. Na dúvida, omita o falante.
 Cada evidência tem o turnId da fala onde o nome aparece e uma citação literal curta copiada dessa fala, contendo o nome. Use a grafia da transcrição e só inclua sobrenome quando ele aparecer nas citações.
 Falantes com knownAs já foram identificados pelo microfone; não atribua esse nome a outro falante.
+participants, quando presente, lista os nomes convidados na agenda. Se a pessoa for chamada ou se apresentar com um nome que só um convidado tem, sugira o nome completo desse convidado. Nunca sugira um convidado que não foi chamado nem se apresentou.
 Retorne no máximo uma sugestão por falante e no máximo ${MAX_EVIDENCE} evidências por sugestão.`;
 
 const LOOPBACK = ["127.0.0.1", "localhost", "[::1]"];
@@ -79,11 +80,12 @@ const mayCarryName = (text: string): boolean => NAME_HINT.test(text) || CAPITALI
 /** Sends every turn when it fits; otherwise turns that may carry a name plus their
  * neighbours (direct address usually sits next to the reply), earliest first. */
 export const buildConversationInput = (
-  turns: ReadonlyArray<ConversationTurn>, speakers: ReadonlyArray<ConversationSpeaker>, budget: { max: number; unit: "characters" | "utf8-bytes" }
+  turns: ReadonlyArray<ConversationTurn>, speakers: ReadonlyArray<ConversationSpeaker>, budget: { max: number; unit: "characters" | "utf8-bytes" },
+  participants: ReadonlyArray<string> = []
 ): ConversationInput => {
   const size = (content: string): number => budget.unit === "utf8-bytes" ? Buffer.byteLength(content, "utf8") : content.length;
   const render = (selected: ReadonlyArray<ConversationTurn>, partial: boolean): string =>
-    JSON.stringify({ speakers, partial, turns: selected });
+    JSON.stringify({ speakers, ...(participants.length ? { participants } : {}), partial, turns: selected });
   const all = render(turns, false);
   if (size(all) <= budget.max) return { content: all, sentTurns: turns.length, totalTurns: turns.length, partial: false, bytes: Buffer.byteLength(all, "utf8") };
   const wanted = new Set<number>();
@@ -106,9 +108,10 @@ const words = (text: string): string[] => fold(text).split(/[^\p{L}\p{N}'-]+/u).
 const GENERIC_NAME = /^(falante|speaker|participante|pessoa|voce|eu|ele|ela|alguem|todos|pessoal|gente)(?![\p{L}\p{N}])/u;
 
 /** Keeps only suggestions whose quotes are literal excerpts of the cited turns and
- * contain every word of the proposed name. Anything else is dropped, not repaired. */
+ * contain every word of the proposed name, or, for an invited participant, a word of
+ * the name that no other participant has. Anything else is dropped, not repaired. */
 export const validateConversationSuggestions = (
-  raw: unknown, turns: ReadonlyArray<ConversationTurn>, speakers: ReadonlyArray<ConversationSpeaker>
+  raw: unknown, turns: ReadonlyArray<ConversationTurn>, speakers: ReadonlyArray<ConversationSpeaker>, participants: ReadonlyArray<string> = []
 ): ConversationSuggestion[] => {
   const value = raw && typeof raw === "object" ? (raw as { suggestions?: unknown }).suggestions : undefined;
   if (!Array.isArray(value)) throw new Error("O modelo não retornou sugestões válidas");
@@ -136,7 +139,10 @@ export const validateConversationSuggestions = (
     }
     const quoted = new Set(quotes.flatMap((entry) => words(entry.quote)));
     const nameWords = words(label);
-    if (!quotes.length || !nameWords.length || !nameWords.every((word) => quoted.has(word))) continue;
+    const participant = participants.find((name) => fold(name) === fold(label));
+    const uniquelyQuoted = participant !== undefined && words(participant).some((word) => word.length >= 3 && quoted.has(word) &&
+      participants.every((other) => other === participant || !words(other).includes(word)));
+    if (!quotes.length || !nameWords.length || !(nameWords.every((word) => quoted.has(word)) || uniquelyQuoted)) continue;
     accepted.set(speakerId, { speakerId, name: label, evidence: quotes });
   }
   return [...accepted.values()].sort((a, b) => a.speakerId.localeCompare(b.speakerId));
@@ -186,10 +192,10 @@ export const completeWithConfiguredModel = (config: AppConfig): ConversationComp
 
 export const suggestFromConversation = async (
   destination: ConversationDestination, input: ConversationInput, turns: ReadonlyArray<ConversationTurn>,
-  speakers: ReadonlyArray<ConversationSpeaker>, complete: ConversationComplete, signal?: AbortSignal
+  speakers: ReadonlyArray<ConversationSpeaker>, complete: ConversationComplete, signal?: AbortSignal, participants: ReadonlyArray<string> = []
 ): Promise<ConversationSuggestion[]> => {
   const raw = await complete({ destination, system: CONVERSATION_SYSTEM_PROMPT, user: input.content, signal });
   let parsed: unknown;
   try { parsed = JSON.parse(raw); } catch { throw new Error("O modelo não retornou sugestões válidas"); }
-  return validateConversationSuggestions(parsed, turns, speakers);
+  return validateConversationSuggestions(parsed, turns, speakers, participants);
 };

@@ -120,3 +120,23 @@ test("the production bridge lists known voices and forgets exactly the person na
     expect((await bridge(context.env, { id: 4, op: "settings-voices-delete", payload: { all: true } })).result).toEqual({ people: [], removed: 1 });
   } finally { await context.cleanup(); }
 }, 30_000);
+
+test("the production bridge reports the Google connection and needs a saved client ID to start a sign-in", async () => {
+  const context = await fixture();
+  try {
+    expect(await bridge(context.env, { id: 1, op: "settings-google-status" })).toEqual({ id: 1, ok: true, result: { connected: false, clientConfigured: false, calendar: false, flow: "idle" } });
+    expect(await bridge(context.env, { id: 2, op: "settings-google-connect" })).toEqual({ id: 2, ok: false, error: "Informe o ID do cliente OAuth do Google (app para computador) em Integrações." });
+    expect((await bridge(context.env, { id: 3, op: "settings-google-connect", payload: { url: "x" } })).ok).toBe(false);
+    // With a client ID saved, the bridge answers with Google's consent URL and still exits when the Studio closes.
+    const config = join(context.env.XDG_CONFIG_HOME!, "recording-cli/config.json");
+    const current = JSON.parse(await fs.readFile(config, "utf8"));
+    await fs.writeFile(config, JSON.stringify({ ...current, google: { clientId: "123456789012-abcdefghij0123456789.apps.googleusercontent.com", calendar: true } }), { mode: 0o600 });
+    const started = await bridge(context.env, { id: 4, op: "settings-google-connect" });
+    expect(started.ok).toBe(true);
+    const url = new URL(started.result.url);
+    expect(url.host).toBe("accounts.google.com");
+    expect(url.searchParams.get("redirect_uri")).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
+    expect(started.result).toMatchObject({ connected: false, clientConfigured: true, calendar: true, flow: "waiting" });
+    expect((await bridge(context.env, { id: 5, op: "settings-google-disconnect" })).result).toMatchObject({ revoked: false, connected: false, flow: "idle" });
+  } finally { await context.cleanup(); }
+}, 30_000);

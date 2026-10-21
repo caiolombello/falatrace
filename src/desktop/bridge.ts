@@ -41,7 +41,7 @@ import { learnVoicesAfterChange } from "../speakers/voices";
 import { nameDiarizationSpeaker, queueDiarization, readCanonicalTranscript, readDiarizationStatus, resultStatus } from "../../src/diarization/service";
 
 import { readOnboarding, saveLocalOnboarding } from "../config/onboarding";
-import { SETTINGS_OPERATIONS, handleSettingsOperation, isDisplayableSettingsError, settingsErrorMessage, type SettingsOperation } from "./settings-bridge";
+import { SETTINGS_OPERATIONS, handleSettingsOperation, isDisplayableSettingsError, settingsErrorMessage, stopGoogleSignIn, type SettingsOperation } from "./settings-bridge";
 import { prepareMockFramePreview } from "../visual/mock-preview";
 import { MockFrameReview } from "../visual/review-flow";
 const frameReview = new MockFrameReview();
@@ -340,7 +340,8 @@ const ALLOWED_PAYLOAD: Partial<Record<Request["op"], string[]>> = {
   "settings-model-status": ["kind", "model"], "settings-model-cancel": ["kind", "model"],
   "recording-process": ["consent", "consentKey"],
   "capture-start": ["title"], "diarization-name": ["speakerId", "label"], "speakers-suggest": ["conversation", "consent", "consentKey"],
-  "settings-voices-list": [], "settings-voices-delete": ["personId", "all"], "context-meeting": ["maxCharacters", "query", "offset"]
+  "settings-voices-list": [], "settings-voices-delete": ["personId", "all"],
+  "settings-google-status": [], "settings-google-connect": [], "settings-google-disconnect": [], "context-meeting": ["maxCharacters", "query", "offset"]
 };
 export const parseRequest = (value: unknown): Request => {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("request inválido");
@@ -643,6 +644,7 @@ export const runDesktopBridge = async (): Promise<void> => {
   if (!dropping && buffer.length) accept(buffer.toString("utf8"));
   studioFrames.cancelAll();
   await studioSummary.shutdown();
+  await stopGoogleSignIn();
   await Promise.allSettled([...pending]);
 };
 if (import.meta.main) void runDesktopBridge();

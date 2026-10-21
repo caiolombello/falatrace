@@ -701,6 +701,7 @@ ApplicationWindow {
         if (state.microphone && state.microphone.message) parts.push(t("Microfone: ") + t(state.microphone.message))
         if (state.conversation && state.conversation.message) parts.push(t("Conversa: ") + t(state.conversation.message))
         if (state.voice && state.voice.message) parts.push(t("Voz: ") + t(state.voice.message))
+        if (state.conversation && state.conversation.participants) parts.push(tf("Conversa: com %1 nome(s) da Agenda do Google.", state.conversation.participants))
         if (state.conversation && state.conversation.partial) parts.push(tf("Conversa: só %1 de %2 falas couberam no envio.", state.conversation.sentTurns, state.conversation.totalTurns))
         return parts.filter(function(part){return !!part}).join(" ")
     }

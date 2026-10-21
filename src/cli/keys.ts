@@ -71,7 +71,7 @@ export const runKeysCli = async (args: string[], deps: KeysCliDeps = defaultKeys
     return;
   }
   if (subcommand === "set") {
-    if (!isSecretName(name)) throw new Error("Use OPENAI_API_KEY, GEMINI_API_KEY ou RECORDING_CLI_OBS_PASSWORD.");
+    if (!isSecretName(name)) throw new Error("Use OPENAI_API_KEY, GEMINI_API_KEY, RECORDING_CLI_OBS_PASSWORD ou GOOGLE_CLIENT_SECRET.");
     if (process.stdin.isTTY) process.stderr.write(`Cole o valor de ${name} e pressione Ctrl+D: `);
     // Read before the capture lock is taken: waiting for the value never holds up a capture.
     const value = await deps.readValue();
@@ -80,7 +80,7 @@ export const runKeysCli = async (args: string[], deps: KeysCliDeps = defaultKeys
     return;
   }
   if (subcommand === "remove") {
-    if (!isSecretName(name)) throw new Error("Use OPENAI_API_KEY, GEMINI_API_KEY ou RECORDING_CLI_OBS_PASSWORD.");
+    if (!isSecretName(name)) throw new Error("Use OPENAI_API_KEY, GEMINI_API_KEY, RECORDING_CLI_OBS_PASSWORD ou GOOGLE_CLIENT_SECRET.");
     console.log(JSON.stringify({ name, ...await keyChange(name, deps, () => deps.removeSecret(name)) }));
     return;
   }

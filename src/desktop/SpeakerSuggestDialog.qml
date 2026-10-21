@@ -23,6 +23,7 @@ FtDialog {
             }
             contentItem:Label { text:speakerConversationConsent.text;textFormat:Text.PlainText;wrapMode:Text.WordWrap;color:ink;leftPadding:speakerConversationConsent.indicator.width+speakerConversationConsent.spacing;verticalAlignment:Text.AlignVCenter }
         }
+        Label { objectName:"speakerSuggestCalendar"; visible:!!speakerSuggestions.calendar; text:t("Com a Agenda do Google ligada, o pedido da conversa também leva os nomes dos convidados do evento desta gravação, para completar nomes citados pela metade."); textFormat:Text.PlainText; wrapMode:Text.WordWrap; color:muted; Layout.fillWidth:true }
         Label { text:t("Procura apresentações e nomes ditos na conversa. Envia o texto das falas do diarizador, os rótulos S01, S02… e o seu nome, quando o microfone já o indicou. Uma chamada por pedido, sem nova tentativa automática.");textFormat:Text.PlainText;wrapMode:Text.WordWrap;color:muted;Layout.fillWidth:true }
         Label { text:t("As sugestões não mudam nada até você aplicá-las ou salvar um nome. Confira antes: um nome citado na conversa pode ser de outra pessoa.");textFormat:Text.PlainText;wrapMode:Text.WordWrap;color:muted;Layout.fillWidth:true }
     }

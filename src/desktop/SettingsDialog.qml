@@ -40,6 +40,8 @@ FtDialog {
     // Known voices: names and sample counts only; the signatures never reach the Studio.
     property var voices: ({ people: [] })
     property string confirmVoiceDelete: ""
+    // Google: connection state only; the token never reaches the Studio.
+    property var googleStatus: ({})
     property string importSummary: ""
     anchors.centerIn:parent; width:Math.min(window.width-48,980); height:Math.min(window.height-48,780); modal:true
     closePolicy:hasSettingsPending("settings-save")||hasSettingsPending("settings-service")?Popup.NoAutoClose:Popup.CloseOnEscape
@@ -53,6 +55,7 @@ FtDialog {
         if (!backend.available) return
         if (index === 4 && !hasSettingsPending("settings-model-catalog")) requestCatalog()
         if (index === 4 && !hasSettingsPending("settings-voices-list")) send("settings-voices-list", "")
+        if (index === 5 && !hasSettingsPending("settings-google-status")) send("settings-google-status", "")
         if (index === 9 && !hasSettingsPending("settings-backups")) send("settings-backups", "")
     }
     function choosePath(mode, title, start, done) { if (pickerLoader.item) pickerLoader.item.open(mode, title, start, done) }
@@ -103,6 +106,15 @@ FtDialog {
         send("settings-voices-delete", "", target === "all" ? { all: true } : { personId: target })
     }
     function voiceId() { return catalog.voice ? catalog.voice.id : "" }
+    function connectGoogle() { settingsError = ""; settingsNotice = ""; send("settings-google-connect", "") }
+    function googleStatusText() {
+        const status = googleStatus
+        if (status.connected) return status.email ? tf("Conectado como %1.", status.email) : t("Conta do Google conectada.")
+        if (status.flow === "waiting") return t("Aguardando a autorização no navegador…")
+        if (status.flow === "failed") return t(status.error || "") || t("O login do Google não foi concluído.")
+        if (status.clientConfigured === false) return t("Informe e salve o ID do cliente para conectar.")
+        return status.flow ? t("Conta do Google não conectada.") : ""
+    }
     function mib(bytes) { return bytes >= 1024 * 1024 * 1024 ? (bytes / 1024 / 1024 / 1024).toFixed(1) + t(" GiB") : Math.round(bytes / 1024 / 1024) + t(" MiB") }
 
     // Presets and derived labels
@@ -217,6 +229,11 @@ FtDialog {
                     settingsNotice = t("Modelo baixado e conferido. Salve para usá-lo na transcrição.")
                 } else settingsNotice = t("Modelo baixado e conferido. Para transcrever neste computador com ele, use “Usar este modelo” e salve.")
             }
+        } else if (request.op === "settings-google-status" || request.op === "settings-google-connect" || request.op === "settings-google-disconnect") {
+            if (!message.ok) { settingsError = message.error; if (request.op !== "settings-google-status") send("settings-google-status", ""); return }
+            googleStatus = result
+            if (request.op === "settings-google-connect" && result.url) { Qt.openUrlExternally(result.url); settingsNotice = t("O login do Google abriu no navegador. Volte aqui depois de autorizar.") }
+            if (request.op === "settings-google-disconnect") settingsNotice = result.revoked ? t("Conta do Google desconectada e acesso revogado.") : t("Conta do Google desconectada neste computador.")
         } else if (request.op === "settings-voices-list" || request.op === "settings-voices-delete") {
             if (!message.ok) { settingsError = message.error; return }
             voices = result
@@ -229,6 +246,9 @@ FtDialog {
     }
 
     Loader { id:pickerLoader; source:"FilePicker.qml"; active:settingsDialog.visible }
+    // A sign-in finishes in the browser: read its state until it settles.
+    Timer { interval:2000; repeat:true; running:settingsDialog.visible&&settingsDialog.googleStatus.flow==="waiting"&&backend.available
+        onTriggered:{ if (!hasSettingsPending("settings-google-status")) send("settings-google-status", "") } }
     Timer { interval:2000; repeat:true; running:settingsDialog.visible && Object.keys(settingsDialog.downloads).some(function(key){ return settingsDialog.downloads[key] && settingsDialog.downloads[key].state === "running" }); onTriggered:settingsDialog.pollDownloads() }
 
     component SectionPage: ScrollView {
@@ -511,6 +531,19 @@ FtDialog {
 
         // 5 · Integrações
         SectionPage {
+          SettingsSection { text:t("Google Agenda") }
+          SettingsHint { text:t("Lê o evento da gravação na sua Agenda do Google: o título entra no resumo e os nomes dos convidados ajudam a sugerir os nomes dos falantes. Ao Google vai só o horário da gravação.") }
+          SettingsText { objectName:"googleClientId"; field:"google.clientId"; label:t("ID do cliente OAuth (app para computador)"); placeholder:"123456789012-abc….apps.googleusercontent.com" }
+          SecretField { name:"GOOGLE_CLIENT_SECRET"; label:t("Chave secreta do cliente OAuth"); purpose:t("Fica em secrets.env como as chaves de API. Em apps para computador o Google não a trata como confidencial, mas a pede no login.") }
+          SettingsCheck { objectName:"googleCalendar"; field:"google.calendar"; text:t("Usar a Agenda do Google nas gravações") }
+          RowLayout { spacing:8
+           FtButton { objectName:"googleConnect"; text:settingsDialog.googleStatus.flow==="waiting"?t("Aguardando o navegador…"):settingsDialog.googleStatus.connected?t("Conectar de novo"):t("Conectar conta do Google"); compact:true; variant:"outline"
+            enabled:backend.available&&!settingsHasChanges()&&settingsDialog.googleStatus.flow!=="waiting"&&!!settingsDialog.googleStatus.clientConfigured&&!hasSettingsPending("settings-google-connect"); onClicked:settingsDialog.connectGoogle() }
+           FtButton { objectName:"googleDisconnect"; visible:!!settingsDialog.googleStatus.connected; text:t("Desconectar"); compact:true; variant:"outline"; enabled:backend.available&&!hasSettingsPending("settings-google-disconnect"); onClicked:send("settings-google-disconnect", "") }
+           SettingsHint { visible:settingsHasChanges(); text:t("Salve antes de conectar.") }
+          }
+          StatusLine { objectName:"googleStatusLine"; visible:!!settingsDialog.googleStatusText(); good:!!settingsDialog.googleStatus.connected; text:settingsDialog.googleStatusText() }
+          SettingsHint { text:t("No Google Cloud: crie um projeto, ative a Google Calendar API, configure a tela de consentimento e crie um cliente OAuth do tipo app para computador. Em modo de teste o Google encerra o acesso a cada 7 dias; publicado sem verificação, mostra um aviso e aceita até 100 usuários.") }
           SettingsSection { text:"OBS" }
           SettingsCheck { field:"obs.enabled"; text:t("Usar o OBS para gravar") }
           SettingsHint { text:t("Configure a cena, as fontes de áudio e o servidor WebSocket no próprio OBS. O FalaTrace só controla um OBS neste computador.") }

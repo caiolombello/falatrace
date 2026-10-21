@@ -6,6 +6,7 @@ import { DEFAULT_CONFIG, TRANSCRIPTION_PROMPT_MAX_LENGTH, type AppConfig } from 
 import { getConfigPath, getConfigPathCandidates, mergeConfig, validateConfig } from "./load";
 import { commitConfigChange, configBackupPattern, readConfigRevision } from "./onboarding";
 import { describeCredentials, type SecretFiles } from "./secrets";
+import { isGoogleClientId } from "../google/client-id";
 
 /**
  * Studio settings: an explicit allowlist of editable fields. Saving only touches the
@@ -159,6 +160,9 @@ export const SETTINGS_FIELDS: Record<string, FieldRule> = {
   "aiContext.maxCharactersPerClient": intBetween(8_000, 200_000),
   "calendar.enabled": bool,
   "speakers.voices": bool,
+  // Google: the client of the user's own Cloud project (the secret is a credential, never a field)
+  "google.clientId": (value) => value === "" || isGoogleClientId(value),
+  "google.calendar": bool,
   "studio.language": oneOf("auto", "pt-BR", "en"),
   // Lifetime visual review limits (always written together with period "lifetime")
   "visualReview.maxInferences": intBetween(1, 1000),

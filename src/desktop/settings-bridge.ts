@@ -5,7 +5,7 @@ import {
   validateSettingsPatch
 } from "../config/settings";
 import { checkAutomation, checkProcessing, listAudioDevices, readServiceStatus } from "../config/setup-checks";
-import { getSecretFiles, parseManagerEnvironment, readSecretFiles, removeSecret, setSecret, unitEnvironment } from "../config/secrets";
+import { getSecretFiles, parseManagerEnvironment, readSecret, readSecretFiles, removeSecret, setSecret, unitEnvironment } from "../config/secrets";
 import { defaultKeyTestDeps, testProviderKey, type KeyTestProvider } from "../config/credential-test";
 import { automaticRecordingBackend, diagnoseRecordingBackend } from "../recording/capabilities";
 import { translateCaptureMessage } from "../recording/messages";
@@ -21,6 +21,7 @@ import { installProtonBackupTimer, uninstallProtonBackupTimer } from "../proton/
 import { installCallMonitorService, uninstallCallMonitorService } from "../calls/service";
 import { installTrayService, uninstallTrayService } from "../tray/service";
 import { deleteVoicePeople, listVoicePeople } from "../speakers/voices";
+import { GOOGLE_MESSAGES, GoogleTokenStore, revokeToken, startGoogleConnect } from "../google/oauth";
 import {
   MODEL_OPERATIONS, handleModelOperation, defaultModelDeps, type ModelOperation
 } from "./model-bridge";
@@ -31,6 +32,7 @@ export const SETTINGS_OPERATIONS = [
   "settings-remote-check", "settings-obs-check", "settings-audio-test",
   "settings-backups", "settings-restore", "settings-export", "settings-import-read",
   "settings-voices-list", "settings-voices-delete",
+  "settings-google-status", "settings-google-connect", "settings-google-disconnect",
   ...MODEL_OPERATIONS
 ] as const;
 export type SettingsOperation = typeof SETTINGS_OPERATIONS[number];
@@ -130,6 +132,7 @@ export const settingsErrorMessage = (op: string): string =>
                   : op === "settings-export" ? "Não foi possível exportar. Confira a pasta escolhida."
                     : op === "settings-import-read" ? "Não foi possível ler o arquivo escolhido. Use uma configuração JSON exportada pelo FalaTrace."
                       : op.startsWith("settings-voices") ? "Não foi possível ler ou apagar as vozes conhecidas. Nada foi alterado."
+                      : op.startsWith("settings-google") ? "Não foi possível falar com a conta do Google. Nada foi alterado."
                       : op === "settings-model-cancel" ? "Não foi possível cancelar o download; ele pode continuar em segundo plano. Tente de novo."
                         : op.startsWith("settings-model") || op.startsWith("settings-ollama") ? "Não foi possível concluir o download. Nada foi instalado; tente novamente."
                           : "Não foi possível alterar o serviço. Confira se há uma gravação em andamento e o estado do systemd.";
@@ -200,9 +203,12 @@ export const SETTINGS_KNOWN_ERRORS = [
   "A gravação automática não tem um backend que funcione: escolha Só áudio ou Tela e áudio em Captura e áudio, ou ative o OBS."
 ];
 
+/** Google sign-in and calendar failures, written by us and safe to show as they are. */
+export const GOOGLE_KNOWN_ERRORS: readonly string[] = Object.values(GOOGLE_MESSAGES);
+
 /** Messages from capture inspection and our own validation that are safe to show as they are. */
 export const isDisplayableSettingsError = (op: string, text: string): boolean =>
-  SETTINGS_KNOWN_ERRORS.includes(text) || /^(Campo não editável: |Valor inválido para )/.test(text) ||
+  SETTINGS_KNOWN_ERRORS.includes(text) || (op.startsWith("settings-google") && GOOGLE_KNOWN_ERRORS.includes(text)) || /^(Campo não editável: |Valor inválido para )/.test(text) ||
   (op === "settings-audio-test" && (/^(Dispositivo de áudio indisponível|O microfone e o áudio do sistema|Gravar só áudio|Todas as fontes de áudio)/.test(text))) ||
   (op === "settings-secret-set" && /^secrets\.env /.test(text)) ||
   (op === "settings-service" && text.startsWith(`${AUTOMATIC_CAPTURE_BLOCKED} `));
@@ -227,6 +233,20 @@ const remoteHint = (error: unknown): string => {
   return "A conexão falhou. Confira host, usuário, porta e chave SSH.";
 };
 
+// One Google sign-in at a time per Studio: its one-shot loopback server lives in this process.
+let googleFlow: { state: "waiting" | "failed"; error?: string; close?: () => Promise<void> } | undefined;
+
+/** Ends a sign-in still waiting for the browser, when the Studio closes. */
+export const stopGoogleSignIn = async (): Promise<void> => { const flow = googleFlow; googleFlow = undefined; await flow?.close?.(); };
+
+const googleStatus = async (deps: SettingsDeps) => {
+  const [token, loaded] = await Promise.all([new GoogleTokenStore().read(), deps.loadConfig().catch(() => undefined)]);
+  const clientId = loaded?.config.google.clientId || "";
+  const connected = !!token && token.clientId === clientId;
+  return { connected, ...(connected && token.email ? { email: token.email } : {}), ...(connected ? { connectedAt: token.connectedAt } : {}),
+    clientConfigured: !!clientId, calendar: !!loaded?.config.google.calendar, flow: googleFlow?.state || "idle", ...(googleFlow?.error ? { error: googleFlow.error } : {}) };
+};
+
 export const handleSettingsOperation = async (
   op: SettingsOperation,
   payload: Record<string, unknown>,
@@ -236,6 +256,28 @@ export const handleSettingsOperation = async (
     return handleModelOperation(op as ModelOperation, payload, defaultModelDeps);
   }
   if (op === "settings-read") return deps.read(deps.configPath(), process.env, { managerEnv: await deps.managerEnv() });
+  if (op === "settings-google-status") return googleStatus(deps);
+  if (op === "settings-google-connect") {
+    if (googleFlow?.state === "waiting") throw new Error(GOOGLE_MESSAGES.inProgress);
+    const { config } = await deps.loadConfig();
+    const flow = await startGoogleConnect({ clientId: config.google.clientId, clientSecret: await readSecret("GOOGLE_CLIENT_SECRET") });
+    const current = { state: "waiting" as const, close: flow.close };
+    googleFlow = current;
+    flow.done.then(() => { if (googleFlow === current) googleFlow = undefined; }, (error: unknown) => {
+      if (googleFlow !== current) return;
+      googleFlow = { state: "failed", error: error instanceof Error && GOOGLE_KNOWN_ERRORS.includes(error.message) ? error.message : GOOGLE_MESSAGES.exchangeFailed };
+    });
+    // The Studio opens this address in the browser; nothing is sent until the person signs in.
+    return { url: flow.url, ...(await googleStatus(deps)) };
+  }
+  if (op === "settings-google-disconnect") {
+    await stopGoogleSignIn();
+    const store = new GoogleTokenStore();
+    const token = await store.read();
+    const revoked = token ? await revokeToken(token) : false;
+    await store.remove();
+    return { revoked, ...(await googleStatus(deps)) };
+  }
   if (op === "settings-voices-list" || op === "settings-voices-delete") {
     // Deleting needs no configuration: turning recognition off never strands what was learned.
     const removed = op === "settings-voices-delete" ? await deleteVoicePeople(payload.all === true ? { all: true } : { personId: String(payload.personId) }) : undefined;

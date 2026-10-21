@@ -22,6 +22,7 @@ import { SpeakerSuggestionStore, type ConversationRecord, type MicrophoneRecord,
 import { SPEAKER_MESSAGES, safeSpeakerMessage } from "./messages";
 import { readVoiceInstallation, type VoiceInstallation } from "../models/voice";
 import { VoiceProfileStore, VoiceRecordStore, computeVoiceRecord, learnVoices, matchVoices, type VoiceComputeDependencies } from "./voices";
+import { googleCalendarEnabled, readGoogleAttendees, type GoogleCalendarDependencies } from "../google/calendar";
 
 const SHA256 = /^[a-f0-9]{64}$/;
 export const speakerSuggestionUnit = (id: string): string => `recording-cli-speakers-${validateJobId(id)}.service`;
@@ -49,6 +50,8 @@ export type SpeakerSuggestionDependencies = {
   voice?: VoiceComputeDependencies;
   voiceRecords?: VoiceRecordStore;
   voiceProfiles?: VoiceProfileStore;
+  /** Google Calendar access for the invited names (tests swap the transport). */
+  calendar?: GoogleCalendarDependencies;
 };
 export type SuggestOptions = { conversation?: boolean; consentKey?: string; signal?: AbortSignal };
 
@@ -93,8 +96,25 @@ const voicesFor = async (
   }
 };
 
+/** When the recording happened: it ends at the file's modification time and lasts the diarized duration. */
+const recordingWindow = async (job: JobRecord, duration: number): Promise<{ startAt: string; endAt: string } | undefined> => {
+  const stat = await fs.lstat(job.sourcePath).catch(() => undefined);
+  const end = stat?.isFile() ? stat.mtimeMs : Date.parse(job.createdAt);
+  if (!Number.isFinite(end) || !(duration > 0)) return undefined;
+  return { startAt: new Date(end - duration * 1000).toISOString(), endAt: new Date(end).toISOString() };
+};
+
+/** Names invited to the matching Google Calendar event; none when the calendar is off or unreachable. */
+const calendarParticipants = async (config: AppConfig, job: JobRecord, context: DiarizationContext, dependencies: SpeakerSuggestionDependencies): Promise<string[]> => {
+  if (!googleCalendarEnabled(config)) return [];
+  const window = await recordingWindow(job, context.result.duration);
+  if (!window) return [];
+  try { return (await readGoogleAttendees(config, window.startAt, window.endAt, dependencies.calendar)).map((attendee) => attendee.name); }
+  catch { return []; }
+};
+
 const conversationFor = async (
-  config: AppConfig, context: DiarizationContext, microphone: MicrophoneRecord | undefined, dependencies: SpeakerSuggestionDependencies, signal?: AbortSignal
+  config: AppConfig, job: JobRecord, context: DiarizationContext, microphone: MicrophoneRecord | undefined, dependencies: SpeakerSuggestionDependencies, signal?: AbortSignal
 ): Promise<ConversationRecord> => {
   const destination = conversationDestination(config);
   const base = { generatedAt: new Date().toISOString(), provider: destination.provider, model: destination.model, endpoint: destination.endpoint, external: destination.external };
@@ -104,9 +124,11 @@ const conversationFor = async (
   const turns = conversationTurns(context.result);
   try {
     const budget = destination.provider === "openai" ? { max: OPENAI_CONVERSATION_INPUT_BYTES, unit: "utf8-bytes" as const } : { max: config.summary.maxInputCharacters, unit: "characters" as const };
-    const input = buildConversationInput(turns, speakers, budget);
-    const suggestions = await suggestFromConversation(destination, input, turns, speakers, dependencies.complete || completeWithConfiguredModel(config), signal);
-    return { ...base, state: "ready", partial: input.partial, sentTurns: input.sentTurns, totalTurns: input.totalTurns, inputBytes: input.bytes, suggestions };
+    const participants = await calendarParticipants(config, job, context, dependencies);
+    const input = buildConversationInput(turns, speakers, budget, participants);
+    const suggestions = await suggestFromConversation(destination, input, turns, speakers, dependencies.complete || completeWithConfiguredModel(config), signal, participants);
+    return { ...base, state: "ready", partial: input.partial, sentTurns: input.sentTurns, totalTurns: input.totalTurns, inputBytes: input.bytes, suggestions,
+      ...(participants.length ? { participants: participants.length } : {}) };
   } catch (error) {
     signal?.throwIfAborted();
     return { ...base, state: "failed", message: safeSpeakerMessage(error) };
@@ -129,7 +151,7 @@ const suggestOwned = async (config: AppConfig, id: string, options: SuggestOptio
     const media = mediaOnce(config, job, dependencies);
     const microphone = existing?.microphone && existing.microphone.state !== "failed" ? existing.microphone : await microphoneFor(media, context, store, dependencies);
     const voice = await voicesFor(config, media, context, microphone, store, existing?.voice, dependencies);
-    const conversation = options.conversation ? await conversationFor(config, context, microphone, dependencies, options.signal) : existing?.conversation;
+    const conversation = options.conversation ? await conversationFor(config, job, context, microphone, dependencies, options.signal) : existing?.conversation;
     // The diarization may have been replaced meanwhile; never attach results to a newer one.
     const latest = await readDiarizationContext(job, canonical, store.diarization);
     if (latest?.binding.diarizationSha256 !== context.binding.diarizationSha256) throw new Error(SPEAKER_MESSAGES.interrupted);
@@ -193,7 +215,9 @@ export type SpeakerSuggestionView = {
   message?: string;
   items: SpeakerSuggestionItem[];
   microphone?: { state: MicrophoneRecord["state"]; message?: string };
-  conversation?: { state: ConversationRecord["state"]; message?: string; provider: string; model: string; external: boolean; generatedAt: string; partial?: boolean; sentTurns?: number; totalTurns?: number };
+  conversation?: { state: ConversationRecord["state"]; message?: string; provider: string; model: string; external: boolean; generatedAt: string; partial?: boolean; sentTurns?: number; totalTurns?: number; participants?: number };
+  /** The conversation request would also send the names invited in the Google Calendar. */
+  calendar?: boolean;
   /** Present only while voice recognition is on. */
   voice?: { state: VoiceViewState; message?: string };
   destination: { provider: "openai" | "ollama"; model: string; endpoint: string; external: boolean; consentKey: string };
@@ -241,7 +265,7 @@ export const readSpeakerSuggestionView = async (
   config: AppConfig, job: JobRecord, canonical: Transcript, dependencies: ViewDependencies = {}
 ): Promise<SpeakerSuggestionView> => {
   const destination = conversationDestination(config);
-  const base = { items: [] as SpeakerSuggestionItem[], destination: { ...destination, consentKey: destinationKey(destination) } };
+  const base = { items: [] as SpeakerSuggestionItem[], destination: { ...destination, consentKey: destinationKey(destination) }, ...(googleCalendarEnabled(config) ? { calendar: true } : {}) };
   const store = dependencies.store || new SpeakerSuggestionStore();
   const context = await readDiarizationContext(job, canonical, store.diarization);
   if (!context) return { state: "unavailable", ...base };
@@ -257,7 +281,7 @@ export const readSpeakerSuggestionView = async (
     ...(conversation ? { conversation: {
       state: conversation.state, provider: conversation.provider, model: conversation.model, external: conversation.external, generatedAt: conversation.generatedAt,
       ...(conversation.state === "failed" ? { message: conversation.message } : {
-        partial: conversation.partial, sentTurns: conversation.sentTurns, totalTurns: conversation.totalTurns,
+        partial: conversation.partial, sentTurns: conversation.sentTurns, totalTurns: conversation.totalTurns, ...(conversation.participants ? { participants: conversation.participants } : {}),
         ...(conversation.suggestions.length ? {} : { message: SPEAKER_MESSAGES.conversationEmpty }) })
     } } : {})
   };
