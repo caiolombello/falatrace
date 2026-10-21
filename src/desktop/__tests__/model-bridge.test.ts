@@ -184,3 +184,18 @@ test("a Whisper model counts as installed only when a SHA-256 check accepted tha
     await fs.rm(directory, { recursive: true, force: true });
   }
 });
+
+test("voice recognition is one more explicit download: listed in the catalog, started with consent in its own unit", async () => {
+  const { value, runs, config } = deps("/synthetic/models");
+  config.speakers.voices = true;
+  const catalog = await handleModelOperation("settings-model-catalog", {}, value) as { voice: Record<string, unknown> };
+  expect(catalog.voice).toMatchObject({ id: "eres2net-base", supported: true, installed: false, enabled: true, sources: ["registry.npmjs.org", "github.com"] });
+  expect(catalog.voice.bytes).toBe(11_089_653 + 39_593_761);
+  await expect(handleModelOperation("settings-model-download", { kind: "voice", model: "eres2net-base" }, value)).rejects.toThrow("Confirme");
+  await expect(handleModelOperation("settings-model-download", { kind: "voice", model: "other-model", consent: true }, value)).rejects.toThrow("desconhecido");
+  const started = await handleModelOperation("settings-model-download", { kind: "voice", model: "eres2net-base", consent: true }, value) as Record<string, unknown>;
+  expect(started).toMatchObject({ kind: "voice", id: "eres2net-base", state: "running", unit: `${modelUnitName("voice", "eres2net-base")}.service` });
+  const launch = runs.find((run) => run[0] === "systemd-run") ?? [];
+  expect(launch.slice(launch.indexOf("--") + 1)).toEqual(["/opt/falatrace/falatrace", "models", "voice-download", "eres2net-base"]);
+  expect(await handleModelOperation("settings-model-status", { kind: "voice", model: "eres2net-base" }, value)).toMatchObject({ kind: "voice", totalBytes: 11_089_653 + 39_593_761 });
+});

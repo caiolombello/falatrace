@@ -32,19 +32,26 @@ TURNS = [
     {'id': 't000000', 'start': 0, 'end': 4, 'speaker': 'S01', 'label': 'Falante 1', 'humanSpeakerEdited': False, 'text': 'Bom dia. Ana, pode começar?'},
     {'id': 't000001', 'start': 4, 'end': 8, 'speaker': 'S02', 'label': 'Falante 2', 'humanSpeakerEdited': False, 'text': 'Claro, aqui é a Ana.'},
     {'id': 't000002', 'start': 8, 'end': 12, 'speaker': 'S03', 'label': 'Falante 3', 'humanSpeakerEdited': False, 'text': 'Certo, seguimos.'},
+    {'id': 't000003', 'start': 12, 'end': 14, 'speaker': 'S04', 'label': 'Falante 4', 'humanSpeakerEdited': False, 'text': 'Ok.'},
+]
+PEOPLE = [
+    {'id': '00000000-0000-4000-8000-000000000001', 'name': 'Ana Souza', 'samples': 3, 'recordings': 2, 'updatedAt': '2026-10-21T10:00:00Z'},
+    {'id': '00000000-0000-4000-8000-000000000002', 'name': 'Bruno Lima', 'samples': 1, 'recordings': 1, 'updatedAt': '2026-10-21T10:00:00Z'},
 ]
 DETAIL = {
     'transcript': {'segments': [{'start': 0, 'end': 12, 'text': 'Bom dia. Ana, pode começar? Claro, aqui é a Ana. Certo, seguimos.'}], 'text': 'Bom dia. Ana, pode começar? Claro, aqui é a Ana. Certo, seguimos.', 'timing': 'segment'},
-    'diarization': {'state': 'review', 'speakerCount': 3, 'matchedTokenRatio': 1, 'message': 'Identificação automática; revise as trocas de voz. A transcrição original foi preservada.', 'turns': TURNS},
+    'diarization': {'state': 'review', 'speakerCount': 4, 'matchedTokenRatio': 1, 'message': 'Identificação automática; revise as trocas de voz. A transcrição original foi preservada.', 'turns': TURNS},
     'review': {'revision': {'version': 1, 'revision': 0, 'base': BASE, 'humanReviewed': False}, 'canUndo': False, 'notes': [], 'derivedStale': False,
-               'speakerLabels': {'S01': 'Falante 1', 'S02': 'Falante 2', 'S03': 'Falante 3'}, 'segmentEditUnavailable': False},
+               'speakerLabels': {'S01': 'Falante 1', 'S02': 'Falante 2', 'S03': 'Falante 3', 'S04': 'Falante 4'}, 'segmentEditUnavailable': False},
     'speakerSuggestions': {
         'state': 'ready', 'message': 'Sugestões prontas. Nada muda até você aplicar ou salvar um nome.',
         'items': [
             {'speakerId': 'S01', 'source': 'microphone', 'self': True, 'name': 'Caio Barbieri', 'localShare': 0.97},
             {'speakerId': 'S02', 'source': 'conversation', 'self': False, 'name': 'Ana', 'evidence': [{'turnId': 't000001', 'quote': 'aqui é a Ana'}]},
+            {'speakerId': 'S03', 'source': 'voice', 'self': False, 'name': 'Bruno Lima', 'score': 0.81},
         ],
         'microphone': {'state': 'ready'},
+        'voice': {'state': 'ready'},
         'conversation': {'state': 'ready', 'provider': 'openai', 'model': 'gpt-6-luna', 'external': True, 'generatedAt': '2026-10-20T12:00:00Z', 'partial': False, 'sentTurns': 3, 'totalTurns': 3},
         'destination': {'provider': 'openai', 'model': 'gpt-6-luna', 'endpoint': 'https://api.openai.com', 'external': True, 'consentKey': CONSENT_KEY},
     },
@@ -54,7 +61,7 @@ DETAIL = {
 STUB = '''#!/usr/bin/python3
 import sys,json,os
 mode=os.environ['FALATRACE_TEST_MODE'];log=open(os.environ['FALATRACE_REQUEST_LOG'],'a')
-detail=json.loads(os.environ['FALATRACE_DETAIL'])
+detail=json.loads(os.environ['FALATRACE_DETAIL']);people=json.loads(os.environ['FALATRACE_PEOPLE'])
 item={'key':'synthetic-speakers','title':'Exemplo sintético — falantes','fileName':'synthetic.mkv','modifiedAt':'2026-10-20T12:00:00Z','location':'local','status':'completed','backup':'none'}
 for line in sys.stdin:
  r=json.loads(line);op=r['op'];log.write(line.strip()+'\\n');log.flush()
@@ -65,7 +72,11 @@ for line in sys.stdin:
  elif op=='resolve':v={'state':'completed','location':'local','path':os.environ['FALATRACE_SYNTHETIC_MEDIA']}
  elif op=='processing-status':v={'waiting':[]}
  elif op=='ux-capabilities':v={'mockFrames':False,'realFrames':False}
- elif op=='settings-read':v={'revision':'a'*64,'exists':True,'values':{'studio.language':'en' if mode=='english' else 'pt-BR'},'apps':[],'nullable':[],'readOnly':{},'credentials':{'details':[]}}
+ elif op=='settings-read':v={'revision':'a'*64,'exists':True,'values':{'studio.language':'en' if mode=='english' else 'pt-BR','speakers.voices':False},'apps':[],'nullable':[],'readOnly':{},'credentials':{'details':[]}}
+ elif op=='settings-model-catalog':v={'whisper':{'directory':'/tmp/models','source':'https://huggingface.co/','models':[]},'ollama':{'url':'http://127.0.0.1:11434','loopback':True,'reachable':False,'installed':[],'configured':'qwen3.5:9b'},'voice':{'id':'eres2net-base','bytes':50683414,'directory':'/tmp/models/voice','supported':True,'installed':False,'sources':['registry.npmjs.org','github.com'],'enabled':False}}
+ elif op=='settings-voices-list':v={'people':people}
+ elif op=='settings-voices-delete':people=[person for person in people if person['id']!=r['payload'].get('personId')];v={'people':people,'removed':1}
+ elif op in ('settings-model-download','settings-model-status'):v={'kind':'voice','id':'eres2net-base','state':'running','receivedBytes':1048576,'totalBytes':50683414}
  elif op=='detail':v=detail
  elif op=='revision-save':v={'version':1,'revision':1,'base':r['payload']['base']}
  elif op=='speakers-suggest':v={'id':r['key'],'status':'queued','unit':'recording-cli-speakers-'+r['key']+'.service'}
@@ -91,16 +102,48 @@ MODES = {
  Timer { interval: 1000; running: true; repeat: false; onTriggered: { speakerSuggestDialog.open(); speakerSuggestDialog.conversationConsent.checked = true } }
 ''', 1500),
     'english': ('', 1700),
+    # Settings › Models with the voice block and two known voices.
+    'settings': ('''
+ Timer { interval: 900; running: true; repeat: false; onTriggered: settingsDialog.open() }
+ Timer { interval: 1100; running: true; repeat: false; onTriggered: settingsDialog.goToSection(4) }
+''', 1900),
+    'voices': ('''
+ Timer { interval: 900; running: true; repeat: false; onTriggered: settingsDialog.open() }
+ Timer { interval: 1100; running: true; repeat: false; onTriggered: settingsDialog.goToSection(4) }
+ Timer { interval: 1600; running: true; repeat: false; onTriggered: {
+  const a=[]; function check(name,pass){a.push({name:name,pass:!!pass})}
+  const root = settingsDialog.contentItem
+  check("voice block shown with its size and nothing downloaded", uxFind(root, "voicePackage").visible && uxFind(root, "voiceDownload").visible && !hasSettingsPending("settings-model-download"))
+  uxFind(root, "voiceDownload").clicked()
+  const confirm = uxFind(root, "voiceDownloadConfirm")
+  check("download asks first and names the sources", confirm.visible && !hasSettingsPending("settings-model-download"))
+  confirm.clicked()
+  check("confirmed download starts once", hasSettingsPending("settings-model-download"))
+  check("the option to learn voices is there and off", uxFind(root, "settingsVoices") && !uxFind(root, "settingsVoices").checked)
+  const remove = uxFind(root, "voiceDelete-00000000-0000-4000-8000-000000000001")
+  check("known voices are listed", !!remove && (settingsDialog.voices.people || []).length === 2 && !uxFind(root, "voicesEmpty").visible)
+  remove.clicked()
+  check("deleting a voice asks for confirmation first", remove.text === "Confirmar" && !hasSettingsPending("settings-voices-delete"))
+  remove.clicked()
+  check("confirmed deletion sends one request", hasSettingsPending("settings-voices-delete"))
+  console.log("UX_ASSERTIONS "+JSON.stringify(a))
+ } }
+ Timer { interval: 2100; running: true; repeat: false; onTriggered: {
+  console.log("UX_ASSERTIONS "+JSON.stringify([{name:"the list follows the deletion and says what happened",pass:(settingsDialog.voices.people||[]).length === 1 && settingsNotice.indexOf("Voz apagada") === 0}]))
+ } }
+''', 2500),
     'flow': ('''
  Timer { interval: 1000; running: true; repeat: false; onTriggered: {
   const a=[]; function check(name,pass){a.push({name:name,pass:!!pass})}
-  check("speakers tab open with three speakers", tabs.currentIndex === 2 && speakerRows.length === 3)
+  check("speakers tab open with four speakers", tabs.currentIndex === 2 && speakerRows.length === 4)
   const mic = uxFind(window.contentItem, "speakerSuggestion-S01-microphone")
   check("owner suggestion names the source and share", mic && mic.visible && mic.text.indexOf("Caio Barbieri") >= 0 && mic.text.indexOf("97%") >= 0 && mic.text.indexOf("microfone") >= 0)
   const quoted = uxFind(window.contentItem, "speakerSuggestion-S02-conversation")
   check("conversation suggestion shows its quote", quoted && quoted.visible && quoted.text.indexOf("Ana") >= 0 && quoted.text.indexOf("aqui é a Ana") >= 0)
-  check("no suggestion row for a speaker without one", !uxFind(window.contentItem, "speakerSuggestion-S03-microphone") && !uxFind(window.contentItem, "speakerSuggestion-S03-conversation"))
-  check("apply offers exactly the unnamed speakers with one name", applicableSuggestions().length === 2)
+  const voice = uxFind(window.contentItem, "speakerSuggestion-S03-voice")
+  check("voice suggestion names the known person and the similarity", voice && voice.visible && voice.text.indexOf("Bruno Lima") >= 0 && voice.text.indexOf("81%") >= 0 && voice.text.indexOf("voz") >= 0)
+  check("no suggestion row for a speaker without one", ["microphone","conversation","voice"].every(function(source){return !uxFind(window.contentItem, "speakerSuggestion-S04-" + source)}))
+  check("apply offers exactly the unnamed speakers with one name", applicableSuggestions().length === 3)
   check("suggestions are not applied by themselves", !hasPending("revision-save") && speakerRows[0].label === "Falante 1")
   const use = uxFind(window.contentItem, "speakerUseSuggestion-S02-conversation")
   use.clicked()
@@ -119,9 +162,9 @@ MODES = {
   check("request dialog opens without consent", speakerSuggestDialog.visible && !consent.checked)
   check("destination shown before sending", consent.text.indexOf("OpenAI") >= 0 && consent.text.indexOf("gpt-6-luna") >= 0 && consent.text.indexOf("provedor externo") >= 0)
   const run = uxFind(speakerSuggestDialog.contentItem.parent, "speakerSuggestRun") || uxFind(speakerSuggestDialog.footer, "speakerSuggestRun")
-  check("without consent only the local microphone runs", run && run.text === "Analisar microfone")
+  check("without consent only local analysis runs (microphone and voices)", run && run.text === "Analisar microfone e vozes" && uxFind(speakerSuggestDialog.contentItem, "speakerSuggestVoices").visible)
   consent.checked = true
-  check("consent changes the action", run.text === "Analisar microfone e conversa")
+  check("consent changes the action", run.text === "Analisar microfone, vozes e conversa")
   run.clicked()
   check("request sent and dialog closed", hasPending("speakers-suggest") && !speakerSuggestDialog.visible)
   console.log("UX_ASSERTIONS "+JSON.stringify(a))
@@ -164,7 +207,7 @@ with tempfile.TemporaryDirectory(dir='/tmp', prefix='falatrace-speakers-fixture-
                'RECORDING_DESKTOP_SOFTWARE_SMOKE': '1', 'RECORDING_DESKTOP_SMOKE_KEY': 'synthetic-speakers', 'RECORDING_DESKTOP_DIARIZATION_SMOKE': '1',
                'RECORDING_DESKTOP_SNAPSHOT': str(image), 'RECORDING_DESKTOP_SNAPSHOT_MS': str(delay),
                'FALATRACE_TEST_MODE': mode, 'FALATRACE_REQUEST_LOG': str(log), 'FALATRACE_DETAIL': json.dumps(DETAIL),
-               'FALATRACE_SYNTHETIC_MEDIA': str(media)}
+               'FALATRACE_SYNTHETIC_MEDIA': str(media), 'FALATRACE_PEOPLE': json.dumps(PEOPLE)}
         runpy.run_path(str(repo / 'scripts/qa-run.py'))['require_isolated'](env)
         result = subprocess.run([*command, str(qml), str(stub)], env=env, capture_output=True, text=True, timeout=60)
         (out / f'speakers-{mode}.stderr').write_text(result.stderr)
@@ -184,9 +227,17 @@ checks.append({'name': 'apply sends the two suggested names in one revision boun
                'pass': len(saves) == 1 and saves[0]['key'] == JOB and saves[0]['payload'] == {
                    'expectedRevision': 0, 'base': BASE, 'operations': [
                        {'kind': 'speaker-label', 'speakerId': 'S01', 'label': 'Caio Barbieri'},
-                       {'kind': 'speaker-label', 'speakerId': 'S02', 'label': 'Ana'}]}})
+                       {'kind': 'speaker-label', 'speakerId': 'S02', 'label': 'Ana'},
+                       {'kind': 'speaker-label', 'speakerId': 'S03', 'label': 'Bruno Lima'}]}})
 checks.append({'name': 'the conversation request carries consent bound to the destination shown',
                'pass': len(suggests) == 1 and suggests[0]['key'] == JOB and suggests[0]['payload'] == {'conversation': True, 'consent': True, 'consentKey': CONSENT_KEY}})
+voices = requests['voices']
+checks.append({'name': 'the voice download carries consent and the voice package id',
+               'pass': [request['payload'] for request in voices if request['op'] == 'settings-model-download'] == [{'kind': 'voice', 'model': 'eres2net-base', 'consent': True}]})
+checks.append({'name': 'deleting a voice names exactly that person',
+               'pass': [request['payload'] for request in voices if request['op'] == 'settings-voices-delete'] == [{'personId': '00000000-0000-4000-8000-000000000001'}]})
+checks.append({'name': 'opening the voice settings only reads',
+               'pass': all(request['op'] not in ('settings-model-download', 'settings-voices-delete', 'settings-save') for request in requests['settings'])})
 checks.append({'name': 'viewing the tab or the dialog sends no revision and no suggestion request',
                'pass': all(request['op'] not in ('revision-save', 'speakers-suggest') for mode in ('tab', 'dialog', 'english') for request in requests[mode])})
 failed = [check for check in checks if not check['pass']]

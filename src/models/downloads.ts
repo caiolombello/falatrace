@@ -47,7 +47,7 @@ export const findWhisperModel = (id: unknown): WhisperModel => {
 export const modelStateDir = (): string =>
   join(process.env.XDG_STATE_HOME || join(homedir(), ".local", "state"), "recording-cli", "models");
 
-export type DownloadKind = "whisper" | "ollama";
+export type DownloadKind = "whisper" | "ollama" | "voice";
 /** The file a SHA-256 check accepted; a file with another identity has to be checked again. */
 /** What a later check compares against. ctime moves on any rewrite, even one that puts mtime back. */
 export type VerifiedFile = { size: number; mtimeMs: number; ctimeMs: number; ino: number };

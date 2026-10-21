@@ -52,6 +52,7 @@ type PartialConfig = Omit<
   | "transcription"
   | "summary"
   | "calendar"
+  | "speakers"
   | "callDetection"
   | "timesheet"
   | "aiContext"
@@ -73,6 +74,7 @@ type PartialConfig = Omit<
   };
   summary?: Partial<AppConfig["summary"]>;
   calendar?: Partial<AppConfig["calendar"]>;
+  speakers?: Partial<AppConfig["speakers"]>;
   callDetection?: Omit<Partial<AppConfig["callDetection"]>, "apps"> & {
     apps?: Partial<AppConfig["callDetection"]["apps"]>;
   };
@@ -133,6 +135,7 @@ export const mergeConfig = (base: AppConfig, override: PartialConfig): AppConfig
   },
   summary: { ...base.summary, ...override.summary },
   calendar: { ...base.calendar, ...override.calendar },
+  speakers: { ...base.speakers, ...override.speakers },
   callDetection: {
     ...base.callDetection,
     ...override.callDetection,
@@ -227,6 +230,9 @@ export const validateConfig = (config: AppConfig): void => {
   }
   if (typeof config.calendar.enabled !== "boolean") {
     throw new Error("calendar.enabled must be a boolean");
+  }
+  if (typeof config.speakers.voices !== "boolean") {
+    throw new Error("speakers.voices must be a boolean");
   }
   if (config.remote.host.startsWith("-") || !/^[A-Za-z0-9._:-]+$/.test(config.remote.host)) {
     throw new Error("remote.host contains unsupported characters");

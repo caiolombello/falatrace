@@ -63,6 +63,21 @@ diarizer's default label and a single suggested name. Undo works as for any edit
   owner's name is never attributed to another speaker. A name said in a meeting
   can still belong to someone else, so check before applying.
 
+- **Known voices (local, off by default).** With `speakers.voices` on and voice
+  recognition downloaded from Models, each diarized speaker gets a 512-number
+  signature computed on this computer from its longest turns that no one else
+  overlaps: the owner from the microphone track, the others from the computer
+  track, otherwise the mix. When a revision names a speaker, that signature joins
+  the person with that name; renaming or undoing the name moves or removes it,
+  and a person with no signature left is forgotten. In other recordings the
+  closest confirmed sample of each person is compared (cosine similarity at least
+  0.55 and 0.12 ahead of the next person) and shown as "voz · N% de semelhança".
+  Samples a recording taught are never used to recognize that same recording.
+  Signatures live in `$XDG_DATA_HOME/recording-cli/voices/profiles.json` (0600),
+  never audio; **Models › Vozes conhecidas** and `falatrace voices list|delete`
+  remove a person or everyone. A voice that identifies someone is biometric data
+  under the LGPD: tell people, and delete the voice of anyone who asks.
+
 Suggestions are stored privately beside the diarization
 (`$XDG_DATA_HOME/recording-cli/diarization/<id>.speakers.json`, mode 0600) and
 bind to the exact diarization file: a new diarization makes them stale. CLI:

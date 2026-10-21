@@ -112,6 +112,10 @@ export type AppConfig = {
   calendar: {
     enabled: boolean;
   };
+  speakers: {
+    /** Recognize known voices locally and learn from names a person confirms; needs the voice model. */
+    voices: boolean;
+  };
   callDetection: {
     enabled: boolean;
     mode: CallDetectionMode;
@@ -239,6 +243,9 @@ export const DEFAULT_CONFIG: AppConfig = {
   },
   calendar: {
     enabled: false
+  },
+  speakers: {
+    voices: false
   },
   callDetection: {
     enabled: false,

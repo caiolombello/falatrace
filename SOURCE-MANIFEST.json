@@ -20,8 +20,8 @@
     },
     {
       "path": "CHANGELOG.md",
-      "sha256": "4117d1732adb982084d86646f7023b3c5d1b98e3c31f443a1c68a4ee885523b7",
-      "bytes": 18216
+      "sha256": "9e850e6c3dfc0dead0aada7c28920215ba1b3666946636621a52bf1cf49c7fb6",
+      "bytes": 19302
     },
     {
       "path": "LICENSE",
@@ -45,8 +45,8 @@
     },
     {
       "path": "THIRD-PARTY-NOTICES.md",
-      "sha256": "a3220ad5814d66f156b595ca0567d4fc56e73a7c4390c80da55a5d18ed2f36e8",
-      "bytes": 53532
+      "sha256": "f710138ec0504ec6c2635234ebcec85f313b3a2c639793d32c90f1d66ad9113f",
+      "bytes": 54197
     },
     {
       "path": "__tests__/alpha6-blockers.test.ts",
@@ -70,8 +70,8 @@
     },
     {
       "path": "biome.json",
-      "sha256": "8601863ce96d68a4bd3848449cb8c74c6bafe5d4c2ec7751bd8821390a4e8217",
-      "bytes": 1732
+      "sha256": "afbe45274a99ed2499e3832204ff6f9669516a6e6d565c9de3719b9e3e18292e",
+      "bytes": 1941
     },
     {
       "path": "branding/README.md",
@@ -205,13 +205,13 @@
     },
     {
       "path": "docs/CONFIGURATION.md",
-      "sha256": "054272c22759573d7097a699ac3df9f389e27cffd4ef583d1f3f987f9b7139b5",
-      "bytes": 14818
+      "sha256": "46e3cb16787ecc0077ecba0cf3ffa284a9e3eb6f806a7e81c1d197227e686835",
+      "bytes": 15916
     },
     {
       "path": "docs/HUMAN-REVIEW-EXPORT.md",
-      "sha256": "ac20af04a9001fd18e1dfc3d03896d04bde8a59b4be4174128d87bc89b68e53e",
-      "bytes": 9548
+      "sha256": "543af957c844900e6965db97b44c0e607a972d480c7734596e45159dde9423a5",
+      "bytes": 10659
     },
     {
       "path": "docs/LOCAL-AGENT-RETRIEVAL-CONTRACT.md",
@@ -250,8 +250,8 @@
     },
     {
       "path": "docs/ROADMAP.md",
-      "sha256": "19a74cd48e3427b5e140e6c81750455c45d594597d910b5549b70e40d9bcc425",
-      "bytes": 16909
+      "sha256": "8b79a7fc45aa5e74456ecddca0aa0d21e09ebe333fc55561b65289580fe7dd99",
+      "bytes": 17013
     },
     {
       "path": "docs/TIMESHEETS.md",
@@ -515,8 +515,8 @@
     },
     {
       "path": "scripts/test-speakers-ux.py",
-      "sha256": "e389decb95979110b5eec16ea76c8b50ed702e50dbe11c7c3290aa207e3a74d6",
-      "bytes": 14073
+      "sha256": "f8a188ba16360190adcc89e92fcb59fe8f6f8c47d9d73d8631ba076e35406969",
+      "bytes": 18978
     },
     {
       "path": "scripts/test-studio-journeys.sh",
@@ -845,8 +845,8 @@
     },
     {
       "path": "src/cli/index.ts",
-      "sha256": "896443b2bbaea0d647c350a9ed720a40634ebee26448f3877ba466a5d00f625e",
-      "bytes": 63063
+      "sha256": "544e42ec54335eb17131445e6875c89887ac0d9acd922a2bb9c4b9a200e3742c",
+      "bytes": 64311
     },
     {
       "path": "src/cli/keys.ts",
@@ -855,13 +855,13 @@
     },
     {
       "path": "src/cli/models.ts",
-      "sha256": "91920649632a90c2748ee5bea4ddd01655166f45a989dd653caf73f933e88335",
-      "bytes": 4555
+      "sha256": "2aa54cfd85cd0a10e9e290d5e921d67d2949aefc986e0c849de197a8c977f3c6",
+      "bytes": 6481
     },
     {
       "path": "src/cli/review-export.ts",
-      "sha256": "fd18b617f8fba76ed9f105f0d96fa815934c418f22e83cfdd84314de6748c6f1",
-      "bytes": 4645
+      "sha256": "87a2b5b8554ee342c8e7c15b96cd4b1922dce9fe3928f4f9916e31465e510674",
+      "bytes": 4777
     },
     {
       "path": "src/cli/reviewed-snapshots.ts",
@@ -920,13 +920,13 @@
     },
     {
       "path": "src/config/defaults.ts",
-      "sha256": "975d6b01c457bd740f728684075925e122bf65ce92deff3c1c0872d79f8dd069",
-      "bytes": 6551
+      "sha256": "6fbe0a502c943f5aac45d2f960a5383fc5b31e2a2195064a387648a64ea804a7",
+      "bytes": 6733
     },
     {
       "path": "src/config/load.ts",
-      "sha256": "96a35d910e51fa7d4439fe2dac1b0a715a25df2266e180c8e52faa9cba009726",
-      "bytes": 17189
+      "sha256": "a1cfcbcd19fb24618de2aa84980edc199e539b3441c8eb4a2cba9efbd454ce0f",
+      "bytes": 17420
     },
     {
       "path": "src/config/onboarding.ts",
@@ -940,8 +940,8 @@
     },
     {
       "path": "src/config/settings.ts",
-      "sha256": "d0416cafb03e9f137b7c91bfa7bc845a224c8370871f80b9e50e35dd55a0699a",
-      "bytes": 24779
+      "sha256": "f56776c7fc499b7845150544463ef8db1a71b3722a64a332b27935a29a8c41a2",
+      "bytes": 24806
     },
     {
       "path": "src/config/setup-checks.ts",
@@ -1030,8 +1030,8 @@
     },
     {
       "path": "src/desktop/Main.qml",
-      "sha256": "4ef0bde44ff8d6fac8cef869e029af4169c92edeac18c98a76b9e30f7d5cb947",
-      "bytes": 157679
+      "sha256": "2c39cfaccc1762c6715d30063647cfd10332c787542755fb5e7b40ba46bdda2f",
+      "bytes": 157989
     },
     {
       "path": "src/desktop/OnboardingDialog.qml",
@@ -1075,8 +1075,8 @@
     },
     {
       "path": "src/desktop/SettingsDialog.qml",
-      "sha256": "bc8688d9321e60c9fd1cf489c3a53b0412352ea46ea6c9ae7dda66e090e0c458",
-      "bytes": 70245
+      "sha256": "071807049fdff95346a578492d255f0c7b035c73708b17227a41f025e9842b09",
+      "bytes": 77032
     },
     {
       "path": "src/desktop/SettingsHint.qml",
@@ -1110,8 +1110,8 @@
     },
     {
       "path": "src/desktop/SpeakerSuggestDialog.qml",
-      "sha256": "f1d81a3df923bd594fb43440e69fd8971d61dbc624cc147fa9a2d88aae703050",
-      "bytes": 4169
+      "sha256": "99843d74a2e766d04c44ac40b4e002e30fbe2bc29089f9879ab92482b6af3e5b",
+      "bytes": 4595
     },
     {
       "path": "src/desktop/SummaryDialog.qml",
@@ -1155,8 +1155,8 @@
     },
     {
       "path": "src/desktop/__tests__/model-bridge.test.ts",
-      "sha256": "07c810508603232e29f7e06afe7afc44d5bd103f560abb4b74ff426e1d52e617",
-      "bytes": 13906
+      "sha256": "6e795dbda31a5a2be3810be680fead3e9c00dd833eae5b500c11a00fc3f6d13e",
+      "bytes": 15483
     },
     {
       "path": "src/desktop/__tests__/playback.test.ts",
@@ -1170,8 +1170,8 @@
     },
     {
       "path": "src/desktop/__tests__/speakers-bridge.test.ts",
-      "sha256": "577741ba7d3cdf150663a1463d7c600d4c6adf5f2ef0dccbfff8be6b8d3244f5",
-      "bytes": 7416
+      "sha256": "3366ba90aaa927ea69b8e54cc0ace611836d2a13f6fafecf190225c6d6c02ccb",
+      "bytes": 9705
     },
     {
       "path": "src/desktop/__tests__/studio-summary-bridge.test.ts",
@@ -1185,8 +1185,8 @@
     },
     {
       "path": "src/desktop/bridge.ts",
-      "sha256": "0e3c4b0a5cd1db0ef933d399fc304dc42a47ebf226f7d1ff33dbf3e436eb92dd",
-      "bytes": 57079
+      "sha256": "62a7e0fd609979411698dfd1eb419f95b74ce70f707328171b4bb45a7a6e6ae6",
+      "bytes": 57979
     },
     {
       "path": "src/desktop/diarization-view.test.ts",
@@ -1195,8 +1195,8 @@
     },
     {
       "path": "src/desktop/i18n.js",
-      "sha256": "aad328251cbbd596b211c511d4d43542fd9245da3c35750672d0d2b2a60da4f8",
-      "bytes": 148892
+      "sha256": "53156f669917813750910a9bfdcb35b5c132888be878561d65dc3cdd370b16e9",
+      "bytes": 153821
     },
     {
       "path": "src/desktop/install.ts",
@@ -1220,8 +1220,8 @@
     },
     {
       "path": "src/desktop/model-bridge.ts",
-      "sha256": "5ae6bc3505790179176fefd58eb9baf6bf8eb502b9f5ced6312c3fc30af67578",
-      "bytes": 7659
+      "sha256": "2764e6f9df0b95d0638444334f208288400e79d237cc578c265f5888a6f17228",
+      "bytes": 8588
     },
     {
       "path": "src/desktop/playback.ts",
@@ -1255,8 +1255,8 @@
     },
     {
       "path": "src/desktop/settings-bridge.ts",
-      "sha256": "e3197358f596543d6b3b4e8d7e72e2de8fafbbccaadc3d004b28aedfd0653f9c",
-      "bytes": 23997
+      "sha256": "f35a75ba65816e7affe6766e6cce9bf1e80840a79b775c156b659d3fdd24d4bd",
+      "bytes": 24695
     },
     {
       "path": "src/desktop/setup.ts",
@@ -1300,8 +1300,8 @@
     },
     {
       "path": "src/diarization/service.ts",
-      "sha256": "5fe34d625444bbda2905dc18aca7801f2e2fe4733386575bd12a772ad90f0c9a",
-      "bytes": 11441
+      "sha256": "415f2fb3d18a90eee38d00ae2a4f07c67068b93a74929552b4e4ddba41d29816",
+      "bytes": 11694
     },
     {
       "path": "src/diarization/store.ts",
@@ -1544,9 +1544,19 @@
       "bytes": 12202
     },
     {
+      "path": "src/models/__tests__/voice.test.ts",
+      "sha256": "d86884a8ccb23fb2b499dc45781cebe97040c7f649bd96d288c6d19006688824",
+      "bytes": 7204
+    },
+    {
       "path": "src/models/downloads.ts",
-      "sha256": "a8b6b33bfb6af7eec1eefe48a591928f7c47af143771e5dcabe2caa31c154448",
-      "bytes": 13945
+      "sha256": "0b1afe15f3dae5cf6f8d4601e0f426849ea613d99d440be17c5c13baab7dfddd",
+      "bytes": 13955
+    },
+    {
+      "path": "src/models/voice.ts",
+      "sha256": "28dba3740fc679a2df29ac8502c3af9eeed748f7e8f63a249ab73135690cf7a5",
+      "bytes": 12243
     },
     {
       "path": "src/player/__tests__/launcher.test.ts",
@@ -1894,14 +1904,19 @@
       "bytes": 11940
     },
     {
+      "path": "src/speakers/__tests__/voices.test.ts",
+      "sha256": "d2251816c1b7e5583ba8eb875cbc1569da6a120af9e7d265f96b58ffac7c5b76",
+      "bytes": 18182
+    },
+    {
       "path": "src/speakers/conversation.ts",
       "sha256": "f2061d453664064bc23042450031b022800593bda4a3f5e109479aa37391fd42",
       "bytes": 12731
     },
     {
       "path": "src/speakers/messages.ts",
-      "sha256": "2ce619e7f50a4dec0237a83f72ddf8b609ae675c8aa2fe4daef8605cba1fbafb",
-      "bytes": 2692
+      "sha256": "1079b0cf264be8635809889bc6e9b78ee5ccc49452391a393515ea8fc65fbbc4",
+      "bytes": 3197
     },
     {
       "path": "src/speakers/microphone.ts",
@@ -1910,18 +1925,33 @@
     },
     {
       "path": "src/speakers/record.ts",
-      "sha256": "98c801ddbca480fd104590ff602d737c053aab04b5ce57c613973ae9813db3b5",
-      "bytes": 5550
+      "sha256": "9b5c33f3938c09e4503cd6a210c39ea155398a8dd6fbb3e7559de718262c286c",
+      "bytes": 5605
     },
     {
       "path": "src/speakers/service.ts",
-      "sha256": "4e3c89169fb20fc0a8f6c2660a898214666a7dc1c120153c035d1f19a39f529f",
-      "bytes": 14829
+      "sha256": "3d1e8697fa898911d63d32b1ea9ab1ac5d0ba763746b33998288c9f402eca07e",
+      "bytes": 19445
     },
     {
       "path": "src/speakers/store.ts",
-      "sha256": "8a2c2ea9bd3ec4a3721ce9591ae7196d68d7c5ce4db6b00e743e3ea4cde8ed6f",
-      "bytes": 8413
+      "sha256": "9b308fe9e850dbe58ae3c9f43ca803b782e648e030a4e9aed1164481ebe9c789",
+      "bytes": 8873
+    },
+    {
+      "path": "src/speakers/voice-audio.ts",
+      "sha256": "a02e41b1cc951c40f4e4189364d240b2ef0be2a1462305027b228f1c9ea350ec",
+      "bytes": 5884
+    },
+    {
+      "path": "src/speakers/voice-engine.ts",
+      "sha256": "7ac194d284f4ac97ff504b5f264d30859b7639fc69c3d7eb7eaf1b92d34e57e9",
+      "bytes": 3292
+    },
+    {
+      "path": "src/speakers/voices.ts",
+      "sha256": "f58d19ef25c8a7a95643884e1fbce33ddc71dcebb585231de302a8822d639fae",
+      "bytes": 20982
     },
     {
       "path": "src/subtitles/__tests__/aligned.test.ts",
