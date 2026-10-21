@@ -1,5 +1,6 @@
 import { JobStore } from "../jobs/store";
 import { readReviewedView, saveRevision, undoRevision, RevisionConflictError, type RevisionSaveInput, type RevisionUndoInput } from "../revisions";
+import { learnVoicesAfterChange } from "../speakers/voices";
 import { previewExport, saveExport } from "../export";
 
 export const REVIEW_EXPORT_HELP = `Local human review (JSON; no provider calls):
@@ -41,6 +42,7 @@ export const runReviewExportCli = async (args:string[]):Promise<void> => {
     let result:unknown;
     if(request.command==="review") {
       result=request.action==="show"?await readReviewedView(job):request.action==="apply"?await saveRevision(job,request.input as RevisionSaveInput):await undoRevision(job,request.input as RevisionUndoInput);
+      if(request.action!=="show")await learnVoicesAfterChange(job.id);
     } else if(request.action==="preview") {
       result=await previewExport(job,{format:request.format,track:request.track});
       if((result as {available?:boolean}).available===false)process.exitCode=1;

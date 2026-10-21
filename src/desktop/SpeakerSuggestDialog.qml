@@ -14,6 +14,7 @@ FtDialog {
     contentItem:ColumnLayout {
         spacing:10
         Label { objectName:"speakerSuggestMicrophone"; text:t("Microfone: compara, neste computador, a faixa do microfone com a do áudio do computador para indicar quem gravou. Nada sai daqui.");textFormat:Text.PlainText;wrapMode:Text.WordWrap;color:ink;Layout.fillWidth:true }
+        Label { objectName:"speakerSuggestVoices"; visible:!!speakerSuggestions.voice; text:t("Vozes: calcula, neste computador, a assinatura de cada falante e compara com as vozes conhecidas. Nada sai daqui."); textFormat:Text.PlainText; wrapMode:Text.WordWrap; color:ink; Layout.fillWidth:true }
         CheckBox { id:speakerConversationConsent;objectName:"speakerConversationConsent";KeyNavigation.priority:KeyNavigation.BeforeItem;KeyNavigation.backtab:speakerSuggestCancel;KeyNavigation.tab:speakerSuggestCancel
             text:speakerConversationText();enabled:!!(speakerSuggestions.destination&&speakerSuggestions.destination.consentKey);Layout.fillWidth:true
             Accessible.name:t("Consentimento para enviar as falas ao modelo exibido e procurar nomes citados na conversa")
@@ -31,7 +32,7 @@ FtDialog {
         FtButton { id:speakerSuggestCancel;objectName:"speakerSuggestCancel";KeyNavigation.priority:KeyNavigation.BeforeItem;KeyNavigation.backtab:speakerSuggestRun;KeyNavigation.tab:speakerConversationConsent.enabled?speakerConversationConsent:speakerSuggestRun;text:t("Cancelar");onClicked:speakerSuggestDialog.close() }
         Item { Layout.fillWidth:true }
         FtButton { id:speakerSuggestRun;objectName:"speakerSuggestRun";variant:"primary";iconName:"spark";KeyNavigation.priority:KeyNavigation.BeforeItem;KeyNavigation.backtab:speakerConversationConsent.enabled?speakerConversationConsent:speakerSuggestCancel;KeyNavigation.tab:speakerSuggestCancel
-            text:speakerConversationConsent.checked?t("Analisar microfone e conversa"):t("Analisar microfone");enabled:backend.available&&!speakersQueued&&!!diarizationKey()
+            text:speakerConversationConsent.checked?(speakerSuggestions.voice?t("Analisar microfone, vozes e conversa"):t("Analisar microfone e conversa")):(speakerSuggestions.voice?t("Analisar microfone e vozes"):t("Analisar microfone"));enabled:backend.available&&!speakersQueued&&!!diarizationKey()
             onClicked:{requestSpeakerSuggestions(speakerConversationConsent.checked);speakerSuggestDialog.close()} }
       }
     }

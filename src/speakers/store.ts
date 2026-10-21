@@ -24,9 +24,11 @@ export type ConversationRecord = { generatedAt: string; provider: "openai" | "ol
   | { state: "ready"; partial: boolean; sentTurns: number; totalTurns: number; inputBytes: number; suggestions: ConversationSuggestion[] }
   | { state: "failed"; message: string }
 );
+/** Whether computing this recording's voice signatures failed; the signatures live in their own file. */
+export type VoiceStatusRecord = { generatedAt: string; state: "ready" | "failed"; message?: string };
 export type SpeakerSuggestionRecord = {
   version: 1; jobId: string; mediaSha256: string; transcriptSha256: string; diarizationSha256: string;
-  microphone?: MicrophoneRecord; conversation?: ConversationRecord;
+  microphone?: MicrophoneRecord; conversation?: ConversationRecord; voice?: VoiceStatusRecord;
 };
 export type SpeakerSuggestionBinding = Pick<SpeakerSuggestionRecord, "jobId" | "mediaSha256" | "transcriptSha256" | "diarizationSha256">;
 export type SpeakerSuggestionOperation = { version: 1; jobId: string; state: "running" | "failed"; startedAt: string; conversation: boolean; message?: string };
@@ -74,7 +76,9 @@ export const validateSpeakerSuggestionRecord = (value: unknown): SpeakerSuggesti
   validateJobId(record.jobId);
   if (![record.mediaSha256, record.transcriptSha256, record.diarizationSha256].every((hash) => typeof hash === "string" && SHA256.test(hash)) ||
     (record.microphone !== undefined && !validMicrophone(record.microphone)) ||
-    (record.conversation !== undefined && !validConversation(record.conversation))) throw new Error("Sugestões de falantes inválidas");
+    (record.conversation !== undefined && !validConversation(record.conversation)) ||
+    (record.voice !== undefined && (!record.voice || !date(record.voice.generatedAt) || !["ready", "failed"].includes(record.voice.state) ||
+      (record.voice.message !== undefined && !text(record.voice.message, 500))))) throw new Error("Sugestões de falantes inválidas");
   return record;
 };
 

@@ -3,12 +3,16 @@ import {
   DownloadInProgressError, WHISPER_MODELS, downloadWhisperModel, findWhisperModel, isVerifiedWhisperModel, pullOllamaModel,
   whisperModelsDir, writeDownloadState
 } from "../models/downloads";
+import { VOICE_PACKAGE, downloadVoicePackage, readVoiceInstallation, voiceDir, voiceDownloadBytes } from "../models/voice";
 
 export const MODELS_HELP = `Models (explicit downloads only):
   models list                    Whisper models with size, SHA-256 and install state
   models download <id>           Download and verify one Whisper model (see models list)
   models ollama-pull <model> [--url <loopback URL>]
                                  Ask the local Ollama server to pull a model
+  models voice-download ${VOICE_PACKAGE.id}
+                                 Download and verify local voice recognition (sherpa-onnx
+                                 runtime from npm and the ERes2Net model, about 48 MiB)
 `;
 
 const formatBytes = (bytes: number): string => `${(bytes / 1024 / 1024).toFixed(0)} MiB`;
@@ -22,7 +26,33 @@ export const runModelsCli = async (args: string[]): Promise<void> => {
       const installed = await isVerifiedWhisperModel(model, join(directory, model.file));
       return { id: model.id, file: model.file, size: formatBytes(model.bytes), sha256: model.sha256, installed, recommended: !!model.recommended };
     }));
-    console.log(JSON.stringify({ directory, models }, null, 2));
+    const voice = { id: VOICE_PACKAGE.id, directory: voiceDir(), size: formatBytes(voiceDownloadBytes()), installed: !!await readVoiceInstallation() };
+    console.log(JSON.stringify({ directory, models, voice }, null, 2));
+    return;
+  }
+  if (subcommand === "voice-download") {
+    if (target !== VOICE_PACKAGE.id) throw new Error(`Use: models voice-download ${VOICE_PACKAGE.id}`);
+    const total = voiceDownloadBytes();
+    const controller = new AbortController();
+    const stop = () => controller.abort();
+    process.once("SIGTERM", stop);
+    process.once("SIGINT", stop);
+    try {
+      const installation = await downloadVoicePackage({
+        fetch, signal: controller.signal,
+        onProgress: (received) => writeDownloadState({ kind: "voice", id: VOICE_PACKAGE.id, state: "running", receivedBytes: received, totalBytes: total })
+      });
+      await writeDownloadState({ kind: "voice", id: VOICE_PACKAGE.id, state: "completed", receivedBytes: total, totalBytes: total, path: installation.modelPath });
+      console.log(JSON.stringify({ id: VOICE_PACKAGE.id, path: installation.modelPath, verified: true }));
+    } catch (error) {
+      if (error instanceof DownloadInProgressError) throw error;
+      const message = controller.signal.aborted ? "Download cancelado." : (error instanceof Error ? error.message : String(error)).slice(0, 300);
+      await writeDownloadState({ kind: "voice", id: VOICE_PACKAGE.id, state: "failed", receivedBytes: 0, totalBytes: total, error: message });
+      throw error;
+    } finally {
+      process.off("SIGTERM", stop);
+      process.off("SIGINT", stop);
+    }
     return;
   }
   if (subcommand === "download") {
@@ -83,5 +113,5 @@ export const runModelsCli = async (args: string[]): Promise<void> => {
     }
     return;
   }
-  throw new Error("Use: models list | models download <id> | models ollama-pull <model>");
+  throw new Error("Use: models list | models download <id> | models ollama-pull <model> | models voice-download <id>");
 };

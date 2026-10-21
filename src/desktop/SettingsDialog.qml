@@ -37,18 +37,22 @@ FtDialog {
     property var downloads: ({})
     property string confirmDownload: ""
     property string confirmRestore: ""
+    // Known voices: names and sample counts only; the signatures never reach the Studio.
+    property var voices: ({ people: [] })
+    property string confirmVoiceDelete: ""
     property string importSummary: ""
     anchors.centerIn:parent; width:Math.min(window.width-48,980); height:Math.min(window.height-48,780); modal:true
     closePolicy:hasSettingsPending("settings-save")||hasSettingsPending("settings-service")?Popup.NoAutoClose:Popup.CloseOnEscape
     onOpened:{settingsError="";settingsNotice="";resetExtras();settingsTabs.currentIndex=settingsFirstRun?0:settingsTabs.currentIndex;loadSettings(true);settingsTabs.forceActiveFocus(Qt.TabFocusReason)}
     onClosed:{languagePreview="";settingsGeneration+=1;settingsDraft=({});settingsData=({});settingsDiag=({});settingsFirstRun=false;resetExtras();onboardingButton.forceActiveFocus(Qt.TabFocusReason)}
 
-    function resetExtras() { keyTests=({}); remoteCheck=null; obsCheck=null; audioTest=null; confirmDownload=""; confirmRestore=""; importSummary="" }
+    function resetExtras() { keyTests=({}); remoteCheck=null; obsCheck=null; audioTest=null; confirmDownload=""; confirmRestore=""; importSummary=""; confirmVoiceDelete="" }
     function draft(field) { return settingsDraft[field] }
     function goToSection(index) { settingsTabs.currentIndex = index; sectionLoaded(index) }
     function sectionLoaded(index) {
         if (!backend.available) return
         if (index === 4 && !hasSettingsPending("settings-model-catalog")) requestCatalog()
+        if (index === 4 && !hasSettingsPending("settings-voices-list")) send("settings-voices-list", "")
         if (index === 9 && !hasSettingsPending("settings-backups")) send("settings-backups", "")
     }
     function choosePath(mode, title, start, done) { if (pickerLoader.item) pickerLoader.item.open(mode, title, start, done) }
@@ -94,6 +98,11 @@ FtDialog {
         if (!state || !state.totalBytes) return state && state.state === "running" ? t("Baixando…") : ""
         return Math.floor(100 * state.receivedBytes / state.totalBytes) + t("% de ") + mib(state.totalBytes)
     }
+    function deleteVoice(target) {
+        confirmVoiceDelete = ""; settingsError = ""; settingsNotice = ""
+        send("settings-voices-delete", "", target === "all" ? { all: true } : { personId: target })
+    }
+    function voiceId() { return catalog.voice ? catalog.voice.id : "" }
     function mib(bytes) { return bytes >= 1024 * 1024 * 1024 ? (bytes / 1024 / 1024 / 1024).toFixed(1) + t(" GiB") : Math.round(bytes / 1024 / 1024) + t(" MiB") }
 
     // Presets and derived labels
@@ -199,6 +208,7 @@ FtDialog {
             next[downloadKey(result.kind, result.id)] = result
             downloads = next
             if (result.state === "completed" || result.state === "failed") requestCatalog()
+            if (result.state === "completed" && result.kind === "voice") settingsNotice = t("Reconhecimento de voz instalado e conferido. Ligue a opção abaixo e salve para usá-lo.")
             if (result.state === "completed" && result.kind === "whisper" && result.path) {
                 // Only local transcription takes the new model at once; with an external provider the audio
                 // would still go there, so "Usar este modelo" switches both.
@@ -207,6 +217,10 @@ FtDialog {
                     settingsNotice = t("Modelo baixado e conferido. Salve para usá-lo na transcrição.")
                 } else settingsNotice = t("Modelo baixado e conferido. Para transcrever neste computador com ele, use “Usar este modelo” e salve.")
             }
+        } else if (request.op === "settings-voices-list" || request.op === "settings-voices-delete") {
+            if (!message.ok) { settingsError = message.error; return }
+            voices = result
+            if (request.op === "settings-voices-delete") settingsNotice = result.removed ? t("Voz apagada com tudo o que foi aprendido dela.") : t("Essa voz já não estava salva.")
         } else if (request.op === "settings-model-cancel") {
             // The pending entry holds no payload: poll the model the bridge reports as cancelled.
             if (!message.ok) { settingsError = message.error; return }
@@ -453,6 +467,46 @@ FtDialog {
            }
           }
           FtButton { text:t("Atualizar lista"); iconName:"refresh"; variant:"outline"; compact:true; enabled:backend.available&&!hasSettingsPending("settings-model-catalog"); onClicked:settingsDialog.requestCatalog() }
+          SettingsSection { text:t("Reconhecimento de voz") }
+          SettingsHint { text:t("Assinatura de voz calculada neste computador com o sherpa-onnx e o modelo ERes2Net do 3D-Speaker (Apache-2.0). O download vem do npm e do GitHub e é conferido pelo tamanho e pelo SHA-256.") + (settingsDialog.catalog.voice ? t(" Pasta: ") + settingsDialog.catalog.voice.directory : "") }
+          SettingsHint { visible:!!settingsDialog.catalog.voice&&!settingsDialog.catalog.voice.supported; color:warningColor; text:t("O reconhecimento de voz está disponível só em Linux x86-64 nesta versão.") }
+          ColumnLayout { objectName:"voicePackage"; visible:!!settingsDialog.catalog.voice&&settingsDialog.catalog.voice.supported; Layout.fillWidth:true; spacing:6
+            readonly property var download: settingsDialog.downloads[settingsDialog.downloadKey("voice", settingsDialog.voiceId())]
+            readonly property bool installed: !!settingsDialog.catalog.voice&&settingsDialog.catalog.voice.installed
+            RowLayout { Layout.fillWidth:true; spacing:8
+              Label { text:t("Reconhecimento de voz local"); color:ink; font.weight:Font.DemiBold }
+              FtChip { visible:parent.parent.installed; text:t("Instalado"); kind:"accent"; iconName:"check" }
+              Item { Layout.fillWidth:true }
+              Label { text:settingsDialog.catalog.voice?settingsDialog.mib(settingsDialog.catalog.voice.bytes):""; color:muted }
+            }
+            RowLayout { Layout.fillWidth:true; spacing:8
+              FtButton { objectName:"voiceDownload"; visible:!parent.parent.installed&&!(parent.parent.download&&parent.parent.download.state==="running"); text:t("Baixar"); compact:true; variant:"outline"; enabled:backend.available; onClicked:settingsDialog.confirmDownload=settingsDialog.downloadKey("voice",settingsDialog.voiceId()) }
+              FtButton { visible:!!(parent.parent.download&&parent.parent.download.state==="running"); text:t("Cancelar"); compact:true; variant:"outline"; onClicked:settingsDialog.cancelDownload("voice",settingsDialog.voiceId()) }
+              StatusLine { visible:!!parent.parent.download; good:!!(parent.parent.download&&parent.parent.download.state!=="failed"); text:!parent.parent.download?"":parent.parent.download.state==="running"?settingsDialog.downloadProgress(parent.parent.download):parent.parent.download.state==="failed"?(t(parent.parent.download.error)||t("O download falhou.")):t("Reconhecimento de voz instalado.") }
+            }
+            ColumnLayout { visible:settingsDialog.confirmDownload===settingsDialog.downloadKey("voice",settingsDialog.voiceId()); Layout.fillWidth:true; spacing:6
+              SettingsHint { color:warningColor; text:t("Baixar ") + (settingsDialog.catalog.voice?settingsDialog.mib(settingsDialog.catalog.voice.bytes):"") + t(" de registry.npmjs.org e github.com para a pasta de modelos? Nenhum dado seu é enviado; o download continua mesmo se você fechar o Studio.") }
+              RowLayout { spacing:8
+                FtButton { objectName:"voiceDownloadConfirm"; text:t("Baixar agora"); compact:true; highlighted:true; onClicked:settingsDialog.startDownload("voice", settingsDialog.voiceId()) }
+                FtButton { text:t("Cancelar"); compact:true; variant:"outline"; onClicked:settingsDialog.confirmDownload="" }
+              }
+            }
+          }
+          SettingsCheck { objectName:"settingsVoices"; field:"speakers.voices"; text:t("Reconhecer vozes conhecidas e aprender com os nomes que eu confirmar") }
+          SettingsHint { text:t("Guarda neste computador só números derivados da voz de quem você nomear, nunca o áudio. Voz usada para identificar alguém é dado biométrico pela LGPD: avise as pessoas e apague a voz de quem pedir.") }
+          SettingsSection { text:t("Vozes conhecidas") }
+          Label { objectName:"voicesEmpty"; visible:!(settingsDialog.voices.people||[]).length; text:t("Nenhuma voz conhecida ainda. Elas são aprendidas quando você confirma o nome de um falante."); color:muted; wrapMode:Text.WordWrap; Layout.fillWidth:true }
+          Repeater { model:settingsDialog.voices.people||[]
+            RowLayout { required property var modelData; Layout.fillWidth:true; spacing:8
+              Label { text:modelData.name; textFormat:Text.PlainText; color:ink; Layout.fillWidth:true; elide:Text.ElideRight }
+              Label { text:tf("%1 amostra(s) de %2 gravação(ões)", modelData.samples, modelData.recordings); color:muted }
+              FtButton { objectName:"voiceDelete-"+modelData.id; text:settingsDialog.confirmVoiceDelete===modelData.id?t("Confirmar"):t("Apagar"); compact:true; variant:settingsDialog.confirmVoiceDelete===modelData.id?"primary":"outline"
+                Accessible.name:tf("Apagar a voz de %1 e tudo o que foi aprendido dela", modelData.name)
+                enabled:backend.available&&!hasSettingsPending("settings-voices-delete"); onClicked:settingsDialog.confirmVoiceDelete===modelData.id?settingsDialog.deleteVoice(modelData.id):settingsDialog.confirmVoiceDelete=modelData.id }
+            }
+          }
+          FtButton { objectName:"voiceDeleteAll"; visible:(settingsDialog.voices.people||[]).length>1; text:settingsDialog.confirmVoiceDelete==="all"?t("Confirmar: apagar todas as vozes"):t("Apagar todas as vozes"); compact:true; variant:settingsDialog.confirmVoiceDelete==="all"?"primary":"outline"
+            enabled:backend.available&&!hasSettingsPending("settings-voices-delete"); onClicked:settingsDialog.confirmVoiceDelete==="all"?settingsDialog.deleteVoice("all"):settingsDialog.confirmVoiceDelete="all" }
         }
 
         // 5 · Integrações

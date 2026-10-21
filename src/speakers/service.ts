@@ -18,8 +18,10 @@ import {
   suggestFromConversation, type ConversationComplete, type ConversationEvidence, type ConversationSpeaker, type ConversationTurn
 } from "./conversation";
 import { buildMicrophoneRecord, readDiarizationContext, type DiarizationContext, type MicrophoneDependencies } from "./record";
-import { SpeakerSuggestionStore, type ConversationRecord, type MicrophoneRecord, type SpeakerSuggestionRecord } from "./store";
+import { SpeakerSuggestionStore, type ConversationRecord, type MicrophoneRecord, type SpeakerSuggestionRecord, type VoiceStatusRecord } from "./store";
 import { SPEAKER_MESSAGES, safeSpeakerMessage } from "./messages";
+import { readVoiceInstallation, type VoiceInstallation } from "../models/voice";
+import { VoiceProfileStore, VoiceRecordStore, computeVoiceRecord, learnVoices, matchVoices, type VoiceComputeDependencies } from "./voices";
 
 const SHA256 = /^[a-f0-9]{64}$/;
 export const speakerSuggestionUnit = (id: string): string => `recording-cli-speakers-${validateJobId(id)}.service`;
@@ -42,6 +44,11 @@ export type SpeakerSuggestionDependencies = {
   complete?: ConversationComplete;
   unitActive?: (id: string) => Promise<boolean>;
   run?: typeof runCommand;
+  /** Voice recognition: the verified installation (null when absent) and the stores it uses. */
+  voiceInstallation?: () => Promise<VoiceInstallation | undefined>;
+  voice?: VoiceComputeDependencies;
+  voiceRecords?: VoiceRecordStore;
+  voiceProfiles?: VoiceProfileStore;
 };
 export type SuggestOptions = { conversation?: boolean; consentKey?: string; signal?: AbortSignal };
 
@@ -54,12 +61,36 @@ const localMediaPath = async (config: AppConfig, job: JobRecord): Promise<string
   return media.path;
 };
 
-const microphoneFor = async (config: AppConfig, job: JobRecord, context: DiarizationContext, store: SpeakerSuggestionStore, dependencies: SpeakerSuggestionDependencies): Promise<MicrophoneRecord> => {
+/** The original media, resolved and hashed at most once per run. */
+const mediaOnce = (config: AppConfig, job: JobRecord, dependencies: SpeakerSuggestionDependencies): (() => Promise<string>) => {
+  let pending: Promise<string> | undefined;
+  return () => (pending ??= (dependencies.mediaPath || localMediaPath)(config, job));
+};
+
+const microphoneFor = async (media: () => Promise<string>, context: DiarizationContext, store: SpeakerSuggestionStore, dependencies: SpeakerSuggestionDependencies): Promise<MicrophoneRecord> => {
   let path: string;
-  try { path = await (dependencies.mediaPath || localMediaPath)(config, job); }
+  try { path = await media(); }
   catch (error) { return { generatedAt: new Date().toISOString(), state: "failed", message: safeSpeakerMessage(error, SPEAKER_MESSAGES.mediaUnavailable) }; }
   await store.diarization.ensureRoot();
   return buildMicrophoneRecord(path, context.result.turns, store.root, dependencies.microphone);
+};
+
+/** Computes this recording's voice signatures once; a failure is recorded, never thrown. */
+const voicesFor = async (
+  config: AppConfig, media: () => Promise<string>, context: DiarizationContext, microphone: MicrophoneRecord | undefined,
+  store: SpeakerSuggestionStore, existing: VoiceStatusRecord | undefined, dependencies: SpeakerSuggestionDependencies
+): Promise<VoiceStatusRecord | undefined> => {
+  if (!config.speakers.voices) return existing;
+  const installation = await (dependencies.voiceInstallation || readVoiceInstallation)();
+  const records = dependencies.voiceRecords || new VoiceRecordStore(store.diarization);
+  if (!installation || await records.read(context.binding)) return existing;
+  try {
+    const record = await computeVoiceRecord(await media(), context, microphone, installation, store.root, dependencies.voice);
+    await records.save(record);
+    return { generatedAt: record.generatedAt, state: "ready" };
+  } catch (error) {
+    return { generatedAt: new Date().toISOString(), state: "failed", message: safeSpeakerMessage(error, SPEAKER_MESSAGES.voiceFailed) };
+  }
 };
 
 const conversationFor = async (
@@ -95,14 +126,18 @@ const suggestOwned = async (config: AppConfig, id: string, options: SuggestOptio
     if (options.conversation && options.consentKey !== undefined && options.consentKey !== destinationKey(conversationDestination(config))) throw new Error(SPEAKER_MESSAGES.destinationChanged);
     await store.writeOperation({ version: 1, jobId: id, state: "running", startedAt, conversation: !!options.conversation });
     const existing = await store.read(context.binding);
-    const microphone = existing?.microphone && existing.microphone.state !== "failed" ? existing.microphone : await microphoneFor(config, job, context, store, dependencies);
+    const media = mediaOnce(config, job, dependencies);
+    const microphone = existing?.microphone && existing.microphone.state !== "failed" ? existing.microphone : await microphoneFor(media, context, store, dependencies);
+    const voice = await voicesFor(config, media, context, microphone, store, existing?.voice, dependencies);
     const conversation = options.conversation ? await conversationFor(config, context, microphone, dependencies, options.signal) : existing?.conversation;
     // The diarization may have been replaced meanwhile; never attach results to a newer one.
     const latest = await readDiarizationContext(job, canonical, store.diarization);
     if (latest?.binding.diarizationSha256 !== context.binding.diarizationSha256) throw new Error(SPEAKER_MESSAGES.interrupted);
-    const record: SpeakerSuggestionRecord = { version: 1, ...context.binding, microphone, ...(conversation ? { conversation } : {}) };
+    const record: SpeakerSuggestionRecord = { version: 1, ...context.binding, microphone, ...(conversation ? { conversation } : {}), ...(voice ? { voice } : {}) };
     await store.save(record);
     await store.clearOperation(id);
+    // Names a person already gave in this recording teach the voices computed just now.
+    await learnVoices(config, job, undefined, { records: dependencies.voiceRecords || new VoiceRecordStore(store.diarization), profiles: dependencies.voiceProfiles }).catch(() => false);
     return record;
   } catch (error) {
     const message = safeSpeakerMessage(error);
@@ -146,16 +181,21 @@ export const queueSpeakerSuggestions = async (
 };
 
 export type SpeakerSuggestionItem = {
-  speakerId: string; source: "microphone" | "conversation"; self: boolean;
+  speakerId: string; source: "microphone" | "conversation" | "voice"; self: boolean;
   /** Absent for the owner when the account has no full name; the Studio shows "Você". */
   name?: string; localShare?: number; evidence?: ConversationEvidence[];
+  /** Voice: similarity with the closest confirmed sample of that person. */
+  score?: number;
 };
+export type VoiceViewState = "not-installed" | "missing" | "empty" | "ready" | "failed";
 export type SpeakerSuggestionView = {
   state: "unavailable" | "idle" | "running" | "ready" | "failed";
   message?: string;
   items: SpeakerSuggestionItem[];
   microphone?: { state: MicrophoneRecord["state"]; message?: string };
   conversation?: { state: ConversationRecord["state"]; message?: string; provider: string; model: string; external: boolean; generatedAt: string; partial?: boolean; sentTurns?: number; totalTurns?: number };
+  /** Present only while voice recognition is on. */
+  voice?: { state: VoiceViewState; message?: string };
   destination: { provider: "openai" | "ollama"; model: string; endpoint: string; external: boolean; consentKey: string };
 };
 
@@ -177,8 +217,28 @@ export const buildSuggestionItems = (record: SpeakerSuggestionRecord): SpeakerSu
   return items.sort((a, b) => a.speakerId.localeCompare(b.speakerId) || a.source.localeCompare(b.source));
 };
 
+type ViewDependencies = Pick<SpeakerSuggestionDependencies, "store" | "unitActive" | "voiceInstallation" | "voiceRecords" | "voiceProfiles">;
+
+/** Matches are computed at read time, so a name confirmed in another recording counts at once. */
+const voiceView = async (
+  config: AppConfig, context: DiarizationContext, record: SpeakerSuggestionRecord | undefined, store: SpeakerSuggestionStore, dependencies: ViewDependencies
+): Promise<{ items: SpeakerSuggestionItem[]; status?: NonNullable<SpeakerSuggestionView["voice"]> }> => {
+  if (!config.speakers.voices) return { items: [] };
+  if (record?.voice?.state === "failed") return { items: [], status: { state: "failed", message: record.voice.message || SPEAKER_MESSAGES.voiceFailed } };
+  if (!await (dependencies.voiceInstallation || readVoiceInstallation)()) return { items: [], status: { state: "not-installed", message: SPEAKER_MESSAGES.voiceNotInstalled } };
+  const voices = await (dependencies.voiceRecords || new VoiceRecordStore(store.diarization)).read(context.binding);
+  if (!voices) return { items: [], status: { state: "missing", message: SPEAKER_MESSAGES.voiceMissing } };
+  const profiles = await (dependencies.voiceProfiles || new VoiceProfileStore()).read().catch(() => undefined);
+  if (!profiles?.people.length) return { items: [], status: { state: "empty", message: SPEAKER_MESSAGES.voiceEmpty } };
+  const matches = matchVoices(voices, profiles);
+  return {
+    items: matches.map((match) => ({ speakerId: match.speakerId, source: "voice" as const, self: false, name: match.name, score: match.score })),
+    status: { state: "ready", ...(matches.length ? {} : { message: SPEAKER_MESSAGES.voiceNoMatch }) }
+  };
+};
+
 export const readSpeakerSuggestionView = async (
-  config: AppConfig, job: JobRecord, canonical: Transcript, dependencies: Pick<SpeakerSuggestionDependencies, "store" | "unitActive"> = {}
+  config: AppConfig, job: JobRecord, canonical: Transcript, dependencies: ViewDependencies = {}
 ): Promise<SpeakerSuggestionView> => {
   const destination = conversationDestination(config);
   const base = { items: [] as SpeakerSuggestionItem[], destination: { ...destination, consentKey: destinationKey(destination) } };
@@ -186,21 +246,26 @@ export const readSpeakerSuggestionView = async (
   const context = await readDiarizationContext(job, canonical, store.diarization);
   if (!context) return { state: "unavailable", ...base };
   const [record, operation] = await Promise.all([store.read(context.binding), store.readOperation(job.id)]);
-  const details = record ? {
-    items: buildSuggestionItems(record),
-    ...(record.microphone ? { microphone: { state: record.microphone.state, ...(microphoneMessage(record.microphone) ? { message: microphoneMessage(record.microphone) } : {}) } } : {}),
-    ...(record.conversation ? { conversation: {
-      state: record.conversation.state, provider: record.conversation.provider, model: record.conversation.model, external: record.conversation.external, generatedAt: record.conversation.generatedAt,
-      ...(record.conversation.state === "failed" ? { message: record.conversation.message } : {
-        partial: record.conversation.partial, sentTurns: record.conversation.sentTurns, totalTurns: record.conversation.totalTurns,
-        ...(record.conversation.suggestions.length ? {} : { message: SPEAKER_MESSAGES.conversationEmpty }) })
+  const voice = await voiceView(config, context, record, store, dependencies);
+  const items = [...(record ? buildSuggestionItems(record) : []), ...voice.items]
+    .sort((a, b) => a.speakerId.localeCompare(b.speakerId) || a.source.localeCompare(b.source));
+  const microphone = record?.microphone, conversation = record?.conversation;
+  const details = {
+    items,
+    ...(voice.status ? { voice: voice.status } : {}),
+    ...(microphone ? { microphone: { state: microphone.state, ...(microphoneMessage(microphone) ? { message: microphoneMessage(microphone) } : {}) } } : {}),
+    ...(conversation ? { conversation: {
+      state: conversation.state, provider: conversation.provider, model: conversation.model, external: conversation.external, generatedAt: conversation.generatedAt,
+      ...(conversation.state === "failed" ? { message: conversation.message } : {
+        partial: conversation.partial, sentTurns: conversation.sentTurns, totalTurns: conversation.totalTurns,
+        ...(conversation.suggestions.length ? {} : { message: SPEAKER_MESSAGES.conversationEmpty }) })
     } } : {})
-  } : {};
+  };
   if (operation?.state === "running") {
     if (await (dependencies.unitActive || unitActive)(job.id)) return { state: "running", message: SPEAKER_MESSAGES.running, ...base, ...details };
     return { state: "failed", message: SPEAKER_MESSAGES.interrupted, ...base, ...details };
   }
   if (operation?.state === "failed") return { state: "failed", message: operation.message || SPEAKER_MESSAGES.failed, ...base, ...details };
-  if (!record) return { state: "idle", ...base };
+  if (!record && !items.length) return { state: "idle", ...base, ...(voice.status ? { voice: voice.status } : {}) };
   return { state: "ready", message: SPEAKER_MESSAGES.ready, ...base, ...details };
 };

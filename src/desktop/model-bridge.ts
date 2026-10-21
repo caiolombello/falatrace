@@ -8,6 +8,7 @@ import {
   WHISPER_MODELS, WHISPER_SOURCE, findWhisperModel, isLoopbackOllama, isVerifiedWhisperModel, readDownloadState,
   validateOllamaModelName, whisperModelsDir, writeDownloadState, type DownloadKind
 } from "../models/downloads";
+import { VOICE_PACKAGE, voiceDir, voiceDownloadBytes, voicePlatformSupported, readVoiceInstallation } from "../models/voice";
 
 /**
  * Studio side of model downloads. Starting one requires explicit consent in the payload;
@@ -58,6 +59,7 @@ export const UNIT_STATE_UNKNOWN = "Não foi possível consultar os serviços do 
 const parseTarget = (payload: Record<string, unknown>): { kind: DownloadKind; id: string } => {
   if (payload.kind === "whisper") return { kind: "whisper", id: findWhisperModel(payload.model).id };
   if (payload.kind === "ollama") return { kind: "ollama", id: validateOllamaModelName(payload.model) };
+  if (payload.kind === "voice" && payload.model === VOICE_PACKAGE.id) return { kind: "voice", id: VOICE_PACKAGE.id };
   throw new Error("Modelo desconhecido.");
 };
 
@@ -80,7 +82,10 @@ export const handleModelOperation = async (
     const installed = loopback ? await deps.ollamaModels(ollamaUrl).catch(() => null) : null;
     return {
       whisper: { directory, source: WHISPER_SOURCE, models: whisper },
-      ollama: { url: ollamaUrl, loopback, reachable: installed !== null, installed: installed || [], configured: config.summary.ollamaModel }
+      ollama: { url: ollamaUrl, loopback, reachable: installed !== null, installed: installed || [], configured: config.summary.ollamaModel },
+      // Voice recognition: the sherpa-onnx runtime from npm and one embedding model from its release.
+      voice: { id: VOICE_PACKAGE.id, bytes: voiceDownloadBytes(), directory: voiceDir(), supported: voicePlatformSupported(),
+        installed: !!await readVoiceInstallation(), sources: [new URL(VOICE_PACKAGE.runtime.url).host, new URL(VOICE_PACKAGE.model.url).host], enabled: config.speakers.voices }
     };
   }
   // Status and cancel need only the model and its unit: a broken configuration never strands a download.
@@ -112,9 +117,11 @@ export const handleModelOperation = async (
   // Without an answer from systemd a second copy of a running download could start.
   if (active === null) throw new Error(UNIT_STATE_UNKNOWN);
   if (active) return { kind: target.kind, id: target.id, state: "running", unit: `${unit}.service` };
-  const total = target.kind === "whisper" ? findWhisperModel(target.id).bytes : null;
+  if (target.kind === "voice" && !voicePlatformSupported()) throw new Error("O reconhecimento de voz está disponível só em Linux x86-64 nesta versão.");
+  const total = target.kind === "whisper" ? findWhisperModel(target.id).bytes : target.kind === "voice" ? voiceDownloadBytes() : null;
   await writeDownloadState({ kind: target.kind, id: target.id, state: "running", receivedBytes: 0, totalBytes: total });
-  const command = target.kind === "whisper" ? ["models", "download", target.id] : ["models", "ollama-pull", target.id, "--url", ollamaUrl];
+  const command = target.kind === "whisper" ? ["models", "download", target.id] : target.kind === "voice" ? ["models", "voice-download", target.id]
+    : ["models", "ollama-pull", target.id, "--url", ollamaUrl];
   try {
     await deps.run("systemd-run", [
       "--user", `--unit=${unit}`, "--collect", "--property=Type=exec", "--property=Nice=10",

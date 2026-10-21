@@ -20,6 +20,7 @@ import { installArchiveTimer, uninstallArchiveTimer } from "../archive/service";
 import { installProtonBackupTimer, uninstallProtonBackupTimer } from "../proton/service";
 import { installCallMonitorService, uninstallCallMonitorService } from "../calls/service";
 import { installTrayService, uninstallTrayService } from "../tray/service";
+import { deleteVoicePeople, listVoicePeople } from "../speakers/voices";
 import {
   MODEL_OPERATIONS, handleModelOperation, defaultModelDeps, type ModelOperation
 } from "./model-bridge";
@@ -29,6 +30,7 @@ export const SETTINGS_OPERATIONS = [
   "settings-secret-set", "settings-secret-remove", "settings-secret-test",
   "settings-remote-check", "settings-obs-check", "settings-audio-test",
   "settings-backups", "settings-restore", "settings-export", "settings-import-read",
+  "settings-voices-list", "settings-voices-delete",
   ...MODEL_OPERATIONS
 ] as const;
 export type SettingsOperation = typeof SETTINGS_OPERATIONS[number];
@@ -127,6 +129,7 @@ export const settingsErrorMessage = (op: string): string =>
                 : op === "settings-backups" || op === "settings-restore" ? "Não foi possível restaurar a cópia escolhida. Nenhuma alteração foi feita."
                   : op === "settings-export" ? "Não foi possível exportar. Confira a pasta escolhida."
                     : op === "settings-import-read" ? "Não foi possível ler o arquivo escolhido. Use uma configuração JSON exportada pelo FalaTrace."
+                      : op.startsWith("settings-voices") ? "Não foi possível ler ou apagar as vozes conhecidas. Nada foi alterado."
                       : op === "settings-model-cancel" ? "Não foi possível cancelar o download; ele pode continuar em segundo plano. Tente de novo."
                         : op.startsWith("settings-model") || op.startsWith("settings-ollama") ? "Não foi possível concluir o download. Nada foi instalado; tente novamente."
                           : "Não foi possível alterar o serviço. Confira se há uma gravação em andamento e o estado do systemd.";
@@ -233,6 +236,11 @@ export const handleSettingsOperation = async (
     return handleModelOperation(op as ModelOperation, payload, defaultModelDeps);
   }
   if (op === "settings-read") return deps.read(deps.configPath(), process.env, { managerEnv: await deps.managerEnv() });
+  if (op === "settings-voices-list" || op === "settings-voices-delete") {
+    // Deleting needs no configuration: turning recognition off never strands what was learned.
+    const removed = op === "settings-voices-delete" ? await deleteVoicePeople(payload.all === true ? { all: true } : { personId: String(payload.personId) }) : undefined;
+    return { people: await listVoicePeople(), ...(removed === undefined ? {} : { removed }) };
+  }
   if (op === "settings-save") {
     const save = async () => deps.save(String(payload.revision || ""), payload.changes, deps.configPath(), undefined, {
       initialize: payload.initialize === true,

@@ -657,6 +657,7 @@ ApplicationWindow {
     function suggestionName(item) { return item.name || (item.self ? t("Você") : "") }
     function suggestionDetail(item) {
         if (item.source === "microphone") return tf("microfone · %1% da fala", Math.round(Number(item.localShare || 0) * 100))
+        if (item.source === "voice") return tf("voz · %1% de semelhança", Math.round(Number(item.score || 0) * 100))
         const quote = item.evidence && item.evidence.length ? item.evidence[0].quote : ""
         return t("conversa") + (quote ? " · “" + quote + "”" : "")
     }
@@ -694,10 +695,12 @@ ApplicationWindow {
     }
     function speakerSuggestionStatus() {
         const state = speakerSuggestions
-        if (!state || state.state === "unavailable" || state.state === "idle") return ""
+        if (!state || state.state === "unavailable") return ""
+        if (state.state === "idle") return state.voice && state.voice.message ? t("Voz: ") + t(state.voice.message) : ""
         const parts = [t(state.message || "")]
         if (state.microphone && state.microphone.message) parts.push(t("Microfone: ") + t(state.microphone.message))
         if (state.conversation && state.conversation.message) parts.push(t("Conversa: ") + t(state.conversation.message))
+        if (state.voice && state.voice.message) parts.push(t("Voz: ") + t(state.voice.message))
         if (state.conversation && state.conversation.partial) parts.push(tf("Conversa: só %1 de %2 falas couberam no envio.", state.conversation.sentTurns, state.conversation.totalTurns))
         return parts.filter(function(part){return !!part}).join(" ")
     }

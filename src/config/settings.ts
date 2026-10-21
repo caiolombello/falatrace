@@ -158,6 +158,7 @@ export const SETTINGS_FIELDS: Record<string, FieldRule> = {
   "aiContext.maxMeetingsPerClient": intBetween(1, 100),
   "aiContext.maxCharactersPerClient": intBetween(8_000, 200_000),
   "calendar.enabled": bool,
+  "speakers.voices": bool,
   "studio.language": oneOf("auto", "pt-BR", "en"),
   // Lifetime visual review limits (always written together with period "lifetime")
   "visualReview.maxInferences": intBetween(1, 1000),

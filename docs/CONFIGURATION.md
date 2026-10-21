@@ -127,6 +127,8 @@ falatrace models ollama-pull qwen3.5:9b
 
 `ollama-pull` uses `summary.ollamaUrl`, or the address after `--url`; either must be an Ollama on this computer. The Studio's Models section lists and pulls into the address in its draft, saved or not.
 
+**Voice recognition** (`eres2net-base`, about 48 MiB) is downloaded only on request, from the Models section or with `falatrace models voice-download eres2net-base`: the sherpa-onnx native runtime from its npm package (`sherpa-onnx-linux-x64` 1.13.8) and the 3D-Speaker ERes2Net speaker-embedding model from the sherpa-onnx release, both Apache-2.0. The archive, each runtime file and the model are checked against pinned sizes and SHA-256 before they are published under `~/.local/share/recording-cli/models/voice/`, and the runtime is loaded only while its files are the ones that check recorded. Linux x86-64 only. It is not a project dependency and is never installed with FalaTrace.
+
 ### Integrations
 
 | Field | Values | Default | Notes |
@@ -170,6 +172,7 @@ falatrace models ollama-pull qwen3.5:9b
 | `aiContext.maxMeetingsPerClient` | 1–100 | 12 | |
 | `aiContext.maxCharactersPerClient` | 8,000–200,000 | 18,000 | |
 | `calendar.enabled` | true, false | false | Reads the GNOME Calendar event title when a recording is queued. |
+| `speakers.voices` | true, false | false | Recognizes known voices and learns from speaker names you confirm. Needs voice recognition from Models. Stores 512-number signatures per person in `~/.local/share/recording-cli/voices/profiles.json` (0600), never audio; a voice that identifies someone is biometric data under the LGPD. Manage or delete them in Models › Known voices or with `falatrace voices`. |
 
 ### Advanced
 

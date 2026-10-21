@@ -37,6 +37,7 @@ import { ArchiveStore } from "../../src/archive/store";
 import { DiarizationStore, type DiarizationResult } from "../../src/diarization/store";
 import { queueSpeakerSuggestions, readSpeakerSuggestionView } from "../speakers/service";
 import { SPEAKER_KNOWN_ERRORS } from "../speakers/messages";
+import { learnVoicesAfterChange } from "../speakers/voices";
 import { nameDiarizationSpeaker, queueDiarization, readCanonicalTranscript, readDiarizationStatus, resultStatus } from "../../src/diarization/service";
 
 import { readOnboarding, saveLocalOnboarding } from "../config/onboarding";
@@ -66,7 +67,7 @@ export const handleRealFrameOperation=async(flow:StudioVisualFlow,request:Reques
 import { setAutomationPaused } from "../calls/control";
 
 const OPERATIONS = ["summary-plan", "summary-run", "summary-cancel","provider-authorize","provider-analyze","provider-cancel","agent-cancel","agent-status","agent-authorize","agent-pause","agent-resume","agent-revoke","agent-frames","agent-connect","recording-process-plan","recording-process","processing-status", "ux-capabilities", "list-cached", "onboarding-read", "onboarding-save-local", ...SETTINGS_OPERATIONS, "frames-check-models", "frames-scope", "frames-plan", "frames-preview-plan", "frames-preview", "frames-confirm", "frames-cancel", "list", "detail", "resolve", "playback-status", "subtitles", "diarization", "automation-pause", "automation-resume", "capture-status", "capture-start", "capture-stop", "capture-recover", "audio-defaults", "jobs-list", "job-process", "job-retry", "diarization-name", "speakers-suggest", "context-meeting", "revision-save", "revision-undo", "export-preview", "export-save"] as const;
-export type Request = { id: number; op: typeof OPERATIONS[number]; key?: string; payload?: {maxRequests?:number;expectedRevision?:number;expectedSnapshotSha256?:string;base?:RevisionBase;expectedBase?:RevisionBase;operations?:RevisionOperation[];format?:"json"|"markdown"|"srt"|"vtt";track?:"transcript"|"diarization";provider?:'openai'|'google';model?:string;analysis?:import('../provider-analysis/contracts').AnalysisOptions;context?:boolean;maxFrames?:number;maxBytes?:number;requestId?:string;grantId?:string;recipientId?:string;data?:Array<'context'|'frames'>;timestamps?:number[]; title?: string; speakerId?: string; label?: string; maxCharacters?: number; query?: string; offset?: number; question?: string; seconds?: number; previewId?: string; consent?: boolean; revision?: string; visionModel?: string; summaryModel?: string; capabilityId?: string; consentKey?: string; planId?:string; consentTranscript?:boolean; scopeId?:string; startSeconds?:number; endSeconds?:number; changes?: Record<string, unknown>; action?: string; audioSource?: string; microphone?: string; desktop?: string; name?: string; value?: string; service?: string; backup?: string; path?: string; kind?: string; ollamaUrl?: string; initialize?: boolean; client?: string; conversation?: boolean } };
+export type Request = { id: number; op: typeof OPERATIONS[number]; key?: string; payload?: {maxRequests?:number;expectedRevision?:number;expectedSnapshotSha256?:string;base?:RevisionBase;expectedBase?:RevisionBase;operations?:RevisionOperation[];format?:"json"|"markdown"|"srt"|"vtt";track?:"transcript"|"diarization";provider?:'openai'|'google';model?:string;analysis?:import('../provider-analysis/contracts').AnalysisOptions;context?:boolean;maxFrames?:number;maxBytes?:number;requestId?:string;grantId?:string;recipientId?:string;data?:Array<'context'|'frames'>;timestamps?:number[]; title?: string; speakerId?: string; label?: string; maxCharacters?: number; query?: string; offset?: number; question?: string; seconds?: number; previewId?: string; consent?: boolean; revision?: string; visionModel?: string; summaryModel?: string; capabilityId?: string; consentKey?: string; planId?:string; consentTranscript?:boolean; scopeId?:string; startSeconds?:number; endSeconds?:number; changes?: Record<string, unknown>; action?: string; audioSource?: string; microphone?: string; desktop?: string; name?: string; value?: string; service?: string; backup?: string; path?: string; kind?: string; ollamaUrl?: string; initialize?: boolean; client?: string; conversation?: boolean; personId?: string; all?: boolean } };
 type Response = { id: number; ok: true; result: unknown } | { id: number; ok: false; error: string };
 const MAX_LINE = 1024 * 1024;
 const UUID = /^[a-f0-9-]{36}$/i;
@@ -338,7 +339,8 @@ const ALLOWED_PAYLOAD: Partial<Record<Request["op"], string[]>> = {
   "settings-model-catalog": ["ollamaUrl"], "settings-model-download": ["kind", "model", "consent", "ollamaUrl"],
   "settings-model-status": ["kind", "model"], "settings-model-cancel": ["kind", "model"],
   "recording-process": ["consent", "consentKey"],
-  "capture-start": ["title"], "diarization-name": ["speakerId", "label"], "speakers-suggest": ["conversation", "consent", "consentKey"], "context-meeting": ["maxCharacters", "query", "offset"]
+  "capture-start": ["title"], "diarization-name": ["speakerId", "label"], "speakers-suggest": ["conversation", "consent", "consentKey"],
+  "settings-voices-list": [], "settings-voices-delete": ["personId", "all"], "context-meeting": ["maxCharacters", "query", "offset"]
 };
 export const parseRequest = (value: unknown): Request => {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("request inválido");
@@ -359,7 +361,7 @@ export const parseRequest = (value: unknown): Request => {
   if (payload.service !== undefined && !["openai", "gemini"].includes(payload.service as string)) throw new Error("payload inválido");
   if (payload.backup !== undefined && (typeof payload.backup !== "string" || !/^[\w.-]{1,200}$/.test(payload.backup))) throw new Error("payload inválido");
   if (payload.path !== undefined && (typeof payload.path !== "string" || !payload.path.startsWith("/") || payload.path.length > 4096 || /[\x00-\x1f\x7f]/.test(payload.path))) throw new Error("payload inválido");
-  if (payload.kind !== undefined && !["whisper", "ollama"].includes(payload.kind as string)) throw new Error("payload inválido");
+  if (payload.kind !== undefined && !["whisper", "ollama", "voice"].includes(payload.kind as string)) throw new Error("payload inválido");
   if (payload.ollamaUrl !== undefined && (typeof payload.ollamaUrl !== "string" || payload.ollamaUrl.length > 200 || /[\x00-\x1f\x7f]/.test(payload.ollamaUrl))) throw new Error("payload inválido");
   if (request.op !== "provider-authorize" && payload.model !== undefined && (typeof payload.model !== "string" || !/^[A-Za-z0-9._:/-]{1,120}$/.test(payload.model))) throw new Error("payload inválido");
   if (payload.initialize !== undefined && typeof payload.initialize !== "boolean") throw new Error("payload inválido");
@@ -402,6 +404,10 @@ export const parseRequest = (value: unknown): Request => {
   if(payload.data!==undefined&&(!Array.isArray(payload.data)||!payload.data.length||payload.data.length>2||payload.data.some(x=>!['context','frames'].includes(x))))throw Error('payload inválido');
   if(payload.timestamps!==undefined&&(!Array.isArray(payload.timestamps)||payload.timestamps.length>6||payload.timestamps.some(x=>typeof x!=='number'||!Number.isFinite(x)||x<0||x>86400)))throw Error('payload inválido');
   if (payload.consent !== undefined && typeof payload.consent !== "boolean") throw new Error("payload inválido");
+  // Deleting voices names exactly one person or everyone.
+  if (payload.personId !== undefined && (typeof payload.personId !== "string" || !UUID.test(payload.personId))) throw new Error("payload inválido");
+  if (payload.all !== undefined && payload.all !== true) throw new Error("payload inválido");
+  if (request.op === "settings-voices-delete" && (payload.personId === undefined) === (payload.all === undefined)) throw new Error("payload inválido");
   // Sending the turns to a model needs consent bound to the destination the Studio showed.
   if (request.op === "speakers-suggest" && (typeof payload.conversation !== "boolean" || (payload.conversation && (payload.consent !== true || typeof payload.consentKey !== "string" || !/^[a-f0-9]{64}$/.test(payload.consentKey))))) throw new Error("payload inválido");
   if ((request.op as string).startsWith("summary-")) {
@@ -570,8 +576,9 @@ const handle = async (request: Request): Promise<unknown> => {
   if(request.op.startsWith("revision-")||request.op.startsWith("export-")) {
     if(!UUID.test(request.key))throw new Error("Informe o id UUID da gravação");
     const job=await new JobStore().get(request.key), p=request.payload!;
-    if(request.op==="revision-save")return saveRevision(job,{expectedRevision:p.expectedRevision!,base:p.base!,operations:p.operations!});
-    if(request.op==="revision-undo")return undoRevision(job,{expectedRevision:p.expectedRevision!,base:p.base!});
+    // Confirmed names teach known voices when that is on; the revision itself never depends on it.
+    if(request.op==="revision-save"){const head=await saveRevision(job,{expectedRevision:p.expectedRevision!,base:p.base!,operations:p.operations!});await learnVoicesAfterChange(job.id);return head;}
+    if(request.op==="revision-undo"){const head=await undoRevision(job,{expectedRevision:p.expectedRevision!,base:p.base!});await learnVoicesAfterChange(job.id);return head;}
     if(request.op==="export-preview")return previewExport(job,{format:p.format!,track:p.track!});
     return saveExport(job,{format:p.format!,track:p.track!,expectedRevision:p.expectedRevision!,expectedBase:p.expectedBase!,expectedSnapshotSha256:p.expectedSnapshotSha256!});
   }
@@ -581,6 +588,7 @@ const handle = async (request: Request): Promise<unknown> => {
     if (!id) throw new Error("A gravação ainda não possui contexto disponível.");
     if (request.op === "diarization-name") {
       await nameDiarizationSpeaker(id, request.payload?.speakerId || "", request.payload?.label || "");
+      await learnVoicesAfterChange(id);
       return { id, saved: true };
     }
     return readMeetingContext((await loadConfig()).config, id, request.payload);

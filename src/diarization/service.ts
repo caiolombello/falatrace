@@ -16,6 +16,7 @@ import { readReviewedView, saveRevision, type RevisionBase, type RevisionHead } 
 import { getServiceLaunchCommand } from "../runtime/launcher";
 import { transientCommand, transientUnitEnvironment } from "../runtime/systemd-units";
 import { recordMicrophoneAfterDiarization } from "../speakers/record";
+import { recordVoicesAfterDiarization } from "../speakers/voices";
 
 export const readCanonicalTranscript = async (job: JobRecord): Promise<Transcript> => {
   if (job.state !== "completed") throw new Error("Aguarde a transcrição terminar antes de identificar os falantes");
@@ -126,6 +127,8 @@ const createDiarizationOwned = async (
     await store.save(result);
     // Local only: compares the microphone and computer tracks to suggest the owner's name.
     await recordMicrophoneAfterDiarization(job, canonical, media.path, after, store);
+    // Only with voice recognition on and installed: signatures of each speaker, computed here.
+    await recordVoicesAfterDiarization(config, job, canonical, media.path, after, store);
     if (ignoredZeroDurationTurns || ignoredEmptyTextTurns) await fs.rename(rawResponsePath, join(store.root, `${id}.provider-response.json`));
     await fs.rm(join(store.root, `${id}.failed-response.json`), { force: true });
     await fs.rm(workDir, { recursive: true, force: true });

@@ -40,6 +40,12 @@
 			"src/speakers/__tests__/conversation.test.ts",
 			"src/speakers/__tests__/microphone.test.ts",
 			"src/speakers/__tests__/service.test.ts",
+			"src/speakers/__tests__/voices.test.ts",
+			"src/speakers/voice-audio.ts",
+			"src/speakers/voice-engine.ts",
+			"src/speakers/voices.ts",
+			"src/models/voice.ts",
+			"src/models/__tests__/voice.test.ts",
 			"src/desktop/__tests__/speakers-bridge.test.ts"
 		]
 	},

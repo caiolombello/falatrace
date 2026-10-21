@@ -12,6 +12,7 @@ import { conversationDestination, destinationKey } from "../../speakers/conversa
 import { SPEAKER_MESSAGES } from "../../speakers/messages";
 import { readDiarizationContext } from "../../speakers/record";
 import { SpeakerSuggestionStore } from "../../speakers/store";
+import { VoiceProfileStore, encodeEmbedding, reconcileVoiceProfiles } from "../../speakers/voices";
 
 assertQaIsolation();
 const repo = join(import.meta.dir, "../../..");
@@ -94,5 +95,28 @@ test("the production bridge shows stored suggestions and refuses a stale destina
     const after = await bridge(context.env, { id: 4, op: "detail", key: context.media });
     expect(after.result.speakerSuggestions).toMatchObject({ state: "failed", message: SPEAKER_MESSAGES.startFailed });
     expect(after.result.speakerSuggestions.items).toHaveLength(2);
+  } finally { await context.cleanup(); }
+}, 30_000);
+
+test("the production bridge lists known voices and forgets exactly the person named, never the signatures themselves", async () => {
+  const context = await fixture();
+  try {
+    const profiles = new VoiceProfileStore(join(context.env.XDG_DATA_HOME!, "recording-cli", "voices"));
+    const vector = (index: number) => { const value = new Float32Array(16); value[index] = 1; return encodeEmbedding(value); };
+    const record = { version: 1 as const, jobId: id, mediaSha256: "a".repeat(64), transcriptSha256: "b".repeat(64), diarizationSha256: "c".repeat(64), generatedAt: "2026-10-21T00:00:00Z",
+      model: { id: "eres2net-base", sha256: "f".repeat(64), dim: 16 }, speakers: [{ speakerId: "S01", track: "microphone" as const, seconds: 20, embedding: vector(1) }, { speakerId: "S02", track: "desktop" as const, seconds: 20, embedding: vector(2) }] };
+    let next = 0;
+    await profiles.update((current) => reconcileVoiceProfiles(current, record, { S01: "Pessoa Dona", S02: "Ana" }, "2026-10-21T00:00:00.000Z", () => `00000000-0000-4000-8000-00000000000${++next}`));
+    const listed = await bridge(context.env, { id: 1, op: "settings-voices-list" });
+    expect(listed.result.people.map((person: { name: string; samples: number }) => [person.name, person.samples])).toEqual([["Ana", 1], ["Pessoa Dona", 1]]);
+    // Only names and counts leave the bridge.
+    expect(JSON.stringify(listed)).not.toContain(vector(1));
+    for (const payload of [{}, { all: false }, { personId: "nope" }, { all: true, personId: "00000000-0000-4000-8000-000000000001" }]) {
+      expect(await bridge(context.env, { id: 2, op: "settings-voices-delete", payload })).toMatchObject({ ok: false });
+    }
+    const deleted = await bridge(context.env, { id: 3, op: "settings-voices-delete", payload: { personId: "00000000-0000-4000-8000-000000000002" } });
+    expect(deleted.result.removed).toBe(1);
+    expect(deleted.result.people.map((person: { name: string }) => person.name)).toEqual(["Pessoa Dona"]);
+    expect((await bridge(context.env, { id: 4, op: "settings-voices-delete", payload: { all: true } })).result).toEqual({ people: [], removed: 1 });
   } finally { await context.cleanup(); }
 }, 30_000);

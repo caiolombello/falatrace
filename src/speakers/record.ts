@@ -67,7 +67,7 @@ export const buildMicrophoneRecord = async (
 /** Replaces the microphone part and keeps a conversation result for the same diarization. */
 export const saveMicrophoneRecord = async (binding: SpeakerSuggestionBinding, microphone: MicrophoneRecord, store = new SpeakerSuggestionStore()): Promise<void> => {
   const existing = await store.read(binding);
-  await store.save({ version: 1, ...binding, microphone, ...(existing?.conversation ? { conversation: existing.conversation } : {}) });
+  await store.save({ version: 1, ...binding, microphone, ...(existing?.conversation ? { conversation: existing.conversation } : {}), ...(existing?.voice ? { voice: existing.voice } : {}) });
 };
 
 /** Best effort right after a diarization is saved: the result is already published, so
