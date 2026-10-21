@@ -116,6 +116,12 @@ export type AppConfig = {
     /** Recognize known voices locally and learn from names a person confirms; needs the voice model. */
     voices: boolean;
   };
+  google: {
+    /** OAuth client of the user's own Google Cloud project ("Desktop app"); empty when not set up. */
+    clientId: string;
+    /** Read the Google Calendar event (title, invited names) of a recording; needs a connected account. */
+    calendar: boolean;
+  };
   callDetection: {
     enabled: boolean;
     mode: CallDetectionMode;
@@ -246,6 +252,10 @@ export const DEFAULT_CONFIG: AppConfig = {
   },
   speakers: {
     voices: false
+  },
+  google: {
+    clientId: "",
+    calendar: false
   },
   callDetection: {
     enabled: false,

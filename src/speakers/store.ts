@@ -21,7 +21,7 @@ export type MicrophoneRecord = { generatedAt: string } & (
   | { state: "failed"; message: string }
 );
 export type ConversationRecord = { generatedAt: string; provider: "openai" | "ollama"; model: string; endpoint: string; external: boolean } & (
-  | { state: "ready"; partial: boolean; sentTurns: number; totalTurns: number; inputBytes: number; suggestions: ConversationSuggestion[] }
+  | { state: "ready"; partial: boolean; sentTurns: number; totalTurns: number; inputBytes: number; suggestions: ConversationSuggestion[]; participants?: number }
   | { state: "failed"; message: string }
 );
 /** Whether computing this recording's voice signatures failed; the signatures live in their own file. */
@@ -60,7 +60,8 @@ const validConversation = (value: unknown): value is ConversationRecord => {
   const record = value as Record<string, unknown>;
   if (!date(record.generatedAt) || !["openai", "ollama"].includes(record.provider as string) || !text(record.model, 200) || !text(record.endpoint, 300) || typeof record.external !== "boolean") return false;
   if (record.state === "failed") return text(record.message, 500);
-  if (record.state !== "ready" || typeof record.partial !== "boolean" || !count(record.sentTurns) || !count(record.totalTurns) || !count(record.inputBytes)) return false;
+  if (record.state !== "ready" || typeof record.partial !== "boolean" || !count(record.sentTurns) || !count(record.totalTurns) || !count(record.inputBytes) ||
+    (record.participants !== undefined && (!count(record.participants) || (record.participants as number) > 50))) return false;
   return Array.isArray(record.suggestions) && record.suggestions.length <= 100 && record.suggestions.every((item) => {
     const suggestion = item as Record<string, unknown> | null;
     return !!suggestion && typeof suggestion.speakerId === "string" && SPEAKER.test(suggestion.speakerId) && validSpeakerLabel(suggestion.name) &&

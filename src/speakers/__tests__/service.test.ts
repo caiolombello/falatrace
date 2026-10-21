@@ -13,6 +13,7 @@ import { SPEAKER_MESSAGES } from "../messages";
 import { recordMicrophoneAfterDiarization } from "../record";
 import { queueSpeakerSuggestions, readSpeakerSuggestionView, suggestSpeakerNames, type SpeakerSuggestionDependencies } from "../service";
 import { SpeakerSuggestionStore } from "../store";
+import { GOOGLE_TOKEN_URL, GoogleTokenStore } from "../../google/oauth";
 
 const id = "123e4567-e89b-42d3-a456-426614174042";
 const text = "Bom dia. Ana, pode começar? Aqui é a Ana.\n";
@@ -154,5 +155,32 @@ test("right after a diarization the microphone is recorded, unless the media cha
     // Without a full name on the account the Studio shows "Você".
     expect(view.items).toEqual([{ speakerId: "S01", source: "microphone", self: true, localShare: 1 }]);
     expect((await fs.readdir(join(context.root, "diarization"))).sort()).toEqual([`${id}.json`, `${id}.speakers.json`]);
+  } finally { await context.cleanup(); }
+}, 60_000);
+
+test("with the Google Calendar on, the conversation request carries the invited names and full names can be suggested", async () => {
+  const context = await fixture();
+  try {
+    const config = openaiConfig();
+    config.google = { clientId: "123456789012-abcdefghij0123456789.apps.googleusercontent.com", calendar: true };
+    const store = new GoogleTokenStore(join(context.root, "google"));
+    await store.save({ version: 1, clientId: config.google.clientId, refreshToken: "long-lived", scopes: [], connectedAt: "2026-10-21T00:00:00.000Z" });
+    // A 30-minute recording that ends at the job's creation time (no local media file): the event covers it.
+    await context.diarizationStore.save({ ...diarization(), duration: 1800 });
+    const end = Date.parse(job.createdAt);
+    const calendarFetch = (async (input: RequestInfo | URL) => String(input) === GOOGLE_TOKEN_URL
+      ? new Response(JSON.stringify({ access_token: "fresh" }), { status: 200 })
+      : new Response(JSON.stringify({ items: [{ id: "e", status: "confirmed", summary: "Revisão", start: { dateTime: new Date(end - 31 * 60_000).toISOString() }, end: { dateTime: new Date(end + 60_000).toISOString() },
+        attendees: [{ email: "ana.souza@example.com" }, { email: "caio@example.com", displayName: "Caio Barbieri", self: true }] }] }), { status: 200 })) as typeof fetch;
+    const requests: string[] = [];
+    const record = await suggestSpeakerNames(config, id, { conversation: true }, context.dependencies({
+      calendar: { store, fetch: calendarFetch, clientSecret: async () => "secret" },
+      complete: async ({ user }) => { requests.push(user); return JSON.stringify({ suggestions: [{ speakerId: "S02", name: "Ana Souza", evidence: [{ turnId: "t000001", quote: "Aqui é a Ana" }] }] }); }
+    }));
+    expect(JSON.parse(requests[0]!).participants).toEqual(["Ana Souza", "Caio Barbieri"]);
+    expect(record.conversation).toMatchObject({ state: "ready", participants: 2, suggestions: [{ speakerId: "S02", name: "Ana Souza" }] });
+    const view = await readSpeakerSuggestionView(config, job, canonical, { store: context.store });
+    expect(view.calendar).toBe(true);
+    expect(view.conversation).toMatchObject({ participants: 2 });
   } finally { await context.cleanup(); }
 }, 60_000);

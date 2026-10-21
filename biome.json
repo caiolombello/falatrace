@@ -46,6 +46,11 @@
 			"src/speakers/voices.ts",
 			"src/models/voice.ts",
 			"src/models/__tests__/voice.test.ts",
+			"src/google/calendar.ts",
+			"src/google/client-id.ts",
+			"src/google/oauth.ts",
+			"src/google/__tests__/calendar.test.ts",
+			"src/google/__tests__/oauth.test.ts",
 			"src/desktop/__tests__/speakers-bridge.test.ts"
 		]
 	},

@@ -8,7 +8,7 @@ import { describeDestinations } from "../../jobs/manual";
 import { WHISPER_MODELS } from "../../models/downloads";
 import { translateCaptureMessage } from "../../recording/messages";
 import { waitMessage } from "../../runtime/heavy-admission";
-import { OBS_PASSWORD_UNKNOWN, SETTINGS_KNOWN_ERRORS, settingsErrorMessage, SETTINGS_OPERATIONS } from "../settings-bridge";
+import { GOOGLE_KNOWN_ERRORS, OBS_PASSWORD_UNKNOWN, SETTINGS_KNOWN_ERRORS, settingsErrorMessage, SETTINGS_OPERATIONS } from "../settings-bridge";
 import { SPEAKER_KNOWN_ERRORS } from "../../speakers/messages";
 
 /**
@@ -73,6 +73,10 @@ test("patterns compile and translate the parts that are Portuguese", () => {
 test("settings errors the bridge can show are translated", () => {
   for (const message of SETTINGS_KNOWN_ERRORS) english(message);
   for (const op of SETTINGS_OPERATIONS) english(settingsErrorMessage(op));
+});
+
+test("Google sign-in and calendar messages the bridge can show are translated", () => {
+  for (const message of GOOGLE_KNOWN_ERRORS) english(message);
 });
 
 test("speaker name suggestion messages the bridge can show are translated", () => {

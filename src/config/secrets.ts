@@ -25,7 +25,7 @@ import { acquireSingleton } from "../runtime/singleton";
  * no environment value is trusted.
  * Values are never logged, returned to the UI or written anywhere but secrets.env.
  */
-export const SECRET_NAMES = ["OPENAI_API_KEY", "GEMINI_API_KEY", "RECORDING_CLI_OBS_PASSWORD"] as const;
+export const SECRET_NAMES = ["OPENAI_API_KEY", "GEMINI_API_KEY", "RECORDING_CLI_OBS_PASSWORD", "GOOGLE_CLIENT_SECRET"] as const;
 export type SecretName = typeof SECRET_NAMES[number];
 export type SecretFileName = "secrets.env" | "worker.env" | "calls.env";
 export type SecretSource = "environment" | SecretFileName | "config" | "missing";

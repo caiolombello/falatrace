@@ -191,8 +191,9 @@ export const queryGnomeCalendarEvents: CalendarQuery = async (
 const clamp = (value: number): number =>
   Math.max(0, Math.min(1, value));
 
-const scoreEvent = (
-  event: GnomeCalendarEvent,
+/** How well a calendar event matches a call: overlap with both and a close start. Shared by the Google calendar. */
+export const scoreCalendarEvent = (
+  event: Pick<GnomeCalendarEvent, "startAtMs" | "endAtMs">,
   callStartMs: number,
   callEndMs: number
 ): number => {
@@ -239,7 +240,7 @@ export const findGnomeCalendarMeeting = async (
   const ranked = events
     .map((event) => ({
       event,
-      confidence: scoreEvent(event, callStartMs, callEndMs)
+      confidence: scoreCalendarEvent(event, callStartMs, callEndMs)
     }))
     .sort((left, right) => right.confidence - left.confidence);
   const best = ranked[0];

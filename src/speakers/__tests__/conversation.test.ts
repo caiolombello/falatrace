@@ -84,3 +84,19 @@ test("one request with the fixed prompt; a reply that is not JSON is refused", a
   expect(requests.map(({ system, user, destination: target }) => ({ system, user, target }))).toEqual([{ system: CONVERSATION_SYSTEM_PROMPT, user: input.content, target: destination }]);
   await expect(suggestFromConversation(destination, input, turns, speakers, async () => "não é json")).rejects.toThrow("O modelo não retornou sugestões válidas");
 });
+
+test("an invited participant's full name is accepted when a quoted word belongs to that participant only", () => {
+  const participants = ["Ana Souza", "Bruno Lima", "Caio Barbieri"];
+  const input = buildConversationInput(turns, speakers, { max: 100_000, unit: "utf8-bytes" }, participants);
+  expect(JSON.parse(input.content).participants).toEqual(participants);
+  const accepted = validateConversationSuggestions({ suggestions: [
+    suggestion("S03", "Bruno Lima", ["t000003", "Valeu, Bruno."])
+  ] }, turns, speakers, participants);
+  expect(accepted).toEqual([{ speakerId: "S03", name: "Bruno Lima", evidence: [{ turnId: "t000003", quote: "Valeu, Bruno." }] }]);
+  // Two participants share the quoted word: the full name is not inferred.
+  expect(validateConversationSuggestions({ suggestions: [suggestion("S03", "Bruno Lima", ["t000003", "Valeu, Bruno."])] }, turns, speakers, ["Bruno Lima", "Bruno Alves"])).toEqual([]);
+  // Someone who is not a participant still needs every word quoted.
+  expect(validateConversationSuggestions({ suggestions: [suggestion("S03", "Bruno Alves", ["t000003", "Valeu, Bruno."])] }, turns, speakers, participants)).toEqual([]);
+  // The owner's name stays reserved even when the calendar lists it.
+  expect(validateConversationSuggestions({ suggestions: [suggestion("S02", "Caio Barbieri", ["t000001", "Aqui é a Ana Souza"])] }, turns, speakers, participants)).toEqual([]);
+});

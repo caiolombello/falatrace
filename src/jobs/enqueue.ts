@@ -1,3 +1,5 @@
+import { findGoogleCalendarMeeting, googleCalendarEnabled } from "../google/calendar";
+import type { MeetingContext } from "./types";
 import type { CallApplication } from "../calls/apps";
 import { promises as fs } from "node:fs";
 import { findGnomeCalendarMeeting } from "../calendar/gnome";
@@ -31,6 +33,23 @@ const waitForStableFile = async (filePath: string): Promise<void> => {
   throw new Error(`Recording file did not become ready: ${filePath}`);
 };
 
+/** The calendar event of a call: the Google Calendar when it is on and connected, else the GNOME one. */
+export const findMeetingContext = async (
+  config: AppConfig, options: EnqueueRecordingOptions, lookups = { google: findGoogleCalendarMeeting, gnome: findGnomeCalendarMeeting }
+): Promise<MeetingContext | undefined> => {
+  if (!options.startedAt || !options.endedAt) return undefined;
+  const unavailable = (error: unknown): undefined => {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`Calendar context unavailable: ${message.slice(0, 500)}`);
+    return undefined;
+  };
+  if (googleCalendarEnabled(config)) {
+    const google = await lookups.google(config, options.startedAt, options.endedAt, options.app).catch(unavailable);
+    if (google) return google;
+  }
+  return config.calendar.enabled ? lookups.gnome(options.startedAt, options.endedAt, options.app).catch(unavailable) : undefined;
+};
+
 export const enqueueRecording = async (
   config: AppConfig,
   filePath: string,
@@ -43,18 +62,7 @@ export const enqueueRecording = async (
     await new ArchiveStore().enqueue(filePath, { id: options.recordingId, createdAt: options.startedAt });
   }
   if (!config.processing.autoEnqueue) return null;
-  const meetingContext =
-    config.calendar.enabled && options.startedAt && options.endedAt
-      ? await findGnomeCalendarMeeting(
-          options.startedAt,
-          options.endedAt,
-          options.app
-        ).catch((error) => {
-          const message = error instanceof Error ? error.message : String(error);
-          console.warn(`Calendar context unavailable: ${message.slice(0, 500)}`);
-          return undefined;
-        })
-      : undefined;
+  const meetingContext = await findMeetingContext(config, options);
   const job = await store.enqueue(config, filePath, { meetingContext, recordingId: options.recordingId });
   console.log(`Processing job queued: ${job.id}`);
   return job;
