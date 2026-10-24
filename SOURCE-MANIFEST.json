@@ -399,9 +399,19 @@
       "bytes": 40491
     },
     {
+      "path": "docs/en/privacy/index.html",
+      "sha256": "adf4e1324d57f0a257bee6a05aca90d054a21f1a0bc60203666a7ba4607658ea",
+      "bytes": 5757
+    },
+    {
       "path": "docs/index.html",
       "sha256": "40a587f5fb818fb615fd3370917458b06e324b4039b828d228bf5edbe6d132c4",
       "bytes": 41070
+    },
+    {
+      "path": "docs/privacidade/index.html",
+      "sha256": "3982e0e4d54a198105860ef13e140d4e3f3d9a2632ac98a2e9ddec47bd381993",
+      "bytes": 6054
     },
     {
       "path": "docs/site.js",

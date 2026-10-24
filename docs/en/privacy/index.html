@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Privacy — FalaTrace</title>
+<meta name="description" content="How FalaTrace uses your Google account data when you connect Google Calendar.">
+<meta name="color-scheme" content="light dark">
+<link rel="canonical" href="https://caiolombello.github.io/falatrace/en/privacy/">
+<link rel="alternate" hreflang="pt-BR" href="https://caiolombello.github.io/falatrace/privacidade/">
+<link rel="alternate" hreflang="en" href="https://caiolombello.github.io/falatrace/en/privacy/">
+<link rel="alternate" hreflang="x-default" href="https://caiolombello.github.io/falatrace/privacidade/">
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg">
+<link rel="stylesheet" href="../../style.css">
+<style>
+ .policy { max-width: 46rem; padding-block: 3rem 4rem; }
+ .policy h1 { margin-bottom: .5rem; }
+ .policy h2 { margin-top: 2.25rem; }
+ .policy p, .policy li { line-height: 1.6; }
+ .policy p { margin-block: .75rem; }
+ .policy ul { padding-left: 1.25rem; }
+ .policy .updated { opacity: .75; }
+</style>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="site-header">
+ <div class="wrap header-inner">
+  <a class="brand" href="../" aria-label="FalaTrace, home"><span>FalaTrace</span></a>
+  <div class="header-actions">
+   <nav class="lang" aria-label="Language"><a href="../../privacidade/" lang="pt-BR" hreflang="pt-BR">Português</a><a href="./" lang="en" hreflang="en" aria-current="page">English</a></nav>
+   <a class="header-link" href="https://github.com/caiolombello/falatrace">GitHub <span aria-hidden="true">↗</span></a>
+  </div>
+ </div>
+</header>
+
+<main id="main" tabindex="-1">
+ <article class="wrap policy">
+  <h1>Privacy policy</h1>
+  <p class="updated">Last updated October 24, 2026.</p>
+
+  <p>FalaTrace is an open-source application that runs on your Linux computer. There is no FalaTrace server: recordings, transcripts, summaries and credentials stay in files on your computer, and the developer receives none of this data.</p>
+  <p>This page explains what happens to your Google account data when you connect Google Calendar to FalaTrace. The connection is optional and stays off until you turn it on.</p>
+
+  <h2>What FalaTrace reads from Google</h2>
+  <p>When you connect, you grant two kinds of access:</p>
+  <ul>
+   <li><strong>Your e-mail address</strong> (<code>openid</code> and <code>email</code> scopes), used only to show which account is connected.</li>
+   <li><strong>Events on your primary calendar, read-only</strong> (<code>calendar.events.owned.readonly</code> scope). FalaTrace queries only the time range of each recording, from 10 minutes before to 15 minutes after, and uses from those events: the title, start and end time, whether it recurs, and the guests (display name or e-mail address, whether they declined, and whether they are rooms).</li>
+  </ul>
+  <p>FalaTrace never creates, changes or deletes events, and does not read other calendars or any other data in your account.</p>
+
+  <h2>What the data is used for</h2>
+  <ul>
+   <li><strong>Event title:</strong> names the summary of the recorded meeting.</li>
+   <li><strong>Guest names:</strong> help suggest who each voice in the transcript belongs to. For example, when someone is called “Ana” and only one guest is named Ana, FalaTrace suggests her full name. Suggestions take effect only after you confirm them.</li>
+  </ul>
+  <p>The data is not used for advertising, is not sold, and is not used by FalaTrace to train AI models.</p>
+
+  <h2>Where the data is kept</h2>
+  <ul>
+   <li>The Google authorization (refresh token) is kept in a private file on your computer, readable only by your user account. The short-lived access token is never written to disk.</li>
+   <li>The event title is saved with the recording and its summary.</li>
+   <li>The guest list is not kept. Only names that became suggestions and names you confirmed are saved.</li>
+  </ul>
+
+  <h2>Who the data is shared with</h2>
+  <p>Only with the AI service you configured in FalaTrace for summaries and name suggestions:</p>
+  <ul>
+   <li>the event title is sent with the summary request;</li>
+   <li>guest names are sent with excerpts of the conversation in the name suggestion request.</li>
+  </ul>
+  <p>If you use a local model (such as Ollama), none of this leaves your computer. If you use an external provider (such as OpenAI), that provider's privacy policy also applies. No data is sent to the FalaTrace developer or to anyone other than the provider you chose.</p>
+
+  <h2>Limited Use</h2>
+  <p>FalaTrace's use and transfer to any other app of information received from Google APIs will adhere to the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including the Limited Use requirements.</p>
+
+  <h2>How to disconnect and delete</h2>
+  <ul>
+   <li>In the Studio, go to Settings › Integrations › Google Calendar and click Disconnect. From the command line, run <code>falatrace google disconnect</code>. Both revoke the authorization at Google and delete the token from your computer.</li>
+   <li>You can also remove access at <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>.</li>
+  </ul>
+
+  <h2>Contact</h2>
+  <p>Questions about this policy: open an issue at <a href="https://github.com/caiolombello/falatrace/issues">github.com/caiolombello/falatrace</a>.</p>
+ </article>
+</main>
+
+<footer class="site-footer">
+ <div class="wrap footer-bottom">
+  <p>© 2026 Caio Barbieri · Own code under MIT.</p>
+  <p>This page uses no analytics and no external fonts.</p>
+ </div>
+</footer>
+</body>
+</html>

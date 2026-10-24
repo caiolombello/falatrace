@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Privacidade — FalaTrace</title>
+<meta name="description" content="Como o FalaTrace usa os dados da sua conta do Google quando você conecta a Agenda do Google.">
+<meta name="color-scheme" content="light dark">
+<link rel="canonical" href="https://caiolombello.github.io/falatrace/privacidade/">
+<link rel="alternate" hreflang="pt-BR" href="https://caiolombello.github.io/falatrace/privacidade/">
+<link rel="alternate" hreflang="en" href="https://caiolombello.github.io/falatrace/en/privacy/">
+<link rel="alternate" hreflang="x-default" href="https://caiolombello.github.io/falatrace/privacidade/">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<link rel="stylesheet" href="../style.css">
+<style>
+ .policy { max-width: 46rem; padding-block: 3rem 4rem; }
+ .policy h1 { margin-bottom: .5rem; }
+ .policy h2 { margin-top: 2.25rem; }
+ .policy p, .policy li { line-height: 1.6; }
+ .policy p { margin-block: .75rem; }
+ .policy ul { padding-left: 1.25rem; }
+ .policy .updated { opacity: .75; }
+</style>
+</head>
+<body>
+<a class="skip-link" href="#main">Ir para o conteúdo</a>
+
+<header class="site-header">
+ <div class="wrap header-inner">
+  <a class="brand" href="../" aria-label="FalaTrace, início"><span>FalaTrace</span></a>
+  <div class="header-actions">
+   <nav class="lang" aria-label="Idioma"><a href="./" lang="pt-BR" hreflang="pt-BR" aria-current="page">Português</a><a href="../en/privacy/" lang="en" hreflang="en">English</a></nav>
+   <a class="header-link" href="https://github.com/caiolombello/falatrace">GitHub <span aria-hidden="true">↗</span></a>
+  </div>
+ </div>
+</header>
+
+<main id="main" tabindex="-1">
+ <article class="wrap policy">
+  <h1>Política de privacidade</h1>
+  <p class="updated">Atualizada em 24 de outubro de 2026.</p>
+
+  <p>O FalaTrace é um aplicativo de código aberto que roda no seu computador Linux. Não existe servidor do FalaTrace: gravações, transcrições, resumos e credenciais ficam nos arquivos do seu computador, e o desenvolvedor não recebe nenhum desses dados.</p>
+  <p>Esta página explica o que acontece com os dados da sua conta do Google quando você conecta a Agenda do Google ao FalaTrace. A conexão é opcional e fica desligada até você ativá-la.</p>
+
+  <h2>O que o FalaTrace lê no Google</h2>
+  <p>Ao conectar, você autoriza dois acessos:</p>
+  <ul>
+   <li><strong>Seu endereço de e-mail</strong> (escopos <code>openid</code> e <code>email</code>), usado só para mostrar qual conta está conectada.</li>
+   <li><strong>Eventos da sua agenda principal, somente leitura</strong> (escopo <code>calendar.events.owned.readonly</code>). O FalaTrace consulta apenas o intervalo de horário de cada gravação, de 10 minutos antes a 15 minutos depois, e usa destes eventos: título, horário de início e fim, se é recorrente, e os convidados (nome de exibição ou endereço de e-mail, se recusaram o convite e se são salas).</li>
+  </ul>
+  <p>O FalaTrace nunca cria, altera ou apaga eventos, e não lê outras agendas nem outros dados da sua conta.</p>
+
+  <h2>Para que esses dados são usados</h2>
+  <ul>
+   <li><strong>Título do evento:</strong> dá nome ao resumo da reunião gravada.</li>
+   <li><strong>Nomes dos convidados:</strong> ajudam a sugerir quem é cada voz na transcrição. Por exemplo, quando alguém é chamado de “Ana” e só uma convidada se chama Ana, o FalaTrace sugere o nome completo dela. As sugestões só passam a valer depois que você as confirma.</li>
+  </ul>
+  <p>Os dados não são usados para publicidade, não são vendidos e não são usados pelo FalaTrace para treinar modelos de IA.</p>
+
+  <h2>Onde os dados ficam</h2>
+  <ul>
+   <li>A autorização do Google (token de atualização) fica num arquivo privado no seu computador, legível só pela sua conta de usuário. O token de acesso de curta duração não é gravado.</li>
+   <li>O título do evento fica salvo junto com a gravação e o resumo.</li>
+   <li>A lista de convidados não é guardada. Ficam salvos apenas os nomes que viraram sugestão e os que você confirmou.</li>
+  </ul>
+
+  <h2>Com quem os dados são compartilhados</h2>
+  <p>Somente com o serviço de IA que você mesmo configurou no FalaTrace para resumos e sugestões de nomes:</p>
+  <ul>
+   <li>o título do evento vai junto com o pedido de resumo;</li>
+   <li>os nomes dos convidados vão junto com trechos da conversa no pedido de sugestão de nomes.</li>
+  </ul>
+  <p>Se você usar um modelo local (como o Ollama), nada disso sai do seu computador. Se usar um provedor externo (como a OpenAI), vale também a política de privacidade desse provedor. Nenhum dado é enviado ao desenvolvedor do FalaTrace nem a terceiros além do provedor que você escolheu.</p>
+
+  <h2>Uso limitado</h2>
+  <p>O uso e a transferência, para qualquer outro aplicativo, de informações recebidas das APIs do Google pelo FalaTrace seguem a <a href="https://developers.google.com/terms/api-services-user-data-policy">Política de dados do usuário dos serviços de API do Google</a>, incluindo os requisitos de uso limitado.</p>
+
+  <h2>Como desconectar e apagar</h2>
+  <ul>
+   <li>No Studio, em Configurações › Integrações › Google Agenda, clique em Desconectar. Na linha de comando, use <code>falatrace google disconnect</code>. Os dois revogam a autorização no Google e apagam o token do seu computador.</li>
+   <li>Você também pode remover o acesso em <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>.</li>  </ul>
+
+  <h2>Contato</h2>
+  <p>Dúvidas sobre esta política: abra uma issue em <a href="https://github.com/caiolombello/falatrace/issues">github.com/caiolombello/falatrace</a>.</p>
+ </article>
+</main>
+
+<footer class="site-footer">
+ <div class="wrap footer-bottom">
+  <p>© 2026 Caio Barbieri · Código próprio sob MIT.</p>
+  <p>Esta página não usa analytics nem fontes externas.</p>
+ </div>
+</footer>
+</body>
+</html>
