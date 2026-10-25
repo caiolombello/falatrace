@@ -10,6 +10,7 @@ import {
   ProtonBackupStore
 } from "../backup";
 import { ProtonDriveClient } from "../upload";
+import { writeRemovedTombstone } from "../../media-retention/__tests__/fixture";
 
 const temporaryDirectories: string[] = [];
 
@@ -196,5 +197,57 @@ describe("Proton backup", () => {
     );
     expect(persisted).not.toContain(mediaPath);
     expect(persisted).not.toContain(job.artifactDir);
+  });
+  test("full policy backs up only the artifacts when media retention removed the media", async () => {
+    const root = await makeTemporaryDirectory();
+    const mediaPath = join(root, "meeting.mkv");
+    await fs.writeFile(mediaPath, "video");
+    const jobStore = new JobStore(join(root, "jobs"), join(root, "job-data"));
+    const config = mergeConfig(DEFAULT_CONFIG, { proton: { enabled: true, targetFolder: "/my-files/RecordingArchive", policy: "full" } });
+    const job = await jobStore.enqueue(config, mediaPath);
+    await fs.mkdir(job.artifactDir, { recursive: true });
+    for (const name of ["transcript.json", "transcript.md", "summary.json", "summary.md"]) await fs.writeFile(join(job.artifactDir, name), `content:${name}`);
+    await jobStore.update(job.id, "completed");
+    const folders = new Set(["/my-files"]);
+    const remoteFiles = new Map<string, Map<string, number>>();
+    const uploaded: string[] = [];
+    let manifest: Record<string, unknown> | undefined;
+    const execute = async (args: string[]): Promise<string> => {
+      if (args[1] === "list") {
+        const prefix = `${args[2]}/`;
+        return JSON.stringify([
+          ...[...folders].filter((folder) => folder.startsWith(prefix) && !folder.slice(prefix.length).includes("/"))
+            .map((folder) => ({ type: "folder", name: { ok: true, value: folder.slice(prefix.length) } })),
+          ...[...(remoteFiles.get(args[2]!) || [])].map(([name, size]) => ({ type: "file", name: { ok: true, value: name }, activeRevision: { ok: true, value: { claimedSize: size } } }))
+        ]);
+      }
+      if (args[1] === "create-folder") { folders.add(`${args[2]}/${args[3]}`); return JSON.stringify({ type: "folder" }); }
+      if (args[1] === "upload") {
+        const parent = args[args.length - 1]!;
+        const files = remoteFiles.get(parent) || new Map<string, number>();
+        remoteFiles.set(parent, files);
+        for (const path of args.slice(4, -1)) {
+          uploaded.push(basename(path));
+          files.set(basename(path), (await fs.stat(path)).size);
+          if (basename(path) === "manifest.json") manifest = JSON.parse(await fs.readFile(path, "utf8"));
+        }
+        return JSON.stringify({ transferredItems: args.length - 5, skippedItems: 0, transferredBytes: 1, failures: [] });
+      }
+      throw new Error(`Unexpected Proton operation: ${args[1]}`);
+    };
+    const client = new ProtonDriveClient(execute);
+    const backupStore = new ProtonBackupStore(join(root, "backup-state"));
+    // Missing media without a tombstone still fails the full backup.
+    await fs.rm(mediaPath);
+    const missing = await backupProtonJob(config, job.id, jobStore, backupStore, client, join(root, "backup-data"), "proton-backup-retention-test");
+    expect(missing.state).toBe("failed");
+    expect(uploaded).toEqual([]);
+    await writeRemovedTombstone(job);
+    const backed = await backupProtonJob(config, job.id, jobStore, backupStore, client, join(root, "backup-data"), "proton-backup-retention-test");
+    expect(backed.state).toBe("completed");
+    expect(backed.policy).toBe("full");
+    expect(backed.files.map((file) => file.name)).toEqual(["manifest.json", "transcript.json", "transcript.md", "summary.json", "summary.md"]);
+    expect(uploaded).not.toContain("meeting.mkv");
+    expect(manifest?.backup).toEqual({ provider: "proton-drive", policy: "full", media: "removed-by-retention" });
   });
 });

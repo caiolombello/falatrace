@@ -2,6 +2,7 @@ import { withHeavyAdmission, cliAdmissionWait, callMonitorExpected } from '../ru
 import { promises as fs } from "node:fs";
 import { createHash } from "node:crypto";
 import { getDefaultJobStateDir, hashFile } from "./store";
+import { assertMediaNotRetired } from "../media-retention/binding";
 import { writePrivateArtifact } from "./artifacts";
 import { hasSavedRevision } from "../revisions/service";
 import { withRevisionLease, RevisionConflictError } from "../revisions";
@@ -81,6 +82,7 @@ const processJobOwned = async (
     let transcript = reusable?.transcript;
     if(options.visual&&(!transcript||!options.visual.review))throw Error('Pipeline visual review requires an existing transcript and fresh scoped preview consent');
     if (transcript) assertUsableTranscript(transcript);
+    await assertMediaNotRetired({ sourcePath, source: manifest.source });
     if (await hashFile(sourcePath) !== manifest.source.sha256) throw new Error("Source media hash differs from manifest; no provider request");
     if (!transcript) {
       await probeMedia(sourcePath, options.signal);

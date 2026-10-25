@@ -179,22 +179,27 @@ export const formatLibraryEntryName = (
   entry: Pick<
     LibraryEntry,
     "sourceExists" | "relativePath" | "meetingTitle"
-  >
+  > & Partial<Pick<LibraryEntry, "media">>
 ): string =>
-  `${entry.sourceExists ? "" : "[ausente] "}${
+  `${entry.sourceExists ? "" : entry.media?.state === "removed" ? "[só transcrição] " : entry.media?.state === "audio-only" ? "[só áudio] " : "[ausente] "}${
     entry.meetingTitle ? `${entry.meetingTitle} · ` : ""
   }${entry.relativePath}`;
 
 export const formatStorageLocation = (
-  entry: Pick<LibraryEntry, "sourceExists" | "jobs" | "archive">
+  entry: Pick<LibraryEntry, "sourceExists" | "jobs" | "archive"> & Partial<Pick<LibraryEntry, "media">>
 ): string => {
   const remote = Boolean(findCompletedRemoteJob(entry)) || entry.archive?.vaio.state === "completed";
+  // Media retention kept only the audio here (audio-only) or nothing (transcript-only).
+  const audioOnly = !entry.sourceExists && entry.media?.state === "audio-only";
   if (entry.archive?.proton.state === "completed") {
-    return [entry.sourceExists ? "local" : "", remote ? "vaio" : "", "Proton verificado"].filter(Boolean).join(" + ");
+    return [entry.sourceExists ? "local" : audioOnly ? "áudio local" : "", remote ? "vaio" : "", "Proton verificado"].filter(Boolean).join(" + ");
   }
   if (entry.sourceExists && remote) return "local + vaio";
+  if (audioOnly && remote) return "áudio local + vaio";
   if (entry.sourceExists) return "somente local";
+  if (audioOnly) return "somente áudio";
   if (remote) return "somente no vaio";
+  if (entry.media?.state === "removed") return "somente transcrição";
   return "arquivo ausente";
 };
 
@@ -1558,7 +1563,7 @@ class RecordingTui {
       );
       const linked = findLinkedTimeEntries(selected, this.timeEntries, job);
       if (selected.archive) {
-        const labels = { pending: "pendente", failed: "falhou", completed: "verificado" };
+        const labels = { pending: "pendente", failed: "falhou", completed: "verificado", retired: "dispensado (mídia removida)" };
         lines.push(fit(`Backup do vídeo: vaio ${labels[selected.archive.vaio.state]} · Proton ${labels[selected.archive.proton.state]}`, columns));
       }
       const transcriptMatch = this.currentTranscriptMatch();

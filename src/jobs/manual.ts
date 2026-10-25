@@ -9,6 +9,8 @@ import { queueSelectedJob, type QueueSelectedJobResult } from "./queue";
 import { getSshDestination } from "./remote";
 import { hashFile, JobStore } from "./store";
 import type { JobRecord } from "./types";
+import { jobMediaTombstone } from "../media-retention/binding";
+import { MEDIA_RETENTION_MESSAGES } from "../media-retention/store";
 
 /**
  * Process a recording on explicit request from the Studio. The plan discloses where the
@@ -120,7 +122,8 @@ export const planRecordingProcessing = async (
   if (latest && (action === "queue" || action === "retry") && latest.target === "local" &&
       !(await fs.stat(latest.sourcePath).then((stat) => stat.isFile(), () => false))) {
     action = "none";
-    reason = "O arquivo original não está neste computador.";
+    reason = await jobMediaTombstone(latest, { states: ["removing", "removed"] })
+      ? MEDIA_RETENTION_MESSAGES.reprocessRefused : "O arquivo original não está neste computador.";
   }
   if (action === "create" && target === "remote" && isPlaceholderRemoteHost(config.remote.host)) {
     action = "none";

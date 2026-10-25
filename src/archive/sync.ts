@@ -6,6 +6,7 @@ import { acquireSingleton } from "../runtime/singleton";
 import { ArchiveStore, type ArchiveRecord } from "./store";
 import { archiveMediaToVaio, downloadArchivedMedia, type ArchiveMediaInput } from "./remote";
 import { archiveMediaToProton, getArchiveDataDir } from "./proton";
+import { retiredMediaTombstone } from "../media-retention/binding";
 
 export type ArchiveSyncDependencies = {
   vaio?: typeof archiveMediaToVaio;
@@ -32,7 +33,9 @@ export const syncMediaArchive = async (
   try {
     let records = options.id ? [await store.get(options.id)].filter((record): record is ArchiveRecord => !!record) : await store.list();
     if (options.id && records.length === 0) throw new Error("Gravação não encontrada no catálogo de backup");
-    records = records.filter((record) => (config.archive.vaio && record.vaio.state !== "completed") || (config.archive.proton && record.proton.state !== "completed"));
+    // Completed copies are done; retired ones (media removed by retention) are never retried.
+    const open = (state: ArchiveRecord["vaio"]["state"]): boolean => state !== "completed" && state !== "retired";
+    records = records.filter((record) => (config.archive.vaio && open(record.vaio.state)) || (config.archive.proton && open(record.proton.state)));
     // Try new captures first, then rotate retries so a failing batch cannot block the library.
     const pending = (record: ArchiveRecord) => (["vaio", "proton"] as const).some((target) => config.archive[target] && record[target].state === "pending");
     const attemptedAt = (record: ArchiveRecord) => Math.min(...(["vaio", "proton"] as const).flatMap((target) => {
@@ -59,20 +62,27 @@ export const syncMediaArchive = async (
           await (dependencies.downloadVaio || downloadArchivedMedia)(config, { archiveRelative: record.vaio.archiveRelative,
             fileName: record.source.fileName, size: record.source.size, sha256: record.source.sha256 }, sourcePath);
           media = { ...sealedArchiveMedia(record), sourcePath };
+        } else if (!local && await retiredMediaTombstone(record.sourcePath, { size: record.source.size, ...(record.source.sha256 ? { sha256: record.source.sha256 } : {}) })) {
+          // Retention removed this exact media on purpose: copies not made yet can never be made.
+          const retired = { state: "retired" as const, reason: "media-retention" as const, at: new Date().toISOString() };
+          if (config.archive.vaio && open(record.vaio.state)) record.vaio = retired;
+          if (config.archive.proton && open(record.proton.state)) record.proton = retired;
+          await store.save(record); results.push(record);
+          continue;
         } else {
           record = await store.seal(record.id); media = sealedArchiveMedia(record);
         }
       }
       catch (error) {
         const failed = { state: "failed" as const, error: error instanceof Error ? error.message : String(error), attemptedAt: new Date().toISOString() };
-        if (config.archive.vaio && record.vaio.state !== "completed") record.vaio = failed;
-        if (config.archive.proton && record.proton.state !== "completed") record.proton = failed;
+        if (config.archive.vaio && open(record.vaio.state)) record.vaio = failed;
+        if (config.archive.proton && open(record.proton.state)) record.proton = failed;
         await store.save(record); results.push(record);
         continue;
       }
       // Each destination succeeds independently; an offline VAIO must not prevent the cloud backup.
       for (const target of ["vaio", "proton"] as const) {
-        if (!config.archive[target] || record[target].state === "completed") continue;
+        if (!config.archive[target] || !open(record[target].state)) continue;
         try {
           if (target === "vaio") {
             const result = await (dependencies.vaio || archiveMediaToVaio)(config, media);

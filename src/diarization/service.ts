@@ -17,6 +17,10 @@ import { getServiceLaunchCommand } from "../runtime/launcher";
 import { transientCommand, transientUnitEnvironment } from "../runtime/systemd-units";
 import { recordMicrophoneAfterDiarization } from "../speakers/record";
 import { recordVoicesAfterDiarization } from "../speakers/voices";
+import { resolveAnalysisMedia } from "../media-retention/analysis";
+import { MEDIA_RETENTION_MESSAGES, MediaRetentionError } from "../media-retention/store";
+
+const MEDIA_RETENTION_TEXTS: readonly string[] = Object.values(MEDIA_RETENTION_MESSAGES);
 
 export const readCanonicalTranscript = async (job: JobRecord): Promise<Transcript> => {
   if (job.state !== "completed") throw new Error("Aguarde a transcrição terminar antes de identificar os falantes");
@@ -96,11 +100,15 @@ const createDiarizationOwned = async (
     const cached = await store.read(id, job.source.sha256, canonical.text);
     if (cached) return cached;
     await store.writeOperation({ version: 1, jobId: id, state: "running", startedAt });
-    const entry = (await buildLibrary(config)).find((item) => item.sourcePath === job.sourcePath);
-    if (!entry) throw new Error("A gravação não está disponível na biblioteca");
-    const media = await playLibraryEntry(config, entry, job, { launch: async () => undefined });
+    // The original (here or a verified archive copy), or the audio an audio-only retention kept;
+    // either way the result stays bound to job.source.sha256.
+    const media = await resolveAnalysisMedia(job, { original: async () => {
+      const entry = (await buildLibrary(config)).find((item) => item.sourcePath === job.sourcePath);
+      if (!entry) throw new Error("A gravação não está disponível na biblioteca");
+      return (await playLibraryEntry(config, entry, job, { launch: async () => undefined })).path;
+    } });
     const before = await fs.lstat(media.path);
-    if (!before.isFile() || before.isSymbolicLink() || before.size !== job.source.size || await hashFile(media.path) !== job.source.sha256) {
+    if (!before.isFile() || before.isSymbolicLink() || before.size !== media.size || await hashFile(media.path) !== media.sha256) {
       throw new Error("A mídia diverge da transcrição original; a identificação foi cancelada");
     }
     workDir = await fs.mkdtemp(join(await store.ensureRoot(), `${id}.work-`));
@@ -136,7 +144,8 @@ const createDiarizationOwned = async (
     return result;
   } catch (error) {
     const raw = error instanceof Error ? error.message : "";
-    const safe = /^(O áudio excede 24 MB|O diarizador |A conta OpenAI |O limite da conta OpenAI |A OpenAI não concluiu|Não foi possível (concluir|salvar a resposta de) diarização|A chave OpenAI |A mídia (diverge|mudou)|A transcrição mudou|A gravação ainda não possui)/.test(raw)
+    const safe = /^(O áudio excede 24 MB|O diarizador |A conta OpenAI |O limite da conta OpenAI |A OpenAI não concluiu|Não foi possível (concluir|salvar a resposta de) diarização|A chave OpenAI |A mídia (diverge|mudou)|A transcrição mudou|A gravação ainda não possui)/.test(raw) ||
+      (error instanceof MediaRetentionError && MEDIA_RETENTION_TEXTS.includes(raw))
       ? raw.slice(0, 500) : "Não foi possível identificar os falantes. A transcrição original foi preservada.";
     await store.writeOperation({ version: 1, jobId: id, state: "failed", startedAt, message: safe });
     // Retain at most the latest provider diagnostic for this job. A successful

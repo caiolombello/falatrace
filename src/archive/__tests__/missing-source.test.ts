@@ -5,6 +5,7 @@ import { DEFAULT_CONFIG } from "../../config/defaults";
 import { mergeConfig } from "../../config/load";
 import { ArchiveStore } from "../store";
 import { syncMediaArchive } from "../sync";
+import { writeRemovedTombstone } from "../../media-retention/__tests__/fixture";
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -79,4 +80,31 @@ test("missing original cannot stop a later available item in the same batch", as
   expect(calls).toEqual([available.id]);
   expect(await fs.readFile(availablePath)).toEqual(bytes);
   expect((await store.list()).length).toBe(2);
+});
+
+test("media removed by retention retires the copies not made yet instead of retrying them forever", async () => {
+  const { sourcePath, store, record, config } = await fixture();
+  const sealed = await store.seal(record.id);
+  await writeRemovedTombstone({ id: record.id, sourcePath, source: { size: sealed.source.size, sha256: sealed.source.sha256! } });
+  await fs.rm(sourcePath);
+  let destinationCalls = 0;
+  const unexpected = async (): Promise<never> => { destinationCalls += 1; throw new Error("unexpected transfer"); };
+  const [result] = await syncMediaArchive(config, {}, store, { vaio: unexpected, proton: unexpected, downloadVaio: unexpected });
+  expect(destinationCalls).toBe(0);
+  expect(result!.vaio).toMatchObject({ state: "retired", reason: "media-retention" });
+  expect(result!.proton).toMatchObject({ state: "retired", reason: "media-retention" });
+  expect((await store.get(record.id))!.vaio.state).toBe("retired");
+  // Retired copies are settled: later runs skip the record entirely.
+  expect(await syncMediaArchive(config, {}, store, { vaio: unexpected, proton: unexpected })).toEqual([]);
+  expect(destinationCalls).toBe(0);
+});
+
+test("a tombstone for other media does not retire anything", async () => {
+  const { sourcePath, store, record, config } = await fixture();
+  const sealed = await store.seal(record.id);
+  await writeRemovedTombstone({ id: record.id, sourcePath, source: { size: sealed.source.size, sha256: "0".repeat(64) } });
+  await fs.rm(sourcePath);
+  const [result] = await syncMediaArchive(config, {}, store, {});
+  expect(result!.vaio.state).toBe("failed");
+  expect(result!.proton.state).toBe("failed");
 });

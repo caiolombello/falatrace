@@ -18,6 +18,7 @@ import { readCurrentReviewedSummary } from "../summary/reviewed";
 import { assertCurrentJob, assertCurrentReviewedView, assertUnreviewedLegacyJob, formatReviewedTranscriptMarkdown,
   isUnreviewedLegacyAbsence, readCurrentReviewedView } from "../revisions/compat";
 import type { ReviewedView } from "../revisions";
+import { mediaStateOf, type MediaState } from "../media-retention/state";
 
 const MAX_LIBRARY_FILES = 100_000;
 const MAX_ARTIFACT_BYTES = 10 * 1024 * 1024;
@@ -37,6 +38,8 @@ export type LibraryEntry = {
   jobs: JobRecord[];
   meetingTitle?: string;
   archive?: ArchiveRecord;
+  /** Where the media stands (present, removed or audio-only by retention, missing) and what it still allows. */
+  media?: MediaState;
 };
 
 export type DeleteResult = {
@@ -201,6 +204,13 @@ export const buildLibrary = async (
       }
       entry.archive = archive;
     }
+  }
+
+  // Media status: one lstat per entry, plus a small tombstone read when the file is gone. A
+  // recording whose media retention removed keeps the original's date, so its sort is stable.
+  for (const entry of entries.values()) {
+    entry.media = await mediaStateOf(entry);
+    if (!entry.sourceExists && entry.media.sourceMtimeMs !== undefined) entry.modifiedAt = entry.media.sourceMtimeMs;
   }
 
   // Title reads are independent per entry; bound concurrency instead of reading

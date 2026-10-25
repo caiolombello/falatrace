@@ -22,6 +22,7 @@ import { withRevisionLease, RevisionConflictError } from "../revisions";
 import { hasSavedRevision } from "../revisions/service";
 import { notifyJobOutcome } from "./notify";
 import { markFirstRun } from "../metrics/first-run";
+import { assertMediaNotRetired } from "../media-retention/binding";
 
 const ARTIFACT_NAMES = ["transcript.json", "transcript.md", "summary.json", "summary.md"];
 
@@ -32,6 +33,8 @@ const markFirstSummary = async (job: JobRecord): Promise<void> => {
 };
 
 const verifyLocalSource = async (record: JobRecord): Promise<void> => {
+  // Media removed by the retention policy cannot be reprocessed; say so instead of ENOENT.
+  await assertMediaNotRetired(record);
   const stat = await fs.stat(record.sourcePath);
   if (!stat.isFile() || stat.size !== record.source.size) {
     throw new Error("Recording source size no longer matches the queued job");

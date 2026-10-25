@@ -98,7 +98,10 @@
 			"src/media-retention/**",
 			"src/app/**",
 			"src/recording/__tests__/media-start-live.test.ts",
-			"src/calls/__tests__/meeting-overrides-runtime.test.ts"
+			"src/calls/__tests__/meeting-overrides-runtime.test.ts",
+			"src/agent-context/__tests__/retention.test.ts",
+			"src/jobs/__tests__/retention-refusal.test.ts",
+			"src/desktop/__tests__/retention-bridge.test.ts"
 		]
 	},
 	"formatter": { "enabled": false },

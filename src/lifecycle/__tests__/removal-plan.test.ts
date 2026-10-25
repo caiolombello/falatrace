@@ -14,6 +14,8 @@ import { buildRemovalPlan, validateRemovalPlan, REMOVAL_LIMITS, type RemovalRequ
 import { reviewedPlanInputIdentity, type ReviewedSummaryPlan } from "../../summary/reviewed";
 import { buildSummaryV2Request } from "../../summary/v2";
 import { BUILT_IN_TEMPLATES } from "../../templates/catalog";
+import { MediaRetentionStore } from "../../media-retention/store";
+import { writeRemovedTombstone } from "../../media-retention/__tests__/fixture";
 
 const id = "11111111-1111-4111-8111-111111111111", other = "22222222-2222-4222-8222-222222222222";
 const hash = (text: string): string => createHash("sha256").update(text).digest("hex");
@@ -67,6 +69,29 @@ test("dry-run plans owned revision, summary chain and hashed export while every 
   expect(plan.preserved.some(item => item.path.includes("cache"))).toBe(true); expect(plan.preserved.some(item => item.path.endsWith("unknown.json"))).toBe(true);
   expect(plan.scope.remoteCopies).toBe("preserved-not-contacted"); expect(plan.inventory.some(item => item.path.includes("remote-incoming"))).toBe(false);
   await validateRemovalPlan(plan, f.request); expect(await treeHashes(f.root)).toEqual(before);
+}));
+
+test("media removed by retention: a finished tombstone for this media keeps sidecars plannable, the job record byte-identical", async () => fixture(async f => {
+  const jobStatePath = join(f.roots.jobState, `${id}.json`), jobRaw = await fs.readFile(jobStatePath, "utf8");
+  await fs.rm(f.request.job.sourcePath);
+  const missing = await buildRemovalPlan(f.request);
+  expect(missing.candidates).toEqual([]); expect(missing.localWorkProtection.canPruneLegacyWork).toBe(false);
+  expect(missing.preserved.some(item => item.reason.includes("media identity"))).toBe(true);
+  await writeRemovedTombstone(f.request.job);
+  const before = await treeHashes(f.root), plan = await buildRemovalPlan(f.request);
+  expect(plan.candidates.filter(item => item.kind === "revision")).toHaveLength(1);
+  expect(plan.candidates.filter(item => item.kind === "derived-summary")).toHaveLength(3);
+  expect(plan.candidates.filter(item => item.kind === "managed-export")).toHaveLength(3);
+  expect(plan.preserved.some(item => item.path.endsWith("synthetic.recording/media-retention.json") && item.kind === "original")).toBe(true);
+  await validateRemovalPlan(plan, f.request); expect(await treeHashes(f.root)).toEqual(before); expect(await fs.readFile(jobStatePath, "utf8")).toBe(jobRaw);
+  // The tombstone's bytes are part of the plan; a tombstone for other media verifies nothing.
+  const store = new MediaRetentionStore(), stored = (await store.read(f.request.job.sourcePath))!;
+  await store.write({ ...stored.tombstone, source: { ...stored.tombstone.source, sha256: hash("other media") } }, stored.raw);
+  await expect(validateRemovalPlan(plan, f.request)).rejects.toMatchObject({ code: "REMOVAL_PLAN_STALE" });
+  expect((await buildRemovalPlan(f.request)).candidates).toEqual([]);
+  const other = (await store.read(f.request.job.sourcePath))!;
+  await store.write({ ...stored.tombstone, state: "removing", removedAt: undefined }, other.raw);
+  expect((await buildRemovalPlan(f.request)).candidates).toEqual([]);
 }));
 
 test("a v2 reviewed plan (template, notes) and its version 2 result are recognized like the legacy chain", async () => fixture(async f => {

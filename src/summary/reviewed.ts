@@ -7,6 +7,7 @@ import { validateConfig } from "../config/load";
 import { JobStore, hashFile } from "../jobs/store";
 import { readBoundedArtifact } from "../jobs/transcript-access";
 import { SUMMARY_TEMPLATE_SETTING, validateJobId, validateSummary, type JobRecord, type RecordingSummary, type SummaryContext, type Transcript } from "../jobs/types";
+import { jobMediaTombstone } from "../media-retention/binding";
 import { aiContextRoot, invalidateAiContextOwned, withContextPublicationLease } from "../knowledge/invalidation";
 import { readReviewedView, RevisionConflictError, withRevisionLease, type ReviewedView, type RevisionHead } from "../revisions";
 import { acquireSingleton } from "../runtime/singleton";
@@ -142,9 +143,13 @@ const snapshotFor = (job: JobRecord, view: ReviewedView): ReviewedSummarySnapsho
 const currentSnapshot = async (job: JobRecord): Promise<ReviewedSummarySnapshot> => {
   const current = await new JobStore().get(validateJobId(job.id));
   if (sourceIdentity(current) !== sourceIdentity(job)) throw new RevisionConflictError("Summary job/source settings changed");
-  const media = await fs.lstat(current.sourcePath);
-  if (!media.isFile() || media.isSymbolicLink() || media.size !== current.source.size || await hashFile(current.sourcePath) !== current.source.sha256) throw new RevisionConflictError("Summary media source changed or is unavailable");
+  // Either the original media, unchanged, or a finished retention removal of exactly this
+  // media whose verified transcript is the one this view reads (summaries need only text).
+  const media = await fs.lstat(current.sourcePath).catch((error: NodeJS.ErrnoException) => { if (error.code === "ENOENT") return undefined; throw error; });
+  const retired = media ? undefined : await jobMediaTombstone(current);
+  if (media ? !media.isFile() || media.isSymbolicLink() || media.size !== current.source.size || await hashFile(current.sourcePath) !== current.source.sha256 : !retired) throw new RevisionConflictError("Summary media source changed or is unavailable");
   const view = await readReviewedView(current);
+  if (retired && retired.verified.transcriptArtifactSha256 !== view.original.provenance.transcriptSha256) throw new RevisionConflictError("Summary media source changed or is unavailable");
   if (sourceIdentity(await new JobStore().get(job.id)) !== sourceIdentity(current)) throw new RevisionConflictError("Summary source changed during reading");
   return snapshotFor(current, view);
 };

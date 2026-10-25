@@ -23,6 +23,8 @@ import { SPEAKER_MESSAGES, safeSpeakerMessage } from "./messages";
 import { readVoiceInstallation, type VoiceInstallation } from "../models/voice";
 import { VoiceProfileStore, VoiceRecordStore, computeVoiceRecord, learnVoices, matchVoices, type VoiceComputeDependencies } from "./voices";
 import { googleCalendarEnabled, readGoogleAttendees, type GoogleCalendarDependencies } from "../google/calendar";
+import { resolveAnalysisMedia } from "../media-retention/analysis";
+import { jobMediaTombstone } from "../media-retention/binding";
 
 const SHA256 = /^[a-f0-9]{64}$/;
 export const speakerSuggestionUnit = (id: string): string => `recording-cli-speakers-${validateJobId(id)}.service`;
@@ -55,12 +57,15 @@ export type SpeakerSuggestionDependencies = {
 };
 export type SuggestOptions = { conversation?: boolean; consentKey?: string; signal?: AbortSignal };
 
+/** The original (here or a verified archive copy), or the audio an audio-only retention kept (all tracks, bound to the original hash). */
 const localMediaPath = async (config: AppConfig, job: JobRecord): Promise<string> => {
-  const entry = (await buildLibrary(config)).find((item) => item.sourcePath === job.sourcePath);
-  if (!entry) throw new Error(SPEAKER_MESSAGES.mediaUnavailable);
-  const media = await playLibraryEntry(config, entry, job, { launch: async () => undefined });
+  const media = await resolveAnalysisMedia(job, { original: async () => {
+    const entry = (await buildLibrary(config)).find((item) => item.sourcePath === job.sourcePath);
+    if (!entry) throw new Error(SPEAKER_MESSAGES.mediaUnavailable);
+    return (await playLibraryEntry(config, entry, job, { launch: async () => undefined })).path;
+  } });
   const stat = await fs.lstat(media.path);
-  if (!stat.isFile() || stat.isSymbolicLink() || stat.size !== job.source.size || await hashFile(media.path) !== job.source.sha256) throw new Error(SPEAKER_MESSAGES.mediaChanged);
+  if (!stat.isFile() || stat.isSymbolicLink() || stat.size !== media.size || await hashFile(media.path) !== media.sha256) throw new Error(SPEAKER_MESSAGES.mediaChanged);
   return media.path;
 };
 
@@ -96,10 +101,14 @@ const voicesFor = async (
   }
 };
 
-/** When the recording happened: it ends at the file's modification time and lasts the diarized duration. */
-const recordingWindow = async (job: JobRecord, duration: number): Promise<{ startAt: string; endAt: string } | undefined> => {
+/**
+ * When the recording happened: it ends at the file's modification time and lasts the diarized
+ * duration. Once retention removed the file, the time it recorded in the tombstone is used.
+ */
+export const recordingWindow = async (job: JobRecord, duration: number): Promise<{ startAt: string; endAt: string } | undefined> => {
   const stat = await fs.lstat(job.sourcePath).catch(() => undefined);
-  const end = stat?.isFile() ? stat.mtimeMs : Date.parse(job.createdAt);
+  const retired = stat ? undefined : await jobMediaTombstone(job, { states: ["removing", "removed"] });
+  const end = stat?.isFile() ? stat.mtimeMs : retired ? retired.source.mtimeMs : Date.parse(job.createdAt);
   if (!Number.isFinite(end) || !(duration > 0)) return undefined;
   return { startAt: new Date(end - duration * 1000).toISOString(), endAt: new Date(end).toISOString() };
 };

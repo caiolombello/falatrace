@@ -9,6 +9,7 @@ import {
   writeJsonAtomic
 } from "../jobs/store";
 import type { JobRecord } from "../jobs/types";
+import { jobMediaTombstone } from "../media-retention/binding";
 import { validateJobId } from "../jobs/types";
 import {
   ProtonDriveClient,
@@ -185,6 +186,9 @@ const prepareBackupFiles = async (
   ) {
     throw new Error("Recording source name is unsafe for Proton Drive");
   }
+  // Full backups include the media, unless retention removed exactly this media on purpose:
+  // then the artifacts are backed up and the manifest says why the media is not there.
+  const retired = config.proton.policy === "full" && !!await jobMediaTombstone(job);
   const manifestPath = join(stagingDir, "manifest.json");
   await writeJsonAtomic(manifestPath, {
     ...jobStore.toManifest(job),
@@ -194,7 +198,8 @@ const prepareBackupFiles = async (
     },
     backup: {
       provider: "proton-drive",
-      policy: config.proton.policy
+      policy: config.proton.policy,
+      ...(retired ? { media: "removed-by-retention" } : {})
     }
   });
 
@@ -209,7 +214,7 @@ const prepareBackupFiles = async (
     const path = join(job.artifactDir, name);
     files.push({ path, name, size: await assertRegularFile(path) });
   }
-  if (config.proton.policy === "full") {
+  if (config.proton.policy === "full" && !retired) {
     const size = await assertRegularFile(job.sourcePath);
     if (size !== job.source.size || await hashFile(job.sourcePath) !== job.source.sha256) {
       throw new Error("Recording source no longer matches its SHA-256 manifest");

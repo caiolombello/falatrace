@@ -65,6 +65,9 @@ export const handleRealFrameOperation=async(flow:StudioVisualFlow,request:Reques
 };
 
 import { setAutomationPaused } from "../calls/control";
+import { MEDIA_RETENTION_MESSAGES } from "../media-retention/store";
+import { mediaStateOf, type MediaState } from "../media-retention/state";
+import { resolveMediaEvidence } from "../media-retention/evidence";
 
 const OPERATIONS = ["summary-plan", "summary-run", "summary-cancel","provider-authorize","provider-analyze","provider-cancel","agent-cancel","agent-status","agent-authorize","agent-pause","agent-resume","agent-revoke","agent-frames","agent-connect","recording-process-plan","recording-process","processing-status", "ux-capabilities", "list-cached", "onboarding-read", "onboarding-save-local", ...SETTINGS_OPERATIONS, "frames-check-models", "frames-scope", "frames-plan", "frames-preview-plan", "frames-preview", "frames-confirm", "frames-cancel", "list", "detail", "resolve", "playback-status", "subtitles", "diarization", "automation-pause", "automation-resume", "capture-status", "capture-start", "capture-stop", "capture-recover", "audio-defaults", "jobs-list", "job-process", "job-retry", "diarization-name", "speakers-suggest", "context-meeting", "revision-save", "revision-undo", "export-preview", "export-save"] as const;
 export type Request = { id: number; op: typeof OPERATIONS[number]; key?: string; payload?: {maxRequests?:number;expectedRevision?:number;expectedSnapshotSha256?:string;base?:RevisionBase;expectedBase?:RevisionBase;operations?:RevisionOperation[];format?:"json"|"markdown"|"srt"|"vtt";track?:"transcript"|"diarization";provider?:'openai'|'google';model?:string;analysis?:import('../provider-analysis/contracts').AnalysisOptions;context?:boolean;maxFrames?:number;maxBytes?:number;requestId?:string;grantId?:string;recipientId?:string;data?:Array<'context'|'frames'>;timestamps?:number[]; title?: string; speakerId?: string; label?: string; maxCharacters?: number; query?: string; offset?: number; question?: string; seconds?: number; previewId?: string; consent?: boolean; revision?: string; visionModel?: string; summaryModel?: string; capabilityId?: string; consentKey?: string; planId?:string; consentTranscript?:boolean; scopeId?:string; startSeconds?:number; endSeconds?:number; changes?: Record<string, unknown>; action?: string; audioSource?: string; microphone?: string; desktop?: string; name?: string; value?: string; service?: string; backup?: string; path?: string; kind?: string; ollamaUrl?: string; initialize?: boolean; client?: string; conversation?: boolean; personId?: string; all?: boolean } };
@@ -78,7 +81,8 @@ const PROCESS_KNOWN_ERRORS = [
   "Confirme o destino antes de processar.", "A gravação ou as configurações mudaram. Revise o destino de novo.",
   "Esta gravação já foi processada.", "O processamento já está em andamento.", "O arquivo original não está neste computador.",
   "O processamento está marcado como remoto, mas nenhum worker foi configurado.",
-  "Não foi possível ler a gravação. Confira a permissão do arquivo e tente de novo."
+  "Não foi possível ler a gravação. Confira a permissão do arquivo e tente de novo.",
+  MEDIA_RETENTION_MESSAGES.reprocessRefused
 ];
 const emit = (response: Response): void => { process.stdout.write(`${JSON.stringify(response)}\n`); };
 const safeError = (op: string, error: unknown): string => {
@@ -127,18 +131,27 @@ export const readableTranscriptJob = async (entry: LibraryEntry): Promise<{ job:
   }
   return undefined;
 };
-const locationOf = (entry: LibraryEntry): "local" | "vaio" | "proton" | "missing" => {
+export const locationOf = (entry: LibraryEntry): "local" | "vaio" | "proton" | "transcript-only" | "audio-only" | "missing" => {
   if (entry.sourceExists) return "local";
   if (entry.archive?.vaio.state === "completed" || entry.jobs.some((j) => j.target === "remote" && j.state === "completed")) return "vaio";
   if (entry.archive?.proton.state === "completed") return "proton";
+  // Removed by the retention policy on purpose: not a problem to fix, unlike missing media.
+  if (entry.media?.state === "audio-only") return "audio-only";
+  if (entry.media?.state === "removed") return "transcript-only";
   return "missing";
 };
+/** The media part of `detail` (DESIGN-STUDIO §4): what retention left and which features still work. */
+export const mediaDetail = (media: MediaState): { state: MediaState["state"]; removedAt?: string; reason?: string; features: MediaState["features"] } => ({
+  state: media.state, ...(media.removedAt ? { removedAt: media.removedAt } : {}), ...(media.reason ? { reason: media.reason } : {}), features: { ...media.features }
+});
 const backupOf = (entry: LibraryEntry): string => {
   const states = [entry.archive?.vaio.state === "completed" ? "vaio" : "", entry.archive?.proton.state === "completed" ? "proton" : ""].filter(Boolean);
   return states.length ? states.join("+") : "none";
 };
-const statusOf = (entry: LibraryEntry): string => entry.archive?.vaio.state === "completed" && entry.archive.proton.state === "completed"
-  ? "archived" : entry.jobs[0]?.state || (entry.archive ? "archive-pending" : "unprocessed");
+// A copy retired by media retention (the media was removed before it was sent) is settled, not pending.
+const archiveSettled = (copy: NonNullable<LibraryEntry["archive"]>["vaio"]): boolean => copy.state === "completed" || copy.state === "retired";
+export const statusOf = (entry: LibraryEntry): string => entry.archive?.vaio.state === "completed" && entry.archive.proton.state === "completed"
+  ? "archived" : entry.jobs[0]?.state || (entry.archive && !(archiveSettled(entry.archive.vaio) && archiveSettled(entry.archive.proton)) ? "archive-pending" : "unprocessed");
 const findEntry = async (key: string): Promise<{ config: Awaited<ReturnType<typeof loadConfig>>["config"]; entry: LibraryEntry }> => {
   const { config, entries } = await loadLibrary();
   const entry = entries.find((item) => item.sourcePath === resolve(key));
@@ -256,7 +269,7 @@ export const assertCurrentSummaryPresentation = async (job: JobRecord, expected:
 };
 const list = async (): Promise<unknown> => {
   const { entries } = await loadLibrary(true);
-  const items = await Promise.all(entries.map(async (entry) => ({ key: entry.sourcePath, recordingId:registeredAgentRecordingId(entry), ...recordingPresentation(entry, entry.jobs[0] ? await readArtifactStates(entry.jobs[0]) : undefined), fileName: basename(entry.sourcePath), modifiedAt: entry.modifiedAt, sourceExists: entry.sourceExists, location: locationOf(entry), status: statusOf(entry), backup: backupOf(entry) })));
+  const items = await Promise.all(entries.map(async (entry) => ({ key: entry.sourcePath, recordingId:registeredAgentRecordingId(entry), ...recordingPresentation(entry, entry.jobs[0] ? await readArtifactStates(entry.jobs[0]) : undefined), fileName: basename(entry.sourcePath), modifiedAt: entry.modifiedAt, sourceExists: entry.sourceExists, location: locationOf(entry), status: statusOf(entry), backup: backupOf(entry), ...(entry.media ? { media: entry.media.state } : {}) })));
   // Presentation cache only; a failed write never fails the fresh list.
   await writeLibrarySnapshot(items).catch(() => undefined);
   return { items };
@@ -266,6 +279,7 @@ const detail = async (key: string): Promise<unknown> => {
   const jobStore = new JobStore();
   entry.jobs = await Promise.all(entry.jobs.map(job => jobStore.get(job.id).catch(() => job)));
   if (entry.archive) entry.archive = (await new ArchiveStore().get(entry.archive.id).catch(() => entry.archive)) || undefined;
+  const media = await mediaStateOf(entry);
   const readable = await readableTranscriptJob(entry);
   const job = readable?.job || completedJob(entry);
   const subtitleId = entry.archive?.vaio.state === "completed" ? entry.archive.id : entry.jobs.find((item) => item.target === "remote" && item.state === "completed")?.id;
@@ -296,7 +310,7 @@ const detail = async (key: string): Promise<unknown> => {
   const presentation = recordingPresentation(entry, artifacts);
   if (job && entry.jobs[0] && entry.jobs[0].id !== job.id) presentation.artifactStatus += " · conteúdo de tarefa anterior";
   if (job && reviewed) { await assertCurrentReviewedView(job, reviewed); await assertCurrentSummaryPresentation(job,currentSummary); }
-  return { key: entry.sourcePath, recordingId:registeredAgentRecordingId(entry), ...presentation, status: entry.jobs[0]?.state || statusOf(entry), backup: backupOf(entry), artifacts, transcriptProvenance: reviewed?.original.provenance || readable?.artifact.provenance, artifactMessage: currentSummary ? "Resumo de modelo vinculado à revisão humana atual; o original foi preservado. Hashes verificam origem, não qualidade semântica." : reviewed?.derivedStale ? "Revisão humana aplicada. O resumo e a revisão visual anteriores estão desatualizados; nenhum modelo foi chamado para refazê-los." : readable && job?.state !== "completed" ? "Transcrição pronta e verificada. O processamento posterior não foi concluído; o resumo está indisponível. Não é necessário repetir a transcrição." : "", ...boundary, summary: artifacts?.summary.state!=="ready" ? "" : summary, visualReview, summaryInfo: currentSummary ? `${currentSummary.provenance.provider.provider}/${currentSummary.provenance.provider.model} · revisão ${currentSummary.revision.revision} · autoria: modelo` : job ? `${job.summary.provider}/${job.summary.model} · ${job.summary.provider === "openai" ? "provedor externo" : "Ollama: endpoint configurado"}` : "", timesheet, subtitleState, subtitleMessage,
+  return { key: entry.sourcePath, recordingId:registeredAgentRecordingId(entry), ...presentation, status: entry.jobs[0]?.state || statusOf(entry), backup: backupOf(entry), media: mediaDetail(media), artifacts, transcriptProvenance: reviewed?.original.provenance || readable?.artifact.provenance, artifactMessage: currentSummary ? "Resumo de modelo vinculado à revisão humana atual; o original foi preservado. Hashes verificam origem, não qualidade semântica." : reviewed?.derivedStale ? "Revisão humana aplicada. O resumo e a revisão visual anteriores estão desatualizados; nenhum modelo foi chamado para refazê-los." : readable && job?.state !== "completed" ? "Transcrição pronta e verificada. O processamento posterior não foi concluído; o resumo está indisponível. Não é necessário repetir a transcrição." : "", ...boundary, summary: artifacts?.summary.state!=="ready" ? "" : summary, visualReview, summaryInfo: currentSummary ? `${currentSummary.provenance.provider.provider}/${currentSummary.provenance.provider.model} · revisão ${currentSummary.revision.revision} · autoria: modelo` : job ? `${job.summary.provider}/${job.summary.model} · ${job.summary.provider === "openai" ? "provedor externo" : "Ollama: endpoint configurado"}` : "", timesheet, subtitleState, subtitleMessage,
     ...(job && canonical ? { jobId: job.id, ...(job.state === "completed" ? { diarizationId: job.id } : {}) } : {}), ...(subtitleId ? { subtitleId } : {}), ...(speakerSuggestions ? { speakerSuggestions } : {}) };
 };
 const resolvePlayback = async (key: string): Promise<unknown> => {
@@ -305,6 +319,12 @@ const resolvePlayback = async (key: string): Promise<unknown> => {
   if (stat?.isFile() && !stat.isSymbolicLink()) {
     await assertExistingManagedPath(config, entry.sourcePath);
     return { key: entry.sourcePath, state: "completed", location: "local", path: entry.sourcePath };
+  }
+  // Audio-only retention with no copy elsewhere: the kept audio (every track) plays here.
+  const job = entry.jobs.find((item) => item.state === "completed") || entry.jobs[0];
+  if (job && locationOf({ ...entry, media: await mediaStateOf(entry) }) === "audio-only") {
+    const evidence = await resolveMediaEvidence(job, { needs: "audio", verifyHash: false });
+    if (evidence.ok && evidence.kind === "retained-audio") return { key: entry.sourcePath, state: "completed", location: "audio-only", path: evidence.path };
   }
   return queuePlayback(entry.sourcePath);
 };

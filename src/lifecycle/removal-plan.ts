@@ -9,6 +9,7 @@ import { summaryEvidenceMatches, summaryTranscriptEvidenceSha256 } from "../summ
 import { SUMMARY_JSON_SCHEMA, SUMMARY_SYSTEM_PROMPT } from "../summary/schema";
 import { reviewedPlanInputIdentity, reviewedPlanScope, type ReviewedSummaryPlan } from "../summary/reviewed";
 import { validateStoredSummaryRequest } from "../summary/v2";
+import { tombstonePathOf, validateTombstone } from "../media-retention/store";
 
 /** Planning is deliberately separate from Trash and permanent removal. No writer is exported. */
 export const REMOVAL_LIMITS = Object.freeze({ entries: 4096, depth: 3, fileBytes: 64 * 1024 * 1024, totalBytes: 128 * 1024 * 1024 });
@@ -175,7 +176,17 @@ export const buildRemovalPlan = async (request: RemovalRequest): Promise<Removal
   const selectWork = job.target === "local" && (job.state !== "completed" ? workTranscript.kind !== "missing" : publishedTranscript.kind === "missing");
   const transcript = selectWork ? workTranscript : publishedTranscript;
   const transcriptSha = transcriptUsable(transcript, selectWork ? workReceipt : publishedReceipt, !selectWork && job.state === "completed") ? transcript.sha256 : undefined;
-  const mediaVerified = source.kind === "file" && source.sha256 === job.source.sha256 && source.size === job.source.size;
+  // Media retention removed the original on purpose. A finished tombstone for exactly this media
+  // and job stands in for the hash check; its bytes are inventoried, so validation compares them.
+  const tombstone = source.kind === "missing" ? await inspect("recordings", tombstonePathOf(job.sourcePath), true) : undefined;
+  if (tombstone) retain(tombstone, "original", "media retention record preserved with the recording");
+  const retiredMedia = !!tombstone?.sha256 && (() => {
+    try {
+      const value = validateTombstone(JSON.parse(rawFiles.get(tombstone.path) || ""));
+      return value.state === "removed" && value.sourcePath === job.sourcePath && value.source.sha256 === job.source.sha256 && value.source.size === job.source.size && value.jobs.includes(job.id);
+    } catch { return false; }
+  })();
+  const mediaVerified = (source.kind === "file" && source.sha256 === job.source.sha256 && source.size === job.source.size) || retiredMedia;
   const expectedBase = (value: unknown): boolean => object(value) && value.jobId === job.id && value.mediaSha256 === job.source.sha256 && hash(value.transcriptArtifactSha256) && (!transcriptSha || value.transcriptArtifactSha256 === transcriptSha);
   const owned = (item: RemovalObservation): boolean => item.kind === "file" && !!item.sha256 && privateOwned(item) && privateOwned(rootsObserved.get(item.root)!) && inventory.filter(parent => parent.root === item.root && parent.kind === "directory" && inside(parent.path, item.path)).every(privateOwned);
   const propose = (item: RemovalObservation, kind: RemovalEntry["kind"], identityValid: boolean, reason = "identity or private ownership is unverified"): void => {

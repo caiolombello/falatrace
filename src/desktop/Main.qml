@@ -265,10 +265,13 @@ ApplicationWindow {
         for (const item of items) {
             if (String(item.artifactStatus || "").startsWith("Transcrição pronta")) transcripts += 1
             if (["queued", "processing", "transferring", "pending", "archive-pending"].includes(item.status)) active += 1
-            if (item.status === "failed" || item.location === "missing") attention += 1
+            if (item.status === "failed" || mediaMissing(item)) attention += 1
         }
         return {total: items.length, transcripts: transcripts, active: active, attention: attention}
     }
+    // Media removed by the retention policy (transcript-only, audio-only) is a choice, not a problem: never "attention".
+    function mediaMissing(item) { return item.location === "missing" && item.media !== "removed" && item.media !== "audio-only" }
+    function mediaGone(item) { return item.location === "missing" || item.location === "transcript-only" }
 
 
     property bool mockFramesEnabled: false
@@ -626,7 +629,7 @@ ApplicationWindow {
         const ms = Math.round(value * 1000)
         return clock(Math.floor(ms / 1000)) + "." + (ms % 1000).toString().padStart(3, "0")
     }
-    function origin(value) { return ({local: t("Neste computador"), vaio: t("Worker remoto"), proton: "Proton Drive", missing: t("Mídia indisponível")})[value] || "" }
+    function origin(value) { return ({local: t("Neste computador"), vaio: t("Worker remoto"), proton: "Proton Drive", missing: t("Mídia indisponível"), "transcript-only": t("Mídia indisponível"), "audio-only": t("Neste computador")})[value] || "" }
     function statusText(value) { return ({completed: t("Processada"), archived: t("Backup concluído"), failed: t("Processamento falhou"), queued: t("Na fila"), processing: t("Processando"), "archive-pending": t("Backup pendente"), unprocessed: t("Sem processamento")})[value] || value }
     function speakerLabel(segment) { return segment.speaker || t("Falante incerto") }
     function captionTextAt(seconds) {
@@ -1380,11 +1383,11 @@ ApplicationWindow {
                                         Layout.alignment: Qt.AlignHCenter
                                         implicitWidth: 56; implicitHeight: 56; radius: 28
                                         color: "#17322F"
-                                        FtIcon { anchors.centerIn: parent; size: 26; name: selected.location === "missing" ? "alert" : "play"; tint: selected.location === "missing" ? "#FFB377" : "#57D5B0" }
+                                        FtIcon { anchors.centerIn: parent; size: 26; name: selected.location === "missing" ? "alert" : selected.location === "transcript-only" ? "transcript" : "play"; tint: selected.location === "missing" ? "#FFB377" : selected.location === "transcript-only" ? "#AAC0B8" : "#57D5B0" }
                                     }
-                                    Label { Layout.fillWidth: true; text: resolving ? t("Preparando a gravação…") : selected.key ? (selected.location === "missing" ? t("Mídia indisponível") : t("Gravação pronta para abrir")) : t("Escolha uma gravação"); color: "#F4F1E9"; font.pixelSize: 18; font.weight: Font.DemiBold; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap }
-                                    Label { Layout.fillWidth: true; visible: !resolving && !!selected.key; text: selected.location === "missing" ? t("O arquivo original não está neste computador nem em um destino configurado.") : t("A mídia é verificada antes de reproduzir; nada é baixado sem a sua ação."); color: "#AAC0B8"; font.pixelSize: 13; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap }
-                                    FtButton { Layout.alignment: Qt.AlignHCenter; visible: !!selected.key && !resolving && selected.location !== "missing"; enabled: backend.available && selected.location !== "missing"; variant: "primary"; iconName: "play"; text: t("Abrir gravação"); onClicked: openRecording() }
+                                    Label { Layout.fillWidth: true; text: resolving ? t("Preparando a gravação…") : selected.key ? (mediaGone(selected) ? t("Mídia indisponível") : t("Gravação pronta para abrir")) : t("Escolha uma gravação"); color: "#F4F1E9"; font.pixelSize: 18; font.weight: Font.DemiBold; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap }
+                                    Label { Layout.fillWidth: true; visible: !resolving && !!selected.key; text: mediaGone(selected) ? t("O arquivo original não está neste computador nem em um destino configurado.") : t("A mídia é verificada antes de reproduzir; nada é baixado sem a sua ação."); color: "#AAC0B8"; font.pixelSize: 13; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap }
+                                    FtButton { id: openRecordingButton; Layout.alignment: Qt.AlignHCenter; visible: !!selected.key && !resolving && !mediaGone(selected); enabled: backend.available && !mediaGone(selected); variant: "primary"; iconName: "play"; text: t("Abrir gravação"); onClicked: openRecording() }
                                 }
                                 Rectangle {
                                     anchors.top: parent.top; anchors.left: parent.left; anchors.margins: 12

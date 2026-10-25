@@ -9,7 +9,9 @@ import { acquireSingleton } from "../runtime/singleton";
 export type ArchiveCopy =
   | { state: "pending" }
   | { state: "failed"; error: string; attemptedAt: string }
-  | { state: "completed"; path: string; verifiedAt: string; archiveDir?: string; archiveRelative?: string };
+  | { state: "completed"; path: string; verifiedAt: string; archiveDir?: string; archiveRelative?: string }
+  /** Media retention removed the media before this copy was made: it will never be sent, nor retried. */
+  | { state: "retired"; reason: "media-retention"; at: string };
 
 export type ArchiveRecord = {
   version: 1;
@@ -25,8 +27,9 @@ export const getArchiveStateDir = (): string =>
   join(process.env.XDG_STATE_HOME || join(homedir(), ".local/state"), "recording-cli", "media-archive");
 
 const validCopy = (copy: ArchiveCopy): boolean => {
-  if (!copy || !["pending", "failed", "completed"].includes(copy.state)) return false;
+  if (!copy || !["pending", "failed", "completed", "retired"].includes(copy.state)) return false;
   if (copy.state === "failed") return typeof copy.error === "string" && Number.isFinite(Date.parse(copy.attemptedAt));
+  if (copy.state === "retired") return copy.reason === "media-retention" && typeof copy.at === "string" && Number.isFinite(Date.parse(copy.at));
   if (copy.state === "completed") return typeof copy.path === "string" && !/[\r\n\0]/.test(copy.path) && Number.isFinite(Date.parse(copy.verifiedAt));
   return true;
 };

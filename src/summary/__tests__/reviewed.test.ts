@@ -21,6 +21,8 @@ import { summaryFromV2Response, type SummaryInputSources } from "../v2";
 import { validateSummary } from "../../jobs/types";
 import { BUILT_IN_TEMPLATES, builtInTemplate, sectionTitle } from "../../templates/catalog";
 import { formatSummaryMarkdown } from "../../jobs/format";
+import { MediaRetentionStore } from "../../media-retention/store";
+import { writeRemovedTombstone } from "../../media-retention/__tests__/fixture";
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => fs.rm(root, { recursive: true, force: true }))); });
@@ -395,4 +397,24 @@ test("plans and results stored before v2 summaries still verify and stay readabl
   await fs.writeFile(join(f.dir, "results", "legacy.json"), JSON.stringify(forged), { mode: 0o600 });
   await fs.writeFile(join(f.dir, "index.json"), JSON.stringify({ version: 1, jobId: f.job.id, sequence: 1, requests: [{ requestId: "legacy", planSha256: sha(plan), status: "completed", requestsSpent: 1, resultSha256: sha(forged), sequence: 1 }] }), { mode: 0o600 });
   await expect(readReviewedSummary(f.job)).rejects.toThrow("fingerprint");
+});
+
+test("media removed by retention: regeneration works from the tombstone and refuses one bound to another transcript", async () => {
+  const f = await fixture({ verified: true }); let calls = 0; const adapter = async () => { calls++; return response("Resumo sem a mídia"); };
+  await f.edit("Revisão humana antes da remoção.");
+  const transcriptSha256 = (await readReviewedView(f.job)).original.provenance.transcriptSha256;
+  // Missing media without a tombstone is still refused before any model call.
+  await fs.rm(f.media);
+  await expect(f.plan("no-media")).rejects.toBeInstanceOf(RevisionConflictError);
+  const tombstone = await writeRemovedTombstone(f.job, { verified: { jobId: f.job.id, receipt: "verified", transcriptArtifactSha256: transcriptSha256, receiptSha256: sha("receipt"), microphone: "skipped", voices: "skipped", backups: {} } });
+  const output = await f.generate("after-removal", adapter);
+  expect(calls).toBe(1); expect(output.summary.overview).toBe("Resumo sem a mídia"); expect(output.revision.revision).toBe(1);
+  expect((await readReviewedSummary(f.job))!.requestId).toBe("after-removal");
+  const store = new MediaRetentionStore(), stored = (await store.read(f.media))!;
+  await store.write({ ...tombstone, verified: { ...tombstone.verified, transcriptArtifactSha256: sha("another transcript") } }, stored.raw);
+  await expect(f.plan("mismatch")).rejects.toBeInstanceOf(RevisionConflictError);
+  // A tombstone for other media is not this recording's removal.
+  await store.write({ ...tombstone, source: { ...tombstone.source, sha256: sha("other media") } }, (await store.read(f.media))!.raw);
+  await expect(f.plan("other-media")).rejects.toBeInstanceOf(RevisionConflictError);
+  expect(calls).toBe(1);
 });
