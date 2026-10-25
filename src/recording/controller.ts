@@ -286,7 +286,7 @@ export class RecordingController {
         session.phase = "recording";
         await this.store.write(session);
         if (this.config.live.enabled) {
-          await this.live.start(id).catch((error) => liveWarning("live.start-error", id, error));
+          await Promise.resolve().then(() => this.live.start(id)).catch((error) => liveWarning("live.start-error", id, error));
         }
         return "started";
       } catch (err) {
