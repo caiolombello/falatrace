@@ -8,6 +8,9 @@ import { AgentRetrieval } from "../retrieval";
 import { RecordingCatalog } from "../source";
 import { VisualAppBudget } from "../../visual/app-budget";
 import { writeRemovedTombstone } from "../../media-retention/__tests__/fixture";
+import { AnalysisLedger } from "../../provider-analysis/ledger";
+import { ProviderAnalysis } from "../../provider-analysis/controller";
+import { defaultAnalysis, endpoints, type ProviderRecipient } from "../../provider-analysis/contracts";
 
 const policy = { maxPreviews: 3, maxInferences: 1, period: "lifetime" as const };
 
@@ -62,5 +65,25 @@ test("present media keeps its binding unchanged", async () => {
   const f = await fixture();
   try {
     expect(await f.catalog.get(f.id)).toEqual({ id: f.id, path: f.path, sha256: f.job.source.sha256, title: "Synthetic", job: true });
+  } finally { await fs.rm(f.root, { recursive: true, force: true }); }
+});
+
+test("a provider frame analysis of removed media abstains: nothing is sent, reserved or spent", async () => {
+  const f = await fixture();
+  try {
+    const recipient: ProviderRecipient = { kind: "provider", id: "openai", endpoint: endpoints.openai, model: "synthetic-vision-model", capabilities: { vision: true, json: true, source: "user-declared" } };
+    const grant = await f.access.authorize({ consent: true, recipient, scope: { kind: "recordings", sources: await f.catalog.snapshot([f.id]) }, data: ["frames"], analysis: { ...defaultAnalysis(), acceptUnknownCost: true } });
+    await writeRemovedTombstone(f.job);
+    await fs.rm(f.path);
+    const ledger = new AnalysisLedger(join(f.root, "visual-review", "provider-analysis"));
+    let calls = 0;
+    const result = await new ProviderAnalysis(f.retrieval, async () => { calls += 1; return {}; }, ledger).analyze(
+      { requestId: randomUUID(), grantId: grant.id, recordingId: f.id, question: "What is on the slide?", timestamps: [0.5] },
+      { policy, admission: { policy: { pause: "off", unknown: "wait" } } }) as Record<string, unknown>;
+    expect(result).toMatchObject({ decision: "abstain", observations: [], omissions: [{ recordingId: f.id, reason: "media-removed-by-retention" }] });
+    expect(calls).toBe(0);
+    expect(f.decodes()).toBe(0);
+    expect((await ledger.snapshot()).attempts).toBe(0);
+    expect((await f.retrieval.budget.snapshot(policy)).remainingInferences).toBe(policy.maxInferences);
   } finally { await fs.rm(f.root, { recursive: true, force: true }); }
 });
