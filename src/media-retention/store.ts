@@ -61,7 +61,10 @@ export const MEDIA_RETENTION_MESSAGES = Object.freeze({
   evidenceRemoved: "A mídia desta gravação foi removida pela política de retenção.",
   evidenceVideoRemoved: "O vídeo desta gravação foi removido pela política de retenção; só o áudio continua disponível.",
   evidenceChanged: "A mídia mudou e não corresponde mais à transcrição.",
-  reprocessRefused: "Mídia removida pela política de retenção; não é possível reprocessar."
+  reprocessRefused: "Mídia removida pela política de retenção; não é possível reprocessar.",
+  modeInvalid: "Escolha o que manter: só a transcrição ou só o áudio.",
+  consentRequired: "Confirme a remoção da mídia antes de continuar.",
+  passFailed: "Não foi possível conferir a retenção de mídia nesta execução; nada foi removido."
 } as const);
 
 export type MediaRetentionMessage = (typeof MEDIA_RETENTION_MESSAGES)[keyof typeof MEDIA_RETENTION_MESSAGES];

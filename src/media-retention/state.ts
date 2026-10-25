@@ -20,6 +20,8 @@ export type MediaState = {
   removedAt?: string;
   reason?: MediaRetentionTombstone["reason"];
   mode?: RetainedMode;
+  /** The original's modification time recorded by retention, so the library date and sort stay stable. */
+  sourceMtimeMs?: number;
   /** Verified copies elsewhere (archive), which playback and speaker work can still use. */
   copies: { vaio: boolean; proton: boolean };
   features: MediaFeatures;
@@ -69,6 +71,7 @@ export const mediaStateOf = async (entry: MediaStateEntry, deps: { store?: Media
     removedAt: tombstone.removedAt ?? tombstone.startedAt,
     reason: tombstone.reason,
     mode: tombstone.mode,
+    sourceMtimeMs: tombstone.source.mtimeMs,
     copies,
     features: withoutVideo(audio, copies)
   };

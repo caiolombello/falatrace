@@ -17,7 +17,7 @@ export type MediaEvidence =
   | {
     ok: true; kind: "retained-audio"; path: string;
     /** Results computed from this file stay bound to the original media hash, through the tombstone. */
-    mediaSha256: string; audioSha256: string; streams: RetainedAudioStream[]; durationSeconds: number;
+    mediaSha256: string; audioSha256: string; size: number; streams: RetainedAudioStream[]; durationSeconds: number;
   }
   | {
     ok: false;
@@ -97,7 +97,7 @@ export const resolveMediaEvidence = async (
   try {
     const path = await verifyRetainedAudio(sourcePath, tombstone.audio, hash, verifyHash);
     return {
-      ok: true, kind: "retained-audio", path, mediaSha256: job.source.sha256, audioSha256: tombstone.audio.sha256,
+      ok: true, kind: "retained-audio", path, mediaSha256: job.source.sha256, audioSha256: tombstone.audio.sha256, size: tombstone.audio.size,
       streams: tombstone.audio.streams.map((stream) => ({ ...stream })), durationSeconds: tombstone.audio.durationSeconds
     };
   } catch {

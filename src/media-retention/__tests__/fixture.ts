@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { DEFAULT_CONFIG, type AppConfig } from "../../config/defaults";
 import type { ArchiveRecord } from "../../archive/store";
 import { DIARIZATION_MODEL } from "../../diarization/openai";
@@ -14,7 +14,7 @@ import type { RecordingSession } from "../../recording/session";
 import { SpeakerSuggestionStore } from "../../speakers/store";
 import { attachSummarySupport, buildSummaryEvidence } from "../../summary/evidence";
 import type { CommandRunner, MediaRetentionDeps, MediaRetentionEntry } from "../plan";
-import { MediaRetentionStore, recordingRootOf } from "../store";
+import { MediaRetentionStore, recordingRootOf, type MediaRetentionTombstone } from "../store";
 
 export const DAY = 86_400_000;
 export const sha = (value: string | Buffer): string => createHash("sha256").update(value).digest("hex");
@@ -211,3 +211,24 @@ export const treeHashes = async (root: string, skip: (path: string) => boolean =
 
 export const jobRecordRaw = async (fixture: Fixture, job: JobRecord = fixture.job): Promise<string> =>
   fs.readFile(join(fixture.root, "state/jobs", `${job.id}.json`), "utf8");
+
+/**
+ * A finished transcript-only tombstone for a job's media, written through the store (which
+ * needs the recording folder to exist), for consumer tests that do not run the executor.
+ */
+export const writeRemovedTombstone = async (
+  job: { id: string; sourcePath: string; source: { size: number; sha256: string } },
+  overrides: Partial<MediaRetentionTombstone> = {}
+): Promise<MediaRetentionTombstone> => {
+  await fs.mkdir(recordingRootOf(job.sourcePath), { recursive: true, mode: 0o700 });
+  const tombstone: MediaRetentionTombstone = {
+    version: 1, sourcePath: job.sourcePath,
+    source: { fileName: basename(job.sourcePath), size: job.source.size, sha256: job.source.sha256, mtimeMs: Date.parse("2026-10-01T10:30:00.000Z") },
+    jobs: [job.id], mode: "transcript-only", reason: "policy", state: "removed",
+    startedAt: "2026-10-05T09:00:00.000Z", removedAt: "2026-10-05T09:00:01.000Z",
+    verified: { jobId: job.id, receipt: "verified", transcriptArtifactSha256: sha("transcript"), receiptSha256: sha("receipt"), microphone: "skipped", voices: "skipped", backups: {} },
+    purged: ["proton-restore-cache", "visual-frames", "work-temp-audio"],
+    ...overrides
+  };
+  return (await new MediaRetentionStore().write(tombstone, null)).tombstone;
+};

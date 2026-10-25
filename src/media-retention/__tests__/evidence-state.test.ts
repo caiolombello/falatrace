@@ -112,7 +112,7 @@ describe("mediaStateOf", () => {
     const fixture = await setup();
     const result = await remove(fixture);
     expect(await mediaStateOf(fixture.entry)).toEqual({ state: "removed", removedAt: result.tombstone.removedAt, reason: "policy", mode: "transcript-only",
-      copies: { vaio: false, proton: false },
+      sourceMtimeMs: result.tombstone.source.mtimeMs, copies: { vaio: false, proton: false },
       features: { playback: false, frames: false, diarize: false, speakersMic: false, voices: false, subtitles: false, reprocess: false } });
   });
 

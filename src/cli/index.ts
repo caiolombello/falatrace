@@ -47,6 +47,7 @@ import { uploadToS3 } from "../s3/upload";
 import { listVideos, getPresignedUrl, playWithPlayer } from "../s3/play";
 import { JobStore } from "../jobs/store";
 import { processLocalJob, retryJob, syncJob, syncJobs } from "../jobs/sync";
+import { formatMediaRetentionSync, runMediaRetentionAfterSync } from "../media-retention";
 import { checkRemote } from "../jobs/remote";
 import { installSyncTimer, installWorkerService, uninstallSyncTimer } from "../jobs/service";
 import { runWorker, runWorkerOnce } from "../jobs/worker";
@@ -943,6 +944,10 @@ const main = async (): Promise<void> => {
           const jobs = await syncJobs(config, store);
           console.log(`Synchronized ${jobs.length} job(s).`);
           for (const job of jobs) console.log(`${job.id}: ${job.state}`);
+          // Opt-in media retention (media.retention ≠ "keep"); bounded per run and never fails the sync.
+          const retention = await runMediaRetentionAfterSync(config);
+          const line = formatMediaRetentionSync(retention);
+          if (line) console.log(line);
           break;
         }
         if (subcommand === "retry") {
