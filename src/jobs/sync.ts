@@ -21,8 +21,15 @@ import type { JobRecord } from "./types";
 import { withRevisionLease, RevisionConflictError } from "../revisions";
 import { hasSavedRevision } from "../revisions/service";
 import { notifyJobOutcome } from "./notify";
+import { markFirstRun } from "../metrics/first-run";
 
 const ARTIFACT_NAMES = ["transcript.json", "transcript.md", "summary.json", "summary.md"];
+
+/** First-run milestone: the first job that completes with a summary. Local only; never fails the job. */
+const markFirstSummary = async (job: JobRecord): Promise<void> => {
+  const summarized = await fs.stat(join(job.artifactDir, "summary.json")).then((stat) => stat.isFile(), () => false);
+  if (summarized) await markFirstRun("firstSummary").catch(() => undefined);
+};
 
 const verifyLocalSource = async (record: JobRecord): Promise<void> => {
   const stat = await fs.stat(record.sourcePath);
@@ -58,6 +65,7 @@ const processLocalJobOwned = async (
     await processJob(config, store.toManifest(record), record.sourcePath, workDir);
     await publishLocalArtifacts(record, workDir);
     const completed = await store.update(record.id, "completed");
+    await markFirstSummary(completed);
     await reconcileTimeEntryForJob(config, completed).catch((err) =>
       console.error(JSON.stringify({
         event: "timesheet.reconcile-error",
@@ -92,7 +100,11 @@ export const processLocalJob = async (
   config: AppConfig, store: JobStore, record: JobRecord
 ): Promise<JobRecord> => withJobLease(store, record.id, async (current) => {
   if (["completed", "failed", "processing"].includes(current.state)) return current;
-  return withHeavyAdmission('pipeline',current.id,async()=>{const fresh=await store.get(current.id);if(['completed','failed','processing'].includes(fresh.state)||fresh.target!=='local')return fresh;return processLocalJobOwned(config,store,fresh);},{onWait:cliAdmissionWait,callMonitorExpected:callMonitorExpected(config)});
+  let processedHere = false;
+  const result = await withHeavyAdmission('pipeline',current.id,async()=>{const fresh=await store.get(current.id);if(['completed','failed','processing'].includes(fresh.state)||fresh.target!=='local')return fresh;processedHere=true;return processLocalJobOwned(config,store,fresh);},{onWait:cliAdmissionWait,callMonitorExpected:callMonitorExpected(config)});
+  // `transcribe` waits in the terminal: only a completion done here is announced (a failure is printed there).
+  if (processedHere && result.state === "completed") await notifyJobOutcome(config, result);
+  return result;
 });
 
 const syncRemoteJob = async (
@@ -124,6 +136,7 @@ const syncRemoteJob = async (
         error: existingStatus.error
       });
       if (updated.state === "completed") {
+        await markFirstSummary(updated);
         await reconcileTimeEntryForJob(config, updated).catch(() => undefined);
         await refreshAiContextIfEnabled(config);
       }
@@ -157,6 +170,7 @@ const syncRemoteJob = async (
   if (status.state === "completed") {
     await pullRemoteArtifacts(config, record, status.archiveRelative);
     const completed = await store.update(record.id, "completed");
+    await markFirstSummary(completed);
     await reconcileTimeEntryForJob(config, completed).catch(() => undefined);
     await refreshAiContextIfEnabled(config);
     return completed;

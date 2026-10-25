@@ -24,6 +24,7 @@ import { JobStore, mergeTranscriptionPrompt, writeJsonAtomic } from "../store";
 import { archiveDirectory } from "../worker";
 import { SUMMARY_JSON_SCHEMA } from "../../summary/schema";
 import { fakeSummaryAnswer } from "../../summary/__tests__/v2-reply";
+import { readFirstRun } from "../../metrics/first-run";
 import {
   deriveMeetingTitle,
   JOB_VERSION,
@@ -677,6 +678,8 @@ test("processes a local job through fake whisper.cpp and Ollama providers", asyn
     });
     const result = await processLocalJob(config, store, job);
     expect(result.state).toBe("completed");
+    // A job completed with a summary is the first-summary milestone (first write wins).
+    expect((await readFirstRun()).firstSummaryAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     const transcript = JSON.parse(await fs.readFile(join(job.artifactDir, "transcript.json"), "utf-8"));
     expect(transcript.text).toBe("Olá mundo");
     expect(transcript.segments[0].end).toBe(1.25);

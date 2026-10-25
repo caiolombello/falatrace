@@ -266,28 +266,63 @@ export const parseNotifyCommand = (argv: readonly string[]): DetachedNotifyTarge
   throw new Error(NOTIFY_ERRORS.invalidCommand);
 };
 
+/** What the "notes ready" notification knows about the recording; counts only when both are known. */
+export type ReadyDetails = { title?: string; actions?: number; decisions?: number };
+
+const plural = (count: number, one: string, many: string): string => `${count} ${count === 1 ? one : many}`;
+
 const READY_TEXT = {
-  "pt-BR": { title: "Resumo pronto", body: (name: string) => `${name}: transcrição e resumo prontos.`, open: "Abrir", openStudio: "Abrir no Studio", fallback: "Sua gravação" },
-  en: { title: "Summary ready", body: (name: string) => `${name}: transcript and summary are ready.`, open: "Open", openStudio: "Open in Studio", fallback: "Your recording" }
+  "pt-BR": {
+    title: "Notas prontas", titled: (name: string) => `Notas prontas: ${name}`,
+    counts: (actions: number, decisions: number) => `${plural(actions, "ação", "ações")} · ${plural(decisions, "decisão", "decisões")}`,
+    body: "Transcrição e resumo prontos no FalaTrace Studio.", open: "Abrir", openStudio: "Abrir no Studio"
+  },
+  en: {
+    title: "Notes ready", titled: (name: string) => `Notes ready: ${name}`,
+    counts: (actions: number, decisions: number) => `${plural(actions, "action", "actions")} · ${plural(decisions, "decision", "decisions")}`,
+    body: "Transcript and summary are ready in FalaTrace Studio.", open: "Open", openStudio: "Open in Studio"
+  }
 } as const;
 
-/** "default" is what most servers run on a click on the notification itself. */
-export const readyNotificationContent = (name: string, language: NotificationLanguage = "pt-BR"): { title: string; body: string; actions: NotificationAction[] } => {
+const knownCount = (value: unknown): value is number => Number.isSafeInteger(value) && (value as number) >= 0;
+
+/**
+ * "Notas prontas: <title>" with "N ações · M decisões" when the summary's counts are known.
+ * "default" is what most servers run on a click on the notification itself.
+ */
+export const readyNotificationContent = (
+  details: ReadyDetails | string, language: NotificationLanguage = "pt-BR"
+): { title: string; body: string; actions: NotificationAction[] } => {
   const text = READY_TEXT[language] ?? READY_TEXT["pt-BR"];
-  const shown = (typeof name === "string" ? singleLine(name, 80) : "") || text.fallback;
-  return { title: text.title, body: text.body(shown), actions: [{ id: "default", label: text.open }, { id: "open", label: text.openStudio }] };
+  const value: ReadyDetails = typeof details === "string" ? { title: details } : details && typeof details === "object" ? details : {};
+  const name = typeof value.title === "string" ? singleLine(value.title, 80) : "";
+  const body = knownCount(value.actions) && knownCount(value.decisions) ? text.counts(value.actions, value.decisions) : text.body;
+  return { title: name ? text.titled(name) : text.title, body, actions: [{ id: "default", label: text.open }, { id: "open", label: text.openStudio }] };
 };
 
 export const READY_NOTIFICATION_TIMEOUT_MS = 30 * 60_000;
 
+const defaultReadyDetails = async (jobId: string): Promise<ReadyDetails> => (await import("../jobs/notify")).readyJobDetails(jobId);
+
+const defaultLanguage = async (): Promise<NotificationLanguage> => {
+  try {
+    return notificationLanguage((await (await import("../config/load")).loadConfig()).config);
+  } catch {
+    return "pt-BR";
+  }
+};
+
 /**
- * `notify ready --job <uuid>`: show "summary ready" and, on a click, open that recording in the
- * Studio. Only navigates; the link is built here from the validated id.
+ * `notify ready --job <uuid>`: show "notes ready" and, on a click, open that recording in the
+ * Studio. Only navigates; the link is built here from the validated id. The title and counts come
+ * from the job (calendar title, summary counts); a job that cannot be read still gets the notice.
  */
 export const handleReadyNotification = async (
   jobId: string,
   options: {
+    /** The recording's name, when the details are not read from the job. */
     name?: string;
+    details?: ReadyDetails | ((jobId: string) => Promise<ReadyDetails>);
     language?: NotificationLanguage;
     notify?: (options: NotifyWithActionsOptions) => Promise<string | null>;
     open?: (uri: string) => Promise<unknown>;
@@ -297,7 +332,10 @@ export const handleReadyNotification = async (
 ): Promise<string | null> => {
   const target = detachedTarget("ready", { job: jobId });
   if (target.kind !== "ready") throw new Error(NOTIFY_ERRORS.invalidCommand);
-  const content = readyNotificationContent(options.name ?? "", options.language);
+  const details: ReadyDetails = typeof options.details === "object" ? options.details
+    : options.name !== undefined && options.details === undefined ? { title: options.name }
+      : await (options.details ?? defaultReadyDetails)(target.job).catch(() => ({}));
+  const content = readyNotificationContent(details, options.language ?? await defaultLanguage());
   const choice = await (options.notify ?? ((notification) => notifyWithActions(notification)))({
     ...content, timeoutMs: options.timeoutMs ?? READY_NOTIFICATION_TIMEOUT_MS, signal: options.signal
   });

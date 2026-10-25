@@ -202,14 +202,33 @@ describe("detached helpers", () => {
 });
 
 describe("summary-ready notification", () => {
-  test("content in Portuguese and English, with a click opening the recording", () => {
-    expect(readyNotificationContent("2026-10-25_14-00_Daily")).toEqual({
-      title: "Resumo pronto", body: "2026-10-25_14-00_Daily: transcrição e resumo prontos.",
+  test("\"Notas prontas: <title>\" with the summary's counts when known, in Portuguese and English", () => {
+    expect(readyNotificationContent({ title: "Revisão semanal", actions: 3, decisions: 1 })).toEqual({
+      title: "Notas prontas: Revisão semanal", body: "3 ações · 1 decisão",
       actions: [{ id: "default", label: "Abrir" }, { id: "open", label: "Abrir no Studio" }]
     });
-    expect(readyNotificationContent("Daily", "en").body).toBe("Daily: transcript and summary are ready.");
-    expect(readyNotificationContent(" \u0000 ").body).toBe("Sua gravação: transcrição e resumo prontos.");
-    expect(readyNotificationContent("x".repeat(500)).body.length).toBeLessThan(140);
+    expect(readyNotificationContent({ title: "Daily", actions: 1, decisions: 0 }, "en")).toMatchObject({ title: "Notes ready: Daily", body: "1 action · 0 decisions" });
+    // Unknown counts (or only one of them) keep a plain body; a recording name alone still works.
+    expect(readyNotificationContent({ title: "Daily", actions: 2 }).body).toBe("Transcrição e resumo prontos no FalaTrace Studio.");
+    expect(readyNotificationContent("2026-10-25_14-00_Daily").title).toBe("Notas prontas: 2026-10-25_14-00_Daily");
+    expect(readyNotificationContent(" \u0000 ").title).toBe("Notas prontas");
+    expect(readyNotificationContent({ actions: -1, decisions: 1.5 }, "en")).toMatchObject({ title: "Notes ready", body: "Transcript and summary are ready in FalaTrace Studio." });
+    expect(readyNotificationContent("x".repeat(500)).title.length).toBeLessThan(100);
+  });
+
+  test("the title and counts are read from the job; a job that cannot be read still gets the notice", async () => {
+    const shown: NotifyWithActionsOptions[] = [];
+    await handleReadyNotification(JOB, {
+      language: "pt-BR", details: async (id) => { expect(id).toBe(JOB); return { title: "Planejamento", actions: 2, decisions: 3 }; },
+      notify: async (notification) => { shown.push(notification); return null; }
+    });
+    await handleReadyNotification(JOB, {
+      language: "pt-BR", details: async () => { throw new Error("job gone"); },
+      notify: async (notification) => { shown.push(notification); return null; }
+    });
+    expect(shown.map((notification) => [notification.title, notification.body])).toEqual([
+      ["Notas prontas: Planejamento", "2 ações · 3 decisões"], ["Notas prontas", "Transcrição e resumo prontos no FalaTrace Studio."]
+    ]);
   });
 
   test("a click (default or open) navigates to that recording; anything else does nothing", async () => {
@@ -217,7 +236,7 @@ describe("summary-ready notification", () => {
       const opened: string[] = [];
       const shown: NotifyWithActionsOptions[] = [];
       const result = await handleReadyNotification(JOB, {
-        name: "Daily", notify: async (notification) => { shown.push(notification); return choice; }, open: async (uri) => { opened.push(uri); }
+        name: "Daily", language: "pt-BR", notify: async (notification) => { shown.push(notification); return choice; }, open: async (uri) => { opened.push(uri); }
       });
       expect(result).toBe(choice);
       expect(opened).toEqual(expected ? [`falatrace://recording/${JOB}`] : []);
