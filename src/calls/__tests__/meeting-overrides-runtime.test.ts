@@ -7,6 +7,7 @@ import { runCommand } from "../../jobs/command";
 import type { JobRecord } from "../../jobs/types";
 import { readFirstRun } from "../../metrics/first-run";
 import { type MeetingOverride, setMeetingOverride } from "../../reminders/overrides";
+import { setAutomationPaused } from "../control";
 import { CallMonitorRuntime } from "../runtime";
 import { readCallStatus } from "../status";
 import type { PipeWireNodeRecord } from "../types";
@@ -151,6 +152,35 @@ test("record with a backend the automatic controller cannot drive reports the re
     await f.emit(nodes); await f.emit(nodes);
     expect(f.starts).toHaveLength(0);
     expect(f.unavailable()).toBe(1);
+  } finally { await f.close(); }
+}, 15_000);
+
+test("while automation is paused, only a meeting marked record is recorded", async () => {
+  let decision: MeetingOverride | undefined;
+  const f = await fixture({ mode: "record", decision: () => decision });
+  try {
+    await setAutomationPaused(true);
+    await f.emit(nodes); await f.emit(nodes);
+    expect(f.runtime.machine.getSnapshot().state).toBe("IN_CALL");
+    expect(f.starts).toHaveLength(0);
+    await f.emit([]); await f.emit([]);
+    decision = override("record", "Retro");
+    await f.emit(nodes); await f.emit(nodes);
+    expect(f.starts).toHaveLength(1);
+    expect(basename(dirname(f.starts[0]))).toMatch(/_Retro-[0-9a-f]{8}$/);
+  } finally { await f.close(); }
+}, 15_000);
+
+test("a skip decision that arrives while the capture is starting cancels it, with no automatic retry", async () => {
+  let reads = 0;
+  // The call starts with no decision; the "skip" is there by the time the capture checks again.
+  const f = await fixture({ mode: "record", decision: () => (++reads > 1 ? override("skip") : undefined) });
+  try {
+    await f.emit(nodes); await f.emit(nodes);
+    expect(f.runtime.machine.getSnapshot().state).toBe("IN_CALL");
+    expect(f.starts).toHaveLength(0);
+    expect(f.runtime.recorder.ownsRecording()).toBe(false);
+    expect(f.runtime.cancelledStartRecovery).toBe(false);
   } finally { await f.close(); }
 }, 15_000);
 
