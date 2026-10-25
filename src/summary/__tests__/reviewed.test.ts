@@ -336,6 +336,36 @@ test("a multi-part model-choice regeneration keeps the template its first part c
   expect(output.summary.limitations).toContain(SUMMARY_LABELS["pt-BR"].limitation.chunkedReviewed);
 });
 
+test("a resumed multi-part model-choice regeneration still fixes the template its checkpointed first part chose", async () => {
+  const f = await fixture({ long: true });
+  const p = await planReviewedSummary(f.job, { requestId: "resume-parts", config: f.config, provider: identity, maxRequests: 8, sources: sourcesWith() });
+  if (p.version !== 2) throw Error("expected a v2 plan");
+  expect(p.request.selection.mode).toBe("model-choice"); expect(p.chunkCount).toBeGreaterThan(1);
+  const heading = sectionTitle(builtInTemplate("retrospective")!.sections[0], "pt-BR"), modes: string[][] = [];
+  const answer = (request: NonNullable<Parameters<ReviewedSummaryAdapter["summarize"]>[0]["request"]>, evidence: Parameters<ReviewedSummaryAdapter["summarize"]>[0]["evidence"]) => {
+    const first = evidence.segments[0]!.id;
+    return summaryFromV2Response({ templateId: request.spec.mode === "fixed" ? request.spec.templateIds[0] : "retrospective", title: "Retro", overview: `Parte ${first}.`,
+      topics: [], decisions: [], actionItems: [], sections: [{ heading, items: [{ text: `Item ${first}.`, origin: "ai", noteIds: [], segmentIds: [first], uncertainty: "clear" }] }],
+      citations: [{ section: "overview", index: 0, segmentIds: [first], uncertainty: "clear" }], limitations: [] }, request, evidence, "ollama", identity.model);
+  };
+  // First attempt: the first part is answered (and checkpointed), the second fails.
+  let calls = 0;
+  await expect(regenerateReviewedSummary(f.job, { requestId: p.requestId, config: f.config, consent: true, consentKey: p.consentKey, adapter: { identity, summarize: async chunk => {
+    if (++calls > 1) throw Error("synthetic model timeout");
+    return answer(chunk.request!, chunk.evidence);
+  } } })).rejects.toThrow("synthetic model timeout");
+  // Resumed: the first part comes from its checkpoint and every later part is told the chosen template.
+  const output = await regenerateReviewedSummary(f.job, { requestId: p.requestId, config: f.config, consent: true, consentKey: p.consentKey, adapter: { identity, summarize: async chunk => {
+    modes.push([chunk.request!.spec.mode, ...chunk.request!.spec.templateIds.slice(0, 1)]);
+    return answer(chunk.request!, chunk.evidence);
+  } } });
+  expect(modes).toHaveLength(p.chunkCount - 1);
+  for (const later of modes) expect(later).toEqual(["fixed", "retrospective"]);
+  expect(output.summary.meta!.template).toMatchObject({ id: "retrospective", source: "ai" });
+  expect(output.summary.sections).toHaveLength(1);
+  expect(output.summary.sections![0]!.items).toHaveLength(p.chunkCount);
+});
+
 test("plans and results stored before v2 summaries still verify and stay readable", async () => {
   const f = await fixture({ verified: true });
   const probe = await f.plan("probe"), snapshot = probe.snapshot, mediaSha256 = snapshot.revision.base.mediaSha256;

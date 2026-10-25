@@ -351,14 +351,18 @@ export const regenerateReviewedSummary = async (job: JobRecord, input: { request
         if (state.requestsSpent >= plan.maxRequests) throw Error("Reviewed summary provider request budget exhausted; prior evidence preserved");
         state.requestsSpent++; state.status = "running"; await writeIndex(job.id, index, raw); return undefined;
       });
-      if (cached) { summaries.push(cached); continue; }
-      const response = await adapter(structuredClone(chunk), input.signal); input.signal?.throwIfAborted();
-      const summary = attachChunkSupport(validateSummary(structuredClone(response), plan.provider.provider, plan.provider.model), chunk);
-      await withRevisionLease(job.id, async () => {
-        stateFor((await readIndex(job.id)).index, input.requestId); await assertCurrent(job, plan); input.signal?.throwIfAborted();
-        const key = checkpointKey(plan, chunk); await publishImmutable(join(getReviewedSummaryJobDir(job.id), "cache", `${key}.json`), { version: 1, key, snapshotSha256: plan.snapshotSha256, provider: plan.provider, summary, summarySha256: hash(summary) }, REVIEWED_SUMMARY_LIMITS.artifactBytes);
-      });
+      let summary = cached;
+      if (!summary) {
+        const response = await adapter(structuredClone(chunk), input.signal); input.signal?.throwIfAborted();
+        const fresh = attachChunkSupport(validateSummary(structuredClone(response), plan.provider.provider, plan.provider.model), chunk);
+        summary = fresh;
+        await withRevisionLease(job.id, async () => {
+          stateFor((await readIndex(job.id)).index, input.requestId); await assertCurrent(job, plan); input.signal?.throwIfAborted();
+          const key = checkpointKey(plan, chunk); await publishImmutable(join(getReviewedSummaryJobDir(job.id), "cache", `${key}.json`), { version: 1, key, snapshotSha256: plan.snapshotSha256, provider: plan.provider, summary: fresh, summarySha256: hash(fresh) }, REVIEWED_SUMMARY_LIMITS.artifactBytes);
+        });
+      }
       summaries.push(summary);
+      // Also when the first part comes from a checkpoint (a resumed run): later parts keep its template.
       if (request && position === 0 && planned.length > 1) fixed = templateAfterFirstPart(request, summary);
     }
     const selection = request ? (fixed?.selection || resolvedSelection(request, summaries[0])) : undefined;
