@@ -58,7 +58,8 @@
 			"src/summary/__tests__/spec.test.ts",
 			"src/summary/__tests__/language.test.ts",
 			"src/assistant/types.ts",
-			"src/library-index/types.ts"
+			"src/library-index/types.ts",
+			"src/notes/**"
 		]
 	},
 	"formatter": { "enabled": false },
