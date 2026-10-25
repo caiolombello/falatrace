@@ -17,7 +17,13 @@ const MIN_CONFIDENCE = 0.65;
 const MAX_ATTENDEES = 50;
 
 export type GoogleAttendee = { name: string; self: boolean };
-export type GoogleCalendarEvent = { id: string; title: string; startAtMs: number; endAtMs: number; recurring: boolean; attendees: GoogleAttendee[] };
+export type GoogleCalendarEvent = {
+  id: string; title: string; startAtMs: number; endAtMs: number; recurring: boolean; attendees: GoogleAttendee[];
+  /** Id of the recurring series this occurrence belongs to (Google's recurringEventId). */
+  seriesId?: string;
+  /** The connected account declined this event (set only then). */
+  selfDeclined?: boolean;
+};
 export type GoogleCalendarDependencies = {
   fetch?: typeof fetch;
   store?: GoogleTokenStore;
@@ -50,7 +56,10 @@ export const parseGoogleEvents = (body: unknown): GoogleCalendarEvent[] => {
     const title = cleanTitle(event.summary);
     if (event.status === "cancelled" || !title || !Number.isFinite(startAtMs) || !Number.isFinite(endAtMs) || endAtMs <= startAtMs) return [];
     const seen = new Set<string>();
-    const attendees = (Array.isArray(event.attendees) ? event.attendees : []).slice(0, 500).flatMap((entry): GoogleAttendee[] => {
+    const listed = (Array.isArray(event.attendees) ? event.attendees : []).slice(0, 500);
+    const selfDeclined = listed.some((entry) => !!entry && typeof entry === "object" &&
+      (entry as { self?: unknown }).self === true && (entry as { responseStatus?: unknown }).responseStatus === "declined");
+    const attendees = listed.flatMap((entry): GoogleAttendee[] => {
       const attendee = entry && typeof entry === "object" ? entry as { resource?: unknown; responseStatus?: unknown; self?: unknown; displayName?: unknown; email?: unknown } : undefined;
       // Rooms and people who declined were not in the meeting.
       if (!attendee || attendee.resource === true || attendee.responseStatus === "declined") return [];
@@ -60,14 +69,17 @@ export const parseGoogleEvents = (body: unknown): GoogleCalendarEvent[] => {
       seen.add(key);
       return [{ name, self: attendee.self === true }];
     }).slice(0, MAX_ATTENDEES);
-    return [{ id: typeof event.id === "string" ? event.id.slice(0, 200) : "", title, startAtMs, endAtMs, recurring: typeof event.recurringEventId === "string", attendees }];
+    const seriesId = typeof event.recurringEventId === "string" ? event.recurringEventId.slice(0, 200) : "";
+    return [{ id: typeof event.id === "string" ? event.id.slice(0, 200) : "", title, startAtMs, endAtMs, recurring: typeof event.recurringEventId === "string", attendees,
+      ...(seriesId ? { seriesId } : {}), ...(selfDeclined ? { selfDeclined: true } : {}) }];
   });
 };
 
 /** Connected means a saved refresh token for the configured client. */
 export const googleCalendarEnabled = (config: AppConfig): boolean => config.google.calendar && isGoogleClientId(config.google.clientId);
 
-const accessToken = async (config: AppConfig, dependencies: GoogleCalendarDependencies): Promise<string> => {
+/** A fresh access token for the connected account; the refresh writes nothing, so sandboxed units may call it. */
+export const googleAccessToken = async (config: AppConfig, dependencies: GoogleCalendarDependencies = {}): Promise<string> => {
   const token = await (dependencies.store || new GoogleTokenStore()).read();
   if (!token || token.clientId !== config.google.clientId) throw new Error(GOOGLE_MESSAGES.notConnected);
   const secret = await (dependencies.clientSecret || (() => readSecret("GOOGLE_CLIENT_SECRET")))();
@@ -90,13 +102,20 @@ export const fetchGoogleEvents = async (token: string, from: Date, to: Date, dep
   return parseGoogleEvents(await response.json().catch(() => undefined));
 };
 
+/** Events of the primary calendar in a window of at most 12 hours, e.g. the next meetings for reminders. */
+export const listGoogleEvents = async (config: AppConfig, from: Date, to: Date, dependencies: GoogleCalendarDependencies = {}): Promise<GoogleCalendarEvent[]> => {
+  const start = from.getTime(), end = to.getTime();
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start || end - start > MAX_WINDOW_MS) throw new Error("Calendar time range is invalid");
+  return fetchGoogleEvents(await googleAccessToken(config, dependencies), from, to, dependencies);
+};
+
 /** The event that best matches a recording, by the same overlap score as the GNOME calendar. */
 export const findGoogleCalendarEvent = async (
   config: AppConfig, startAt: string, endAt: string, dependencies: GoogleCalendarDependencies = {}
 ): Promise<{ event: GoogleCalendarEvent; confidence: number } | undefined> => {
   const start = Date.parse(startAt), end = Date.parse(endAt);
   if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start || end - start > MAX_WINDOW_MS) throw new Error("Call time range is invalid");
-  const events = await fetchGoogleEvents(await accessToken(config, dependencies), new Date(start - 10 * 60_000), new Date(end + 15 * 60_000), dependencies);
+  const events = await fetchGoogleEvents(await googleAccessToken(config, dependencies), new Date(start - 10 * 60_000), new Date(end + 15 * 60_000), dependencies);
   const best = events.map((event) => ({ event, confidence: scoreCalendarEvent(event, start, end) })).sort((a, b) => b.confidence - a.confidence)[0];
   return best && best.confidence >= MIN_CONFIDENCE ? { event: best.event, confidence: Number(best.confidence.toFixed(3)) } : undefined;
 };

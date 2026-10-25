@@ -46,7 +46,7 @@ test("invited names come from display names or e-mails, never rooms, people who 
     { id: "all-day", summary: "Feriado", start: { date: "2026-10-21" }, end: { date: "2026-10-22" } }
   ] });
   expect(events).toEqual([{ id: "a", title: "Reunião a", startAtMs: Date.parse("2026-10-21T16:00:00Z"), endAtMs: Date.parse("2026-10-21T17:00:00Z"), recurring: true,
-    attendees: [{ name: "Caio Barbieri", self: true }, { name: "Ana Souza", self: false }] }]);
+    attendees: [{ name: "Caio Barbieri", self: true }, { name: "Ana Souza", self: false }], seriesId: "series" }]);
 });
 
 test("the recording's event is the best overlap in its window, read with a fresh access token", async () => withToken(async (store) => {

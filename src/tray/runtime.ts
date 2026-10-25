@@ -109,7 +109,8 @@ export const buildTerminalLaunchArgs = (
 export const buildStudioLaunchArgs = (
   command: string,
   unitSuffix: string,
-  env: NodeJS.ProcessEnv = process.env
+  env: NodeJS.ProcessEnv = process.env,
+  extraArgs: string[] = []
 ): string[] => [
   "--user",
   "--quiet",
@@ -118,7 +119,7 @@ export const buildStudioLaunchArgs = (
   `--unit=recording-cli-studio-${unitSuffix}`,
   ...transientUnitEnvironment(env),
   "--",
-  ...transientCommand([command])
+  ...transientCommand([command, ...extraArgs])
 ];
 
 /**
@@ -141,7 +142,9 @@ export const launchRecordingStudio = async (
     executable: string,
     args: string[],
     options: { timeoutMs: number }
-  ) => Promise<unknown> = runCommand
+  ) => Promise<unknown> = runCommand,
+  /** Passed to the Studio after its own arguments, e.g. a validated falatrace:// link. */
+  extraArgs: string[] = []
 ): Promise<void> => {
   const command = launcher ?? await findStudioLauncher();
   if (!(await isExecutable(command))) {
@@ -153,7 +156,9 @@ export const launchRecordingStudio = async (
   try {
     await runner("/usr/bin/systemd-run", buildStudioLaunchArgs(
       command,
-      `${process.pid}-${Date.now()}`
+      `${process.pid}-${Date.now()}`,
+      process.env,
+      extraArgs
     ), { timeoutMs: 15_000 });
   } catch {
     throw new Error(

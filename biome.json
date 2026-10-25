@@ -70,7 +70,16 @@
 			"src/assistant/prompts.ts",
 			"src/assistant/threads.ts",
 			"src/assistant/runner.ts",
-			"src/live/**"
+			"src/live/**",
+			"src/reminders/**",
+			"src/notify/**",
+			"src/calendar/upcoming.ts",
+			"src/calendar/__tests__/upcoming.test.ts",
+			"src/metrics/**",
+			"src/desktop/open-request.ts",
+			"src/desktop/__tests__/open-request.test.ts",
+			"src/runtime/private-file.ts",
+			"src/runtime/__tests__/private-file.test.ts"
 		]
 	},
 	"formatter": { "enabled": false },
