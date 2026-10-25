@@ -33,6 +33,14 @@ const status = (overrides: Partial<CallMonitorStatus> = {}): CallMonitorStatus =
 });
 
 describe("tray presentation", () => {
+  test("tells a monitor that only warns about calls from one that records them", () => {
+    expect(presentTrayStatus(status({ mode: "notify-only" }), "active").automationText).toBe("Captura automática · só avisos");
+    expect(presentTrayStatus(status({ mode: "record" }), "active").automationText).toBe("Captura automática · ativa");
+    expect(presentTrayStatus(status(), "active").automationText).toBe("Captura automática · ativa");
+    expect(presentTrayStatus(status({ mode: "notify-only" }), "active", undefined, undefined, { automation: { paused: true } }).automationText)
+      .toBe("Captura automática · pausada");
+  });
+
   test("shows managed recording details and enables only the valid recording action", () => {
     expect(presentTrayStatus(status(), "active", undefined, undefined, {
       automation: { paused: false },

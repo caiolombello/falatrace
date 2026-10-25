@@ -8,6 +8,7 @@ import type {
   NetworkTelemetry
 } from "./types";
 import { redactResolvedSecrets } from "../config/secrets";
+import type { CallDetectionMode } from "../config/defaults";
 
 const getStateRoot = (): string =>
   process.env.XDG_STATE_HOME || join(homedir(), ".local", "state");
@@ -27,6 +28,10 @@ export type CallMonitorStatus = {
   recordingBackend?: "obs" | "audio" | "gpu-screen-recorder";
   recordingWarning?: string;
   automationPaused?: boolean;
+  /** The configured mode: "notify-only" warns about calls, "record"/"obs" record them (absent in older files). */
+  mode?: CallDetectionMode;
+  /** The per-meeting decision that applies to the current call, if any (from a reminder, the tray or the Studio). */
+  meetingDecision?: "skip" | "record";
   network?: NetworkTelemetry;
 };
 

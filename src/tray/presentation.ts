@@ -173,6 +173,10 @@ export const presentTrayStatus = (
   const timeStatus = timesheetText(counts);
   const processingStatus = processingText(processingCounts);
   const fields = contextFields(context);
+  // A monitor in notify-only mode warns about calls but never records them on its own.
+  if (status?.mode === "notify-only" && !context.automation.error && !context.automation.paused) {
+    fields.automationText = "Captura automática · só avisos";
+  }
   const common = {
     restartMonitorEnabled: monitorState !== "disabled",
     processingText: processingStatus,

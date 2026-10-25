@@ -3,7 +3,9 @@ import { promises as fs, watch, type FSWatcher } from "node:fs";
 import { basename, dirname } from "node:path";
 import type { AppConfig } from "../config/defaults";
 import { runCommand } from "../jobs/command";
-import { enqueueRecording } from "../jobs/enqueue";
+import { enqueueRecording, fastPathActive } from "../jobs/enqueue";
+import { queueSelectedJob } from "../jobs/queue";
+import { activeOverride, MEETING_OVERRIDES_FILE, type MeetingOverride } from "../reminders/overrides";
 import { acquireSingleton } from "../runtime/singleton";
 import { TimeEntryStore } from "../timesheet/store";
 import { classifyCall } from "./classifier";
@@ -46,7 +48,15 @@ type CallMonitorServices = {
   run?: typeof runCommand;
   notifications?: typeof defaultNotifications;
   network?: typeof collectNetworkTelemetry;
+  /** The per-meeting decision ("skip" or "record") that applies now; defaults to the meeting-overrides file. */
+  meetingOverride?: (now: Date) => Promise<MeetingOverride | undefined>;
+  /** Starts processing a job right away (the fast path); defaults to queueSelectedJob. */
+  queueJob?: (jobId: string) => Promise<unknown>;
+  enqueue?: typeof enqueueRecording;
 };
+
+/** Why a new automatic recording does not start now. */
+type RecordingBlock = "meeting-skipped" | "notify-only" | "automation-paused";
 
 const waitForRetry = (milliseconds: number, signal: AbortSignal): Promise<void> =>
   new Promise((resolve) => {
@@ -90,6 +100,9 @@ export class CallMonitorRuntime {
   private evaluationQueue: Promise<void> = Promise.resolve();
   private runSignal?: AbortSignal;
   private automationPaused = false;
+  private meetingOverride?: MeetingOverride;
+  /** The "record" decision a mid-call start was already tried for, so a failure is not retried in a loop. */
+  private overrideStartTried?: string;
   private automationWatcher?: FSWatcher;
   private automationQueue: Promise<void> = Promise.resolve();
   private statusQueue: Promise<void> = Promise.resolve();
@@ -115,14 +128,22 @@ export class CallMonitorRuntime {
     await fs.mkdir(dirname(automationPath), { recursive: true, mode: 0o700 });
     try {
       this.automationWatcher = watch(dirname(automationPath), (_event, filename) => {
-        if (filename && filename.toString() !== basename(automationPath)) return;
+        const name = filename?.toString();
+        if (name && name !== basename(automationPath) && name !== MEETING_OVERRIDES_FILE) return;
         this.automationQueue = this.automationQueue.then(async () => {
           if (this.stopped) return;
           await this.refreshAutomation();
+          await this.refreshMeetingOverride();
           await this.persistStatus();
+          // A "record" decision made while a call is already going on (a late click on a reminder).
+          if (name !== basename(automationPath) && this.meetingOverride?.decision === "record") {
+            this.evaluationQueue = this.evaluationQueue.then(() => this.startFromMeetingOverride())
+              .catch((err) => logCallEvent("recording.override-error", { error: sanitizeError(err) }));
+          }
         }).catch((err) => logCallEvent("automation.status-error", { error: sanitizeError(err) }));
       });
       await this.refreshAutomation();
+      await this.refreshMeetingOverride();
       if (!this.dryRun) {
         const recovered = await this.recorder.recover();
         if (recovered) {
@@ -270,13 +291,12 @@ export class CallMonitorRuntime {
           logCallEvent("notification.error", { error: sanitizeError(err) })
         );
       }
-      if (
-        !this.dryRun &&
-        this.config.callDetection.mode !== "notify-only"
-      ) {
-        await this.refreshAutomation();
-        if (this.automationPaused) {
-          logCallEvent("recording.suspended", { reason: "automation-paused" });
+      if (!this.dryRun) {
+        const block = await this.recordingBlock();
+        // notify-only warns about the call and records nothing, unless this meeting was marked "record".
+        if (block === "notify-only") return;
+        if (block) {
+          logCallEvent("recording.suspended", { reason: block });
           return;
         }
         if (this.recorder.ownsRecording()) {
@@ -372,20 +392,24 @@ export class CallMonitorRuntime {
 
   private async startOwnedRecording(app?: CallApplication): Promise<void> {
     let inactiveDuringStart = false;
+    let blocked: RecordingBlock | undefined;
+    // A meeting marked "record" names the recording folder after the meeting.
+    const title = this.meetingOverride?.decision === "record" ? this.meetingOverride.title : undefined;
     try {
       const result = await this.recorder.start({
         sessionId: this.sessionId || undefined,
+        ...(title ? { title } : {}),
         app: app,
         signal: this.runSignal,
         shouldContinue: async () => {
-          await this.refreshAutomation();
+          blocked = await this.recordingBlock();
           if (!this.observation.active) inactiveDuringStart = true;
-          return !this.stopped && !this.automationPaused && this.observation.active &&
+          return !this.stopped && !blocked && this.observation.active &&
             this.machine.getSnapshot().state === "IN_CALL";
         }
       });
       if (result === "cancelled") {
-        this.cancelledStartRecovery = !this.stopped && !this.runSignal?.aborted && !this.automationPaused && inactiveDuringStart;
+        this.cancelledStartRecovery = !this.stopped && !this.runSignal?.aborted && !blocked && inactiveDuringStart;
         logCallEvent("recording.start-cancelled", { reason: "call-ended-automation-paused-or-monitor-stopped" });
         return;
       }
@@ -407,8 +431,7 @@ export class CallMonitorRuntime {
     const snapshot = this.machine.getSnapshot();
     if (snapshot.state === "IDLE") { this.cancelledStartRecovery = false; return; }
     if (snapshot.state !== "IN_CALL" || !this.observation.active) return;
-    await this.refreshAutomation();
-    if (this.automationPaused || this.config.callDetection.mode === "notify-only") {
+    if (await this.recordingBlock()) {
       this.cancelledStartRecovery = false;
       return;
     }
@@ -466,11 +489,14 @@ export class CallMonitorRuntime {
           logCallEvent("timesheet.link-recording-error", { error: sanitizeError(err) })
         );
       }
-      if (this.config.processing.autoEnqueue &&
+      const fastPath = fastPathActive(this.config);
+      let jobId: string | undefined;
+      if ((this.config.processing.autoEnqueue || fastPath) &&
         (this.config.callDetection.mode !== "obs" || this.config.callDetection.enqueueOnStop)) {
-        const job = await enqueueRecording(this.config, outputPath, {
+        const job = await (this.services.enqueue || enqueueRecording)(this.config, outputPath, {
           recordingId: sessionId, startedAt, endedAt, app
         });
+        jobId = job?.id;
         if (job && this.config.timesheet.enabled) {
           const entry = await this.timeEntries.findForJob(job.id, outputPath);
           if (entry) await this.timeEntries.linkJob(entry.id, job.id, outputPath);
@@ -478,6 +504,13 @@ export class CallMonitorRuntime {
       }
       await this.recorder.acknowledge(sessionId);
       this.sessionEndedAt = null;
+      // The fast path starts processing now instead of at the next timer run (systemd-run works from the sandbox).
+      if (jobId && fastPath) {
+        await (this.services.queueJob || queueSelectedJob)(jobId).then(
+          () => logCallEvent("processing.queued", { fastPath: true }),
+          (err) => logCallEvent("processing.queue-error", { error: sanitizeError(err) })
+        );
+      }
       return outputPath;
     } catch (err) {
       logCallEvent("recording.stop-error", { error: sanitizeError(err) });
@@ -510,6 +543,7 @@ export class CallMonitorRuntime {
   private async checkCaptureHealth(): Promise<void> {
     if (this.stopped) return;
     await this.refreshAutomation();
+    await this.refreshMeetingOverride();
     const previousWarning = this.recordingWarning;
     try {
       if (this.recorder.ownsRecording()) {
@@ -548,6 +582,8 @@ export class CallMonitorRuntime {
         recordingBackend: this.recorder.getSession()?.backend,
         recordingWarning: this.recordingWarning,
         automationPaused: this.automationPaused,
+        mode: this.config.callDetection.mode,
+        ...(this.meetingOverride ? { meetingDecision: this.meetingOverride.decision } : {}),
         network: this.latestNetwork
       });
     });
@@ -602,6 +638,49 @@ export class CallMonitorRuntime {
       this.automationPaused = true;
       logCallEvent("automation.invalid-state", { error: sanitizeError(err) });
     }
+  }
+
+  /**
+   * The decision for the meeting happening now. A damaged file is no decision: the configured mode
+   * applies, so a broken file neither records a meeting nor stops one from being recorded.
+   */
+  private async refreshMeetingOverride(): Promise<MeetingOverride | undefined> {
+    try {
+      this.meetingOverride = await (this.services.meetingOverride || ((now: Date) => activeOverride(now)))(new Date());
+    } catch (err) {
+      this.meetingOverride = undefined;
+      logCallEvent("meeting-override.invalid-state", { error: sanitizeError(err) });
+    }
+    return this.meetingOverride;
+  }
+
+  /**
+   * Whether a new automatic recording may start now: a meeting marked "skip" never records; one
+   * marked "record" records even in notify-only mode or while automation is paused (the person
+   * asked for this meeting); otherwise notify-only and a pause keep today's behaviour.
+   */
+  private async recordingBlock(): Promise<RecordingBlock | undefined> {
+    await this.refreshAutomation();
+    const decision = (await this.refreshMeetingOverride())?.decision;
+    if (decision === "skip") return "meeting-skipped";
+    if (decision === "record") return undefined;
+    if (this.config.callDetection.mode === "notify-only") return "notify-only";
+    return this.automationPaused ? "automation-paused" : undefined;
+  }
+
+  /** A "record" decision written while a call is already going on starts its recording, once per decision. */
+  private async startFromMeetingOverride(): Promise<void> {
+    if (this.stopped || this.dryRun || this.runSignal?.aborted || !this.sessionId) return;
+    if (this.machine.getSnapshot().state !== "IN_CALL" || !this.observation.active || this.recorder.ownsRecording()) return;
+    const override = this.meetingOverride;
+    if (override?.decision !== "record" || await this.recordingBlock()) return;
+    const key = `${override.eventIdHash}:${override.createdAt}:${this.sessionId}`;
+    if (this.overrideStartTried === key) return;
+    this.overrideStartTried = key;
+    logCallEvent("recording.start-from-meeting-decision", { decision: "record" });
+    this.cancelledStartRecovery = false;
+    await this.startOwnedRecording(this.machine.getSnapshot().app);
+    await this.persistStatus();
   }
 }
 
