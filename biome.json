@@ -59,7 +59,17 @@
 			"src/summary/__tests__/language.test.ts",
 			"src/assistant/types.ts",
 			"src/library-index/types.ts",
-			"src/notes/**"
+			"src/notes/**",
+			"src/assistant/providers/**",
+			"src/assistant/chatgpt/**",
+			"src/assistant/detect.ts",
+			"src/assistant/__tests__/**",
+			"src/library-index/**",
+			"src/assistant/retrieval.ts",
+			"src/assistant/citations.ts",
+			"src/assistant/prompts.ts",
+			"src/assistant/threads.ts",
+			"src/assistant/runner.ts"
 		]
 	},
 	"formatter": { "enabled": false },

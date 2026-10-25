@@ -11,7 +11,7 @@ import {
 import { SUMMARY_JSON_SCHEMA, SUMMARY_SYSTEM_PROMPT } from "./schema";
 import type { SummaryInputEvidence } from "./evidence";
 
-const validateOllamaUrl = (value: string): URL => {
+export const validateOllamaUrl = (value: string): URL => {
   const url = new URL(value);
   const isLoopback = ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname);
   if (url.protocol !== "https:" && !(url.protocol === "http:" && isLoopback)) {
