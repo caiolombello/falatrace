@@ -3,12 +3,13 @@ import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { BriefEvent, PreMeetingBrief } from "../../brief/build";
 import type { UpcomingEvent } from "../../calendar/upcoming";
 import { type AppConfig, DEFAULT_CONFIG } from "../../config/defaults";
 import type { NotifyWithActionsOptions } from "../../notify/actions";
 import type { SingletonLease } from "../../runtime/singleton";
 import {
-  activeOverride, handleReminderNotification, OVERRIDE_KNOWN_ERRORS, recordSentReminder, REMINDER_KNOWN_ERRORS, REMINDERS_KNOWN_ERRORS,
+  activeOverride, createReminderBrief, handleReminderNotification, OVERRIDE_KNOWN_ERRORS, recordSentReminder, REMINDER_KNOWN_ERRORS, REMINDERS_KNOWN_ERRORS,
   REMINDERS_SERVICE_ERRORS, REMINDERS_UNIT_ERRORS, REMINDERS_UNIT_KNOWN_ERRORS, type ReminderActionId, type ReminderRecordingMode, runRemindersService, type SentReminder
 } from "../index";
 
@@ -84,6 +85,50 @@ describe("runRemindersService", () => {
   });
 });
 
+describe("createReminderBrief", () => {
+  const event: UpcomingEvent = {
+    source: "google-calendar", eventIdHash: HASH, seriesIdHash: "b".repeat(64), title: "Revisão semanal", startAt: iso(30), endAt: iso(60), recurring: true,
+    attendees: [{ name: "Ana Souza", self: false }, { name: "Eu", self: true }]
+  };
+  const brief = { title: "Revisão semanal", startAt: iso(30), endAt: iso(60), matchedBy: ["series"], people: [], clientCodes: [], recentMeetings: [], openActions: [], recentDecisions: [] } as PreMeetingBrief;
+
+  test("builds the brief from the library index, refreshing it at most every 30 minutes", async () => {
+    let clock = at(0);
+    let refreshes = 0;
+    const events: BriefEvent[] = [];
+    const index = { listFacts: async () => [], getFacts: async () => undefined, search: async () => [], refresh: async () => { refreshes++; } };
+    const make = createReminderBrief(config(), {
+      index, now: () => clock, language: "en",
+      build: async (_reader, value) => { events.push(value); return brief; },
+      lines: (_brief, language) => [`lines in ${language}`]
+    });
+    expect(await make(event)).toEqual(["lines in en"]);
+    expect(events).toEqual([{
+      title: "Revisão semanal", startAt: iso(30), endAt: iso(60), recurring: true, attendees: [{ name: "Ana Souza", self: false }, { name: "Eu", self: true }],
+      seriesIdHash: "b".repeat(64), eventIdHash: HASH
+    }]);
+    clock = at(10);
+    await make(event);
+    expect(refreshes).toBe(1);
+    clock = at(31);
+    await make(event);
+    expect(refreshes).toBe(2);
+  });
+
+  test("a slow or failing refresh never holds the brief back; nothing relevant means no lines", async () => {
+    const errors: unknown[] = [];
+    const stuck = { listFacts: async () => [], getFacts: async () => undefined, search: async () => [], refresh: () => new Promise<never>(() => {}) };
+    const started = Date.now();
+    const slow = createReminderBrief(config(), { index: stuck, refreshTimeoutMs: 50, build: async () => null, onError: (error) => errors.push(error) });
+    expect(await slow(event)).toBeNull();
+    expect(Date.now() - started).toBeLessThan(2_000);
+    const failing = { ...stuck, refresh: async () => { throw new Error("unsafe index folder"); } };
+    const make = createReminderBrief(config(), { index: failing, build: async () => brief, lines: () => ["a", "b"], onError: (error) => errors.push(error) });
+    expect(await make(event)).toEqual(["a", "b"]);
+    expect(errors.map((error) => (error as Error).message)).toEqual(["unsafe index folder"]);
+  });
+});
+
 const sent = (mode: ReminderRecordingMode, actions: Array<[string, string]>, extra: Partial<SentReminder> = {}): SentReminder => ({
   eventIdHash: HASH, startAt: iso(30), endAt: iso(60), title: "Revisão semanal", source: "google-calendar", recurring: true, sentAt: iso(28),
   recordingMode: mode,
@@ -94,19 +139,31 @@ const sent = (mode: ReminderRecordingMode, actions: Array<[string, string]>, ext
 const RECORD_LATER: Array<[string, string]> = [["record", "Gravar"], ["later", "Agora não"], ["brief", "Ver resumo anterior"]];
 const SKIP_OK: Array<[string, string]> = [["skip", "Pular esta gravação"], ["ok", "OK"]];
 
+/** The configuration when the button is pressed: a call monitor watching calls, or no call detection. */
+const monitored = (mode: "notify-only" | "record" = "notify-only"): AppConfig => {
+  const value = config();
+  value.callDetection.enabled = true;
+  value.callDetection.mode = mode;
+  return value;
+};
+
 describe("handleReminderNotification", () => {
-  const setup = async (entry: SentReminder, choice: string | null, now = at(28)) => {
+  const setup = async (entry: SentReminder, choice: string | null, now = at(28), extra: Partial<Parameters<typeof handleReminderNotification>[1]> = {}) => {
     const stateDir = await tempDir();
     await recordSentReminder(entry, { stateDir, now: at(28) });
     const shown: NotifyWithActionsOptions[] = [];
     const opened: string[] = [];
+    const captures: Array<{ title: string; config: AppConfig }> = [];
     const result = await handleReminderNotification(HASH, {
       stateDir,
       now: () => now,
-      notify: async (options) => { shown.push(options); return choice; },
-      open: async (uri) => { opened.push(uri); }
+      config: entry.recordingMode === "off" ? config() : monitored(entry.recordingMode === "record" ? "record" : "notify-only"),
+      notify: async (options) => { shown.push(options); return options.actions.length ? choice : null; },
+      open: async (uri) => { opened.push(uri); },
+      startCapture: async (current, title) => { captures.push({ title, config: current }); },
+      ...extra
     });
-    return { stateDir, shown, opened, result };
+    return { stateDir, shown, opened, captures, result };
   };
 
   test("shows exactly the recorded notification, waiting until 10 minutes after the start", async () => {
@@ -138,11 +195,32 @@ describe("handleReminderNotification", () => {
     expect((await activeOverride(new Date(at(31)), { stateDir }))?.decision).toBe("skip");
   });
 
-  test("with call detection off, record opens the capture page instead (nothing would act on a decision)", async () => {
-    const { stateDir, result, opened } = await setup(sent("off", RECORD_LATER), "record");
-    expect(result).toEqual({ shown: true, choice: "record", opened: "falatrace://capture" });
+  test("with call detection off, record starts a capture named after the meeting and opens it in the Studio", async () => {
+    // Nothing would act on a decision without a call monitor, so the recording starts now.
+    const { stateDir, result, opened, captures } = await setup(sent("off", RECORD_LATER), "record");
+    expect(result).toEqual({ shown: true, choice: "record", capture: "started", opened: "falatrace://capture" });
+    expect(captures.map((capture) => capture.title)).toEqual(["Revisão semanal"]);
     expect(opened).toEqual(["falatrace://capture"]);
     expect(await activeOverride(new Date(at(31)), { stateDir })).toBeUndefined();
+  });
+
+  test("the configuration at click time decides: a monitor enabled since the reminder gets a decision", async () => {
+    const { stateDir, result, captures } = await setup(sent("off", RECORD_LATER), "record", at(28), { config: monitored() });
+    expect(result.override?.decision).toBe("record");
+    expect(captures).toEqual([]);
+    expect((await activeOverride(new Date(at(31)), { stateDir }))?.decision).toBe("record");
+  });
+
+  test("a capture that cannot start is told in a plain notification; an unreadable configuration opens the capture page", async () => {
+    const failed = await setup(sent("off", RECORD_LATER), "record", at(28), {
+      startCapture: async () => { throw new Error("Já existe uma captura gerenciada. Finalize-a antes de iniciar outra."); }
+    });
+    expect(failed.result).toMatchObject({ shown: true, choice: "record", capture: "failed", error: "Já existe uma captura gerenciada. Finalize-a antes de iniciar outra." });
+    expect(failed.shown[1]).toMatchObject({ title: "Gravação não iniciada", body: REMINDERS_SERVICE_ERRORS.captureFailed, actions: [] });
+    expect(failed.opened).toEqual([]);
+    const unreadable = await setup(sent("off", RECORD_LATER), "record", at(28), { config: undefined, loadConfig: async () => { throw new Error("invalid config"); } });
+    expect(unreadable.result).toEqual({ shown: true, choice: "record", opened: "falatrace://capture" });
+    expect(unreadable.captures).toEqual([]);
   });
 
   test("brief opens the event in the Studio; later, ok and unknown answers do nothing", async () => {

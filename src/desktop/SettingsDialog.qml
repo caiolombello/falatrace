@@ -160,7 +160,7 @@ FtDialog {
         return action === "keys" ? t("Abrir Chaves de API") : action === "detection" ? t("Abrir Gravação automática") : action === "capture" ? t("Abrir Captura e áudio") : action === "remote" ? t("Abrir Integrações")
             : action === "whisper-model" || action === "ollama-model" ? t("Abrir Modelos") : action === "sync-apply" ? t("Ativar processamento em segundo plano")
             : action === "archive-apply" ? t("Ativar timer de arquivo") : action === "backup-apply" ? t("Ativar timer de backup")
-            : action === "calls-apply" ? t("Aplicar o monitor de chamadas") : ""
+            : action === "calls-apply" ? t("Aplicar o monitor de chamadas") : action === "reminders-apply" ? t("Aplicar os lembretes") : ""
     }
     function timerText(timer) {
         if (!timer) return ""

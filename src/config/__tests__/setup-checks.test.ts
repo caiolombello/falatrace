@@ -7,6 +7,7 @@ import { checkAutomation, checkProcessing, listAudioDevices, readServiceStatus, 
 import { buildSyncUnits } from "../../jobs/service";
 import { buildProtonBackupUnits } from "../../proton/service";
 import { buildCallMonitorUnit } from "../../calls/service";
+import { buildRemindersUnit, REMINDERS_UNIT } from "../../reminders/unit";
 import { getServiceLaunchCommand } from "../../runtime/launcher";
 
 const probe = (overrides: Partial<SetupProbe> = {}): SetupProbe => ({
@@ -232,6 +233,57 @@ test("automation checks say what will really record and whether new recordings g
   expect(copies(stopped, stopped)[0].detail).toContain("parado");
   // Service status unavailable: said, not assumed.
   expect(checkAutomation(config, null).filter((check) => check.id === "archive-timer" || check.id === "backup-timer").map((check) => check.status)).toEqual(["skipped", "skipped"]);
+});
+
+test("the reminders check appears only when reminders would run, and says whether their service does", () => {
+  const config = structuredClone(DEFAULT_CONFIG);
+  const idleTimer = { installed: false, enabled: false, active: false, outdated: false, nextRunAt: null, lastResult: null };
+  const off = { installed: false, enabled: false, active: false, outdated: false, staleConfig: false };
+  const running = { installed: true, enabled: true, active: true, outdated: false, staleConfig: false };
+  const base = { calls: off, tray: off, sync: idleTimer, archive: idleTimer, backup: idleTimer };
+  const reminder = (services: Parameters<typeof checkAutomation>[1]) => checkAutomation(config, services).find((check) => check.id === "meeting-reminders");
+  // No calendar connected: the service would exit at once, so nothing is promised.
+  expect(reminder({ ...base, reminders: off })).toBeUndefined();
+  config.calendar.enabled = true;
+  expect(reminder({ ...base, reminders: off })).toMatchObject({ status: "warning", action: "reminders-apply" });
+  // A status read before the service existed counts as not installed.
+  expect(reminder(base)).toMatchObject({ status: "warning", action: "reminders-apply" });
+  expect(reminder({ ...base, reminders: { ...running, staleConfig: true } })).toMatchObject({ status: "warning", action: "reminders-apply", detail: expect.stringContaining("configuração antiga") });
+  expect(reminder({ ...base, reminders: { ...running, outdated: true } })).toMatchObject({ status: "warning", action: "reminders-apply" });
+  expect(reminder({ ...base, reminders: running })).toMatchObject({ status: "ok" });
+  expect(reminder(null)).toMatchObject({ status: "skipped" });
+  // Recordings that are automatic make "auto" reminders off; "on" keeps them.
+  config.callDetection.enabled = true;
+  config.callDetection.mode = "record";
+  expect(reminder({ ...base, reminders: off })).toBeUndefined();
+  config.reminders.mode = "on";
+  expect(reminder({ ...base, reminders: off })).toMatchObject({ status: "warning" });
+});
+
+test("service status reads the reminders unit like the call monitor's", async () => {
+  const root = await fs.mkdtemp(join(tmpdir(), "falatrace-reminders-status-"));
+  try {
+    const config = structuredClone(DEFAULT_CONFIG);
+    const configPath = join(root, "config.json");
+    await fs.writeFile(configPath, "{}");
+    await fs.utimes(configPath, new Date(1700000000400), new Date(1700000000400));
+    const probes: string[] = [];
+    const run = async (_command: string, args: string[]) => {
+      if (args.includes(REMINDERS_UNIT)) probes.push(args[1]);
+      if (args.includes("--timestamp=us+utc")) return { stdout: "Tue 2023-11-14 22:13:20.100000 UTC\n", stderr: "" };
+      if (args[1] === "show") return { stdout: "@1000\n", stderr: "" };
+      return { stdout: args[1] === "is-enabled" ? "enabled\n" : "active\n", stderr: "" };
+    };
+    expect((await readServiceStatus(config, configPath, run as never, root)).reminders).toMatchObject({ installed: false });
+    await fs.writeFile(join(root, REMINDERS_UNIT), buildRemindersUnit(["/x/falatrace"]));
+    expect((await readServiceStatus(config, configPath, run as never, root)).reminders)
+      .toEqual({ installed: true, enabled: true, active: true, outdated: false, staleConfig: true });
+    expect(probes).toEqual(expect.arrayContaining(["is-enabled", "is-active", "show"]));
+    await fs.writeFile(join(root, REMINDERS_UNIT), buildRemindersUnit(["/x/falatrace"]).replace(/^ReadWritePaths=.*$/m, "ReadWritePaths=/elsewhere"));
+    expect((await readServiceStatus(config, configPath, run as never, root)).reminders.outdated).toBe(true);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
 });
 
 test("timer status reports drift in the interval or the recordings folder baked into the unit", async () => {

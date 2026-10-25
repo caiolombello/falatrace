@@ -125,7 +125,12 @@ test("diagnostic labels and details are translated in every state", async () => 
     checkAutomation(config((c) => { c.archive.enabled = true; c.proton.enabled = true; }), services({ installed: true, enabled: true })),
     checkAutomation(config((c) => { c.archive.enabled = true; c.proton.enabled = true; c.processing.autoEnqueue = true; }), null),
     ...[null, monitor, { ...monitor, active: false }].flatMap((calls) => checkAutomation(config((c) => { c.callDetection.enabled = true; c.callDetection.mode = "notify-only"; }), services({}, calls))),
-    checkAutomation(config((c) => { c.callDetection.enabled = true; c.callDetection.dryRun = true; }), services({}, monitor))
+    checkAutomation(config((c) => { c.callDetection.enabled = true; c.callDetection.dryRun = true; }), services({}, monitor)),
+    // Meeting reminders: unknown state, not running, running with an old configuration, running.
+    ...[null, { calls: null, tray: null, sync: timer({}), archive: timer({}), backup: timer({}) },
+      { calls: null, tray: null, reminders: { ...monitor, staleConfig: true }, sync: timer({}), archive: timer({}), backup: timer({}) },
+      { calls: null, tray: null, reminders: monitor, sync: timer({}), archive: timer({}), backup: timer({}) }]
+      .map((state) => checkAutomation(config((c) => { c.calendar.enabled = true; }), state as never))
   ];
   const checks = [...runs.flat(), ...automation.flat()];
   expect(checks.length).toBeGreaterThan(15);

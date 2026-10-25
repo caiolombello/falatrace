@@ -5,6 +5,9 @@ import { runCommand } from "../jobs/command";
 import { resolveExecutable } from "../recording/obsLauncher";
 import { automaticRecordingBackend } from "../recording/capabilities";
 import { buildCallMonitorUnit } from "../calls/service";
+import { upcomingEventSources } from "../calendar/upcoming";
+import { effectiveReminderMode } from "../reminders/scheduler";
+import { buildRemindersUnit, REMINDERS_UNIT } from "../reminders/unit";
 import { isBusUnreachableError, quoteSystemd, userUnitDir } from "../runtime/systemd-units";
 import { isPlaceholderRemoteHost } from "./settings";
 import type { CredentialReport, SecretFileName, SecretSource } from "./secrets";
@@ -179,6 +182,12 @@ export type ServiceStatus = { installed: boolean; enabled: boolean; active: bool
 /** Periodic jobs read the configuration on every run; only values baked into the unit can drift. */
 export type TimerStatus = { installed: boolean; enabled: boolean; active: boolean; outdated: boolean; nextRunAt: string | null; lastResult: string | null };
 
+export type ServiceStatuses = {
+  calls: ServiceStatus; tray: ServiceStatus; reminders: ServiceStatus; sync: TimerStatus; archive: TimerStatus; backup: TimerStatus;
+};
+/** What checkAutomation accepts: statuses read before the reminders service existed have no `reminders`. */
+export type ServiceStatusesInput = Omit<ServiceStatuses, "reminders"> & { reminders?: ServiceStatus };
+
 export const TIMER_UNITS = {
   sync: "recording-cli-sync",
   archive: "recording-cli-archive",
@@ -255,26 +264,57 @@ export const readServiceStatus = async (
   configPath: string,
   run: typeof runCommand = runCommand,
   unitDir?: string
-): Promise<{ calls: ServiceStatus; tray: ServiceStatus; sync: TimerStatus; archive: TimerStatus; backup: TimerStatus }> => {
+): Promise<ServiceStatuses> => {
   const directory = unitDir ?? await userUnitDir(run);
   const read = (name: string) => fs.readFile(join(directory, name), "utf8").catch(() => null);
-  const [callsUnit, trayUnit] = await Promise.all([read("recording-cli-calls.service"), read("recording-cli-tray.service")]);
-  const [callsEnabled, callsActive, trayEnabled, trayActive] = await Promise.all([
+  const [callsUnit, trayUnit, remindersUnit] = await Promise.all([read("recording-cli-calls.service"), read("recording-cli-tray.service"), read(REMINDERS_UNIT)]);
+  const [callsEnabled, callsActive, trayEnabled, trayActive, remindersEnabled, remindersActive] = await Promise.all([
     unitState(run, "is-enabled", "recording-cli-calls.service"), unitState(run, "is-active", "recording-cli-calls.service"),
-    unitState(run, "is-enabled", "recording-cli-tray.service"), unitState(run, "is-active", "recording-cli-tray.service")
+    unitState(run, "is-enabled", "recording-cli-tray.service"), unitState(run, "is-active", "recording-cli-tray.service"),
+    unitState(run, "is-enabled", REMINDERS_UNIT), unitState(run, "is-active", REMINDERS_UNIT)
   ]);
   // Only the parts the Studio controls are compared: the launch target is allowed to differ.
-  const expectedPaths = buildCallMonitorUnit(config, ["X"]).split("\n").find((line) => line.startsWith("ReadWritePaths="));
+  const writablePaths = (unit: string): string | undefined => unit.split("\n").find((line) => line.startsWith("ReadWritePaths="));
+  const expectedPaths = writablePaths(buildCallMonitorUnit(config, ["X"]));
   const callsOutdated = callsUnit !== null && !!expectedPaths && !callsUnit.includes(expectedPaths);
+  const expectedReminderPaths = writablePaths(buildRemindersUnit(["X"]));
+  const remindersOutdated = remindersUnit !== null && !!expectedReminderPaths && !remindersUnit.includes(expectedReminderPaths);
   const configChangedAt = await fs.stat(configPath).then((stat) => stat.mtimeMs, () => null);
-  const callsStartedAt = callsActive ? await showMillis(run, "recording-cli-calls.service", "ActiveEnterTimestamp") : null;
-  const staleConfig = callsStartedAt !== null && configChangedAt !== null && Math.floor(configChangedAt) > callsStartedAt;
+  // Both services read the configuration once, when they start.
+  const startedBeforeSave = async (active: boolean, unit: string): Promise<boolean> => {
+    const startedAt = active ? await showMillis(run, unit, "ActiveEnterTimestamp") : null;
+    return startedAt !== null && configChangedAt !== null && Math.floor(configChangedAt) > startedAt;
+  };
+  const [staleConfig, remindersStale] = await Promise.all([
+    startedBeforeSave(callsActive, "recording-cli-calls.service"), startedBeforeSave(remindersActive, REMINDERS_UNIT)
+  ]);
   const [sync, archive, backup] = await Promise.all((["sync", "archive", "backup"] as const).map((name) => readTimer(name, config, run, directory)));
   return {
     calls: { installed: callsUnit !== null, enabled: callsEnabled, active: callsActive, outdated: callsOutdated, staleConfig },
     tray: { installed: trayUnit !== null, enabled: trayEnabled, active: trayActive, outdated: false, staleConfig: false },
+    reminders: { installed: remindersUnit !== null, enabled: remindersEnabled, active: remindersActive, outdated: remindersOutdated, staleConfig: remindersStale },
     sync, archive, backup
   };
+};
+
+/** What the reminders check says, in the order it is decided. */
+const REMINDERS_CHECK = {
+  label: "Lembretes de reunião",
+  unknown: "Estado do serviço de lembretes indisponível; não dá para confirmar que os lembretes aparecerão.",
+  stopped: "Os lembretes de reunião estão ligados, mas o serviço não está rodando: nenhum lembrete será mostrado. Aplique os lembretes em Serviços.",
+  stale: "O serviço de lembretes usa uma configuração antiga: aplique os lembretes de novo em Serviços.",
+  ok: "Um lembrete aparece pouco antes de cada reunião da agenda."
+} as const;
+
+const remindersCheck = (config: AppConfig, services: ServiceStatusesInput | null): SetupCheck | undefined => {
+  // The service exits on its own when reminders are off or no calendar is connected: nothing to promise.
+  if (effectiveReminderMode(config) !== "on" || upcomingEventSources(config).length === 0) return undefined;
+  const base = { id: "meeting-reminders", label: REMINDERS_CHECK.label };
+  if (!services) return { ...base, status: "skipped", detail: REMINDERS_CHECK.unknown };
+  const reminders = services.reminders;
+  if (!reminders || !(reminders.installed && reminders.enabled && reminders.active)) return { ...base, status: "warning", action: "reminders-apply", detail: REMINDERS_CHECK.stopped };
+  if (reminders.outdated || reminders.staleConfig) return { ...base, status: "warning", action: "reminders-apply", detail: REMINDERS_CHECK.stale };
+  return { ...base, status: "ok", detail: REMINDERS_CHECK.ok };
 };
 
 /** In dry run the call monitor only logs the calls it detects: it neither records nor notifies. */
@@ -286,7 +326,7 @@ const DETECTION_DRY_RUN = "O modo de teste da detecção está ativado: o monito
  */
 export const checkAutomation = (
   config: AppConfig,
-  services: Awaited<ReturnType<typeof readServiceStatus>> | null
+  services: ServiceStatusesInput | null
 ): SetupCheck[] => {
   const checks: SetupCheck[] = [];
   if (config.callDetection.enabled && config.callDetection.mode !== "notify-only") {
@@ -328,6 +368,9 @@ export const checkAutomation = (
             detail: "O monitor de chamadas não está rodando: nenhuma chamada será avisada. Aplique o monitor em Serviços." }
           : { id: "call-notifications", label: "Aviso de chamadas", status: "ok", detail: "As chamadas detectadas serão avisadas por notificação." });
   }
+  // Reminders come from their own service: with reminders on and a calendar connected, it must run.
+  const reminders = remindersCheck(config, services);
+  if (reminders) checks.push(reminders);
   if (config.processing.defaultTarget === "remote" && isPlaceholderRemoteHost(config.remote.host)) {
     checks.push({ id: "remote-worker", label: "Worker remoto", status: "missing", action: "remote",
       detail: "O processamento está marcado como remoto, mas nenhum worker foi configurado. Configure-o em Integrações ou volte para “Neste computador”." });

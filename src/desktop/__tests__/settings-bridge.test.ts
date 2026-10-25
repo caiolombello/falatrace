@@ -36,6 +36,8 @@ const fakeDeps = (overrides: Partial<SettingsDeps> = {}) => {
     disableArchive: async () => { calls.push("disableArchive"); return []; },
     applyBackup: async () => { calls.push("applyBackup"); return []; },
     disableBackup: async () => { calls.push("disableBackup"); return []; },
+    applyReminders: async () => { calls.push("applyReminders"); return ""; },
+    disableReminders: async () => { calls.push("disableReminders"); return ""; },
     setSecret: async (name) => { calls.push(`setSecret:${String(name)}`); },
     removeSecret: async (name) => { calls.push(`removeSecret:${String(name)}`); return { removed: true }; },
     testKey: async (provider) => ({ provider, status: "ok", source: "secrets.env", detail: "ok" }),
@@ -228,6 +230,18 @@ describe("settings bridge operations", () => {
       await handleSettingsOperation("settings-service", { action }, deps);
     }
     for (const name of ["applySync", "disableSync", "applyArchive", "disableArchive", "applyBackup", "disableBackup", "disableTray"]) expect(calls).toContain(name);
+  });
+
+  test("reminders are applied and removed through their own installer; its refusals are shown as they are", async () => {
+    const { deps, calls } = fakeDeps();
+    expect(await handleSettingsOperation("settings-service", { action: "reminders-apply" }, deps)).toMatchObject({ action: "reminders-apply" });
+    await handleSettingsOperation("settings-service", { action: "reminders-disable" }, deps);
+    expect(calls).toEqual(["lock:capture-control", "applyReminders", "services", "release", "lock:capture-control", "disableReminders", "services", "release"]);
+    const refusal = "Conecte uma agenda (Google ou GNOME) para receber lembretes.";
+    const refused = fakeDeps({ applyReminders: async () => { throw new Error(refusal); } });
+    await expect(handleSettingsOperation("settings-service", { action: "reminders-apply" }, refused.deps)).rejects.toThrow(refusal);
+    expect(isDisplayableSettingsError("settings-service", refusal)).toBe(true);
+    expect(isDisplayableSettingsError("settings-service", "Os lembretes estão desligados nas configurações.")).toBe(true);
   });
 
   test("the monitor is not applied when automatic recording has no usable backend", async () => {

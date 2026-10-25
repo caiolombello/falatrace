@@ -482,7 +482,9 @@ ApplicationWindow {
                 "archive-apply": t("Timer de arquivo de originais ativado."),
                 "archive-disable": t("Timer de arquivo de originais desativado."),
                 "backup-apply": t("Timer de backup no Proton Drive ativado."),
-                "backup-disable": t("Timer de backup no Proton Drive desativado.")
+                "backup-disable": t("Timer de backup no Proton Drive desativado."),
+                "reminders-apply": t("Lembretes de reunião aplicados e reiniciados com a configuração atual."),
+                "reminders-disable": t("Lembretes de reunião desativados.")
             })[result.action] || t("Serviço atualizado.")
             runSettingsDiagnose()
         }

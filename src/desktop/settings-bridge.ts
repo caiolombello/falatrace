@@ -20,6 +20,7 @@ import { installArchiveTimer, uninstallArchiveTimer } from "../archive/service";
 import { installProtonBackupTimer, uninstallProtonBackupTimer } from "../proton/service";
 import { installCallMonitorService, uninstallCallMonitorService } from "../calls/service";
 import { installTrayService, uninstallTrayService } from "../tray/service";
+import { installRemindersService, REMINDERS_UNIT_KNOWN_ERRORS, uninstallRemindersService } from "../reminders/unit";
 import { deleteVoicePeople, listVoicePeople } from "../speakers/voices";
 import { GOOGLE_MESSAGES, GoogleTokenStore, revokeToken, startGoogleConnect } from "../google/oauth";
 import {
@@ -38,7 +39,8 @@ export const SETTINGS_OPERATIONS = [
 export type SettingsOperation = typeof SETTINGS_OPERATIONS[number];
 export const SERVICE_ACTIONS = [
   "calls-apply", "calls-disable", "tray-apply", "tray-disable",
-  "sync-apply", "sync-disable", "archive-apply", "archive-disable", "backup-apply", "backup-disable"
+  "sync-apply", "sync-disable", "archive-apply", "archive-disable", "backup-apply", "backup-disable",
+  "reminders-apply", "reminders-disable"
 ] as const;
 export type ServiceAction = typeof SERVICE_ACTIONS[number];
 
@@ -65,6 +67,8 @@ export type SettingsDeps = {
   disableArchive: typeof uninstallArchiveTimer;
   applyBackup: typeof installProtonBackupTimer;
   disableBackup: typeof uninstallProtonBackupTimer;
+  applyReminders: (config: Awaited<ReturnType<typeof loadConfig>>["config"]) => Promise<unknown>;
+  disableReminders: () => Promise<unknown>;
   setSecret: typeof setSecret;
   removeSecret: typeof removeSecret;
   testKey: (provider: KeyTestProvider, configApiKey?: string) => ReturnType<typeof testProviderKey>;
@@ -104,6 +108,8 @@ export const defaultSettingsDeps: SettingsDeps = {
   disableArchive: uninstallArchiveTimer,
   applyBackup: installProtonBackupTimer,
   disableBackup: uninstallProtonBackupTimer,
+  applyReminders: (config) => installRemindersService(config),
+  disableReminders: () => uninstallRemindersService(),
   setSecret,
   removeSecret,
   testKey: (provider, configApiKey) => testProviderKey(provider, defaultKeyTestDeps(readManagerEnv, configApiKey)),
@@ -203,7 +209,9 @@ export const SETTINGS_KNOWN_ERRORS = [
   "Modelo desconhecido.",
   "Nome de modelo do Ollama inválido.",
   "Não foi possível consultar os serviços do usuário. Tente de novo.",
-  "A gravação automática não tem um backend que funcione: escolha Só áudio ou Tela e áudio em Captura e áudio, ou ative o OBS."
+  "A gravação automática não tem um backend que funcione: escolha Só áudio ou Tela e áudio em Captura e áudio, ou ative o OBS.",
+  // reminders-apply refuses with these when reminders are off or no calendar is connected.
+  ...REMINDERS_UNIT_KNOWN_ERRORS
 ];
 
 /** Google sign-in and calendar failures, written by us and safe to show as they are. */
@@ -444,6 +452,11 @@ export const handleSettingsOperation = async (
     } else if (action === "backup-apply") {
       if (!config.proton.enabled) throw new Error("Ative o backup no Proton Drive antes de instalar o timer.");
       await deps.applyBackup(config);
+    } else if (action === "reminders-apply") {
+      // Refused with a known message when reminders are off or no calendar is connected.
+      await deps.applyReminders(config);
+    } else if (action === "reminders-disable") {
+      await deps.disableReminders();
     } else {
       await deps.disableBackup();
     }
