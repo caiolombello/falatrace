@@ -147,8 +147,8 @@ const managed = (backend: AppConfig["backend"] = "audio"): AppConfig => {
 };
 
 /** The configuration when the button is pressed: a call monitor watching calls, or no call detection. */
-const monitored = (mode: "notify-only" | "record" = "notify-only"): AppConfig => {
-  const value = config();
+const monitored = (mode: "notify-only" | "record" = "notify-only", backend: AppConfig["backend"] = "audio"): AppConfig => {
+  const value = managed(backend);
   value.callDetection.enabled = true;
   value.callDetection.mode = mode;
   return value;
@@ -235,6 +235,28 @@ describe("handleReminderNotification", () => {
     expect(result.override?.decision).toBe("record");
     expect(captures).toEqual([]);
     expect((await activeOverride(new Date(at(31)), { stateDir }))?.decision).toBe("record");
+  });
+
+  test("a monitor that cannot record gets no decision: the capture starts here or in the Studio instead", async () => {
+    // "simple" means OBS for the call monitor; with OBS off a decision would only end in "recorder unavailable".
+    const simple = await setup(sent("notify-only", RECORD_LATER), "record", at(28), { config: monitored("notify-only", "simple") });
+    expect(simple.result).toEqual({ shown: true, choice: "record", opened: "falatrace://capture" });
+    expect(await activeOverride(new Date(at(31)), { stateDir: simple.stateDir })).toBeUndefined();
+    const gnome = await setup(sent("notify-only", RECORD_LATER), "record", at(28), { config: monitored("notify-only", "gnome") });
+    expect(gnome.result.override).toBeUndefined();
+    expect(gnome.opened).toEqual(["falatrace://capture"]);
+    // A dry-run monitor never records: the capture starts from the helper.
+    const dryRun = monitored();
+    dryRun.callDetection.dryRun = true;
+    const tested = await setup(sent("notify-only", RECORD_LATER), "record", at(28), { config: dryRun });
+    expect(tested.result).toMatchObject({ capture: "started" });
+    expect(await activeOverride(new Date(at(31)), { stateDir: tested.stateDir })).toBeUndefined();
+    // With OBS on, "simple" records through OBS: the decision is saved.
+    const obs = monitored("notify-only", "simple");
+    obs.obs.enabled = true;
+    const decided = await setup(sent("notify-only", RECORD_LATER), "record", at(28), { config: obs });
+    expect(decided.result.override?.decision).toBe("record");
+    expect(decided.captures).toEqual([]);
   });
 
   test("a capture that cannot start is told in a plain notification; an unreadable configuration opens the capture page", async () => {

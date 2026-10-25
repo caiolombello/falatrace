@@ -189,9 +189,20 @@ export const captureOutlivesReminderHelper = async (config: AppConfig): Promise<
 };
 
 /**
+ * Whether the call monitor would record this meeting's call on a "record" decision: call detection
+ * on (not a dry run) with an automatic backend it can drive, the rule applying the monitor checks.
+ * Otherwise the decision would only end in "recorder unavailable" once the call starts.
+ */
+export const callMonitorRecords = async (config: AppConfig): Promise<boolean> => {
+  if (effectiveRecordingMode(config) === "off") return false;
+  const automatic = (await import("../recording/capabilities")).automaticRecordingBackend(config);
+  return automatic !== null && (automatic !== "obs" || config.obs.enabled === true);
+};
+
+/**
  * `notify reminder --event <hash>`: show the reminder the service recorded for this event and apply
  * the button. "skip" saves a decision for this meeting. "record" saves a decision when the call
- * monitor runs (it records the meeting's call); without call detection nothing would act on a
+ * monitor runs and can record (it records the meeting's call); otherwise nothing would act on a
  * decision, so a manual capture named after the meeting starts right away and the Studio opens on
  * it (with a legacy backend, whose capture would not outlive this helper, only the Studio's capture
  * page opens). "brief" opens the event in the Studio. Nothing is shown for an unknown event or a meeting
@@ -217,7 +228,7 @@ export const handleReminderNotification = async (eventIdHash: string, deps: Remi
   if (choice === "record") {
     // The configuration now decides; the one the reminder was built with is the fallback.
     const config = deps.config ?? await (deps.loadConfig ?? defaultLoadConfig)().catch(() => undefined);
-    const monitored = config ? effectiveRecordingMode(config) !== "off" : entry.recordingMode !== "off";
+    const monitored = config ? await callMonitorRecords(config) : entry.recordingMode !== "off";
     if (!monitored) {
       // Without the configuration, or with a backend whose capture would die with this helper, the
       // Studio's capture page starts it instead (the Studio keeps such captures alive).
