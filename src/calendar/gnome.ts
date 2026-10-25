@@ -217,12 +217,43 @@ export const scoreCalendarEvent = (
   );
 };
 
+/** The recording's meeting together with the matched event's id (GNOME gives no attendees), for its calendar link. */
+export const findGnomeCalendarMatch = async (
+  startAt: string,
+  endAt: string,
+  app?: CallApplication,
+  query: CalendarQuery = queryGnomeCalendarEvents
+): Promise<{ meeting: MeetingContext; event: { id?: string; attendees: [] } } | undefined> => {
+  const found = await matchGnomeCalendarEvent(startAt, endAt, query);
+  if (!found) return undefined;
+  return { meeting: gnomeMeeting(found, app), event: { ...(found.event.id ? { id: found.event.id } : {}), attendees: [] } };
+};
+
+const gnomeMeeting = (best: { event: GnomeCalendarEvent; confidence: number }, app?: CallApplication): MeetingContext => ({
+  source: "gnome-calendar",
+  title: best.event.title,
+  startAt: new Date(best.event.startAtMs).toISOString(),
+  endAt: new Date(best.event.endAtMs).toISOString(),
+  recurring: best.event.recurring,
+  confidence: Number(best.confidence.toFixed(3)),
+  app
+});
+
 export const findGnomeCalendarMeeting = async (
   startAt: string,
   endAt: string,
   app?: CallApplication,
   query: CalendarQuery = queryGnomeCalendarEvents
 ): Promise<MeetingContext | undefined> => {
+  const found = await matchGnomeCalendarEvent(startAt, endAt, query);
+  return found ? gnomeMeeting(found, app) : undefined;
+};
+
+const matchGnomeCalendarEvent = async (
+  startAt: string,
+  endAt: string,
+  query: CalendarQuery
+): Promise<{ event: GnomeCalendarEvent; confidence: number } | undefined> => {
   const callStartMs = Date.parse(startAt);
   const callEndMs = Date.parse(endAt);
   if (
@@ -245,13 +276,5 @@ export const findGnomeCalendarMeeting = async (
     .sort((left, right) => right.confidence - left.confidence);
   const best = ranked[0];
   if (!best || best.confidence < 0.65) return undefined;
-  return {
-    source: "gnome-calendar",
-    title: best.event.title,
-    startAt: new Date(best.event.startAtMs).toISOString(),
-    endAt: new Date(best.event.endAtMs).toISOString(),
-    recurring: best.event.recurring,
-    confidence: Number(best.confidence.toFixed(3)),
-    app
-  };
+  return best;
 };

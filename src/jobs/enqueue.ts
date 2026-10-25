@@ -1,8 +1,9 @@
-import { findGoogleCalendarMeeting, googleCalendarEnabled } from "../google/calendar";
+import { findGoogleCalendarMatch, findGoogleCalendarMeeting, googleCalendarEnabled } from "../google/calendar";
 import type { MeetingContext } from "./types";
 import type { CallApplication } from "../calls/apps";
 import { promises as fs } from "node:fs";
-import { findGnomeCalendarMeeting } from "../calendar/gnome";
+import { findGnomeCalendarMatch, findGnomeCalendarMeeting } from "../calendar/gnome";
+import { type CalendarMatch, writeCalendarLink } from "../calendar/links";
 import type { AppConfig } from "../config/defaults";
 import { localProcessing } from "../config/settings";
 import { JobStore } from "./store";
@@ -34,10 +35,13 @@ const waitForStableFile = async (filePath: string): Promise<void> => {
   throw new Error(`Recording file did not become ready: ${filePath}`);
 };
 
-/** The calendar event of a call: the Google Calendar when it is on and connected, else the GNOME one. */
-export const findMeetingContext = async (
-  config: AppConfig, options: EnqueueRecordingOptions, lookups = { google: findGoogleCalendarMeeting, gnome: findGnomeCalendarMeeting }
-): Promise<MeetingContext | undefined> => {
+type CalendarLookups<T> = {
+  google: (config: AppConfig, startAt: string, endAt: string, app?: CallApplication) => Promise<T | undefined>;
+  gnome: (startAt: string, endAt: string, app?: CallApplication) => Promise<T | undefined>;
+};
+
+/** The Google Calendar when it is on and connected, else the GNOME one; a failing calendar is skipped. */
+const lookUpCalendar = async <T>(config: AppConfig, options: EnqueueRecordingOptions, lookups: CalendarLookups<T>): Promise<T | undefined> => {
   if (!options.startedAt || !options.endedAt) return undefined;
   const unavailable = (error: unknown): undefined => {
     const message = error instanceof Error ? error.message : String(error);
@@ -51,15 +55,32 @@ export const findMeetingContext = async (
   return config.calendar.enabled ? lookups.gnome(options.startedAt, options.endedAt, options.app).catch(unavailable) : undefined;
 };
 
+/** The calendar event of a call: the Google Calendar when it is on and connected, else the GNOME one. */
+export const findMeetingContext = async (
+  config: AppConfig, options: EnqueueRecordingOptions, lookups: CalendarLookups<MeetingContext> = { google: findGoogleCalendarMeeting, gnome: findGnomeCalendarMeeting }
+): Promise<MeetingContext | undefined> => lookUpCalendar(config, options, lookups);
+
+/** Like findMeetingContext, with the matched event's id, series and invited names for the calendar link. */
+export const findMeetingMatch = async (
+  config: AppConfig, options: EnqueueRecordingOptions, lookups: CalendarLookups<CalendarMatch> = { google: findGoogleCalendarMatch, gnome: findGnomeCalendarMatch }
+): Promise<CalendarMatch | undefined> => lookUpCalendar(config, options, lookups);
+
 /** The fast path: a recording is processed as soon as it stops, with local providers only. */
 export const fastPathActive = (config: AppConfig): boolean =>
   config.processing.fastPath === true && localProcessing(config);
+
+export type EnqueueRecordingDeps = {
+  lookups?: CalendarLookups<CalendarMatch>;
+  /** Saves the calendar link beside the job; defaults to `calendar-links/<jobId>.json`. */
+  writeLink?: (job: JobRecord, match: CalendarMatch) => Promise<unknown>;
+};
 
 export const enqueueRecording = async (
   config: AppConfig,
   filePath: string,
   options: EnqueueRecordingOptions = {},
-  store = new JobStore()
+  store = new JobStore(),
+  deps: EnqueueRecordingDeps = {}
 ): Promise<JobRecord | null> => {
   const queue = config.processing.autoEnqueue || fastPathActive(config);
   if (!queue && !config.archive.enabled) return null;
@@ -68,11 +89,17 @@ export const enqueueRecording = async (
     await new ArchiveStore().enqueue(filePath, { id: options.recordingId, createdAt: options.startedAt });
   }
   if (!queue) return null;
-  const meetingContext = await findMeetingContext(config, options);
+  const match = await findMeetingMatch(config, options, deps.lookups);
   // Queued only for the fast path, the job runs here: its providers are local by definition.
   const job = await store.enqueue(config, filePath, {
-    meetingContext, recordingId: options.recordingId, ...(config.processing.autoEnqueue ? {} : { target: "local" as const })
+    meetingContext: match?.meeting, recordingId: options.recordingId, ...(config.processing.autoEnqueue ? {} : { target: "local" as const })
   });
+  if (match) {
+    // The link only enriches the library (people, series, briefs): the job never depends on it.
+    await (deps.writeLink ?? writeCalendarLink)(job, match).catch((error: unknown) => {
+      console.warn(`Calendar link not saved: ${(error instanceof Error ? error.message : String(error)).replace(/\p{Cc}+/gu, " ").slice(0, 300)}`);
+    });
+  }
   console.log(`Processing job queued: ${job.id}`);
   return job;
 };

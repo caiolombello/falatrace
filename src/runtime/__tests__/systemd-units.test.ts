@@ -60,7 +60,8 @@ test("installed units carry the installer's XDG directories and may write the cu
   expect(writable(units.sync)).toEndWith(' "-/custom/st%%ate/recording-cli" "-/custom/data/recording-cli"');
   expect(writable(units.backup)).toEndWith(' "-/custom/st%%ate/recording-cli" "-/custom/data/recording-cli"');
   expect(writable(units.archive)).toEndWith(' "-/custom/st%%ate/recording-cli" "-/custom/data/recording-cli"');
-  expect(writable(units.calls)).toEndWith(' "-/custom/st%%ate/recording-cli" "-/custom/data/recording-cli/jobs"');
+  // The call monitor also writes the calendar link of each job it creates.
+  expect(writable(units.calls)).toEndWith(' "-/custom/st%%ate/recording-cli" "-/custom/data/recording-cli/jobs" "-/custom/data/recording-cli/calendar-links"');
   expect(writable(units.worker)).toEndWith(' "-/custom/data/recording-cli"');
   // Without custom directories the units still name the defaults, so the user manager's own values never apply.
   expect(buildSyncUnits(config, launch, {}).service).toContain(["config", "local/state", "local/share", "cache"]
@@ -72,7 +73,8 @@ test("installed units carry the installer's XDG directories and may write the cu
   // The paths created before installing are exactly the ones the unit grants, quoting undone.
   config.recordingsDir = '/media/Gravações "%u" \\ x';
   expect(unitWritablePaths(buildCallMonitorUnit(config, launch, env), "/home/u")).toEqual([
-    "/home/u/.local/state/recording-cli", "/home/u/.local/share/recording-cli/jobs", '/media/Gravações "%u" \\ x', "/custom/st%ate/recording-cli", "/custom/data/recording-cli/jobs"
+    "/home/u/.local/state/recording-cli", "/home/u/.local/share/recording-cli/jobs", "/home/u/.local/share/recording-cli/calendar-links", '/media/Gravações "%u" \\ x',
+    "/custom/st%ate/recording-cli", "/custom/data/recording-cli/jobs", "/custom/data/recording-cli/calendar-links"
   ]);
   expect(unitWritablePaths(buildWorkerUnit(config, launch, {}), "/home/u")).toEqual(["/home/u/.local/share/recording-cli", "/home/u/Videos/RecordingArchive"]);
   expect(unitWritablePaths(buildTrayUnit(launch, env), "/home/u")).toEqual([]);
@@ -80,7 +82,7 @@ test("installed units carry the installer's XDG directories and may write the cu
 
 test("every path a sandboxed unit may write exists before the unit is installed, custom XDG folders included", async () => {
   const installers: Record<string, [string, string, string[]]> = {
-    calls: ["calls/service", "installCallMonitorService", ["home/.local/state/recording-cli", "home/.local/share/recording-cli/jobs", "Recordings", "st%ate/recording-cli", "data/recording-cli/jobs"]],
+    calls: ["calls/service", "installCallMonitorService", ["home/.local/state/recording-cli", "home/.local/share/recording-cli/jobs", "home/.local/share/recording-cli/calendar-links", "Recordings", "st%ate/recording-cli", "data/recording-cli/jobs", "data/recording-cli/calendar-links"]],
     sync: ["jobs/service", "installSyncTimer", ["home/.local/state/recording-cli", "home/.local/share/recording-cli", "Recordings", "st%ate/recording-cli", "data/recording-cli"]],
     worker: ["jobs/service", "installWorkerService", ["home/.local/share/recording-cli", "home/Archive", "data/recording-cli"]],
     archive: ["archive/service", "installArchiveTimer", ["home/.local/state/recording-cli", "home/.local/share/recording-cli", "st%ate/recording-cli", "data/recording-cli"]],

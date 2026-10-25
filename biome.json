@@ -81,6 +81,8 @@
 			"src/notify/**",
 			"src/calendar/upcoming.ts",
 			"src/calendar/__tests__/upcoming.test.ts",
+			"src/calendar/links.ts",
+			"src/calendar/__tests__/links.test.ts",
 			"src/metrics/**",
 			"src/desktop/open-request.ts",
 			"src/desktop/__tests__/open-request.test.ts",

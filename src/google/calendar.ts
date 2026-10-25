@@ -120,15 +120,24 @@ export const findGoogleCalendarEvent = async (
   return best && best.confidence >= MIN_CONFIDENCE ? { event: best.event, confidence: Number(best.confidence.toFixed(3)) } : undefined;
 };
 
+/**
+ * The recording's meeting (title and times for the job, like the GNOME calendar) together with the
+ * matched event's id, series and invited names, for the calendar link kept beside the job.
+ */
+export const findGoogleCalendarMatch = async (
+  config: AppConfig, startAt: string, endAt: string, app?: CallApplication, dependencies: GoogleCalendarDependencies = {}
+): Promise<{ meeting: MeetingContext; event: { id?: string; seriesId?: string; attendees: GoogleAttendee[] } } | undefined> => {
+  const found = await findGoogleCalendarEvent(config, startAt, endAt, dependencies);
+  if (!found) return undefined;
+  const meeting: MeetingContext = { source: "google-calendar", title: found.event.title, startAt: new Date(found.event.startAtMs).toISOString(),
+    endAt: new Date(found.event.endAtMs).toISOString(), recurring: found.event.recurring, confidence: found.confidence, ...(app ? { app } : {}) };
+  return { meeting, event: { ...(found.event.id ? { id: found.event.id } : {}), ...(found.event.seriesId ? { seriesId: found.event.seriesId } : {}), attendees: found.event.attendees } };
+};
+
 /** Title for the summary, like the GNOME calendar. The invited names are not kept in the job. */
 export const findGoogleCalendarMeeting = async (
   config: AppConfig, startAt: string, endAt: string, app?: CallApplication, dependencies: GoogleCalendarDependencies = {}
-): Promise<MeetingContext | undefined> => {
-  const found = await findGoogleCalendarEvent(config, startAt, endAt, dependencies);
-  if (!found) return undefined;
-  return { source: "google-calendar", title: found.event.title, startAt: new Date(found.event.startAtMs).toISOString(), endAt: new Date(found.event.endAtMs).toISOString(),
-    recurring: found.event.recurring, confidence: found.confidence, ...(app ? { app } : {}) };
-};
+): Promise<MeetingContext | undefined> => (await findGoogleCalendarMatch(config, startAt, endAt, app, dependencies))?.meeting;
 
 /** Names invited to the recording's event, for the name suggestions; empty when none matches. */
 export const readGoogleAttendees = async (
