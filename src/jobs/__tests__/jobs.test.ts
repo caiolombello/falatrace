@@ -790,6 +790,31 @@ test("resumes a failed local job from its valid transcript", async () => {
   }
 });
 
+test("new jobs bind the summary language and default template; older manifests stay exactly as they were", async () => {
+  const root = await makeTemporaryDirectory();
+  const mediaPath = join(root, "meeting.mkv");
+  await fs.writeFile(mediaPath, "fake media");
+  const store = new JobStore(join(root, "state"), join(root, "data"));
+  const config = mergeConfig(DEFAULT_CONFIG, { summary: { language: "en", template: "planning" } });
+  const job = await store.enqueue(config, mediaPath, { recordingId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" });
+  expect(job.summary).toMatchObject({ language: "en", template: "planning" });
+  const manifest = JSON.parse(await fs.readFile(join(store.getWorkDir(job.id), "manifest.json"), "utf-8"));
+  expect(manifest.summary).toMatchObject({ language: "en", template: "planning" });
+  expect(validateJobManifest(manifest)).toEqual(store.toManifest(job));
+  // An existing job is never rewritten when the settings change later.
+  const changed = mergeConfig(DEFAULT_CONFIG, { summary: { language: "es", template: "custom:comite" } });
+  expect((await store.enqueue(changed, mediaPath, { recordingId: job.id })).summary).toMatchObject({ language: "en", template: "planning" });
+  expect((await store.get(job.id)).summary).toMatchObject({ language: "en", template: "planning" });
+  // A manifest written before the bindings existed reads back with no new keys (identities hash it).
+  const older = { ...manifest, summary: { provider: manifest.summary.provider, model: manifest.summary.model } };
+  const parsed = validateJobManifest(older);
+  expect(Object.keys(parsed.summary).filter((key) => parsed.summary[key as keyof typeof parsed.summary] !== undefined)).toEqual(["provider", "model"]);
+  expect(JSON.stringify(parsed.summary)).toBe(JSON.stringify(older.summary));
+  for (const summary of [{ ...manifest.summary, language: "fr" }, { ...manifest.summary, template: "Not An Id" }, { ...manifest.summary, template: "" }]) {
+    expect(() => validateJobManifest({ ...manifest, summary })).toThrow("summary.");
+  }
+});
+
 test("stores the selected OpenAI quality profile in the remote job manifest", async () => {
   const root = await makeTemporaryDirectory();
   const mediaPath = join(root, "meeting.mkv");

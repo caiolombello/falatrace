@@ -182,6 +182,10 @@ export class JobStore {
       summary: {
         provider: summaryProvider,
         model: summaryProvider === "openai" ? config.summary.openaiModel : config.summary.ollamaModel,
+        // Bound for new jobs only, so a remote worker (which only sees the manifest) writes the same
+        // language and uses the same default template; existing jobs are never rewritten.
+        language: config.summary.language,
+        template: config.summary.template,
         ...(options.meetingContext || summaryClients.length > 0
           ? {
               context: {

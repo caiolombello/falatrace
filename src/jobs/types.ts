@@ -2,10 +2,11 @@ import { basename, extname } from "node:path";
 import { isCallApplication, type CallApplication } from "../calls/apps";
 import type {
   ExecutionTarget,
+  SummaryLanguage,
   SummaryProvider,
   TranscriptionProvider
 } from "../config/defaults";
-import { TRANSCRIPTION_PROMPT_MAX_LENGTH } from "../config/defaults";
+import { SUMMARY_LANGUAGES, TRANSCRIPTION_PROMPT_MAX_LENGTH } from "../config/defaults";
 
 export const JOB_VERSION = 1 as const;
 
@@ -74,6 +75,11 @@ export type JobManifest = {
     provider: SummaryProvider;
     model: string;
     context?: SummaryContext;
+    /** The summary.language setting when the job was created ("auto" or a language), so a remote
+     * worker writes the same language. Absent on jobs created before this binding existed. */
+    language?: SummaryLanguage;
+    /** The summary.template setting when the job was created ("auto" or a template id). */
+    template?: string;
   };
 };
 
@@ -396,6 +402,23 @@ export const validateMediaExtension = (fileName: string): string => {
   return extension;
 };
 
+/** Same grammar as the summary.template setting: auto, a built-in id or custom:<slug>. */
+export const SUMMARY_TEMPLATE_SETTING = /^(auto|[a-z][a-z0-9-]{0,40}|custom:[a-z0-9][a-z0-9-]{0,40})$/;
+
+const parseSummaryLanguageBinding = (value: unknown): SummaryLanguage => {
+  if (typeof value !== "string" || !(SUMMARY_LANGUAGES as readonly string[]).includes(value)) {
+    throw new Error("summary.language must be auto, pt-BR, en or es");
+  }
+  return value as SummaryLanguage;
+};
+
+const parseSummaryTemplateBinding = (value: unknown): string => {
+  if (typeof value !== "string" || !SUMMARY_TEMPLATE_SETTING.test(value)) {
+    throw new Error("summary.template must be auto, a template id or custom:<slug>");
+  }
+  return value;
+};
+
 export const validateJobManifest = (value: unknown): JobManifest => {
   if (!isObject(value) || value.version !== JOB_VERSION) {
     throw new Error("Unsupported job manifest version");
@@ -463,7 +486,10 @@ export const validateJobManifest = (value: unknown): JobManifest => {
       context:
         summary.context === undefined
           ? undefined
-          : parseSummaryContext(summary.context)
+          : parseSummaryContext(summary.context),
+      // Optional bindings stay absent on older manifests: identities hash this object.
+      ...(summary.language === undefined ? {} : { language: parseSummaryLanguageBinding(summary.language) }),
+      ...(summary.template === undefined ? {} : { template: parseSummaryTemplateBinding(summary.template) })
     }
   };
 };

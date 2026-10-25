@@ -57,6 +57,8 @@
 			"src/summary/language.ts",
 			"src/summary/__tests__/spec.test.ts",
 			"src/summary/__tests__/language.test.ts",
+			"src/summary/prefs.ts",
+			"src/summary/__tests__/prefs.test.ts",
 			"src/assistant/types.ts",
 			"src/library-index/types.ts",
 			"src/notes/**",
