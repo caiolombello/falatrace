@@ -17,6 +17,31 @@ import { readState } from "./state";
 import { sharedControllerBackend } from "./capabilities";
 import { captureProcessMatches, findFlatpakCapture } from "./flatpak-capture";
 import { ArchiveStore } from "../archive/store";
+import { LiveStore } from "../live/store";
+import { startLiveUnit, stopLiveUnit } from "../live/unit";
+
+/**
+ * The live transcript worker that runs next to a capture (a transient user unit). It is a preview:
+ * starting or stopping it never fails, delays or changes the capture itself.
+ */
+export type LiveTranscriptUnits = {
+  start: (sessionId: string) => Promise<unknown>;
+  /** Asks the worker to stop without waiting for it (it also stops by itself once the capture stops). */
+  stop: (sessionId: string) => Promise<unknown>;
+  /** Whether a live worker ever ran for this capture, e.g. started from the Studio while the setting is off. */
+  used: (sessionId: string) => Promise<boolean>;
+};
+
+export const defaultLiveTranscriptUnits: LiveTranscriptUnits = {
+  start: (sessionId) => startLiveUnit(sessionId),
+  stop: (sessionId) => stopLiveUnit(sessionId, { noBlock: true }),
+  used: (sessionId) => fs.lstat(new LiveStore().sessionDir(sessionId)).then(() => true, () => false)
+};
+
+const liveWarning = (event: string, sessionId: string, error: unknown): void => {
+  const message = (error instanceof Error ? error.message : String(error)).replace(/\p{Cc}+/gu, " ").slice(0, 300);
+  console.error(JSON.stringify({ event, sessionId, error: message }));
+};
 
 export type RecordingStartOptions = {
   sessionId?: string;
@@ -51,7 +76,8 @@ export class RecordingController {
     private readonly config: AppConfig,
     private readonly owner: RecordingSession["owner"],
     readonly store = new RecordingSessionStore(),
-    private readonly run = runCommand
+    private readonly run = runCommand,
+    private readonly live: LiveTranscriptUnits = defaultLiveTranscriptUnits
   ) {}
 
   ownsRecording(): boolean { return this.session?.owner === this.owner; }
@@ -221,6 +247,8 @@ export class RecordingController {
           await new ManualObsController(this.config.obs).start(folder, options);
           this.obsStartedHere = true;
           session.startedAt = new Date().toISOString();
+          // OBS answers StartRecord once its output runs: that is the media's t=0.
+          session.mediaStartedAt = session.startedAt;
         } else {
           const capture = buildCaptureCommand(backend, captureConfig, audio, outputPath, join(dirname(this.store.path), "portal-token"));
           const command = gpu?.command || capture.command;
@@ -246,6 +274,8 @@ export class RecordingController {
             }
             if (!await this.isActive(session)) throw new Error("Capture process exited before recording; inspect record logs");
             if (await hasMedia(outputPath)) {
+              // The first data in the file: the closest observable point to the media's t=0 (within one poll).
+              session.mediaStartedAt = new Date().toISOString();
               if (options.signal?.aborted || await options.shouldContinue?.() === false) throw new RecordingStartCancelled("Recording start cancelled");
               break;
             }
@@ -255,6 +285,9 @@ export class RecordingController {
         }
         session.phase = "recording";
         await this.store.write(session);
+        if (this.config.live.enabled) {
+          await this.live.start(id).catch((error) => liveWarning("live.start-error", id, error));
+        }
         return "started";
       } catch (err) {
         if (backend !== "obs") {
@@ -294,6 +327,16 @@ export class RecordingController {
     if (session.flatpak && await findFlatpakCapture(session.outputPath, this.run)) {
       throw new Error("Flatpak capture is still active; recording state retained");
     }
+    await this.stopLive(session);
+  }
+
+  /** Best effort, after the capture itself stopped: the worker also stops on its own once the session does. */
+  private async stopLive(session: RecordingSession): Promise<void> {
+    try {
+      if (this.config.live.enabled || await this.live.used(session.id)) await this.live.stop(session.id);
+    } catch (error) {
+      liveWarning("live.stop-error", session.id, error);
+    }
   }
 
   async stop(id: string, endedAt = new Date().toISOString()): Promise<RecordingSession | null> {
@@ -313,6 +356,7 @@ export class RecordingController {
             throw new Error("OBS did not return this session's recording; state retained");
           }
           session.outputPath = output;
+          await this.stopLive(session);
         } else {
           await this.stopCapture(session);
         }

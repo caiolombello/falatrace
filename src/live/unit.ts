@@ -76,11 +76,15 @@ export const startLiveUnit = async (sessionId: string, deps: LiveUnitDeps = {}):
   return liveUnitName(sessionId);
 };
 
-/** Stop the worker unit. False when it was not running (already finished or never started). */
-export const stopLiveUnit = async (sessionId: string, deps: LiveUnitDeps = {}): Promise<boolean> => {
+/**
+ * Stop the worker unit. False when it was not running (already finished or never started).
+ * `noBlock` only queues the stop: the worker may take up to its grace period to finish a chunk,
+ * and a capture stop must not wait for a preview.
+ */
+export const stopLiveUnit = async (sessionId: string, deps: LiveUnitDeps & { noBlock?: boolean } = {}): Promise<boolean> => {
   const unit = liveUnitName(sessionId);
   try {
-    await (deps.run ?? runCommandDirect)("systemctl", ["--user", "stop", unit], { timeoutMs: 45_000 });
+    await (deps.run ?? runCommandDirect)("systemctl", ["--user", "stop", ...(deps.noBlock ? ["--no-block"] : []), unit], { timeoutMs: deps.noBlock ? 15_000 : 45_000 });
     return true;
   } catch (error) {
     if (error instanceof Error && MISSING_UNIT.test(error.message)) return false;

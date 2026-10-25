@@ -13,3 +13,4 @@ export {
   normalizeNotesId, validateMeetingNotes,
   type FindNotesOptions, type MeetingNotes, type NotesStoreDeps, type SaveNotesInput
 } from "./store";
+export { notesCaptureReference, type NotesCaptureReference } from "./capture";

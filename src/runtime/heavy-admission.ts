@@ -59,7 +59,7 @@ export async function readActivity(root=getRecordingStateDir(),now=Date.now(),op
  const expected=options.callMonitorExpected!==false;
  try {const s=await privateJson(join(root,'recording-session.json'));
   if(s===undefined)recording='idle';
-  if(s?.version===1&&typeof s.id==='string'&&/^[a-f0-9-]{36}$/i.test(s.id)&&['manual','call'].includes(s.owner)&&['audio','gpu-screen-recorder','obs'].includes(s.backend)&&typeof s.outputPath==='string'&&isAbsolute(s.outputPath)&&Number.isFinite(Date.parse(s.startedAt))&&['starting','recording','stopped'].includes(s.phase))recording=s.phase==='stopped'?'idle':'active';
+  if(s?.version===1&&typeof s.id==='string'&&/^[a-f0-9-]{36}$/i.test(s.id)&&['manual','call'].includes(s.owner)&&['audio','gpu-screen-recorder','obs'].includes(s.backend)&&typeof s.outputPath==='string'&&isAbsolute(s.outputPath)&&Number.isFinite(Date.parse(s.startedAt))&&(s.mediaStartedAt===undefined||typeof s.mediaStartedAt==='string'&&Number.isFinite(Date.parse(s.mediaStartedAt)))&&['starting','recording','stopped'].includes(s.phase))recording=s.phase==='stopped'?'idle':'active';
  }catch{/* Invalid/detector errors stay unknown. */}
  const fresh=(age:number)=>Number.isFinite(age)&&age>=0&&age<=CALL_STATUS_FRESH_MS;
  let statusFresh=false,present=true;

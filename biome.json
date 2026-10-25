@@ -94,7 +94,9 @@
 			"src/share/**",
 			"src/destinations/**",
 			"src/media-retention/**",
-			"src/app/**"
+			"src/app/**",
+			"src/recording/__tests__/media-start-live.test.ts",
+			"src/calls/__tests__/meeting-overrides-runtime.test.ts"
 		]
 	},
 	"formatter": { "enabled": false },

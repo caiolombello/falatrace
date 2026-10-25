@@ -25,6 +25,13 @@ export type RecordingSession = {
   phase: "starting" | "recording" | "stopped";
   outputPath: string;
   startedAt: string;
+  /**
+   * When the media actually began: the first time the capture file held data (audio and GPU Screen
+   * Recorder), or when OBS confirmed StartRecord. `startedAt` is written before the capture process
+   * is spawned, so it can precede the media's t=0 by the whole startup. Absent on sessions written by
+   * older versions; read it through `captureMediaStartedAt`.
+   */
+  mediaStartedAt?: string;
   endedAt?: string;
   audio?: AudioSources;
   audioSelection?: AudioSelection;
@@ -34,6 +41,13 @@ export type RecordingSession = {
   flatpak?: boolean;
   captureProfile?: "standard"|"call-light";
 };
+
+/** The media time reference of a capture (notes and live transcript offsets): its first media, else its start. */
+export const captureMediaStartedAt = (session: Pick<RecordingSession, "startedAt" | "mediaStartedAt">): string =>
+  session.mediaStartedAt ?? session.startedAt;
+
+const validOptionalTime = (value: unknown): boolean =>
+  value === undefined || (typeof value === "string" && value.length <= 64 && Number.isFinite(Date.parse(value)));
 
 export const getRecordingStateDir = (): string =>
   join(process.env.XDG_STATE_HOME || join(homedir(), ".local/state"), "recording-cli");
@@ -51,7 +65,7 @@ export class RecordingSessionStore {
         (session.captureProfile !== undefined && !["standard","call-light"].includes(session.captureProfile)) ||
         (session.flatpak !== undefined && typeof session.flatpak !== "boolean") ||
         typeof session.outputPath !== "string" || !isAbsolute(session.outputPath) || /[\r\n\0]/.test(session.outputPath) ||
-        !Number.isFinite(Date.parse(session.startedAt)) ||
+        !Number.isFinite(Date.parse(session.startedAt)) || !validOptionalTime(session.mediaStartedAt) ||
         (session.audioSelection !== undefined && (!session.audioSelection || typeof session.audioSelection !== "object" ||
           Array.isArray(session.audioSelection) || Object.entries(session.audioSelection).some(([kind, mode]) =>
             !["microphone", "desktop"].includes(kind) || !["default", "explicit"].includes(mode)))) ||
