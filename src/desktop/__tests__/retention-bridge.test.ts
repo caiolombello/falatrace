@@ -79,3 +79,25 @@ test("the production bridge shows recordings whose media retention removed as tr
       .toEqual({ id: 4, ok: true, result: { key: context.audio.sourcePath, state: "completed", location: "audio-only", path: context.retained } });
   } finally { await context.cleanup(); }
 }, 30_000);
+
+test("audio-only plays the kept audio here even with a verified archive copy elsewhere: no network, no full video restored", async () => {
+  const context = await fixture();
+  try {
+    await fs.writeFile(join(context.env.XDG_CONFIG_HOME!, "recording-cli/config.json"),
+      `${JSON.stringify({ recordingsDir: join(context.root, "home", "recordings"), archive: { enabled: true, vaio: true, proton: true } })}\n`, { mode: 0o600 });
+    const catalog = join(context.env.XDG_STATE_HOME!, "recording-cli/media-archive");
+    await fs.mkdir(catalog, { recursive: true, mode: 0o700 });
+    const archiveId = "88888888-8888-4888-8888-888888888888";
+    await fs.writeFile(join(catalog, `${archiveId}.json`), JSON.stringify({
+      version: 1, id: archiveId, createdAt: "2026-10-21T00:00:00Z", sourcePath: context.audio.sourcePath,
+      source: { fileName: "source.mkv", size: 15, mtimeMs: 1, sha256: context.audio.source.sha256 },
+      vaio: { state: "completed", path: "/srv/archive/media/2026/10/source.mkv", verifiedAt: "2026-10-21T01:00:00Z", archiveRelative: "media/2026/10/x" },
+      proton: { state: "completed", path: "/my-files/RecordingArchive/media/2026/10/source.mkv", verifiedAt: "2026-10-21T02:00:00Z" }
+    }), { mode: 0o600 });
+    const list = await bridge(context.env, { id: 1, op: "list" });
+    // The listing still says where the copies are; playback uses the audio kept on this computer.
+    expect(list.result.items.find((item: any) => item.key === context.audio.sourcePath)).toMatchObject({ location: "vaio", media: "audio-only", backup: "vaio+proton" });
+    expect(await bridge(context.env, { id: 2, op: "resolve", key: context.audio.sourcePath }))
+      .toEqual({ id: 2, ok: true, result: { key: context.audio.sourcePath, state: "completed", location: "audio-only", path: context.retained } });
+  } finally { await context.cleanup(); }
+}, 30_000);

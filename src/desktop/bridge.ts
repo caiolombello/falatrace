@@ -320,11 +320,15 @@ const resolvePlayback = async (key: string): Promise<unknown> => {
     await assertExistingManagedPath(config, entry.sourcePath);
     return { key: entry.sourcePath, state: "completed", location: "local", path: entry.sourcePath };
   }
-  // Audio-only retention with no copy elsewhere: the kept audio (every track) plays here.
+  // Audio-only retention: the kept audio (every track) plays here, even when an archive copy exists.
+  // That needs no network, and never restores the full video into the local cache retention purged.
   const job = entry.jobs.find((item) => item.state === "completed") || entry.jobs[0];
-  if (job && locationOf({ ...entry, media: await mediaStateOf(entry) }) === "audio-only") {
+  if (job && (await mediaStateOf(entry)).state === "audio-only") {
     const evidence = await resolveMediaEvidence(job, { needs: "audio", verifyHash: false });
-    if (evidence.ok && evidence.kind === "retained-audio") return { key: entry.sourcePath, state: "completed", location: "audio-only", path: evidence.path };
+    if (evidence.ok && evidence.kind === "retained-audio") {
+      await assertExistingManagedPath(config, evidence.path);
+      return { key: entry.sourcePath, state: "completed", location: "audio-only", path: evidence.path };
+    }
   }
   return queuePlayback(entry.sourcePath);
 };
