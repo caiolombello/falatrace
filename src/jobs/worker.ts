@@ -1,4 +1,4 @@
-import { withHeavyAdmission, cliAdmissionWait } from '../runtime/heavy-admission';
+import { withHeavyAdmission, cliAdmissionWait, callMonitorExpected } from '../runtime/heavy-admission';
 import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -189,7 +189,7 @@ const runWorkerCycle = async (config: AppConfig, runRetention = true, admissionS
     .map((entry) => entry.name)
     .sort();
   for (const jobId of jobs) {
-    await withHeavyAdmission('pipeline',jobId,()=>processQueuedJob(config,jobId),{signal:admissionSignal,onWait:cliAdmissionWait});
+    await withHeavyAdmission('pipeline',jobId,()=>processQueuedJob(config,jobId),{signal:admissionSignal,onWait:cliAdmissionWait,callMonitorExpected:callMonitorExpected(config)});
   }
   if (runRetention && !admissionSignal?.aborted) {
     try {

@@ -1,4 +1,4 @@
-import { withHeavyAdmission, cliAdmissionWait } from '../runtime/heavy-admission';
+import { withHeavyAdmission, cliAdmissionWait, callMonitorExpected } from '../runtime/heavy-admission';
 import { promises as fs } from "node:fs";
 import { createHash } from "node:crypto";
 import { join, resolve } from "node:path";
@@ -92,7 +92,7 @@ export const processLocalJob = async (
   config: AppConfig, store: JobStore, record: JobRecord
 ): Promise<JobRecord> => withJobLease(store, record.id, async (current) => {
   if (["completed", "failed", "processing"].includes(current.state)) return current;
-  return withHeavyAdmission('pipeline',current.id,async()=>{const fresh=await store.get(current.id);if(['completed','failed','processing'].includes(fresh.state)||fresh.target!=='local')return fresh;return processLocalJobOwned(config,store,fresh);},{onWait:cliAdmissionWait});
+  return withHeavyAdmission('pipeline',current.id,async()=>{const fresh=await store.get(current.id);if(['completed','failed','processing'].includes(fresh.state)||fresh.target!=='local')return fresh;return processLocalJobOwned(config,store,fresh);},{onWait:cliAdmissionWait,callMonitorExpected:callMonitorExpected(config)});
 });
 
 const syncRemoteJob = async (
@@ -174,7 +174,7 @@ export const syncJob = async (
   const result = await (async () => {
     try {
       return job.target === "local"
-        ? await withHeavyAdmission('pipeline',job.id,async()=>{const fresh=await store.get(job.id);if(['completed','failed','processing'].includes(fresh.state)||fresh.target!=='local')return fresh;return processLocalJobOwned(config,store,fresh);},{onWait:cliAdmissionWait,signal:admissionSignal})
+        ? await withHeavyAdmission('pipeline',job.id,async()=>{const fresh=await store.get(job.id);if(['completed','failed','processing'].includes(fresh.state)||fresh.target!=='local')return fresh;return processLocalJobOwned(config,store,fresh);},{onWait:cliAdmissionWait,signal:admissionSignal,callMonitorExpected:callMonitorExpected(config)})
         : await syncRemoteJob(config, store, job);
     } catch (err) {
       const fresh=await store.get(job.id);if(fresh.state!==job.state||admissionSignal?.aborted)return fresh;

@@ -2,7 +2,8 @@ import {test,expect} from 'bun:test';
 import {promises as fs} from 'node:fs';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
-import {activityReason,heavyPolicy,readActivity,readHeavyStatus,withHeavyAdmission} from '../heavy-admission';
+import {activityReason,callMonitorExpected,heavyPolicy,readActivity,readHeavyStatus,withHeavyAdmission} from '../heavy-admission';
+import {DEFAULT_CONFIG} from '../../config/defaults';
 const idle=async()=>({recording:'idle',call:'idle'} as const);
 const policy={pause:'capture-and-call',unknown:'wait'} as const;
 const nap=(n=30)=>new Promise<void>(r=>setTimeout(r,n));
@@ -19,7 +20,9 @@ test('policy distinguishes recording, inferred call, unknown and explicit overri
  expect(()=>heavyPolicy({FALATRACE_HEAVY_PAUSE:'invalid'})).toThrow();
 });
 test('detector reads metadata only, stale active remains blocking, stale idle/invalid unknown',async()=>fixture(async root=>{
+ // A call monitor is expected (call detection on): its silence is unknown and holds heavy work.
  expect(await readActivity(root)).toEqual({recording:'idle',call:'unknown'});
+ expect(await readActivity(root,Date.now(),{callMonitorExpected:true})).toEqual({recording:'idle',call:'unknown'});
  const write=async(name:string,data:any)=>fs.writeFile(join(root,name),JSON.stringify({... (name==='recording-session.json'?{id:'123e4567-e89b-42d3-a456-426614174000',owner:'manual',backend:'audio',outputPath:join(root,'synthetic.mkv'),startedAt:new Date().toISOString()}:{recordingOwned:false,confidence:0,reasons:[]}),...data}));
  await write('recording-session.json',{version:1,phase:'recording'});
  await write('call-monitor.json',{version:1,state:'IN_CALL',dryRun:false,updatedAt:'2000-01-01'});
@@ -136,4 +139,53 @@ test('release failure never masks work result or error; later transaction cleans
  const result=await withHeavyAdmission('pipeline','success',async()=>{state=await fs.readFile(path,'utf8');await fs.writeFile(path,'synthetic corruption');return 'completed';},{root,policy,activity:idle});expect(result).toBe('completed');expect(await fs.readFile(path,'utf8')).toBe('synthetic corruption');
  await fs.writeFile(path,state);await withHeavyAdmission('pipeline','next',async()=>{}, {root,policy,activity:idle});expect((await readHeavyStatus(root)).active).toBe(false);
  await expect(withHeavyAdmission('pipeline','failure',async()=>{state=await fs.readFile(path,'utf8');await fs.writeFile(path,'synthetic corruption');throw Error('original failure');},{root,policy,activity:idle})).rejects.toThrow('original failure');await fs.writeFile(path,state);await withHeavyAdmission('pipeline','after',async()=>{}, {root,policy,activity:idle});
+}));
+test('without a call monitor an absent or stale status is no call; a fresh one still counts',async()=>fixture(async root=>{
+ const quiet={callMonitorExpected:false};
+ const status=(data:any)=>fs.writeFile(join(root,'call-monitor.json'),JSON.stringify({version:1,dryRun:false,recordingOwned:false,confidence:0,reasons:[],...data}));
+ // Default configuration: call detection off, so no monitor will ever write the status.
+ expect(await readActivity(root,Date.now(),quiet)).toEqual({recording:'idle',call:'idle'});
+ for(const state of ['IDLE','CANDIDATE','IN_CALL','ENDING']){
+  await status({state,updatedAt:'2000-01-01T00:00:00Z'});
+  await fs.utimes(join(root,'call-monitor.json'),new Date('2000-01-01T00:00:00Z'),new Date('2000-01-01T00:00:00Z'));
+  expect((await readActivity(root,Date.now(),quiet)).call).toBe('idle');
+  // With a monitor expected, a stale active call keeps blocking and a stale idle one stays unknown.
+  expect((await readActivity(root)).call).toBe(['IN_CALL','ENDING'].includes(state)?'active':'unknown');
+ }
+ // A status refreshed in the last 30 s means some monitor runs after all: respect it.
+ await status({state:'IN_CALL',updatedAt:new Date().toISOString()});
+ expect((await readActivity(root,Date.now(),quiet)).call).toBe('active');
+ await status({state:'CANDIDATE',updatedAt:new Date().toISOString()});
+ expect((await readActivity(root,Date.now(),quiet)).call).toBe('unknown');
+ await status({state:'IDLE',updatedAt:new Date().toISOString()});
+ expect((await readActivity(root,Date.now(),quiet)).call).toBe('idle');
+ // An unreadable status just written stays unknown until it goes stale.
+ await fs.writeFile(join(root,'call-monitor.json'),'broken');
+ expect((await readActivity(root,Date.now(),quiet)).call).toBe('unknown');
+ await fs.utimes(join(root,'call-monitor.json'),new Date('2000-01-01T00:00:00Z'),new Date('2000-01-01T00:00:00Z'));
+ expect((await readActivity(root,Date.now(),quiet)).call).toBe('idle');
+ expect((await readActivity(root)).call).toBe('unknown');
+ // A recording in progress still blocks, whatever the call monitor.
+ await fs.writeFile(join(root,'recording-session.json'),JSON.stringify({version:1,id:'123e4567-e89b-42d3-a456-426614174000',owner:'manual',backend:'audio',outputPath:join(root,'synthetic.mkv'),startedAt:new Date().toISOString(),phase:'recording'}));
+ expect(await readActivity(root,Date.now(),quiet)).toEqual({recording:'active',call:'idle'});
+}));
+test('call monitor expectation follows call detection; local pipelines run without one and wait with a silent one',async()=>fixture(async root=>{
+ const config=structuredClone(DEFAULT_CONFIG);
+ expect(callMonitorExpected(config)).toBe(false);
+ config.callDetection.enabled=true;expect(callMonitorExpected(config)).toBe(true);
+ config.callDetection.dryRun=true;expect(callMonitorExpected(config)).toBe(false);
+ const activityRoot=join(root,'recording-state'),queue=join(root,'queue');await fs.mkdir(activityRoot,{mode:0o700});
+ let runs=0;
+ await withHeavyAdmission('pipeline','no-monitor',async()=>{runs++;},{root:queue,policy,activityRoot,callMonitorExpected:false,pollMs:25});
+ expect(runs).toBe(1);
+ // Not said by the caller: the saved configuration decides (none here, so the default: detection off).
+ await withHeavyAdmission('pipeline','saved-config',async()=>{runs++;},{root:queue,policy,activityRoot,pollMs:25});
+ expect(runs).toBe(2);
+ expect((await readHeavyStatus(queue,{activityRoot,callMonitorExpected:false})).activity).toEqual({recording:'idle',call:'idle'});
+ // Monitor expected but silent: wait visibly, never run.
+ const c=new AbortController();const reasons:string[]=[];
+ const waiting=withHeavyAdmission('pipeline','silent-monitor',async()=>{runs++;},{root:queue,policy,activityRoot,callMonitorExpected:true,pollMs:25,signal:c.signal,onWait:r=>{reasons.push(r);c.abort();}});
+ await expect(waiting).rejects.toThrow();
+ expect(reasons).toEqual(['activity-unknown']);expect(runs).toBe(2);
+ expect((await readHeavyStatus(queue,{activityRoot,callMonitorExpected:true})).activity).toEqual({recording:'idle',call:'unknown'});
 }));

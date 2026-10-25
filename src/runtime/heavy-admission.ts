@@ -41,20 +41,45 @@ async function privateJson(path:string,max=65536):Promise<any|undefined> {
  if(!st.isFile()||st.isSymbolicLink()||st.size>max)throw Error('Unsafe admission input');
  return JSON.parse(await fs.readFile(path,'utf8'));
 }
+/** Whether a call monitor is installed to keep `call-monitor.json` fresh. A dry-run monitor never writes it. */
+export const callMonitorExpected=(config:{callDetection:{enabled:boolean;dryRun:boolean}}):boolean=>config.callDetection.enabled===true&&config.callDetection.dryRun!==true;
+/** The saved configuration decides when a caller does not say; an unreadable one keeps the conservative wait. */
+export async function defaultCallMonitorExpected():Promise<boolean> {
+ try {const {loadConfig}=await import('../config/load');return callMonitorExpected((await loadConfig()).config);}catch{return true;}
+}
+export type ActivityOptions={
+ /** False when no call monitor runs (call detection off or dry-run): an absent or stale status then means no call,
+  * instead of an unknown state that would hold every local pipeline forever. Default true (conservative). */
+ callMonitorExpected?:boolean;
+};
+const CALL_STATUS_FRESH_MS=30000;
 /** Persisted recording intent is conservative: stale active requires recovery, never TTL unlock. */
-export async function readActivity(root=getRecordingStateDir(),now=Date.now()):Promise<Activity> {
+export async function readActivity(root=getRecordingStateDir(),now=Date.now(),options:ActivityOptions={}):Promise<Activity> {
  let recording:Activity['recording']='unknown',call:Activity['call']='unknown';
+ const expected=options.callMonitorExpected!==false;
  try {const s=await privateJson(join(root,'recording-session.json'));
   if(s===undefined)recording='idle';
   if(s?.version===1&&typeof s.id==='string'&&/^[a-f0-9-]{36}$/i.test(s.id)&&['manual','call'].includes(s.owner)&&['audio','gpu-screen-recorder','obs'].includes(s.backend)&&typeof s.outputPath==='string'&&isAbsolute(s.outputPath)&&Number.isFinite(Date.parse(s.startedAt))&&['starting','recording','stopped'].includes(s.phase))recording=s.phase==='stopped'?'idle':'active';
  }catch{/* Invalid/detector errors stay unknown. */}
+ const fresh=(age:number)=>Number.isFinite(age)&&age>=0&&age<=CALL_STATUS_FRESH_MS;
+ let statusFresh=false,present=true;
  try {const s=await privateJson(join(root,'call-monitor.json'));
+  if(s===undefined)present=false;
   if(s?.version===1&&s.dryRun===false&&typeof s.recordingOwned==='boolean'&&Number.isFinite(s.confidence)&&s.confidence>=0&&s.confidence<=1&&Array.isArray(s.reasons)&&s.reasons.every((r:unknown)=>typeof r==='string')&&['IDLE','CANDIDATE','IN_CALL','ENDING'].includes(s.state)){
    const age=now-Date.parse(s.updatedAt);
-   if(['IN_CALL','ENDING'].includes(s.state))call='active';
-   else if(Number.isFinite(age)&&age>=0&&age<=30000)call=s.state==='IDLE'?'idle':'unknown';
+   statusFresh=fresh(age);
+   if(['IN_CALL','ENDING'].includes(s.state)&&(expected||statusFresh))call='active';
+   else if(statusFresh)call=s.state==='IDLE'?'idle':'unknown';
   }
  }catch{/* No silent inference of inactivity. */}
+ if(!expected&&!statusFresh){
+  // Nothing is meant to refresh this status: absent or stale means no call. A file rewritten in the last
+  // 30 s (a monitor started by hand) still holds its unreadable state as unknown until it goes stale.
+  if(!present)call='idle';
+  else {const st=await fs.lstat(join(root,'call-monitor.json')).catch(()=>undefined);const age=st?now-st.mtimeMs:NaN;
+   // File times can run slightly ahead of Date.now() (sub-millisecond rounding); allow a little skew.
+   if(!(age>=-5000&&age<=CALL_STATUS_FRESH_MS))call='idle';}
+ }
  return {recording,call};
 }
 async function owner(pid=process.pid):Promise<Owner> {
@@ -71,7 +96,13 @@ const validate=(s:any):State=>{
  if(s?.version!==1||!Array.isArray(s.queue)||s.queue.length>64||s.queue.some((t:any)=>!t||typeof t.id!=='string'||!/^[-a-f0-9]{36}$/.test(t.id)||typeof t.job!=='string'||!/^[a-f0-9]{64}$/.test(t.job)||typeof t.kind!=='string'||!['pipeline','preview','vision','diarization','playback','subtitles','command'].includes(t.kind)||!Number.isSafeInteger(t.owner?.pid)||t.owner.pid<1||typeof t.owner.boot!=='string'||!/^[-a-f0-9]{36}$/.test(t.owner.boot)||typeof t.owner.start!=='string'||!/^\d+$/.test(t.owner.start)||t.reason!==undefined&&!Object.prototype.hasOwnProperty.call(messages,t.reason))||new Set(s.queue.map((t:Ticket)=>t.id)).size!==s.queue.length||s.active!==undefined&&!s.queue.some((t:Ticket)=>t.id===s.active))throw Error('Invalid admission state; retained for review');
  return s;
 };
-export type AdmissionOptions={root?:string;signal?:AbortSignal;policy?:Policy;activity?:()=>Promise<Activity>;onWait?:(reason:WaitReason)=>void;pollMs?:number};
+export type AdmissionOptions={root?:string;signal?:AbortSignal;policy?:Policy;activity?:()=>Promise<Activity>;onWait?:(reason:WaitReason)=>void;pollMs?:number;
+ /** See ActivityOptions; callers holding the config pass callMonitorExpected(config), others read the saved config. */
+ callMonitorExpected?:boolean;
+ /** Recording state directory the default detector reads (tests). */
+ activityRoot?:string};
+const detector=(options:Pick<AdmissionOptions,'callMonitorExpected'|'activityRoot'>)=>async():Promise<Activity>=>
+ readActivity(options.activityRoot||getRecordingStateDir(),Date.now(),{callMonitorExpected:options.callMonitorExpected??await defaultCallMonitorExpected()});
 const delay=(ms:number,signal?:AbortSignal)=>new Promise<void>((yes,no)=>{
  signal?.throwIfAborted();const stop=()=>{clearTimeout(timer);signal?.removeEventListener('abort',stop);no(signal?.reason||Error('Cancelled'));};
  const timer=setTimeout(()=>{signal?.removeEventListener('abort',stop);yes();},ms);signal?.addEventListener('abort',stop,{once:true});
@@ -102,7 +133,7 @@ export async function withHeavyAdmission<T>(kind:Ticket['kind'],job:string,run:(
  let previous:WaitReason|undefined;
  try {
   for(;;){options.signal?.throwIfAborted();
-   let a:Activity;try{a=await(options.activity||readActivity)();}catch{a={recording:'unknown',call:'unknown'};}
+   let a:Activity;try{a=await(options.activity||detector(options))();}catch{a={recording:'unknown',call:'unknown'};}
    const reason=await transaction(root,async s=>{
     const own=s.queue.find(t=>t.id===ticket.id);if(!own)throw Error('Admission ticket lost; no work started');
     const waiting=s.active||s.queue[0]?.id!==ticket.id?'queue':activityReason(a,policy);
@@ -120,9 +151,10 @@ export async function withHeavyAdmission<T>(kind:Ticket['kind'],job:string,run:(
  }
 }
 async function privateDirectoryCheck(root:string){await import('../visual/app-budget').then(m=>m.assertPrivateDirectoryAncestors(root));}
-export async function readHeavyStatus(root=heavyRoot()) {
+export async function readHeavyStatus(root=heavyRoot(),options:Pick<AdmissionOptions,'callMonitorExpected'|'activityRoot'>={}) {
  const empty=()=>({active:false,waiting:[] as Array<{job:string;kind:string;reason:WaitReason;message:string}>,policy:heavyPolicy(),activity:undefined as Activity|undefined});
- const st=await fs.lstat(root).catch(e=>{if(e.code==='ENOENT')return;throw e;});if(!st)return {...empty(),activity:await readActivity()};
- return transaction(root,async s=>({active:!!s.active,waiting:s.queue.filter(t=>t.id!==s.active).map(t=>({job:t.job,kind:t.kind,reason:t.reason||'queue',message:waitMessage(t.reason||'queue')})),policy:heavyPolicy(),activity:await readActivity()}),true);
+ const activity=detector(options);
+ const st=await fs.lstat(root).catch(e=>{if(e.code==='ENOENT')return;throw e;});if(!st)return {...empty(),activity:await activity()};
+ return transaction(root,async s=>({active:!!s.active,waiting:s.queue.filter(t=>t.id!==s.active).map(t=>({job:t.job,kind:t.kind,reason:t.reason||'queue',message:waitMessage(t.reason||'queue')})),policy:heavyPolicy(),activity:await activity()}),true);
 }
 export const cliAdmissionWait=(reason:WaitReason)=>console.error(JSON.stringify({event:'processing.waiting',reason,message:waitMessage(reason)}));

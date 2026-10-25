@@ -10,7 +10,7 @@ import { validateJobId, validateSummary, type JobRecord, type RecordingSummary, 
 import { aiContextRoot, invalidateAiContextOwned, withContextPublicationLease } from "../knowledge/invalidation";
 import { readReviewedView, RevisionConflictError, withRevisionLease, type ReviewedView, type RevisionHead } from "../revisions";
 import { acquireSingleton } from "../runtime/singleton";
-import { cliAdmissionWait, withHeavyAdmission } from "../runtime/heavy-admission";
+import { callMonitorExpected, cliAdmissionWait, withHeavyAdmission } from "../runtime/heavy-admission";
 import { planSummaryChunks, type SummaryAdapter, type SummaryChunk } from "./chunks";
 import { attachSummarySupport, buildSummaryEvidence, summaryEvidenceMatches, summaryTranscriptEvidenceSha256 } from "./evidence";
 import { summarizeWithOllama } from "./ollama";
@@ -327,5 +327,5 @@ export const regenerateReviewedSummary = async (job: JobRecord, input: { request
       return { ...result, path: resultPath(job.id, plan.requestId), raw: JSON.stringify(result) };
     }));
   } finally { await lease.release(); }
-  }, { signal: input.signal, onWait: cliAdmissionWait });
+  }, { signal: input.signal, onWait: cliAdmissionWait, callMonitorExpected: callMonitorExpected(input.config) });
 };

@@ -4,6 +4,7 @@ import type { CallApplication } from "../calls/apps";
 import { promises as fs } from "node:fs";
 import { findGnomeCalendarMeeting } from "../calendar/gnome";
 import type { AppConfig } from "../config/defaults";
+import { localProcessing } from "../config/settings";
 import { JobStore } from "./store";
 import type { JobRecord } from "./types";
 import { ArchiveStore } from "../archive/store";
@@ -50,20 +51,28 @@ export const findMeetingContext = async (
   return config.calendar.enabled ? lookups.gnome(options.startedAt, options.endedAt, options.app).catch(unavailable) : undefined;
 };
 
+/** The fast path: a recording is processed as soon as it stops, with local providers only. */
+export const fastPathActive = (config: AppConfig): boolean =>
+  config.processing.fastPath === true && localProcessing(config);
+
 export const enqueueRecording = async (
   config: AppConfig,
   filePath: string,
   options: EnqueueRecordingOptions = {},
   store = new JobStore()
 ): Promise<JobRecord | null> => {
-  if (!config.processing.autoEnqueue && !config.archive.enabled) return null;
+  const queue = config.processing.autoEnqueue || fastPathActive(config);
+  if (!queue && !config.archive.enabled) return null;
   await waitForStableFile(filePath);
   if (config.archive.enabled) {
     await new ArchiveStore().enqueue(filePath, { id: options.recordingId, createdAt: options.startedAt });
   }
-  if (!config.processing.autoEnqueue) return null;
+  if (!queue) return null;
   const meetingContext = await findMeetingContext(config, options);
-  const job = await store.enqueue(config, filePath, { meetingContext, recordingId: options.recordingId });
+  // Queued only for the fast path, the job runs here: its providers are local by definition.
+  const job = await store.enqueue(config, filePath, {
+    meetingContext, recordingId: options.recordingId, ...(config.processing.autoEnqueue ? {} : { target: "local" as const })
+  });
   console.log(`Processing job queued: ${job.id}`);
   return job;
 };
