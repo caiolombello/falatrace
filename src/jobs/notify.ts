@@ -13,14 +13,15 @@ const folderName = (job: Pick<JobRecord, "sourcePath">): string =>
   (basename(dirname(job.sourcePath)) || basename(job.sourcePath)).replace(/\p{Cc}/gu, " ").slice(0, 80);
 
 /**
- * Tell the desktop that a job finished or failed. Shows only the recording folder name, never
- * transcript or summary text. Delegated to the user manager like the call notifications, so
- * sandboxed units keep ProtectHome=read-only. Failures are ignored.
+ * Tell the desktop that a job finished or failed. The plain notice shows only the recording folder
+ * name, never transcript or summary text. Delegated to the user manager like the call
+ * notifications, so sandboxed units keep ProtectHome=read-only. Failures are ignored.
  *
  * A finished job gets a clickable "notes ready" notification when notify-send can show buttons: a
  * detached helper unit (`notify ready --job <id>`) shows it and opens the recording in the Studio on
- * a click, so nothing here waits for the person. Without buttons (old libnotify), the plain
- * notification is shown as before.
+ * a click, so nothing here waits for the person. That notice names the meeting (calendar title,
+ * else the summary's title, else the folder) and counts actions and decisions; no other summary
+ * text. Without buttons (old libnotify), the plain notification is shown as before.
  */
 export const notifyJobOutcome = async (config: AppConfig, job: JobRecord, run?: typeof runCommand): Promise<void> => {
   if (!config.processing.notifyOnCompletion || (job.state !== "completed" && job.state !== "failed")) return;
