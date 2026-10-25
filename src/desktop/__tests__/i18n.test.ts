@@ -10,6 +10,7 @@ import { translateCaptureMessage } from "../../recording/messages";
 import { waitMessage } from "../../runtime/heavy-admission";
 import { GOOGLE_KNOWN_ERRORS, OBS_PASSWORD_UNKNOWN, SETTINGS_KNOWN_ERRORS, settingsErrorMessage, SETTINGS_OPERATIONS } from "../settings-bridge";
 import { SPEAKER_KNOWN_ERRORS } from "../../speakers/messages";
+import { MEDIA_RETENTION_MESSAGES } from "../../media-retention/store";
 
 /**
  * The Studio's English comes from src/desktop/i18n.js, keyed by the Portuguese text.
@@ -77,6 +78,13 @@ test("settings errors the bridge can show are translated", () => {
 
 test("Google sign-in and calendar messages the bridge can show are translated", () => {
   for (const message of GOOGLE_KNOWN_ERRORS) english(message);
+});
+
+test("media retention messages the Studio can already show are translated", () => {
+  // The processing plan reason and recording-process refusal for removed media, and the
+  // diarization failures an analysis of removed media can record (detail.diarization.message).
+  for (const message of [MEDIA_RETENTION_MESSAGES.reprocessRefused, MEDIA_RETENTION_MESSAGES.evidenceRemoved,
+    MEDIA_RETENTION_MESSAGES.retainedAudioInvalid, MEDIA_RETENTION_MESSAGES.tombstoneInvalid]) english(message);
 });
 
 test("speaker name suggestion messages the bridge can show are translated", () => {
