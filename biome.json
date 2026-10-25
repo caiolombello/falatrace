@@ -86,7 +86,8 @@
 			"src/brief/**",
 			"src/recipes/**",
 			"src/share/**",
-			"src/destinations/**"
+			"src/destinations/**",
+			"src/media-retention/**"
 		]
 	},
 	"formatter": { "enabled": false },

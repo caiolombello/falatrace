@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { createServer, type Server } from "node:net";
+import { connect, createServer, type Server } from "node:net";
 
 export type SingletonLease = {
   release(): Promise<void>;
@@ -51,3 +51,14 @@ export const acquireSingleton = async (name: string): Promise<SingletonLease> =>
     }
   };
 };
+
+/** Whether another process holds `name`, checked by connecting as a client: it never
+ * takes the lease, so it cannot make a concurrent acquirer fail. Unexpected errors count as held. */
+export const isSingletonHeld = (name: string, timeoutMs = 2_000): Promise<boolean> =>
+  new Promise((resolve) => {
+    const socket = connect(socketName(name));
+    const done = (held: boolean): void => { clearTimeout(timer); socket.destroy(); resolve(held); };
+    const timer = setTimeout(() => done(true), timeoutMs);
+    socket.once("connect", () => done(true));
+    socket.once("error", (err: NodeJS.ErrnoException) => done(err.code !== "ECONNREFUSED" && err.code !== "ENOENT"));
+  });
