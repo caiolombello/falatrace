@@ -93,6 +93,10 @@ describe("runMediaRetentionPass", () => {
   });
 });
 
+// Each test gets its own heavy-admission state, so no other test's queue can defer the pass.
+const admission = (fixture: Fixture, activity: { recording: "active" | "idle"; call: "active" | "idle" } = { recording: "idle", call: "idle" }) =>
+  ({ root: join(fixture.root, "heavy-admission"), policy: { pause: "capture-and-call" as const, unknown: "wait" as const }, activity: async () => activity });
+
 describe("runMediaRetentionAfterSync", () => {
   test("under the default keep policy nothing is planned or read", async () => {
     const fixture = await setup();
@@ -110,7 +114,7 @@ describe("runMediaRetentionAfterSync", () => {
     let limit: number | undefined;
     const report = await runMediaRetentionAfterSync(fixture.config, {
       pass: (config, options) => { limit = options?.limit; return runMediaRetentionPass(config, options); },
-      options: { entries: [fixture.entry], deps: fixture.deps, now: fixture.now }, log: (line) => lines.push(line)
+      options: { entries: [fixture.entry], deps: fixture.deps, now: fixture.now }, log: (line) => lines.push(line), admission: admission(fixture)
     });
     expect(limit).toBe(MEDIA_RETENTION_SYNC_LIMIT);
     expect(report.ran).toBe(true);
@@ -124,7 +128,7 @@ describe("runMediaRetentionAfterSync", () => {
   test("never throws out of the sync run", async () => {
     const fixture = await setup();
     const lines: string[] = [];
-    const report = await runMediaRetentionAfterSync(fixture.config, { pass: async () => { throw new Error("EACCES: synthetic library failure"); }, log: (line) => lines.push(line) });
+    const report = await runMediaRetentionAfterSync(fixture.config, { pass: async () => { throw new Error("EACCES: synthetic library failure"); }, log: (line) => lines.push(line), admission: admission(fixture) });
     expect(report).toMatchObject({ ran: true, items: [], error: MEDIA_RETENTION_MESSAGES.passFailed });
     expect(lines).toEqual([JSON.stringify({ event: "media-retention.error", error: MEDIA_RETENTION_MESSAGES.passFailed })]);
     expect(formatMediaRetentionSync(report)).toBe(`Retenção de mídia: ${MEDIA_RETENTION_MESSAGES.passFailed}`);
@@ -136,9 +140,36 @@ describe("runMediaRetentionAfterSync", () => {
     const lines: string[] = [];
     const report = await runMediaRetentionAfterSync(fixture.config, {
       pass: async () => [{ sourcePath: fixture.sourcePath, outcome: "failed", error: MEDIA_RETENTION_MESSAGES.removeFailed }, { sourcePath: "/x/y.mkv", outcome: "waiting", blockers: ["steps-pending"] }],
-      log: (line) => lines.push(line)
+      log: (line) => lines.push(line), admission: admission(fixture)
     });
     expect(report.counts).toMatchObject({ failed: 1, waiting: 1 });
     expect(lines).toEqual([JSON.stringify({ event: "media-retention.failed", file: fixture.sourcePath.split("/").pop(), error: MEDIA_RETENTION_MESSAGES.removeFailed })]);
+  });
+
+  test("a capture or a call defers the pass to the next run: the sync timer is never held and nothing is read or removed", async () => {
+    const fixture = await setup();
+    for (const activity of [{ recording: "active", call: "idle" }, { recording: "idle", call: "active" }] as const) {
+      const lines: string[] = [];
+      let calls = 0;
+      const started = Date.now();
+      const report = await runMediaRetentionAfterSync(fixture.config, {
+        pass: (config, options) => { calls += 1; return runMediaRetentionPass(config, options); },
+        options: { entries: [fixture.entry], deps: fixture.deps, now: fixture.now }, log: (line) => lines.push(line),
+        admission: admission(fixture, activity), admissionWaitMs: 50
+      });
+      expect(Date.now() - started).toBeLessThan(5_000);
+      expect(calls).toBe(0);
+      expect(report).toEqual({ ran: true, items: [], counts: { removed: 0, finalized: 0, waiting: 0, blocked: 0, deferred: 0, failed: 0 }, deferred: MEDIA_RETENTION_MESSAGES.passDeferred });
+      expect(lines.map((line) => JSON.parse(line))).toEqual([{ event: "media-retention.deferred", reason: activity.recording === "active" ? "recording-active" : "call-inferred" }]);
+      expect(formatMediaRetentionSync(report)).toBe(`Retenção de mídia: ${MEDIA_RETENTION_MESSAGES.passDeferred}`);
+      expect((await fs.stat(fixture.sourcePath)).isFile()).toBe(true);
+      expect(await new MediaRetentionStore().read(fixture.sourcePath)).toBeNull();
+    }
+    // Once the capture and the call are over, the next run applies the policy.
+    const report = await runMediaRetentionAfterSync(fixture.config, {
+      options: { entries: [fixture.entry], deps: fixture.deps, now: fixture.now }, log: () => undefined, admission: admission(fixture)
+    });
+    expect(report.counts.removed).toBe(1);
+    expect(await fs.stat(fixture.sourcePath).catch(() => null)).toBeNull();
   });
 });

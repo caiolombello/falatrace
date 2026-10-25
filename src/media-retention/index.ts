@@ -4,6 +4,7 @@ import { ArchiveStore } from "../archive/store";
 import type { AppConfig } from "../config/defaults";
 import { JobStore } from "../jobs/store";
 import type { JobRecord } from "../jobs/types";
+import { callMonitorExpected, withHeavyAdmission, type AdmissionOptions, type WaitReason } from "../runtime/heavy-admission";
 import { buildLibrary } from "../tui/library";
 import { type ApplyMediaRetentionDeps, type MediaRetentionResult, applyMediaRetention } from "./apply";
 import { type MediaRetentionBlockerCode, type MediaRetentionDeps, type MediaRetentionEntry, planMediaRetention } from "./plan";
@@ -89,12 +90,19 @@ export const runMediaRetentionPass = async (config: AppConfig, options: MediaRet
 
 /** Recordings whose media is hashed per `jobs sync` run; the rest wait for the next run. */
 export const MEDIA_RETENTION_SYNC_LIMIT = 5;
+/**
+ * How long the sync run waits for heavy admission. Like local processing in `syncJobs`, the pass
+ * never holds the timer during a capture, a call or other heavy work: it is left to the next run.
+ */
+export const MEDIA_RETENTION_ADMISSION_WAIT_MS = 1000;
 
 export type MediaRetentionSyncReport = {
   /** False when the policy is "keep": nothing is planned or read. */
   ran: boolean;
   items: MediaRetentionPassItem[];
   counts: Record<MediaRetentionPassItem["outcome"], number>;
+  /** Heavy admission was not granted right away: nothing was planned, the next run tries again. */
+  deferred?: string;
   error?: string;
 };
 
@@ -105,22 +113,36 @@ export type MediaRetentionSyncDeps = {
   limit?: number;
   /** One JSON line per removal, finished removal or failure; stderr (the journal) by default. */
   log?: (line: string) => void;
+  /** Heavy admission overrides (tests: root, policy, activity); the wait itself stays bounded. */
+  admission?: Omit<AdmissionOptions, "signal" | "onWait">;
+  admissionWaitMs?: number;
 };
 
 const emptyCounts = (): MediaRetentionSyncReport["counts"] => ({ removed: 0, finalized: 0, waiting: 0, blocked: 0, deferred: 0, failed: 0 });
 
 /**
  * The automatic policy after `syncJobs` in the `jobs sync` timer. With the default "keep"
- * it does nothing. Otherwise it plans every library entry, applies the eligible ones (hashing
- * at most `limit` recordings) and logs what happened. It never throws: a failure is reported
- * and the sync run carries on. Trash is never used.
+ * it does nothing. Otherwise, once heavy admission is granted (hashing large media and keeping
+ * only the audio are heavy work), it plans every library entry, applies the eligible ones
+ * (hashing at most `limit` recordings) and logs what happened. A capture, a call or other heavy
+ * work defers it to the next run instead of holding the timer. It never throws: a failure is
+ * reported and the sync run carries on. Trash is never used.
  */
 export const runMediaRetentionAfterSync = async (config: AppConfig, deps: MediaRetentionSyncDeps = {}): Promise<MediaRetentionSyncReport> => {
   const counts = emptyCounts();
   if (config.media.retention === "keep") return { ran: false, items: [], counts };
   const log = deps.log ?? ((line: string) => console.error(line));
+  let started = false;
+  let waitReason: WaitReason | undefined;
   try {
-    const items = await (deps.pass ?? runMediaRetentionPass)(config, { ...deps.options, limit: deps.limit ?? MEDIA_RETENTION_SYNC_LIMIT });
+    const pass = deps.pass ?? runMediaRetentionPass;
+    const items = await withHeavyAdmission("command", "media-retention", () => {
+      started = true;
+      return pass(config, { ...deps.options, limit: deps.limit ?? MEDIA_RETENTION_SYNC_LIMIT });
+    }, {
+      callMonitorExpected: callMonitorExpected(config), ...deps.admission,
+      signal: AbortSignal.timeout(deps.admissionWaitMs ?? MEDIA_RETENTION_ADMISSION_WAIT_MS), onWait: (reason) => { waitReason = reason; }
+    });
     for (const item of items) {
       counts[item.outcome] += 1;
       if (item.outcome !== "removed" && item.outcome !== "finalized" && item.outcome !== "failed") continue;
@@ -132,6 +154,11 @@ export const runMediaRetentionAfterSync = async (config: AppConfig, deps: MediaR
     }
     return { ran: true, items, counts };
   } catch (error) {
+    if (!started) {
+      // Nothing was read or changed; the next sync run asks for admission again.
+      log(JSON.stringify({ event: "media-retention.deferred", ...(waitReason ? { reason: waitReason } : {}) }));
+      return { ran: true, items: [], counts, deferred: MEDIA_RETENTION_MESSAGES.passDeferred };
+    }
     const message = error instanceof MediaRetentionError ? error.message : MEDIA_RETENTION_MESSAGES.passFailed;
     log(JSON.stringify({ event: "media-retention.error", error: message }));
     return { ran: true, items: [], counts, error: message };
@@ -141,6 +168,7 @@ export const runMediaRetentionAfterSync = async (config: AppConfig, deps: MediaR
 /** One Portuguese line for the `jobs sync` output; empty when the policy is "keep" or nothing was looked at. */
 export const formatMediaRetentionSync = (report: MediaRetentionSyncReport): string => {
   if (!report.ran) return "";
+  if (report.deferred) return `Retenção de mídia: ${report.deferred}`;
   if (report.error) return `Retenção de mídia: ${report.error}`;
   const { removed, finalized, waiting, blocked, deferred, failed } = report.counts;
   if (!report.items.length) return "";
