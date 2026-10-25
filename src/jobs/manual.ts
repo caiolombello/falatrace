@@ -151,8 +151,10 @@ export const planRecordingProcessing = async (
   // The worker is part of what the user approves: another host, user, port or identity asks again.
   const remote = target === "remote" ? { destination: getSshDestination(config), port: config.remote.port } : undefined;
   // The summary sends the meeting notes with the transcript. Run elsewhere, they are part of what
-  // the user approves: notes changed since the plan ask again. Unreadable notes are not sent.
-  const notes = action !== "none" && config.notes.enabled && config.summary.useNotes
+  // the user approves: notes changed since the plan ask again. Unreadable notes are not sent, and
+  // a remote worker never receives them (it gets the manifest and the media only), so a remote
+  // plan neither discloses nor binds them.
+  const notes = action !== "none" && target === "local" && config.notes.enabled && config.summary.useNotes
     ? await (deps.notes || ((job: { id: string; sourcePath: string }) => findNotesForJob(job)))({ id: latest?.id ?? randomUUID(), sourcePath: entry.sourcePath }).catch(() => undefined)
     : undefined;
   const sentNotes = notes?.entries.length ? { count: notes.entries.length, external: destinations.summary.external } : undefined;

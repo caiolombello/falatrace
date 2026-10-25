@@ -191,9 +191,19 @@ test("notes that go with an external summary are disclosed and bound to the cons
     expect(plain.notes).toBeUndefined();
     expect(plain.consentKey).toBe(local.consentKey);
     expect((await planRecordingProcessing(config, { sourcePath: path, sourceExists: true, jobs: [] }, { ...deps, notes: async () => { throw new Error("corrompidas"); } })).notes).toBeUndefined();
-    config.notes.enabled = false;
     let reads = 0;
-    expect((await planRecordingProcessing(config, { sourcePath: path, sourceExists: true, jobs: [] }, { ...deps, notes: async () => { reads++; return notes(); } })).notes).toBeUndefined();
+    const counted = { ...deps, notes: async () => { reads++; return notes(); } };
+    // A remote worker gets the manifest and the media only: the notes are neither claimed nor bound.
+    const remoteConfig = structuredClone(config);
+    remoteConfig.processing.defaultTarget = "remote";
+    remoteConfig.remote = { ...remoteConfig.remote, host: "gpu.lan", user: "ana" };
+    const remote = await planRecordingProcessing(remoteConfig, { sourcePath: path, sourceExists: true, jobs: [] }, counted);
+    expect(remote).toMatchObject({ action: "create", target: "remote" });
+    expect(remote.summary.external).toBe(true);
+    expect(remote.notes).toBeUndefined();
+    expect(remote.consentKey).toBe((await planRecordingProcessing(remoteConfig, { sourcePath: path, sourceExists: true, jobs: [] }, { ...deps, notes: async () => undefined })).consentKey);
+    config.notes.enabled = false;
+    expect((await planRecordingProcessing(config, { sourcePath: path, sourceExists: true, jobs: [] }, counted)).notes).toBeUndefined();
     expect(reads).toBe(0);
   });
 });
