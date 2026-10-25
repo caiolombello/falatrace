@@ -369,7 +369,7 @@ export const parseRequest = (value: unknown): Request => {
   if (payload.client !== undefined && !["claude", "codex", "gemini"].includes(payload.client as string)) throw new Error("payload inválido");
   for (const field of ["audioSource", "microphone", "desktop"] as const) if (payload[field] !== undefined && (typeof payload[field] !== "string" || !/^[A-Za-z0-9_.:@+-]{1,300}$/.test(payload[field] as string))) throw new Error("payload inválido");
   if (request.op === "settings-audio-test" && payload.seconds !== undefined && (!Number.isSafeInteger(payload.seconds) || (payload.seconds as number) < 2 || (payload.seconds as number) > 15)) throw new Error("payload inválido");
-  if (payload.changes !== undefined && (!payload.changes || typeof payload.changes !== "object" || Array.isArray(payload.changes) || Object.keys(payload.changes).length > 100)) throw new Error("payload inválido");
+  if (payload.changes !== undefined && (!payload.changes || typeof payload.changes !== "object" || Array.isArray(payload.changes) || Object.keys(payload.changes).length > 200)) throw new Error("payload inválido");
   if (request.op === "settings-save" && (typeof payload.revision !== "string" || payload.changes === undefined)) throw new Error("payload inválido");
   if (request.op === "settings-service" && typeof payload.action !== "string") throw new Error("payload inválido");
   if (payload.expectedRevision !== undefined && (!Number.isSafeInteger(payload.expectedRevision) || (payload.expectedRevision as number)<0)) throw new Error("payload inválido");

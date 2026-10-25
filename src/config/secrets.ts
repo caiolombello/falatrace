@@ -25,7 +25,13 @@ import { acquireSingleton } from "../runtime/singleton";
  * no environment value is trusted.
  * Values are never logged, returned to the UI or written anywhere but secrets.env.
  */
-export const SECRET_NAMES = ["OPENAI_API_KEY", "GEMINI_API_KEY", "RECORDING_CLI_OBS_PASSWORD", "GOOGLE_CLIENT_SECRET"] as const;
+export const SECRET_NAMES = [
+  "OPENAI_API_KEY", "GEMINI_API_KEY", "RECORDING_CLI_OBS_PASSWORD", "GOOGLE_CLIENT_SECRET",
+  // Assistant API providers (chat, recipes); the custom key belongs to assistant.apiBaseUrl.
+  "OPENROUTER_API_KEY", "ANTHROPIC_API_KEY", "XAI_API_KEY", "GROQ_API_KEY", "MISTRAL_API_KEY", "DEEPSEEK_API_KEY", "TOGETHER_API_KEY", "CUSTOM_API_KEY",
+  // Share destinations
+  "NOTION_TOKEN", "SLACK_WEBHOOK_URL"
+] as const;
 export type SecretName = typeof SECRET_NAMES[number];
 export type SecretFileName = "secrets.env" | "worker.env" | "calls.env";
 export type SecretSource = "environment" | SecretFileName | "config" | "missing";

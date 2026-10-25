@@ -2,7 +2,21 @@ import { constants, promises as fs } from "node:fs";
 import { isIPv6 } from "node:net";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { CALL_APPLICATIONS, CALL_APPLICATION_IDENTITIES } from "../calls/apps";
-import { DEFAULT_CONFIG, TRANSCRIPTION_PROMPT_MAX_LENGTH, type AppConfig } from "./defaults";
+import {
+  AI_APP_TARGETS,
+  ASSISTANT_ACP_AGENTS,
+  ASSISTANT_API_PRESETS,
+  ASSISTANT_CLI_TOOLS,
+  ASSISTANT_PROVIDERS,
+  DEFAULT_CONFIG,
+  LIVE_PROVIDERS,
+  MEDIA_RETENTION_MODES,
+  REMINDER_MODES,
+  SUMMARY_LANGUAGES,
+  TEMPLATE_DETECTION,
+  TRANSCRIPTION_PROMPT_MAX_LENGTH,
+  type AppConfig
+} from "./defaults";
 import { getConfigPath, getConfigPathCandidates, mergeConfig, validateConfig } from "./load";
 import { commitConfigChange, configBackupPattern, readConfigRevision } from "./onboarding";
 import { describeCredentials, type SecretFiles } from "./secrets";
@@ -72,6 +86,20 @@ const s3Prefix: FieldRule = (value) =>
 const namingTemplate: FieldRule = (value) =>
   typeof value === "string" && value.length > 0 && value.length <= 120 && /^[A-Za-z0-9_\-[\]. ]+$/.test(value) && !/^\.+$/.test(value);
 
+/** Empty clears an optional value; anything else must pass the rule. */
+const emptyOr = (rule: FieldRule): FieldRule => (value) => value === "" || rule(value);
+/** An OpenAI-compatible endpoint: HTTPS anywhere, plain HTTP only on this computer. */
+const apiBaseUrl: FieldRule = (value) => {
+  if (!httpUrlWithoutCredentials(value)) return false;
+  const url = new URL(value as string);
+  return url.protocol === "https:" || ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname);
+};
+const templateId: FieldRule = (value) =>
+  typeof value === "string" && /^(auto|[a-z][a-z0-9-]{0,40}|custom:[a-z0-9][a-z0-9-]{0,40})$/.test(value);
+const relativeFolder: FieldRule = (value) =>
+  text(200)(value) && !(value as string).startsWith("/") && !(value as string).split("/").some((part) => part === "." || part === ".." || part === "");
+const notionId: FieldRule = (value) => typeof value === "string" && /^[0-9a-f]{32}$/.test(value);
+
 export const CAPTURE_BACKENDS = ["audio", "gpu-screen-recorder", "obs"] as const;
 
 export const SETTINGS_FIELDS: Record<string, FieldRule> = {
@@ -119,11 +147,49 @@ export const SETTINGS_FIELDS: Record<string, FieldRule> = {
   "summary.ollamaModel": text(200),
   "summary.openaiModel": text(200),
   "summary.maxInputCharacters": intBetween(4096, 200_000),
+  "summary.language": oneOf(...SUMMARY_LANGUAGES),
+  "summary.template": templateId,
+  "summary.templateDetection": oneOf(...TEMPLATE_DETECTION),
+  "summary.useNotes": bool,
+  // Notes during the meeting
+  "notes.enabled": bool,
+  // Assistant: questions, chat and recipes (keys live in secrets.env)
+  "assistant.provider": oneOf(...ASSISTANT_PROVIDERS),
+  "assistant.localModel": text(200),
+  "assistant.apiPreset": oneOf(...ASSISTANT_API_PRESETS),
+  "assistant.apiBaseUrl": emptyOr(apiBaseUrl),
+  "assistant.apiModel": emptyOr(text(200)),
+  "assistant.acpAgent": oneOf(...ASSISTANT_ACP_AGENTS),
+  "assistant.acpCommand": emptyOr(text(1000)),
+  "assistant.cliTool": oneOf(...ASSISTANT_CLI_TOOLS),
+  "assistant.cliModel": emptyOr(text(200)),
+  "assistant.chatgptModel": emptyOr(text(200)),
+  "assistant.maxContextCharacters": intBetween(8_000, 400_000),
+  "assistant.embeddingModel": emptyOr(text(200)),
+  // Reminders and live transcript
+  "reminders.mode": oneOf(...REMINDER_MODES),
+  "reminders.leadMinutes": intBetween(1, 15),
+  "reminders.brief": bool,
+  "live.enabled": bool,
+  "live.provider": oneOf(...LIVE_PROVIDERS),
+  "live.chunkSeconds": intBetween(5, 60),
+  "live.whisperModelPath": absolutePath,
+  "live.whisperThreads": intBetween(1, 64),
+  "live.openaiModel": text(200),
+  "live.groqModel": text(200),
+  // Media retention and share destinations
+  "media.retention": oneOf(...MEDIA_RETENTION_MODES),
+  "media.graceDays": intBetween(0, 3650),
+  "destinations.obsidianVault": emptyOr(absolutePath),
+  "destinations.obsidianFolder": relativeFolder,
+  "destinations.notionParentId": emptyOr(notionId),
+  "destinations.aiApp": oneOf(...AI_APP_TARGETS),
   // Processing and retention
   "processing.defaultTarget": oneOf("local", "remote"),
   "processing.autoEnqueue": bool,
   "processing.syncIntervalMinutes": intBetween(1, 1440),
   "processing.notifyOnCompletion": bool,
+  "processing.fastPath": bool,
   "retention.localCompletedWorkDays": intBetween(0, 3650),
   "retention.remoteIncomingDays": intBetween(0, 3650),
   "retention.remoteResultsDays": intBetween(0, 3650),
@@ -213,6 +279,10 @@ export const validateSettingsPatch = (patch: unknown, options: { allowEmpty?: bo
   }
   return patch as SettingsPatch;
 };
+
+/** Whisper.cpp plus Ollama on this computer: nothing leaves the machine. */
+export const localProcessing = (config: AppConfig): boolean =>
+  config.transcription.provider === "whisper-cpp" && config.summary.provider === "ollama" && isLoopback(config.summary.ollamaUrl);
 
 const isLoopback = (url: string): boolean => {
   try {
@@ -317,6 +387,16 @@ export const applySettingsPatch = (previous: JsonObject, fields: SettingsPatch):
   }
   if (touches("s3.enabled", "s3.bucket") && merged.s3.enabled && !merged.s3.bucket) {
     throw new Error("Informe o bucket antes de ativar o envio para o S3.");
+  }
+  // The fast path runs right after a capture with nobody confirming destinations: only local providers qualify.
+  if (touches("processing.fastPath", "transcription.provider", "summary.provider", "summary.ollamaUrl") && merged.processing.fastPath && !localProcessing(merged)) {
+    throw new Error("O processamento imediato usa só provedores locais: escolha Whisper.cpp e Ollama neste computador.");
+  }
+  if (touches("assistant.provider", "assistant.apiPreset", "assistant.apiBaseUrl") && merged.assistant.provider === "api" && merged.assistant.apiPreset === "custom" && !merged.assistant.apiBaseUrl) {
+    throw new Error("Informe o endereço da API compatível antes de escolhê-la.");
+  }
+  if (touches("assistant.provider", "assistant.acpAgent", "assistant.acpCommand") && merged.assistant.provider === "acp" && merged.assistant.acpAgent === "custom" && !merged.assistant.acpCommand) {
+    throw new Error("Informe o comando do agente ACP antes de escolhê-lo.");
   }
   return next;
 };

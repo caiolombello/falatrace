@@ -10,7 +10,9 @@ export const KEYS_HELP = `API keys (stored in a private secrets.env; values are 
   keys set <NAME>                Read the value from standard input and save it
   keys remove <NAME>             Remove a key saved by FalaTrace
   keys test <openai|gemini>      Ask the provider whether the key is accepted (lists models only)
-  NAME: OPENAI_API_KEY, GEMINI_API_KEY or RECORDING_CLI_OBS_PASSWORD
+  NAME: OPENAI_API_KEY, GEMINI_API_KEY, RECORDING_CLI_OBS_PASSWORD, GOOGLE_CLIENT_SECRET,
+        OPENROUTER_API_KEY, ANTHROPIC_API_KEY, XAI_API_KEY, GROQ_API_KEY, MISTRAL_API_KEY,
+        DEEPSEEK_API_KEY, TOGETHER_API_KEY, CUSTOM_API_KEY, NOTION_TOKEN, SLACK_WEBHOOK_URL
 `;
 
 const managerEnv = () => runCommand("systemctl", ["--user", "show-environment"], { timeoutMs: 5_000 })

@@ -11,6 +11,29 @@ export type RecordingBackend = (typeof RECORDING_BACKENDS)[number];
 export type ExecutionTarget = "local" | "remote";
 export type TranscriptionProvider = "openai" | "whisper-cpp" | "gemini";
 export type SummaryProvider = "openai" | "ollama";
+/** Language of new summaries; "auto" follows the predominant language of the conversation. */
+export const SUMMARY_LANGUAGES = ["auto", "pt-BR", "en", "es"] as const;
+export type SummaryLanguage = (typeof SUMMARY_LANGUAGES)[number];
+/** "ai" lets the summary request pick a template when the calendar title and keywords do not decide; "keywords" never asks the model. */
+export const TEMPLATE_DETECTION = ["ai", "keywords"] as const;
+export type TemplateDetection = (typeof TEMPLATE_DETECTION)[number];
+/** Where in-app questions, recipes and chat go. "local" uses the Ollama server of the summary settings. */
+export const ASSISTANT_PROVIDERS = ["local", "api", "acp", "cli", "chatgpt"] as const;
+export type AssistantProvider = (typeof ASSISTANT_PROVIDERS)[number];
+export const ASSISTANT_API_PRESETS = ["openai", "openrouter", "gemini", "xai", "groq", "mistral", "deepseek", "together", "anthropic", "custom"] as const;
+export type AssistantApiPreset = (typeof ASSISTANT_API_PRESETS)[number];
+export const ASSISTANT_ACP_AGENTS = ["claude", "codex", "gemini", "opencode", "kiro", "copilot", "cursor", "goose", "qwen", "grok", "custom"] as const;
+export type AssistantAcpAgent = (typeof ASSISTANT_ACP_AGENTS)[number];
+export const ASSISTANT_CLI_TOOLS = ["claude", "codex", "gemini", "opencode"] as const;
+export type AssistantCliTool = (typeof ASSISTANT_CLI_TOOLS)[number];
+export const REMINDER_MODES = ["auto", "on", "off"] as const;
+export type ReminderMode = (typeof REMINDER_MODES)[number];
+export const LIVE_PROVIDERS = ["whisper-cpp", "openai", "groq"] as const;
+export type LiveProvider = (typeof LIVE_PROVIDERS)[number];
+export const MEDIA_RETENTION_MODES = ["keep", "audio-only", "transcript-only"] as const;
+export type MediaRetentionMode = (typeof MEDIA_RETENTION_MODES)[number];
+export const AI_APP_TARGETS = ["chatgpt-web", "claude-web", "claude-desktop", "gemini-web", "claude-cli", "codex-cli", "gemini-cli", "opencode-cli"] as const;
+export type AiAppTarget = (typeof AI_APP_TARGETS)[number];
 export type CallDetectionMode = "notify-only" | "obs" | "record";
 export type ProtonBackupPolicy = "artifacts" | "full";
 
@@ -73,6 +96,8 @@ export type AppConfig = {
     syncIntervalMinutes: number;
     /** Desktop notification when a processing job finishes or fails. */
     notifyOnCompletion: boolean;
+    /** Process a recording as soon as it stops (local providers only) instead of waiting for the sync timer. */
+    fastPath: boolean;
   };
   retention: {
     localCompletedWorkDays: number;
@@ -107,6 +132,74 @@ export type AppConfig = {
     openaiModel: string;
     ollamaUrl: string;
     ollamaModel: string;
+    /** Language of new summaries. */
+    language: SummaryLanguage;
+    /** "auto" or a template id (built-in id or "custom:<slug>"). */
+    template: string;
+    templateDetection: TemplateDetection;
+    /** Use the notes typed during the meeting as the skeleton of the summary. */
+    useNotes: boolean;
+  };
+  /** Notepad during a capture. */
+  notes: {
+    enabled: boolean;
+  };
+  /** In-app questions, chat and recipes. */
+  assistant: {
+    provider: AssistantProvider;
+    /** Ollama model for provider "local" (same server as summary.ollamaUrl). */
+    localModel: string;
+    apiPreset: AssistantApiPreset;
+    /** Base URL of an OpenAI-compatible API for preset "custom"; empty otherwise. */
+    apiBaseUrl: string;
+    /** Model for provider "api"; empty uses the preset's default. */
+    apiModel: string;
+    acpAgent: AssistantAcpAgent;
+    /** Command line of a custom ACP agent (no shell); empty otherwise. */
+    acpCommand: string;
+    cliTool: AssistantCliTool;
+    /** Model for provider "cli"; empty uses the tool's default. */
+    cliModel: string;
+    /** Model for provider "chatgpt"; empty uses the account default. */
+    chatgptModel: string;
+    /** Upper bound of meeting text sent with one question. */
+    maxContextCharacters: number;
+    /** Local Ollama embedding model for library search; empty keeps keyword search only. */
+    embeddingModel: string;
+  };
+  /** Calendar reminder shortly before a meeting starts. */
+  reminders: {
+    /** "auto": on when recordings are not automatic (notify-only or no call detection), off when they are. */
+    mode: ReminderMode;
+    leadMinutes: number;
+    /** Add what is known from earlier meetings (open actions, last decisions). */
+    brief: boolean;
+  };
+  /** Live transcript during a capture (a preview; the final transcript is made after the meeting). */
+  live: {
+    enabled: boolean;
+    provider: LiveProvider;
+    chunkSeconds: number;
+    whisperModelPath: string;
+    whisperThreads: number;
+    openaiModel: string;
+    groqModel: string;
+  };
+  /** What happens to the recorded media once its transcript is verified. */
+  media: {
+    retention: MediaRetentionMode;
+    /** Days to wait before removing media, for speaker naming and voice learning. */
+    graceDays: number;
+  };
+  /** Where "Share" can send notes and recipe results. */
+  destinations: {
+    /** Absolute path of an Obsidian vault; empty when not set. */
+    obsidianVault: string;
+    obsidianFolder: string;
+    /** Notion page that receives new pages (32 hex characters); empty when not set. */
+    notionParentId: string;
+    /** AI app that "Open in my AI" uses. */
+    aiApp: AiAppTarget;
   };
   visualReview?: { maxInferences:number; maxPreviews:number; period:"lifetime" };
   calendar: {
@@ -204,7 +297,8 @@ export const DEFAULT_CONFIG: AppConfig = {
     autoEnqueue: false,
     defaultTarget: "local",
     syncIntervalMinutes: 5,
-    notifyOnCompletion: true
+    notifyOnCompletion: true,
+    fastPath: false
   },
   retention: {
     localCompletedWorkDays: 7,
@@ -245,7 +339,52 @@ export const DEFAULT_CONFIG: AppConfig = {
     maxInputCharacters: 24_000,
     openaiModel: "gpt-6-luna",
     ollamaUrl: "http://127.0.0.1:11434",
-    ollamaModel: "qwen3.5:9b"
+    ollamaModel: "qwen3.5:9b",
+    language: "auto",
+    template: "auto",
+    templateDetection: "ai",
+    useNotes: true
+  },
+  notes: {
+    enabled: true
+  },
+  assistant: {
+    provider: "local",
+    localModel: "qwen3.5:9b",
+    apiPreset: "openrouter",
+    apiBaseUrl: "",
+    apiModel: "",
+    acpAgent: "codex",
+    acpCommand: "",
+    cliTool: "claude",
+    cliModel: "",
+    chatgptModel: "",
+    maxContextCharacters: 60_000,
+    embeddingModel: ""
+  },
+  reminders: {
+    mode: "auto",
+    leadMinutes: 2,
+    brief: true
+  },
+  live: {
+    enabled: false,
+    provider: "whisper-cpp",
+    chunkSeconds: 15,
+    whisperModelPath: join(homedir(), ".local", "share", "recording-cli", "models", "ggml-base.bin"),
+    whisperThreads: 2,
+    openaiModel: "gpt-transcribe",
+    groqModel: "whisper-large-v3-turbo"
+  },
+  media: {
+    retention: "keep",
+    graceDays: 1
+  },
+  destinations: {
+    obsidianVault: "",
+    obsidianFolder: "FalaTrace",
+    notionParentId: "",
+    aiApp: "chatgpt-web"
   },
   calendar: {
     enabled: false

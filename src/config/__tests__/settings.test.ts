@@ -257,7 +257,10 @@ test("empty text is an edit only for fields that accept it", async () => {
     await fs.writeFile(path, JSON.stringify({ transcription: { openaiPrompt: "FalaTrace, Proton" }, s3: { bucket: "my-bucket", prefix: "recordings/" } }));
     const draft = await readSettings(path, {});
     // Clearing the Google client ID disconnects nothing by itself: it is an edit like clearing a prefix.
-    expect([...draft.emptyAllowed].sort()).toEqual(["google.clientId", "s3.bucket", "s3.prefix", "transcription.openaiPrompt"]);
+    expect([...draft.emptyAllowed].sort()).toEqual([
+      "assistant.acpCommand", "assistant.apiBaseUrl", "assistant.apiModel", "assistant.chatgptModel", "assistant.cliModel", "assistant.embeddingModel",
+      "destinations.notionParentId", "destinations.obsidianVault", "google.clientId", "s3.bucket", "s3.prefix", "transcription.openaiPrompt"
+    ]);
     await saveSettings(draft.revision, { "transcription.openaiPrompt": "", "s3.bucket": "", "s3.prefix": "" }, path);
     const written = JSON.parse(await fs.readFile(path, "utf8"));
     expect([written.transcription.openaiPrompt, written.s3.bucket, written.s3.prefix]).toEqual(["", "", ""]);

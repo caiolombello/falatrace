@@ -5,9 +5,19 @@ import { homedir } from "node:os";
 import { join,dirname,resolve } from "node:path";
 import { CALL_APPLICATIONS } from "../calls/apps";
 import {
+  AI_APP_TARGETS,
+  ASSISTANT_ACP_AGENTS,
+  ASSISTANT_API_PRESETS,
+  ASSISTANT_CLI_TOOLS,
+  ASSISTANT_PROVIDERS,
   DEFAULT_CONFIG,
+  LIVE_PROVIDERS,
+  MEDIA_RETENTION_MODES,
   RECORDING_BACKENDS,
+  REMINDER_MODES,
   STUDIO_LANGUAGES,
+  SUMMARY_LANGUAGES,
+  TEMPLATE_DETECTION,
   TRANSCRIPTION_PROMPT_MAX_LENGTH,
   type AppConfig
 } from "./defaults";
@@ -59,6 +69,12 @@ type PartialConfig = Omit<
   | "timesheet"
   | "aiContext"
   | "studio"
+  | "notes"
+  | "assistant"
+  | "reminders"
+  | "live"
+  | "media"
+  | "destinations"
 > & {
   gnome?: Partial<AppConfig["gnome"]>;
   capture?: Partial<AppConfig["capture"]>;
@@ -84,6 +100,12 @@ type PartialConfig = Omit<
   timesheet?: Partial<AppConfig["timesheet"]>;
   aiContext?: Partial<AppConfig["aiContext"]>;
   studio?: Partial<AppConfig["studio"]>;
+  notes?: Partial<AppConfig["notes"]>;
+  assistant?: Partial<AppConfig["assistant"]>;
+  reminders?: Partial<AppConfig["reminders"]>;
+  live?: Partial<AppConfig["live"]>;
+  media?: Partial<AppConfig["media"]>;
+  destinations?: Partial<AppConfig["destinations"]>;
 };
 
 export const loadConfigSnapshot=async(currentPath=getConfigPath())=>{
@@ -150,10 +172,76 @@ export const mergeConfig = (base: AppConfig, override: PartialConfig): AppConfig
   },
   timesheet: { ...base.timesheet, ...override.timesheet },
   aiContext: { ...base.aiContext, ...override.aiContext },
-  studio: { ...base.studio, ...override.studio }
+  studio: { ...base.studio, ...override.studio },
+  notes: { ...base.notes, ...override.notes },
+  assistant: { ...base.assistant, ...override.assistant },
+  reminders: { ...base.reminders, ...override.reminders },
+  live: { ...base.live, ...override.live },
+  media: { ...base.media, ...override.media },
+  destinations: { ...base.destinations, ...override.destinations }
 });
 
+const oneOfValues = (values: readonly string[], value: unknown): boolean => typeof value === "string" && values.includes(value);
+const boundedText = (value: unknown, max: number, allowEmpty = false): boolean =>
+  typeof value === "string" && (allowEmpty || value.length > 0) && value.length <= max && !/\p{Cc}/u.test(value);
+const integerIn = (value: unknown, min: number, max: number): boolean => Number.isInteger(value) && (value as number) >= min && (value as number) <= max;
+
+/** Checks for the sections added with notes, templates, the assistant, reminders, live transcript, retention and destinations. */
+const validateFeatureSections = (config: AppConfig): void => {
+  const summary = config.summary;
+  if (!oneOfValues(SUMMARY_LANGUAGES, summary.language)) throw new Error(`summary.language must be one of ${SUMMARY_LANGUAGES.join(", ")}`);
+  if (typeof summary.template !== "string" || !/^(auto|[a-z][a-z0-9-]{0,40}|custom:[a-z0-9][a-z0-9-]{0,40})$/.test(summary.template)) {
+    throw new Error("summary.template must be auto, a template id or custom:<slug>");
+  }
+  if (!oneOfValues(TEMPLATE_DETECTION, summary.templateDetection)) throw new Error("summary.templateDetection must be ai or keywords");
+  if (typeof summary.useNotes !== "boolean") throw new Error("summary.useNotes must be a boolean");
+  if (typeof config.notes.enabled !== "boolean") throw new Error("notes.enabled must be a boolean");
+  const assistant = config.assistant;
+  if (!oneOfValues(ASSISTANT_PROVIDERS, assistant.provider)) throw new Error(`assistant.provider must be one of ${ASSISTANT_PROVIDERS.join(", ")}`);
+  if (!oneOfValues(ASSISTANT_API_PRESETS, assistant.apiPreset)) throw new Error("assistant.apiPreset is not supported");
+  if (!oneOfValues(ASSISTANT_ACP_AGENTS, assistant.acpAgent)) throw new Error("assistant.acpAgent is not supported");
+  if (!oneOfValues(ASSISTANT_CLI_TOOLS, assistant.cliTool)) throw new Error("assistant.cliTool is not supported");
+  if (!boundedText(assistant.localModel, 200)) throw new Error("assistant.localModel is invalid");
+  for (const field of ["apiModel", "cliModel", "chatgptModel", "embeddingModel"] as const) {
+    if (!boundedText(assistant[field], 200, true)) throw new Error(`assistant.${field} is invalid`);
+  }
+  if (!boundedText(assistant.apiBaseUrl, 300, true) || (assistant.apiBaseUrl !== "" && !/^https?:\/\//.test(assistant.apiBaseUrl))) {
+    throw new Error("assistant.apiBaseUrl must be empty or an http(s) URL");
+  }
+  if (!boundedText(assistant.acpCommand, 1000, true)) throw new Error("assistant.acpCommand is invalid");
+  if (!integerIn(assistant.maxContextCharacters, 8_000, 400_000)) throw new Error("assistant.maxContextCharacters must be between 8000 and 400000");
+  if (!oneOfValues(REMINDER_MODES, config.reminders.mode)) throw new Error("reminders.mode must be auto, on or off");
+  if (!integerIn(config.reminders.leadMinutes, 1, 15)) throw new Error("reminders.leadMinutes must be between 1 and 15");
+  if (typeof config.reminders.brief !== "boolean") throw new Error("reminders.brief must be a boolean");
+  const live = config.live;
+  if (typeof live.enabled !== "boolean") throw new Error("live.enabled must be a boolean");
+  if (!oneOfValues(LIVE_PROVIDERS, live.provider)) throw new Error(`live.provider must be one of ${LIVE_PROVIDERS.join(", ")}`);
+  if (!integerIn(live.chunkSeconds, 5, 60)) throw new Error("live.chunkSeconds must be between 5 and 60");
+  if (!integerIn(live.whisperThreads, 1, 64)) throw new Error("live.whisperThreads must be between 1 and 64");
+  if (typeof live.whisperModelPath !== "string" || !live.whisperModelPath.startsWith("/") || /[\r\n\0]/.test(live.whisperModelPath)) {
+    throw new Error("live.whisperModelPath must be an absolute path");
+  }
+  for (const field of ["openaiModel", "groqModel"] as const) {
+    if (!boundedText(live[field], 200)) throw new Error(`live.${field} is invalid`);
+  }
+  if (!oneOfValues(MEDIA_RETENTION_MODES, config.media.retention)) throw new Error("media.retention must be keep, audio-only or transcript-only");
+  if (!integerIn(config.media.graceDays, 0, 3650)) throw new Error("media.graceDays must be between 0 and 3650");
+  if (typeof config.processing.fastPath !== "boolean") throw new Error("processing.fastPath must be a boolean");
+  const destinations = config.destinations;
+  if (typeof destinations.obsidianVault !== "string" || (destinations.obsidianVault !== "" && (!destinations.obsidianVault.startsWith("/") || /[\r\n\0]/.test(destinations.obsidianVault)))) {
+    throw new Error("destinations.obsidianVault must be empty or an absolute path");
+  }
+  if (!boundedText(destinations.obsidianFolder, 200) || destinations.obsidianFolder.split("/").some((part) => part === ".." || part === ".")) {
+    throw new Error("destinations.obsidianFolder must be a relative folder name");
+  }
+  if (typeof destinations.notionParentId !== "string" || !/^([0-9a-f]{32})?$/.test(destinations.notionParentId)) {
+    throw new Error("destinations.notionParentId must be empty or 32 hexadecimal characters");
+  }
+  if (!oneOfValues(AI_APP_TARGETS, destinations.aiApp)) throw new Error("destinations.aiApp is not supported");
+};
+
 export const validateConfig = (config: AppConfig): void => {
+  validateFeatureSections(config);
   if ([config.archive.enabled, config.archive.vaio, config.archive.proton].some((value) => typeof value !== "boolean") ||
     !Number.isInteger(config.archive.syncIntervalMinutes) || config.archive.syncIntervalMinutes < 1 || config.archive.syncIntervalMinutes > 1440) {
     throw new Error("archive flags must be booleans and syncIntervalMinutes must be between 1 and 1440");

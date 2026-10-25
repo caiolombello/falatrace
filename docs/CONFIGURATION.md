@@ -32,6 +32,10 @@ A copy of a working setup is in [`config.example.json`](config.example.json). Mi
 | `GEMINI_API_KEY` | Gemini transcription. |
 | `RECORDING_CLI_OBS_PASSWORD` | The OBS WebSocket password. |
 | `GOOGLE_CLIENT_SECRET` | The secret of your own Google OAuth desktop client, for the Google Calendar sign-in (see Integrations). |
+| `OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`, `XAI_API_KEY`, `GROQ_API_KEY`, `MISTRAL_API_KEY`, `DEEPSEEK_API_KEY`, `TOGETHER_API_KEY` | The assistant (questions, chat, recipes) through that provider's API. `GROQ_API_KEY` also serves the Groq live transcript. `OPENAI_API_KEY` and `GEMINI_API_KEY` serve the OpenAI and Gemini presets. |
+| `CUSTOM_API_KEY` | The OpenAI-compatible API set in `assistant.apiBaseUrl`. |
+| `NOTION_TOKEN` | Sharing a note to Notion (an internal integration token with access to the parent page). |
+| `SLACK_WEBHOOK_URL` | Sharing a note to Slack (an incoming webhook URL on `hooks.slack.com`). |
 
 Keys are write-only: the Studio and the CLI save, test and remove them, and report only where each one comes from. The first source that has a value wins:
 
@@ -101,9 +105,72 @@ The **audio test** records five seconds with the saved sources, reports the leve
 | `summary.maxInputCharacters` | 4,096–200,000 | 24,000 | Ollama only; OpenAI sizes input to the model. |
 | `processing.defaultTarget` | `local`, `remote` | `local` | `remote` needs a configured worker. |
 | `processing.autoEnqueue` | true, false | false | Process every new recording. Automatic recordings also need the background timer. |
-| `processing.notifyOnCompletion` | true, false | true | Desktop notification when a job finishes or fails. |
+| `processing.notifyOnCompletion` | true, false | true | Desktop notification when a job finishes or fails; clicking it opens the recording in the Studio. |
+| `processing.fastPath` | true, false | false | Process a recording as soon as it stops, instead of waiting for the timer. Only with local providers (Whisper.cpp and Ollama on this computer). |
+| `summary.language` | `auto`, `pt-BR`, `en`, `es` | `auto` | Language of new summaries; `auto` follows the predominant language of the conversation. Existing summaries keep theirs until regenerated. |
+| `summary.template` | `auto`, a template id or `custom:<slug>` | `auto` | Default structure of the notes. `auto` picks one per meeting (see Notes and templates). |
+| `summary.templateDetection` | `ai`, `keywords` | `ai` | When the calendar title and keywords do not decide, `ai` lets the summary request pick the template; `keywords` falls back to the general template. No extra request is made either way. |
+| `summary.useNotes` | true, false | true | Use the notes typed during the meeting as the skeleton of the summary. |
 
 The three **presets** fill these fields: everything on this computer (Whisper.cpp and Ollama), local transcription with an OpenAI summary, or everything through OpenAI. Any recording can be processed later with **Process…**, which shows where the audio and text go before asking for consent.
+
+### Notes and templates
+
+| Field | Values | Default | Notes |
+| --- | --- | --- | --- |
+| `notes.enabled` | true, false | true | Shows the notepad while a capture runs. Notes stay on this computer, next to the recording's other private data, and are sent only with the summary request, to the summary provider. |
+
+Built-in templates: general, 1:1, daily/stand-up, planning, retrospective, sales discovery, incident postmortem, hiring interview and user research. Custom templates are JSON files in `templates/` next to the configuration, created and edited in **Settings › Notes and templates**. A template is chosen per meeting in this order: your choice on the recording, the default above, the calendar title, keywords in the transcript, then (with `ai`) the summary request itself. The Studio shows which one was used and why.
+
+### Assistant
+
+| Field | Values | Default | Notes |
+| --- | --- | --- | --- |
+| `assistant.provider` | `local`, `api`, `acp`, `cli`, `chatgpt` | `local` | Where questions, chat and recipes go. `local` uses the Ollama server of the summary settings. Every other choice sends the question and the meeting excerpts it needs to that destination; the Studio names it before the first question. |
+| `assistant.localModel` | model name | `qwen3.5:9b` | Ollama model for `local`. |
+| `assistant.apiPreset` | `openai`, `openrouter`, `gemini`, `xai`, `groq`, `mistral`, `deepseek`, `together`, `anthropic`, `custom` | `openrouter` | API for `api`. Each preset uses its own key (see API keys). |
+| `assistant.apiBaseUrl` | HTTPS URL, or HTTP on this computer; no credentials | empty | Only for `custom`: an OpenAI-compatible endpoint. |
+| `assistant.apiModel` | model name | empty | Empty uses the preset's default model. |
+| `assistant.acpAgent` | `claude`, `codex`, `gemini`, `opencode`, `kiro`, `copilot`, `cursor`, `goose`, `qwen`, `grok`, `custom` | `codex` | Agent for `acp` (Agent Client Protocol). It must be installed and signed in on its own; FalaTrace starts it with no file or terminal access, in an empty folder. |
+| `assistant.acpCommand` | command line, no shell | empty | Only for `custom`. |
+| `assistant.cliTool` | `claude`, `codex`, `gemini`, `opencode` | `claude` | Tool for `cli`: FalaTrace runs your installed, signed-in tool once per question, with its tools turned off. This is how a Claude subscription is used: through your own `claude` command. |
+| `assistant.cliModel` | model name | empty | Empty uses the tool's default. |
+| `assistant.chatgptModel` | model name | empty | For `chatgpt` (Sign in with ChatGPT, Plus or Pro). Empty uses the account default. |
+| `assistant.maxContextCharacters` | 8,000–400,000 | 60,000 | Upper bound of meeting text sent with one question. |
+| `assistant.embeddingModel` | Ollama embedding model | empty | Adds meaning-based library search through the local Ollama. Empty keeps keyword search. |
+
+### Reminders and live transcript
+
+| Field | Values | Default | Notes |
+| --- | --- | --- | --- |
+| `reminders.mode` | `auto`, `on`, `off` | `auto` | Notification shortly before a calendar meeting. `auto` turns it on when recordings are not automatic (call detection off or `notify-only`), offering **Record**; with automatic recording it stays off unless set to `on`, and then offers **Skip this recording**. Needs Google Calendar or the GNOME calendar. |
+| `reminders.leadMinutes` | 1–15 | 2 | |
+| `reminders.brief` | true, false | true | Adds what earlier meetings with the same people, series or client left open (actions, last decisions). Built from local data only. |
+| `live.enabled` | true, false | false | Live transcript while a capture runs. A preview: the final transcript is still made after the meeting. |
+| `live.provider` | `whisper-cpp`, `openai`, `groq` | `whisper-cpp` | Whisper.cpp is free and uses this computer's CPU. OpenAI (about US$0.27 per hour with `gpt-transcribe`) and Groq (about US$0.04 per hour with `whisper-large-v3-turbo`) receive the audio in chunks; prices checked 2026-10-25. |
+| `live.chunkSeconds` | 5–60 | 15 | Shorter chunks show text sooner and cost more CPU or requests. |
+| `live.whisperModelPath` | absolute path | models folder, `ggml-base.bin` | A small model keeps up in real time on most CPUs. |
+| `live.whisperThreads` | 1–64 | 2 | |
+| `live.openaiModel` | model name | `gpt-transcribe` | |
+| `live.groqModel` | model name | `whisper-large-v3-turbo` | |
+
+### Privacy and retention
+
+| Field | Values | Default | Notes |
+| --- | --- | --- | --- |
+| `media.retention` | `keep`, `audio-only`, `transcript-only` | `keep` | After a verified transcript, `audio-only` drops the video and `transcript-only` deletes the media. Playback (for `transcript-only`), frames, speaker identification and reprocessing stop working for that recording; notes, transcript, summary, chat and export keep working. Remote and backup copies are not touched. |
+| `media.graceDays` | 0–3650 | 1 | Wait this long after processing, so speakers can still be named and voices learned. |
+
+### Share destinations
+
+| Field | Values | Default | Notes |
+| --- | --- | --- | --- |
+| `destinations.obsidianVault` | absolute path | empty | Obsidian vault that receives notes as Markdown files. |
+| `destinations.obsidianFolder` | relative folder | `FalaTrace` | Folder inside the vault. |
+| `destinations.notionParentId` | 32 hexadecimal characters | empty | Notion page that receives new pages. Needs `NOTION_TOKEN`. |
+| `destinations.aiApp` | `chatgpt-web`, `claude-web`, `claude-desktop`, `gemini-web`, `claude-cli`, `codex-cli`, `gemini-cli`, `opencode-cli` | `chatgpt-web` | App used by **Open in my AI**: the note is copied, and the app or a terminal with the tool opens. Nothing is sent until you send it there. |
+
+Slack uses `SLACK_WEBHOOK_URL`. Every share shows the destination and the content before sending.
 
 ### Models
 
