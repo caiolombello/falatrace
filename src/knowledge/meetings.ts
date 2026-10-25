@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import type { AppConfig } from "../config/defaults";
 import { JobStore } from "../jobs/store";
 import { type TranscriptProvenance } from "../jobs/transcript-access";
@@ -18,7 +18,9 @@ import {
 } from "../jobs/types";
 import { findClient, loadTimesheetContext } from "../timesheet/context";
 import { TimeEntryStore } from "../timesheet/store";
-import type { TimeEntry } from "../timesheet/types";
+import type { TimeEntry, TimesheetContext } from "../timesheet/types";
+import { type ClientOverridesFile, ClientOverridesStore, overrideFor } from "../clients/overrides";
+import { indexTimeEntries, manualMeetingClients, resolveEntryClients, resolveMeetingClients } from "../clients/resolve";
 import { assertExistingJobArtifactPath } from "../tui/library";
 import { sanitizeKnowledgeText } from "./context";
 
@@ -224,14 +226,6 @@ const safeSummary = (summary: RecordingSummary): RecordingSummary => ({
   }))
 });
 
-const assignmentFor = (job: JobRecord, entries: TimeEntry[]): string[] => {
-  const source = resolve(job.sourcePath);
-  return [...new Set(entries.filter((entry) =>
-    entry.source.jobId === job.id ||
-    (entry.source.recordingPath !== undefined && resolve(entry.source.recordingPath) === source)
-  ).map((entry) => entry.clientCode).filter((value): value is string => Boolean(value)))];
-};
-
 const dateFor = (job: JobRecord): string => new Date(job.createdAt).toISOString().slice(0, 10);
 
 const queryScore = (query: string, text: string): number => {
@@ -257,32 +251,72 @@ const excerptFor = (query: string | undefined, summary: RecordingSummary | null,
   return sanitizeKnowledgeText(text.slice(start, start + MAX_EXCERPT), MAX_EXCERPT);
 };
 
-const matchesClient = (job: JobRecord, client: string | undefined, entries: TimeEntry[], contextClients: Parameters<typeof findClient>[0]["clients"]): boolean => {
-  if (!client) return true;
-  const selected = findClient({ version: 1, colleagues: [], clients: contextClients, taskTypes: [] }, client);
-  if (!selected) return false;
-  return assignmentFor(job, entries).includes(selected.code);
+/**
+ * Client filter with the same rule as the AI context files and Clients pages
+ * (resolveMeetingClients): a manual choice or trusted time entries decide before anything is
+ * read; only recordings without either are matched by content, once their texts are loaded.
+ */
+const clientFilter = (
+  config: AppConfig,
+  selector: string | undefined,
+  context: TimesheetContext,
+  entries: TimeEntry[],
+  overrides: ClientOverridesFile | undefined
+) => {
+  if (!selector) return undefined;
+  const selected = findClient(context, selector);
+  const entryIndex = indexTimeEntries(entries);
+  const readyConfidence = config.timesheet.readyConfidence;
+  return {
+    /** false = excluded, true = included, undefined = decided by content. */
+    byEntries: (job: JobRecord): boolean | undefined => {
+      if (!selected) return false;
+      // An empty manual choice ("no client") excludes the recording.
+      const manual = manualMeetingClients(overrideFor(overrides, job.id, job.source.sha256), context);
+      if (manual) return manual.some((client) => client.clientCode === selected.code);
+      const clients = resolveEntryClients(job, entryIndex.forJob(job), context, readyConfidence);
+      return clients.length > 0 ? clients.some((client) => client.clientCode === selected.code) : undefined;
+    },
+    byContent: async (job: JobRecord, summary: RecordingSummary | null, transcript: Transcript): Promise<boolean> => {
+      if (!selected) return false;
+      const clients = await resolveMeetingClients(job, [], context, readyConfidence, {
+        content: { summaryText: () => (summary ? summaryText(summary) : ""), transcriptText: () => transcript.text }
+      });
+      return clients.some((client) => client.clientCode === selected.code);
+    }
+  };
 };
 
-const loadInputs = async (config: AppConfig): Promise<{ jobs: JobRecord[]; entries: TimeEntry[]; clients: Parameters<typeof findClient>[0]["clients"] }> => {
+const loadInputs = async (config: AppConfig): Promise<{ jobs: JobRecord[]; entries: TimeEntry[]; context: TimesheetContext }> => {
   const [jobs, entries, context] = await Promise.all([
     new JobStore().list(),
     new TimeEntryStore().list(),
     loadTimesheetContext(config)
   ]);
-  return { jobs, entries, clients: context.clients };
+  return { jobs, entries, context };
+};
+
+export type MeetingSearchDeps = {
+  /** Manual client choices for the client filter; the default reads the user's file. */
+  clientOverrides?: { read(): Promise<ClientOverridesFile> };
 };
 
 export const searchMeetings = async (
   config: AppConfig,
-  options: MeetingSearchOptions = {}
+  options: MeetingSearchOptions = {},
+  deps: MeetingSearchDeps = {}
 ): Promise<MeetingSearchResult> => {
   const query = safeQuery(options.query);
   const limit = safeLimit(options.limit);
   const since = dateFilter(options.since, "since");
   const until = dateFilter(options.until, "until");
   if (since !== undefined && until !== undefined && since > until) throw new Error("since deve anteceder until");
-  const { jobs, entries, clients } = await loadInputs(config);
+  const { jobs, entries, context } = await loadInputs(config);
+  // An unreadable choices file only means no manual choice applies.
+  const overrides = options.client
+    ? await (deps.clientOverrides || new ClientOverridesStore()).read().catch(() => undefined)
+    : undefined;
+  const filter = clientFilter(config, options.client, context, entries, overrides);
   const eligible = jobs.filter((job) => job.state === "completed" || job.target === "local").sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const candidates: MeetingSearchItem[] = [];
   let scanned = 0;
@@ -291,10 +325,13 @@ export const searchMeetings = async (
     scanned += 1;
     const date = dateFor(job);
     const dateTime = new Date(date).getTime();
-    if ((since !== undefined && dateTime < since) || (until !== undefined && dateTime > until) || !matchesClient(job, options.client, entries, clients)) continue;
+    if ((since !== undefined && dateTime < since) || (until !== undefined && dateTime > until)) continue;
+    const entryDecision = filter?.byEntries(job);
+    if (entryDecision === false) continue;
     try {
       const { summary, transcript, view, summaryRaw, summaryPath, summaryProvenance, transcriptRaw, transcriptPath, transcriptProvenance } = await readValidated(job);
       if (!transcript.text.trim()) { skippedStale += 1; continue; }
+      if (filter && entryDecision === undefined && !await filter.byContent(job, summary, transcript)) continue;
       const score = meetingScore(query, summary, transcript);
       if (query && score === 0) continue;
       candidates.push({

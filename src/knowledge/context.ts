@@ -19,10 +19,11 @@ import { assertCurrentReviewedView, assertUnreviewedLegacyJob, isUnreviewedLegac
 import { readCurrentReviewedSummary } from "../summary/reviewed";
 import { summaryEvidenceMatches } from "../summary/evidence";
 import type {
-  TimeEntry,
   TimesheetClient,
   TimesheetContext
 } from "../timesheet/types";
+import { type ClientOverridesFile, ClientOverridesStore, overrideFor } from "../clients/overrides";
+import { indexTimeEntries, resolveMeetingClients } from "../clients/resolve";
 
 const MAX_SUMMARY_BYTES = 2 * 1024 * 1024;
 const MAX_TRANSCRIPT_BYTES = 12 * 1024 * 1024;
@@ -150,19 +151,6 @@ const summarySearchText = (summary: RecordingSummary): string =>
     .filter(Boolean)
     .join("\n");
 
-const matchClients = (
-  context: TimesheetContext,
-  content: string
-): TimesheetClient[] => {
-  const searchable = ` ${normalizeForMatch(content)} `;
-  return context.clients.filter((client) =>
-    [client.code, client.name, ...client.aliases].some((candidate) => {
-      const term = normalizeForMatch(candidate);
-      return term.length >= 3 && searchable.includes(` ${term} `);
-    })
-  );
-};
-
 const readArtifactJson = async (
   job: JobRecord,
   name: "summary.json" | "transcript.json",
@@ -238,50 +226,22 @@ const readSummary = async (job: JobRecord, store: Pick<JobStore, "get">): Promis
 const readTranscriptText = async (job: JobRecord, store: Pick<JobStore, "get">): Promise<string> =>
   (await readCurrentReviewedView(job, store)).transcript.text;
 
-const trustedEntryClient = (
-  entry: TimeEntry | undefined,
-  context: TimesheetContext,
-  readyConfidence: number
-): string | undefined => {
-  if (
-    !entry?.clientCode ||
-    !context.clients.some((client) => client.code === entry.clientCode)
-  ) {
-    return undefined;
-  }
-  return entry.lockedFields.includes("client") ||
-    entry.confidence.client >= readyConfidence
-    ? entry.clientCode
-    : undefined;
-};
+export type ClientOverridesReader = { read(): Promise<ClientOverridesFile> };
 
 const collectKnowledge = async (
   config: AppConfig,
   timeStore: TimeEntryStore,
-  jobStore: JobStore
+  jobStore: JobStore,
+  overridesReader: ClientOverridesReader
 ): Promise<CollectedKnowledge> => {
-  const [context, entries, jobs] = await Promise.all([
+  const [context, entries, jobs, overrides] = await Promise.all([
     loadTimesheetContext(config),
     timeStore.list(),
-    jobStore.list()
+    jobStore.list(),
+    // Choices made on the Clients page; an unreadable file only means none apply.
+    overridesReader.read().catch(() => undefined)
   ]);
-  const entriesByJob = new Map<string, TimeEntry[]>();
-  const entriesByRecording = new Map<string, TimeEntry[]>();
-  for (const entry of entries) {
-    if (entry.source.jobId) {
-      entriesByJob.set(entry.source.jobId, [
-        ...(entriesByJob.get(entry.source.jobId) || []),
-        entry
-      ]);
-    }
-    if (entry.source.recordingPath) {
-      const sourcePath = resolve(entry.source.recordingPath);
-      entriesByRecording.set(sourcePath, [
-        ...(entriesByRecording.get(sourcePath) || []),
-        entry
-      ]);
-    }
-  }
+  const entryIndex = indexTimeEntries(entries);
 
   const meetings: MeetingKnowledge[] = [];
   const seenRecordings = new Set<string>();
@@ -301,26 +261,21 @@ const collectKnowledge = async (
       skippedUnreadable += 1;
       continue;
     }
-    const jobEntries = [
-      ...(entriesByJob.get(job.id) || []),
-      ...(entriesByRecording.get(sourcePath) || [])
-    ].filter(
-      (entry, index, all) =>
-        all.findIndex((candidate) => candidate.id === entry.id) === index
-    );
-    const splitEntries = jobEntries.filter(
-      (entry) =>
-        entry.splitGroupId &&
-        trustedEntryClient(
-          entry,
-          context,
-          config.timesheet.readyConfidence
-        )
-    );
-    if (splitEntries.length > 0) {
-      for (const entry of splitEntries) {
+    const jobEntries = entryIndex.forJob(job);
+    const clients = await resolveMeetingClients(job, jobEntries, context, config.timesheet.readyConfidence, {
+      override: overrideFor(overrides, job.id, job.source.sha256),
+      content: {
+        summaryText: () => summarySearchText(summary),
+        transcriptText: () => readTranscriptText(job, jobStore).catch(() => "")
+      }
+    });
+    const splitClients = clients.filter((client) => client.source === "entry-split");
+    if (splitClients.length > 0) {
+      for (const client of splitClients) {
+        const entry = jobEntries.find((candidate) => candidate.id === client.timeEntryId);
+        if (!entry) continue;
         meetings.push({
-          clientCode: entry.clientCode,
+          clientCode: client.clientCode,
           activityDate: entry.activityDate,
           sortKey: entry.startAt || job.createdAt,
           hours: entry.hours,
@@ -337,41 +292,27 @@ const collectKnowledge = async (
       continue;
     }
     const entry = jobEntries[0];
-    const trustedClient = trustedEntryClient(
-      entry,
-      context,
-      config.timesheet.readyConfidence
-    );
-    let matchedClients = trustedClient
-      ? []
-      : matchClients(context, summarySearchText(summary));
-    if (!trustedClient && matchedClients.length === 0) {
-      const transcriptText = await readTranscriptText(job, jobStore).catch(() => "");
-      if (transcriptText) {
-        matchedClients = matchClients(context, transcriptText);
-      }
-    }
-    const clientCode =
-      trustedClient ||
-      (matchedClients.length === 1 ? matchedClients[0].code : undefined);
-    if (!clientCode) {
+    if (clients.length === 0) {
       skippedUnassigned += 1;
       continue;
     }
     seenRecordings.add(sourcePath);
-    meetings.push({
-      clientCode,
-      activityDate:
-        entry?.activityDate || new Date(job.createdAt).toISOString().slice(0, 10),
-      sortKey: entry?.startAt || job.createdAt,
-      hours: entry?.hours,
-      taskTypeName: entry?.taskTypeName,
-      cardId: entry?.cardId,
-      description: entry?.description,
-      jobId: job.id,
-      timeEntryId: entry?.id,
-      summary
-    });
+    // Automatic rules give one client here; a manual choice may name several.
+    for (const { clientCode } of clients) {
+      meetings.push({
+        clientCode,
+        activityDate:
+          entry?.activityDate || new Date(job.createdAt).toISOString().slice(0, 10),
+        sortKey: entry?.startAt || job.createdAt,
+        hours: entry?.hours,
+        taskTypeName: entry?.taskTypeName,
+        cardId: entry?.cardId,
+        description: entry?.description,
+        jobId: job.id,
+        timeEntryId: entry?.id,
+        summary
+      });
+    }
   }
 
   return {
@@ -586,6 +527,8 @@ export const buildAiContextFiles = async (
     outputDir?: string;
     timeStore?: TimeEntryStore;
     jobStore?: JobStore;
+    /** Manual client choices (src/clients/overrides.ts); the default reads the user's file. */
+    clientOverrides?: ClientOverridesReader;
     generatedAt?: string;
   } = {}
 ): Promise<AiContextBuildReport> => {
@@ -599,7 +542,8 @@ export const buildAiContextFiles = async (
   const collected = await collectKnowledge(
     config,
     options.timeStore || new TimeEntryStore(),
-    options.jobStore || new JobStore()
+    options.jobStore || new JobStore(),
+    options.clientOverrides || new ClientOverridesStore()
   );
   const selectedClient = options.client
     ? findClient(collected.context, options.client)

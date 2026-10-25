@@ -79,7 +79,11 @@
 			"src/desktop/open-request.ts",
 			"src/desktop/__tests__/open-request.test.ts",
 			"src/runtime/private-file.ts",
-			"src/runtime/__tests__/private-file.test.ts"
+			"src/runtime/__tests__/private-file.test.ts",
+			"src/people/**",
+			"src/clients/**",
+			"src/actions/**",
+			"src/brief/**"
 		]
 	},
 	"formatter": { "enabled": false },
