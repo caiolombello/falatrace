@@ -51,7 +51,14 @@
 			"src/google/oauth.ts",
 			"src/google/__tests__/calendar.test.ts",
 			"src/google/__tests__/oauth.test.ts",
-			"src/desktop/__tests__/speakers-bridge.test.ts"
+			"src/desktop/__tests__/speakers-bridge.test.ts",
+			"src/templates/**",
+			"src/summary/spec.ts",
+			"src/summary/language.ts",
+			"src/summary/__tests__/spec.test.ts",
+			"src/summary/__tests__/language.test.ts",
+			"src/assistant/types.ts",
+			"src/library-index/types.ts"
 		]
 	},
 	"formatter": { "enabled": false },
