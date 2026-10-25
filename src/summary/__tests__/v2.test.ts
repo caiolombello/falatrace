@@ -20,7 +20,7 @@ import { summarizeWithOllama } from "../ollama";
 import { summarizeWithOpenAI } from "../openai";
 import { LEGACY_SUMMARY_SPEC } from "../prompt";
 import { SUMMARY_JSON_SCHEMA, SUMMARY_SYSTEM_PROMPT } from "../schema";
-import { buildSummaryV2Request, resolveSummaryV2Request, validateStoredSummaryRequest, type SummaryV2Request } from "../v2";
+import { buildSummaryV2Request, resolveSummaryV2Request, summaryFromV2Response, validateStoredSummaryRequest, type SummaryV2Request } from "../v2";
 import { sentNotes } from "./v2-reply";
 
 const roots: string[] = [];
@@ -304,26 +304,123 @@ describe("v2 parts", () => {
     expect(first.notes!.map((item) => item.id)).toEqual(["n000001", "n000002", "n000003"]);
   });
 
-  test("a part summarized before v2 is reused instead of asking the model again", async () => {
+  test("a part written with the legacy prompt stays readable by legacy requests but never stands in for a v2 answer", async () => {
     const root = await temporary();
-    let calls = 0;
-    const legacyAnswer = async (): Promise<RecordingSummary> => { calls++; return { version: 1, provider: "openai", model: "gpt-fixture", title: "Revisão", overview: "Resumo antigo.", topics: [], decisions: [], actionItems: [] }; };
+    let legacyCalls = 0;
+    const legacyAnswer = async (): Promise<RecordingSummary> => { legacyCalls++; return { version: 1, provider: "openai", model: "gpt-fixture", title: "Revisão", overview: "Resumo antigo.", topics: [], decisions: [], actionItems: [] }; };
     const base = { transcript: PT, mediaHash: MEDIA, provider: "openai" as const, model: "gpt-fixture", adapterIdentity: "openai-chat", cacheDir: join(root, "cache"), maxCharacters: 24_000 };
     await summarizeInChunks({ ...base, adapter: legacyAnswer });
-    expect(calls).toBe(1);
+    expect(legacyCalls).toBe(1);
+    // The legacy request finds its own checkpoint again: no second call.
+    expect((await summarizeInChunks({ ...base, adapter: legacyAnswer })).overview).toBe("Resumo antigo.");
+    expect(legacyCalls).toBe(1);
+    // A v2 request asks the model: the old Portuguese part would otherwise carry English, v2 metadata it was not made with.
     const request = requestFor(EN, { languageSetting: "en", notes: { entries: [note("n000001", 5, "A note")] } });
-    const reused = await summarizeInChunks({ ...base, adapter: legacyAnswer, request });
-    expect(calls).toBe(1);
-    expect(reused.overview).toBe("Resumo antigo.");
-    // The note the old part never saw is kept, in the summary's language, and pt-BR phrases are carried over.
-    expect(reused.sections).toEqual([{ heading: SUMMARY_LABELS.en.unusedNotes, items: [{ text: "A note", origin: "user", noteIds: ["n000001"], segmentIds: [], uncertainty: "clear" }] }]);
-    expect(reused.limitations).toContain(SUMMARY_LABELS.en.limitation.reviewRequired);
-    expect(reused.limitations).not.toContain(SUMMARY_LABELS["pt-BR"].limitation.reviewRequired);
-    expect(reused.meta).toMatchObject({ schemaVersion: 2, language: "en", specId: request.spec.id });
-    // Only unused notes as sections: the legacy layout stays and lists them after it.
-    const markdown = formatSummaryMarkdown(reused);
-    expect(markdown).toContain("## Summary\n\nResumo antigo.");
+    const v2Calls: SummaryChunk[] = [];
+    const fresh = await summarizeInChunks({ ...base, request, adapter: async (part) => {
+      v2Calls.push(part);
+      const value = answer({ title: "Onboarding review", overview: "The team reviewed onboarding.", citations: [],
+        sections: [{ heading: "Notes", items: [{ text: "A note.", origin: "user", noteIds: ["n000001"], segmentIds: [], uncertainty: "clear" }] }] });
+      return summaryFromV2Response(value, part.request!, part.evidence, "openai", "gpt-fixture");
+    } });
+    expect(legacyCalls).toBe(1);
+    expect(v2Calls).toHaveLength(1);
+    expect(v2Calls[0].request?.spec.id).toBe(request.spec.id);
+    expect(fresh.overview).toBe("The team reviewed onboarding.");
+    expect(fresh.sections).toEqual([{ heading: "Notes", items: [{ text: "A note.", origin: "user", noteIds: ["n000001"], segmentIds: [], uncertainty: "clear" }] }]);
+    expect(fresh.meta).toMatchObject({ schemaVersion: 2, language: "en", specId: request.spec.id });
+    expect(fresh.limitations).toContain(SUMMARY_LABELS.en.limitation.reviewRequired);
+    expect(fresh.limitations).not.toContain(SUMMARY_LABELS["pt-BR"].limitation.reviewRequired);
+    // The v2 answer has its own checkpoint, reused on the next run; the legacy one is left as it was.
+    await summarizeInChunks({ ...base, request, adapter: async () => { throw new Error("must not call"); } });
+    expect((await fs.readdir(join(root, "cache"))).filter((name) => name.endsWith(".json"))).toHaveLength(2);
+  });
+
+  test("a summary whose only sections are the unused notes keeps the legacy layout, in its language", () => {
+    const summary = validateSummary({ version: 1, provider: "ollama", model: "fake", title: "Review", overview: "Short overview.", topics: [], decisions: [], actionItems: [],
+      sections: [{ heading: SUMMARY_LABELS.en.unusedNotes, items: [{ text: "A note", origin: "user", noteIds: ["n000001"], segmentIds: [], uncertainty: "clear" }] }],
+      meta: { schemaVersion: 2, specId: "v2:0123456789ab", template: { id: "general", source: "fallback", confidence: 0, reason: "Sem sinal claro." }, language: "en", notes: { count: 1, digest: "b".repeat(64) } } }, "ollama", "fake");
+    const markdown = formatSummaryMarkdown(summary);
+    expect(markdown).toContain("## Summary\n\nShort overview.\n\n## Topics");
     expect(markdown).toContain(`## ${SUMMARY_LABELS.en.unusedNotes}\n\n- ✎ A note`);
+  });
+
+  test("a note's segment hints only name segments of its own part, so the answer can cite them", async () => {
+    const text = (index: number) => `${index}: ${"conteúdo sintético da reunião de planejamento ".repeat(13)}`.slice(0, 600);
+    const transcript = transcriptOf(Array.from({ length: 6 }, (_, index) => text(index)), 60);
+    // Typed right after the first part ends: its 90 s window reaches back into that part.
+    const request = requestFor(transcript, { notes: { entries: [note("n000001", 190, "Nota na fronteira")] }, templateDefault: "general" });
+    expect(request.notes[0].nearSegmentIds.length).toBeGreaterThan(1);
+    const chunks = planSummaryChunks(transcript, MEDIA, undefined, 4096, undefined, undefined, "characters", { spec: request.spec, notes: request.notes });
+    expect(chunks.length).toBeGreaterThan(1);
+    const holder = chunks.find((chunk) => chunk.notes?.length);
+    expect(holder).toBeDefined();
+    const ids = new Set(holder!.evidence.segments.map((segment) => segment.id));
+    expect(holder!.notes![0].nearSegmentIds.length).toBeGreaterThan(0);
+    expect(holder!.notes![0].nearSegmentIds.every((id) => ids.has(id))).toBe(true);
+    expect(request.notes[0].nearSegmentIds.some((id) => !ids.has(id))).toBe(true);
+    // The model follows a hint of its part: accepted end to end, and what it was sent matches the plan.
+    const fake = fakeOllama((captured) => {
+      const sent = sentNotes(captured.body);
+      const segments = (captured.user.evidence as { segments: Array<{ id: string }> }).segments.map((segment) => segment.id);
+      for (const item of sent) expect(item.nearSegmentIds.every((id) => segments.includes(id))).toBe(true);
+      return answer({ overview: "Parte.", citations: [{ section: "overview", index: 0, segmentIds: [segments[0]], uncertainty: "clear" }],
+        sections: sent.length ? [{ heading: "Notas", items: sent.map((item) => ({ text: item.text, origin: "user", noteIds: [item.id], segmentIds: item.nearSegmentIds.slice(0, 1), uncertainty: "clear" })) }] : [] });
+    });
+    fake.config.summary.maxInputCharacters = 4096;
+    const summary = await run(fake.config, transcript, request, join(await temporary(), "cache"));
+    expect(summary.sections![0].items[0]).toMatchObject({ origin: "user", noteIds: ["n000001"] });
+    // A hint on a segment without text is dropped too (those ids cannot be cited).
+    const silent = transcriptOf(["Bom dia, vamos revisar o orçamento.", " ", "Fechamos o escopo."]);
+    const quiet = requestFor(silent, { notes: { entries: [note("n000001", 15, "nota")] }, templateDefault: "general" });
+    expect(quiet.notes[0].nearSegmentIds).toContain("s000001");
+    const [single] = planSummaryChunks(silent, MEDIA, undefined, 24_000, undefined, undefined, "characters", { spec: quiet.spec, notes: quiet.notes });
+    expect(single.notes![0].nearSegmentIds).not.toContain("s000001");
+    expect(single.notes![0].nearSegmentIds.length).toBeGreaterThan(0);
+  });
+
+  test("a single-request provider keeps one part and sends the notes that fit instead of being refused", async () => {
+    const segments = Array.from({ length: 4 }, (_, index) => `${index}: ${"revisão sintética do orçamento e do escopo ".repeat(12)}`.slice(0, 500));
+    const transcript = transcriptOf(segments, 30);
+    const entries = Array.from({ length: 12 }, (_, index) => note(`n${String(index + 1).padStart(6, "0")}`, index * 10, `Nota ${index + 1} ${"detalhe ".repeat(40)}`.trim()));
+    const request = requestFor(transcript, { notes: { entries }, templateDefault: "general" });
+    const budget = 9000;
+    // Without the single-request rule the notes force a split (refused for OpenAI).
+    expect(planSummaryChunks(transcript, MEDIA, undefined, budget, undefined, undefined, "characters", { spec: request.spec, notes: request.notes }).length).toBeGreaterThan(1);
+    const [only, ...rest] = planSummaryChunks(transcript, MEDIA, undefined, budget, undefined, undefined, "characters", { spec: request.spec, notes: request.notes, singleRequest: true });
+    expect(rest).toEqual([]);
+    expect(only.evidence.segments).toHaveLength(4);
+    expect(only.notes!.length).toBeGreaterThan(0);
+    expect(only.notes!.length).toBeLessThan(entries.length);
+    expect(only.notes!.map((item) => item.id)).toEqual(request.notes.slice(0, only.notes!.length).map((item) => item.id));
+    // End to end with OpenAI: one request, the notes it did not carry are listed, never dropped.
+    let calls = 0;
+    const summary = await summarizeInChunks({ transcript, mediaHash: MEDIA, maxCharacters: budget, provider: "openai", model: "gpt-fixture", adapterIdentity: "openai-chat",
+      cacheDir: join(await temporary(), "cache"), request, adapter: async (part) => {
+        calls++;
+        expect(part.request!.notes.map((item) => item.id)).toEqual(only.notes!.map((item) => item.id));
+        return summaryFromV2Response(answer({ citations: [] }), part.request!, part.evidence, "openai", "gpt-fixture");
+      } });
+    expect(calls).toBe(1);
+    const unused = summary.sections!.find((section) => section.heading === SUMMARY_LABELS["pt-BR"].unusedNotes)!;
+    expect(unused.items.map((item) => item.noteIds[0])).toEqual(entries.map((entry) => entry.id));
+    expect(summary.limitations).toContain(SUMMARY_LABELS["pt-BR"].limitation.notesNotUsed);
+  });
+
+  test("parts with many limitations still merge into a readable summary", async () => {
+    const text = (index: number) => `${index}: ${"conteúdo sintético da reunião de planejamento ".repeat(13)}`.slice(0, 600);
+    const transcript = transcriptOf(Array.from({ length: 6 }, (_, index) => text(index)), 60);
+    let part = 0;
+    const summary = await summarizeInChunks({ transcript, mediaHash: MEDIA, maxCharacters: 4096, provider: "ollama", model: "fake", adapterIdentity: "fixture", cacheDir: join(await temporary(), "cache"),
+      adapter: async () => {
+        part++;
+        return { version: 1, provider: "ollama", model: "fake", title: "Partes", overview: `Parte ${part}.`, topics: [], decisions: [], actionItems: [],
+          limitations: Array.from({ length: 80 }, (_, index) => `Limite ${part}-${index}.`) };
+      } });
+    expect(part).toBeGreaterThan(1);
+    expect(summary.limitations).toHaveLength(100);
+    expect(summary.limitations![99]).toBe(SUMMARY_LABELS["pt-BR"].limitation.chunked);
+    expect(validateSummary(JSON.parse(JSON.stringify(summary)), "ollama", "fake")).toEqual(summary);
   });
 });
 

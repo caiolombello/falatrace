@@ -19,8 +19,10 @@ import {
  * by summarizeInChunks for v2 summaries so the adapter sends the right spec and notes. */
 export type SummaryChunk = { text: string; evidence: SummaryInputEvidence; key: string; notes?: NoteForSummary[]; request?: SummaryChunkRequest };
 export type SummaryAdapter = (chunk: SummaryChunk, signal?: AbortSignal) => Promise<RecordingSummary>;
-/** v2 planning input: the spec decides the key; the notes count against each part's budget. */
-export type SummaryChunkPrompt = { spec: SummaryPromptSpec & { notesIncluded?: boolean }; notes?: readonly NoteForSummary[] };
+/** v2 planning input: the spec decides the key; the notes count against each part's budget.
+ * `singleRequest` (a provider that is never asked twice, like OpenAI): when the transcript fits
+ * alone, keep it in one part with the notes that fit instead of splitting it. */
+export type SummaryChunkPrompt = { spec: SummaryPromptSpec & { notesIncluded?: boolean }; notes?: readonly NoteForSummary[]; singleRequest?: boolean };
 const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 /** Key of a chunk planned without a v2 spec (also the key of checkpoints written before v2). */
 export const legacyChunkKey = (text: string, source: SummaryInputEvidence, context: SummaryContext | undefined, maxCharacters: number, unit: SummaryInputUnit = "characters"): string =>
@@ -31,11 +33,27 @@ export const planSummaryChunks = (transcript: Transcript, mediaHash: string, con
   // Without a v2 spec this is exactly the legacy plan: same parts, same keys.
   const v2 = prompt?.spec.version === 2 ? prompt : undefined;
   const allNotes = v2 && v2.spec.notesIncluded ? [...(v2.notes || [])] : undefined;
-  const fits = (text:string, source:SummaryInputEvidence, notes?:NoteForSummary[]) => {try {buildSummaryUserContent(text,context,source,maxCharacters,unit,notes);return source.segments.length<=1000;} catch {return false;}};
-  const chunk = (text:string,source:SummaryInputEvidence,notes?:NoteForSummary[]):SummaryChunk => v2
-    ? {text,evidence:source,key:hash({text,source,context,maxCharacters,...(unit==='characters'?{}:{unit}),spec:v2.spec.id,notes:notes||[]}),notes:notes||[]}
-    : {text,evidence:source,key:legacyChunkKey(text,source,context,maxCharacters,unit)};
+  // A note's nearSegmentIds only name segments of its own part that have text: the answer may
+  // cite only those, so a hint outside the part would lead the model to an id that is refused.
+  const scoped = (source:SummaryInputEvidence, notes?:NoteForSummary[]):NoteForSummary[]|undefined => {
+    if(!notes)return undefined;
+    const ids=new Set(source.segments.filter(s=>s.text.trim()).map(s=>s.id));
+    return notes.map(note=>({...note,nearSegmentIds:note.nearSegmentIds.filter(id=>ids.has(id))}));
+  };
+  const fits = (text:string, source:SummaryInputEvidence, notes?:NoteForSummary[]) => {try {buildSummaryUserContent(text,context,source,maxCharacters,unit,scoped(source,notes));return source.segments.length<=1000;} catch {return false;}};
+  const chunk = (text:string,source:SummaryInputEvidence,notes?:NoteForSummary[]):SummaryChunk => {
+    if(!v2)return {text,evidence:source,key:legacyChunkKey(text,source,context,maxCharacters,unit)};
+    const sent=scoped(source,notes)||[];
+    return {text,evidence:source,key:hash({text,source,context,maxCharacters,...(unit==='characters'?{}:{unit}),spec:v2.spec.id,notes:sent}),notes:sent};
+  };
   if(fits(fullText,evidence,allNotes))return [chunk(fullText,evidence,allNotes)];
+  if(v2?.singleRequest&&allNotes?.length&&fits(fullText,evidence,[])){
+    // One request only: the longest run of notes (in notepad order) that still fits; the others
+    // are listed later as notes the model did not use. Fitting shrinks as notes are added.
+    let low=0,high=allNotes.length-1;
+    while(low<high){const middle=(low+high+1)>>1;if(fits(fullText,evidence,allNotes.slice(0,middle)))low=middle;else high=middle-1;}
+    return [chunk(fullText,evidence,allNotes.slice(0,low))];
+  }
   // Each note goes to one part: the part holding the segment it was typed after (nearSegmentIds,
   // else its time); untimed notes go to the first part. A part that cannot hold all its notes
   // keeps the earliest ones; the rest are listed later as notes the model did not use.
@@ -79,7 +97,8 @@ export const summarizeInChunks = async (options:{transcript:Transcript;mediaHash
   /** v2 summary (templates, language, notes); without it the legacy prompt is used, unchanged. */
   request?:SummaryV2Request}):Promise<RecordingSummary> => {
   const request=options.request;
-  const chunks=planSummaryChunks(options.transcript,options.mediaHash,options.context,options.maxCharacters,options.visual,options.segmentIds,options.inputUnit,request?{spec:request.spec,notes:request.notes}:undefined);
+  const chunks=planSummaryChunks(options.transcript,options.mediaHash,options.context,options.maxCharacters,options.visual,options.segmentIds,options.inputUnit,
+    request?{spec:request.spec,notes:request.notes,singleRequest:options.provider==='openai'}:undefined);
   if(chunks.length>1 && options.provider==='openai')throw new Error('Multi-request API summary requires an explicit paid-budget policy; use local summary');
   options.signal?.throwIfAborted();await fs.mkdir(options.cacheDir,{recursive:true,mode:0o700});
   const dir=await fs.lstat(options.cacheDir);if(!dir.isDirectory()||dir.isSymbolicLink())throw new Error('Unsafe summary cache directory');
@@ -89,17 +108,15 @@ export const summarizeInChunks = async (options:{transcript:Transcript;mediaHash
     options.signal?.throwIfAborted();
     const chunkRequest=request?chunkRequestFor(request,part.notes||[],fixed):undefined;
     const spec:SummaryPromptSpec=chunkRequest?.spec||LEGACY_SUMMARY_SPEC;
-    const checkpointKey=(chunk:string,prompt:SummaryPromptSpec=spec)=>hash({chunk,provider:options.provider,model:options.model,adapterIdentity:options.adapterIdentity,prompt:prompt.system,schema:prompt.schema});const key=checkpointKey(part.key);const path=join(options.cacheDir,key+'.json');let summary:RecordingSummary|undefined;
+    const checkpointKey=(chunk:string)=>hash({chunk,provider:options.provider,model:options.model,adapterIdentity:options.adapterIdentity,prompt:spec.system,schema:spec.schema});const key=checkpointKey(part.key);const path=join(options.cacheDir,key+'.json');let summary:RecordingSummary|undefined;
     // A checkpoint written under the earlier configured character budget covers the exact same text, evidence,
     // context, provider, model, prompt and schema; only the unused upper bound differed. Reuse it, never re-pay.
+    // A v2 request never reuses a part written with the legacy prompt: that answer has no template sections,
+    // never saw the notes and is in Portuguese, so its metadata would claim a spec, language and template
+    // it was not made with. Legacy keys stay readable by legacy requests (scoped visual reviews, v1 plans).
     const candidates=[key];
-    if(!request){if(options.legacyMaxCharacters!==undefined&&(options.legacyMaxCharacters!==options.maxCharacters||(options.inputUnit||'characters')!=='characters'))candidates.push(checkpointKey(hash({text:part.text,source:part.evidence,context:options.context,maxCharacters:options.legacyMaxCharacters})));}
-    else {
-      // A part summarized before v2 summaries existed (same text and evidence, legacy prompt) is reused rather than paid again.
-      candidates.push(checkpointKey(legacyChunkKey(part.text,part.evidence,options.context,options.maxCharacters,options.inputUnit),LEGACY_SUMMARY_SPEC));
-      if(options.legacyMaxCharacters!==undefined)candidates.push(checkpointKey(legacyChunkKey(part.text,part.evidence,options.context,options.legacyMaxCharacters),LEGACY_SUMMARY_SPEC));
-    }
-    for(const candidate of [...new Set(candidates)]){
+    if(!request&&options.legacyMaxCharacters!==undefined&&(options.legacyMaxCharacters!==options.maxCharacters||(options.inputUnit||'characters')!=='characters'))candidates.push(checkpointKey(hash({text:part.text,source:part.evidence,context:options.context,maxCharacters:options.legacyMaxCharacters})));
+    for(const candidate of candidates){
       const candidatePath=join(options.cacheDir,candidate+'.json');
       try {const stat=await fs.lstat(candidatePath);if(!stat.isFile()||stat.isSymbolicLink()||stat.size>2*1024*1024)throw new Error('Unsafe summary checkpoint');const stored=JSON.parse(await fs.readFile(candidatePath,'utf8'));if(stored.key!==candidate || stored.summarySha256!==hash(stored.summary))throw new Error('Summary checkpoint fingerprint mismatch');summary=attachSummarySupport(validateSummary(stored.summary,options.provider,options.model),part.evidence);break;}
       catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}
@@ -117,7 +134,8 @@ export const summarizeInChunks = async (options:{transcript:Transcript;mediaHash
     const merged:RecordingSummary={...results[0],support:undefined,overview:results.map(s=>s.overview).join('\n\n'),topics:[],decisions:[],actionItems:[],citations:[],limitations:[],
       sections:mergeSummarySections(results.map(s=>s.sections),selection?templateHeadings(selection,language):[])};
     for(const item of results){for(const citation of item.citations||[]){const offset=citation.section==='topic'?merged.topics.length:citation.section==='decision'?merged.decisions.length:citation.section==='action'?merged.actionItems.length:0;merged.citations!.push({...citation,index:citation.section==='overview'?0:citation.index+offset});}merged.topics.push(...item.topics);merged.decisions.push(...item.decisions);merged.actionItems.push(...item.actionItems);merged.limitations!.push(...item.limitations||[]);}
-    merged.limitations=[...new Set(merged.limitations)].concat(SUMMARY_LABELS[language].limitation.chunked);
+    // Each part may carry up to 100 limitations; a stored summary holds at most 100 (like the reviewed merge).
+    merged.limitations=[...new Set(merged.limitations)].slice(0,99).concat(SUMMARY_LABELS[language].limitation.chunked);
     output=attachSummarySupport(validateSummary(merged,options.provider,options.model),buildSummaryEvidence(options.transcript,options.mediaHash,8000,options.segmentIds));output.support!.reviewRequired=true;
   }
   return request&&selection?finalizeSummaryV2(output,request,selection,options.provider,options.model):output;
