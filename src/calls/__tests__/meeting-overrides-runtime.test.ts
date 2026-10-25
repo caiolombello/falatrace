@@ -5,6 +5,7 @@ import { basename, dirname, join } from "node:path";
 import { type CallDetectionMode, DEFAULT_CONFIG } from "../../config/defaults";
 import { runCommand } from "../../jobs/command";
 import type { JobRecord } from "../../jobs/types";
+import { readFirstRun } from "../../metrics/first-run";
 import { type MeetingOverride, setMeetingOverride } from "../../reminders/overrides";
 import { CallMonitorRuntime } from "../runtime";
 import { readCallStatus } from "../status";
@@ -110,6 +111,8 @@ test("a meeting marked record is recorded in notify-only mode, named after the m
     await f.emit(nodes); await f.emit(nodes);
     expect(f.starts).toHaveLength(1);
     expect(basename(dirname(f.starts[0]))).toMatch(/_Daily_Sync__Equipe-[0-9a-f]{8}$/);
+    // The first recording started is a first-run milestone (kept in the state directory).
+    expect((await readFirstRun()).firstRecordingAt).toMatch(/^\d{4}-/);
     const sessionId = f.runtime.sessionId;
     await f.runtime.persistStatus();
     expect(await readCallStatus()).toMatchObject({ mode: "notify-only", meetingDecision: "record", recordingOwned: true });

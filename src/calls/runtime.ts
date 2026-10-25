@@ -5,6 +5,7 @@ import type { AppConfig } from "../config/defaults";
 import { runCommand } from "../jobs/command";
 import { enqueueRecording, fastPathActive } from "../jobs/enqueue";
 import { queueSelectedJob } from "../jobs/queue";
+import { markFirstRun } from "../metrics/first-run";
 import { activeOverride, MEETING_OVERRIDES_FILE, type MeetingOverride } from "../reminders/overrides";
 import { acquireSingleton } from "../runtime/singleton";
 import { TimeEntryStore } from "../timesheet/store";
@@ -415,6 +416,8 @@ export class CallMonitorRuntime {
       }
       logCallEvent(result === "started" ? "recording.started" : "recording.already-recording");
       if (result === "started") {
+        // First-run milestone in the state directory; it never affects the recording.
+        await markFirstRun("firstRecording").catch(() => undefined);
         await (this.services.notifications || defaultNotifications).recordingStarted(app).catch((err) =>
           logCallEvent("notification.error", { error: sanitizeError(err) })
         );

@@ -767,11 +767,14 @@ const main = async (): Promise<void> => {
               if (stopped.owner === "call") await times.finishCall(stopped.id, stopped.endedAt!, stopped.outputPath);
               else await times.finishRecording(managed.outputPath, stopped.endedAt!, stopped.outputPath);
             }
-            await enqueueRecording(config, stopped.outputPath, {
+            const job = await enqueueRecording(config, stopped.outputPath, {
               recordingId: stopped.id, startedAt: stopped.startedAt, endedAt: stopped.endedAt, app: stopped.app
             });
             await controller.acknowledge(stopped.id);
             console.log(`Recording saved: ${stopped.outputPath}`);
+            // The fast path processes the recording now instead of at the next timer run.
+            const { queueFastPathJob } = await import("../recording/application");
+            if (await queueFastPathJob(config, job)) console.log(`Processing started: ${job?.id}`);
             break;
           }
           const { config } = await loadConfig();

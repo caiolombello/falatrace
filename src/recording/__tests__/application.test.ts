@@ -251,3 +251,60 @@ test("a legacy capture is reported as active and the Studio can stop it", async 
   expect(warned).toEqual({ state: "stopped", sourcePath: "/tmp/legacy.webm", warning: "O GNOME informou falha ao parar; o estado foi limpo." });
   expect(await stopCapture(config, {}, { sessionStore: { read: async () => null }, readLegacyState: async () => null })).toEqual({ state: "idle" });
 });
+
+test("the first capture started is a first-run milestone; a failed start is not, and the marker never breaks a start", async () => {
+  const config = structuredClone(DEFAULT_CONFIG);
+  config.timesheet.enabled = false;
+  config.capture.audioSource = "none";
+  const marks: string[] = [];
+  const base = {
+    sessionStore: { read: async () => null }, readLegacyState: async () => null,
+    readAutomationState: async () => ({ version: 1 as const, paused: false })
+  };
+  await startCapture(config, {}, { ...base, startRecording: async () => ({ outputPath: "/tmp/capture.mkv" }), markFirstRun: async (event) => { marks.push(event); } });
+  expect(marks).toEqual(["firstRecording"]);
+  await expect(startCapture(config, {}, { ...base, startRecording: async () => { throw new Error("no backend"); }, markFirstRun: async (event) => { marks.push(event); } }))
+    .rejects.toThrow("Não foi possível iniciar a captura");
+  expect(marks).toEqual(["firstRecording"]);
+  await startCapture(config, {}, { ...base, startRecording: async () => ({ outputPath: "/tmp/capture.mkv" }), markFirstRun: async () => { throw new Error("unsafe first-run.json"); } });
+});
+
+test("record stop on the fast path starts processing the new job right away, after the stop completed", async () => {
+  const session: RecordingSession = {
+    version: 1, id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", owner: "manual", backend: "audio", phase: "recording",
+    outputPath: "/tmp/capture.mka", startedAt: "2026-09-08T12:00:00.000Z"
+  };
+  const stopped: RecordingSession = { ...session, phase: "stopped", endedAt: "2026-09-08T13:00:00.000Z" };
+  const fast = structuredClone(DEFAULT_CONFIG);
+  fast.timesheet.enabled = false;
+  fast.processing.fastPath = true;
+  fast.transcription.provider = "whisper-cpp";
+  fast.summary.provider = "ollama";
+  fast.summary.ollamaUrl = "http://127.0.0.1:11434";
+  const run = async (config: typeof fast, options: { queueFastPath?: boolean }, queue: (id: string) => Promise<{ status: "queued" | "active" | "completed" }>) => {
+    const events: string[] = [];
+    const result = await stopCapture(config, options, {
+      sessionStore: { read: async () => session },
+      readLegacyState: async () => null,
+      createController: () => ({
+        inspect: async () => ({ session, active: true }), health: async () => ({ active: true }),
+        recover: async () => session, stop: async () => stopped, acknowledge: async () => { events.push("acknowledge"); }
+      }),
+      enqueueRecording: async () => ({ id: session.id }) as never,
+      queueJob: async (id) => { events.push(`queue:${id}`); return queue(id); }
+    });
+    return { result, events };
+  };
+  const queued = await run(fast, { queueFastPath: true }, async () => ({ status: "queued" }));
+  expect(queued.result.queued).toBe("queued");
+  expect(queued.events).toEqual(["acknowledge", `queue:${session.id}`]);
+  // The Studio queues the job itself: without the option nothing is queued here.
+  const studio = await run(fast, {}, async () => ({ status: "queued" }));
+  expect(studio.result.queued).toBeUndefined();
+  expect(studio.events).toEqual(["acknowledge"]);
+  // Off the fast path, or when queueing fails, the job stays pending and the stop still succeeds.
+  const slow = structuredClone(fast);
+  slow.processing.fastPath = false;
+  expect((await run(slow, { queueFastPath: true }, async () => ({ status: "queued" }))).result).toMatchObject({ state: "stopped", queued: null });
+  expect((await run(fast, { queueFastPath: true }, async () => { throw new Error("systemd-run failed"); })).result).toMatchObject({ state: "stopped", queued: null });
+});

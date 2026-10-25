@@ -1,6 +1,8 @@
 import type { AppConfig } from "../config/defaults";
-import { enqueueRecording } from "../jobs/enqueue";
+import { enqueueRecording, fastPathActive } from "../jobs/enqueue";
+import { queueSelectedJob, type QueueSelectedJobResult } from "../jobs/queue";
 import type { JobRecord } from "../jobs/types";
+import { markFirstRun } from "../metrics/first-run";
 import { TimeEntryStore } from "../timesheet/store";
 import { readAutomationState, type AutomationState } from "../calls/control";
 import { inspectAudioSources, type AudioSources } from "./capture";
@@ -31,7 +33,23 @@ export type CaptureApplicationDependencies = {
   readAutomationState?: () => Promise<AutomationState>;
   startRecording?: typeof startSimpleRecording;
   stopLegacy?: typeof stopLegacyRecording;
+  /** Starts processing a job right away (the fast path); defaults to queueSelectedJob. */
+  queueJob?: (jobId: string) => Promise<Pick<QueueSelectedJobResult, "status">>;
+  /** Records a first-run milestone; defaults to the local first-run file. */
+  markFirstRun?: (event: "firstRecording") => Promise<unknown>;
   now?: () => string;
+};
+
+/**
+ * The fast path: a job created by a stop starts processing now instead of at the next timer run.
+ * Returns the queue status, or null when nothing was queued (fast path off, no job, or a failure,
+ * which leaves the job pending for the timer or the Studio).
+ */
+export const queueFastPathJob = async (
+  config: AppConfig, job: JobRecord | null | undefined, queue: NonNullable<CaptureApplicationDependencies["queueJob"]> = queueSelectedJob
+): Promise<QueueSelectedJobResult["status"] | null> => {
+  if (!job || !fastPathActive(config)) return null;
+  return queue(job.id).then((result) => result.status, () => null);
 };
 
 export type CaptureStatus = {
@@ -58,6 +76,8 @@ export type StopCaptureResult = {
   sourcePath?: string;
   session?: RecordingSession;
   job?: JobRecord | null;
+  /** With `queueFastPath`: how the job was queued for processing right away, or null when it was not. */
+  queued?: QueueSelectedJobResult["status"] | null;
   /** Something the stop could not confirm, for example GNOME not stopping its screencast. */
   warning?: string;
 };
@@ -195,6 +215,8 @@ export const startCapture = async (
       { cause: error }
     );
   }
+  // First-run milestone (local only); it never affects the capture.
+  await (dependencies.markFirstRun || ((event) => markFirstRun(event)))("firstRecording").catch(() => undefined);
 
   let timesheetWarning: string | undefined;
   if (config.timesheet.enabled) {
@@ -218,18 +240,27 @@ export const startCapture = async (
   return status;
 };
 
+/**
+ * Stop the capture and queue its recording. With `queueFastPath` (the CLI `record stop`), a job
+ * created on the fast path also starts processing right away; the Studio queues it itself.
+ */
 export const stopCapture = async (
   config: AppConfig,
-  options: { recoverOnly?: boolean } = {},
+  options: { recoverOnly?: boolean; queueFastPath?: boolean } = {},
   dependencies: CaptureApplicationDependencies = {}
 ): Promise<StopCaptureResult> => {
+  const queued = async (job: JobRecord | null | undefined): Promise<Pick<StopCaptureResult, "queued">> =>
+    options.queueFastPath ? { queued: await queueFastPathJob(config, job, dependencies.queueJob) } : {};
   const store = dependencies.sessionStore || new RecordingSessionStore();
   const managed = await store.read();
   if (!managed) {
     if (await (dependencies.readLegacyState || readState)()) {
       const legacy = await (dependencies.stopLegacy || stopLegacyRecording)(config);
       if (legacy) {
-        return { state: "stopped", sourcePath: legacy.videoPath, ...(legacy.job ? { job: legacy.job } : {}), ...(legacy.warning ? { warning: legacy.warning } : {}) };
+        return {
+          state: "stopped", sourcePath: legacy.videoPath, ...(legacy.job ? { job: legacy.job } : {}), ...(legacy.warning ? { warning: legacy.warning } : {}),
+          ...(await queued(legacy.job))
+        };
       }
     }
     return { state: "idle" };
@@ -240,6 +271,7 @@ export const stopCapture = async (
     config,
     managed.owner
   );
+  let result: StopCaptureResult;
   try {
     const recovered = await controller.recover();
     if (!recovered || recovered.id !== managed.id) {
@@ -277,7 +309,7 @@ export const stopCapture = async (
       }
     );
     await controller.acknowledge(stopped.id);
-    return {
+    result = {
       state: "stopped",
       sourcePath: stopped.outputPath,
       session: stopped,
@@ -289,4 +321,6 @@ export const stopCapture = async (
       { cause: error }
     );
   }
+  // After the stop is complete: a queueing failure leaves the job pending, never the stop failed.
+  return { ...result, ...(await queued(result.job)) };
 };
