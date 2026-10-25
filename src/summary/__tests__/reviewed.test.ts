@@ -13,7 +13,14 @@ import { DiarizationStore, transcriptChecksum } from "../../diarization/store";
 import { getRecordingStateDir } from "../../recording/session";
 import { readHeavyStatus } from "../../runtime/heavy-admission";
 import { cancelReviewedSummary, getReviewedSummaryJobDir, getReviewedSummaryRoot, planReviewedSummary, readReviewedSummary, readCurrentReviewedSummary, regenerateReviewedSummary, reviewedSummaryProviderForConfig, type ReviewedSummaryAdapter, type ReviewedSummaryProvider } from "../reviewed";
-import { summaryTranscriptEvidenceSha256 } from "../evidence";
+import { attachSummarySupport, buildSummaryEvidence, summaryTranscriptEvidenceSha256 } from "../evidence";
+import { planSummaryChunks } from "../chunks";
+import { SUMMARY_JSON_SCHEMA, SUMMARY_SYSTEM_PROMPT } from "../schema";
+import { SUMMARY_LABELS } from "../language";
+import { summaryFromV2Response, type SummaryInputSources } from "../v2";
+import { validateSummary } from "../../jobs/types";
+import { BUILT_IN_TEMPLATES, builtInTemplate, sectionTitle } from "../../templates/catalog";
+import { formatSummaryMarkdown } from "../../jobs/format";
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => fs.rm(root, { recursive: true, force: true }))); });
@@ -264,3 +271,98 @@ test("existing capture admission pauses regeneration before request leases and q
     if (previousSession) await fs.writeFile(session, previousSession); else await fs.unlink(session).catch(error => { if (error.code !== "ENOENT") throw error; });
   }
 }, 10000);
+
+const meetingNotes = (jobId: string, texts: Array<[string, number | null]>) => ({
+  version: 1 as const, id: jobId, createdAt: "2026-10-25T12:00:00.000Z", updatedAt: "2026-10-25T12:00:00.000Z", rev: 1,
+  entries: texts.map(([text, offsetSeconds], index) => ({ id: `n${String(index + 1).padStart(6, "0")}`, createdAt: "2026-10-25T12:00:00.000Z", offsetSeconds, text }))
+});
+const sourcesWith = (notes?: ReturnType<typeof meetingNotes>): SummaryInputSources => ({ notes: async () => notes, prefs: async () => undefined, templates: async () => [...BUILT_IN_TEMPLATES] });
+
+test("a v2 plan binds the chosen template, language and notes; its result says the notes were used", async () => {
+  const f = await fixture({ verified: true });
+  const notes = meetingNotes(f.job.id, [["Primeiro trecho anotado", 1], ["Nota que o modelo esquece", null]]);
+  const p = await planReviewedSummary(f.job, { requestId: "with-notes", config: f.config, provider: identity, templateId: "standup", language: "en", sources: sourcesWith(notes) });
+  if (p.version !== 2) throw Error("expected a v2 plan");
+  expect(p.specId).toBe(p.request.spec.id);
+  expect(p.inputScope).toBe("reviewed-transcript-and-notes");
+  expect(p.request.selection).toMatchObject({ mode: "fixed", source: "user" });
+  expect(p.request.selection.template?.id).toBe("standup");
+  expect(p.request.language).toBe("en");
+  expect(p.request.notes.map((note) => note.id)).toEqual(["n000001", "n000002"]);
+  // Same request id with another choice is another plan: refused, nothing replaced.
+  await expect(planReviewedSummary(f.job, { requestId: "with-notes", config: f.config, provider: identity, templateId: "planning", language: "en", sources: sourcesWith(notes) })).rejects.toBeInstanceOf(RevisionConflictError);
+  await expect(planReviewedSummary(f.job, { requestId: "bad-choice", config: f.config, provider: identity, language: "fr" } as any)).rejects.toThrow("choice");
+  let seen: string[] = [];
+  const output = await regenerateReviewedSummary(f.job, { requestId: p.requestId, config: f.config, consent: true, consentKey: p.consentKey, adapter: { identity, summarize: async chunk => {
+    expect(chunk.request?.spec.id).toBe(p.specId);
+    seen = (chunk.request?.notes || []).map((note) => note.id);
+    return summaryFromV2Response({ templateId: "standup", title: "Stand-up", overview: "Short status round.", topics: [], decisions: [], actionItems: [],
+      sections: [{ heading: "Today", items: [{ text: "First excerpt noted.", origin: "user", noteIds: ["n000001"], segmentIds: ["s000000"], uncertainty: "clear" }] }],
+      citations: [{ section: "overview", index: 0, segmentIds: ["s000000"], uncertainty: "clear" }], limitations: [] }, chunk.request!, chunk.evidence, "ollama", identity.model);
+  } } });
+  expect(seen).toEqual(["n000001", "n000002"]);
+  expect(JSON.parse(output.raw).version).toBe(2);
+  expect(output.provenance).toMatchObject({ inputScope: "reviewed-transcript-and-notes", humanNotesUsed: true, acousticLabelsUsed: false });
+  expect(output.summary.meta).toMatchObject({ language: "en", template: { id: "standup", source: "user" }, notes: { count: 2 } });
+  expect(output.summary.sections!.map((section) => section.heading)).toEqual(["Today", SUMMARY_LABELS.en.unusedNotes]);
+  expect((await readReviewedSummary(f.job))!.requestId).toBe("with-notes");
+  expect(formatSummaryMarkdown(output.summary)).toContain("## Today\n\n- ✎ First excerpt noted. [0:00]");
+  // Notes left out on request: transcript-only scope and provenance.
+  const plain = await planReviewedSummary(f.job, { requestId: "no-notes", config: f.config, provider: identity, useNotes: false, sources: sourcesWith(notes) });
+  expect(plain.inputScope).toBe("reviewed-transcript-only");
+  const plainOutput = await regenerateReviewedSummary(f.job, { requestId: plain.requestId, config: f.config, consent: true, consentKey: plain.consentKey, adapter: { identity, summarize: async chunk => { expect(chunk.request?.notes).toEqual([]); return response(); } } });
+  expect(plainOutput.provenance).toMatchObject({ inputScope: "reviewed-transcript-only", humanNotesUsed: false });
+  expect(plainOutput.summary.sections).toBeUndefined();
+});
+
+test("a multi-part model-choice regeneration keeps the template its first part chose", async () => {
+  const f = await fixture({ long: true });
+  const p = await planReviewedSummary(f.job, { requestId: "parts", config: f.config, provider: identity, maxRequests: 8, sources: sourcesWith() });
+  if (p.version !== 2) throw Error("expected a v2 plan");
+  expect(p.request.selection.mode).toBe("model-choice"); expect(p.chunkCount).toBeGreaterThan(1);
+  const retro = builtInTemplate("retrospective")!, heading = sectionTitle(retro.sections[0], "pt-BR"), modes: string[][] = [];
+  const output = await regenerateReviewedSummary(f.job, { requestId: p.requestId, config: f.config, consent: true, consentKey: p.consentKey, adapter: { identity, summarize: async chunk => {
+    const request = chunk.request!, first = chunk.evidence.segments[0]!.id;
+    modes.push([request.spec.mode, ...request.spec.templateIds.slice(0, 1)]);
+    return summaryFromV2Response({ templateId: request.spec.mode === "fixed" ? request.spec.templateIds[0] : "retrospective", title: "Retro", overview: `Parte ${first}.`,
+      topics: [], decisions: [], actionItems: [], sections: [{ heading, items: [{ text: `Item ${first}.`, origin: "ai", noteIds: [], segmentIds: [first], uncertainty: "clear" }] }],
+      citations: [{ section: "overview", index: 0, segmentIds: [first], uncertainty: "clear" }], limitations: [] }, request, chunk.evidence, "ollama", identity.model);
+  } } });
+  expect(modes[0]![0]).toBe("model-choice");
+  for (const later of modes.slice(1)) expect(later).toEqual(["fixed", "retrospective"]);
+  expect(output.summary.meta!.template).toMatchObject({ id: "retrospective", source: "ai" });
+  expect(output.summary.sections).toHaveLength(1);
+  expect(output.summary.sections![0]!.items).toHaveLength(p.chunkCount);
+  expect(output.summary.limitations).toContain(SUMMARY_LABELS["pt-BR"].limitation.chunkedReviewed);
+});
+
+test("plans and results stored before v2 summaries still verify and stay readable", async () => {
+  const f = await fixture({ verified: true });
+  const probe = await f.plan("probe"), snapshot = probe.snapshot, mediaSha256 = snapshot.revision.base.mediaSha256;
+  const provider = { ...identity }, maxCharacters = f.config.summary.maxInputCharacters;
+  const fields = { version: 1, jobId: f.job.id, requestId: "legacy", createdAt: "2026-10-03T00:00:00.000Z", snapshot, snapshotSha256: probe.snapshotSha256, provider,
+    maxCharacters, maxRequests: 1, chunkCount: planSummaryChunks(snapshot.transcript, mediaSha256, undefined, maxCharacters).length,
+    inputIdentity: sha({ snapshotSha256: probe.snapshotSha256, provider, context: undefined, maxCharacters, maxRequests: 1, prompt: SUMMARY_SYSTEM_PROMPT, schema: SUMMARY_JSON_SCHEMA }),
+    requiresConsent: true, inputScope: "reviewed-transcript-only" };
+  const plan = { ...fields, consentKey: sha(fields) };
+  const summary = attachSummarySupport(validateSummary(response("Resumo de antes da v2"), "ollama", identity.model), buildSummaryEvidence(snapshot.transcript, mediaSha256, 8000));
+  const result = { version: 1, jobId: f.job.id, requestId: "legacy", generatedAt: "2026-10-03T00:00:00.000Z", revision: snapshot.revision, snapshotSha256: probe.snapshotSha256,
+    transcriptSha256: snapshot.transcriptSha256, summarySha256: sha(summary), summary,
+    provenance: { authorship: "model", humanReviewedInput: snapshot.human.reviewed, provider, inputScope: "reviewed-transcript-only", humanNotesUsed: false, acousticLabelsUsed: false, originalTranscriptReceipt: snapshot.original.receipt } };
+  await fs.mkdir(join(f.dir, "results"), { recursive: true, mode: 0o700 });
+  await fs.writeFile(join(f.dir, "plans", "legacy.json"), JSON.stringify({ kind: "falatrace-reviewed-summary-plan", plan, sha256: sha(plan) }), { mode: 0o600 });
+  await fs.writeFile(join(f.dir, "results", "legacy.json"), JSON.stringify(result), { mode: 0o600 });
+  await fs.writeFile(join(f.dir, "index.json"), JSON.stringify({ version: 1, jobId: f.job.id, sequence: 1, requests: [{ requestId: "legacy", planSha256: sha(plan), status: "completed", requestsSpent: 1, resultSha256: sha(result), sequence: 1 }] }), { mode: 0o600 });
+  const read = await readReviewedSummary(f.job);
+  expect(read!.requestId).toBe("legacy"); expect(read!.version).toBe(1);
+  expect(read!.provenance).toMatchObject({ inputScope: "reviewed-transcript-only", humanNotesUsed: false });
+  expect(read!.summary.overview).toBe("Resumo de antes da v2");
+  // Running the old request again returns its stored result without any provider call.
+  const again = await regenerateReviewedSummary(f.job, { requestId: "legacy", config: f.config, consent: true, consentKey: plan.consentKey, adapter: { identity, summarize: async () => { throw Error("must not call"); } } });
+  expect(again.raw).toBe(JSON.stringify(result));
+  // A v1 result that claims notes does not verify.
+  const forged = { ...result, provenance: { ...result.provenance, humanNotesUsed: true } };
+  await fs.writeFile(join(f.dir, "results", "legacy.json"), JSON.stringify(forged), { mode: 0o600 });
+  await fs.writeFile(join(f.dir, "index.json"), JSON.stringify({ version: 1, jobId: f.job.id, sequence: 1, requests: [{ requestId: "legacy", planSha256: sha(plan), status: "completed", requestsSpent: 1, resultSha256: sha(forged), sequence: 1 }] }), { mode: 0o600 });
+  await expect(readReviewedSummary(f.job)).rejects.toThrow("fingerprint");
+});

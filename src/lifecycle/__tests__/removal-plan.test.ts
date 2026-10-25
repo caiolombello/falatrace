@@ -11,6 +11,9 @@ import { attachSummarySupport, buildSummaryEvidence, summaryTranscriptEvidenceSh
 import { planSummaryChunks } from "../../summary/chunks";
 import { SUMMARY_JSON_SCHEMA, SUMMARY_SYSTEM_PROMPT } from "../../summary/schema";
 import { buildRemovalPlan, validateRemovalPlan, REMOVAL_LIMITS, type RemovalRequest, type RemovalRoots } from "../removal-plan";
+import { reviewedPlanInputIdentity, type ReviewedSummaryPlan } from "../../summary/reviewed";
+import { buildSummaryV2Request } from "../../summary/v2";
+import { BUILT_IN_TEMPLATES } from "../../templates/catalog";
 
 const id = "11111111-1111-4111-8111-111111111111", other = "22222222-2222-4222-8222-222222222222";
 const hash = (text: string): string => createHash("sha256").update(text).digest("hex");
@@ -64,6 +67,33 @@ test("dry-run plans owned revision, summary chain and hashed export while every 
   expect(plan.preserved.some(item => item.path.includes("cache"))).toBe(true); expect(plan.preserved.some(item => item.path.endsWith("unknown.json"))).toBe(true);
   expect(plan.scope.remoteCopies).toBe("preserved-not-contacted"); expect(plan.inventory.some(item => item.path.includes("remote-incoming"))).toBe(false);
   await validateRemovalPlan(plan, f.request); expect(await treeHashes(f.root)).toEqual(before);
+}));
+
+test("a v2 reviewed plan (template, notes) and its version 2 result are recognized like the legacy chain", async () => fixture(async f => {
+  const legacy = JSON.parse(await fs.readFile(f.summaryPlanPath, "utf8")).plan, legacyResult = JSON.parse(await fs.readFile(f.summaryResultPath, "utf8"));
+  const transcript = legacy.snapshot.transcript;
+  const request = buildSummaryV2Request({ transcriptText: transcript.text, segments: transcript.segments, templates: BUILT_IN_TEMPLATES, templateDefault: "general", detection: "keywords", languageSetting: "pt-BR",
+    notes: { entries: [{ id: "n000001", createdAt: "2026-10-03T00:00:00.000Z", offsetSeconds: 0, text: "Nota sintética" }] } });
+  const spec = JSON.parse(JSON.stringify(request));
+  const fields: Record<string, unknown> = { version: 2, jobId: id, requestId: "synthetic-1", createdAt: legacy.createdAt, snapshot: legacy.snapshot, snapshotSha256: legacy.snapshotSha256, provider: legacy.provider,
+    maxCharacters: 16000, maxRequests: 1, chunkCount: planSummaryChunks(transcript, f.base.mediaSha256, undefined, 16000, undefined, undefined, "characters", { spec: spec.spec, notes: spec.notes }).length,
+    specId: spec.spec.id, request: spec, inputIdentity: "", requiresConsent: true, inputScope: "reviewed-transcript-and-notes" };
+  fields.inputIdentity = reviewedPlanInputIdentity(fields as unknown as ReviewedSummaryPlan);
+  const plan = { ...fields, consentKey: jsonHash(fields) };
+  const writeChain = async (provenance: Record<string, unknown>) => {
+    const result = { ...legacyResult, version: 2, provenance: { ...legacyResult.provenance, ...provenance } };
+    await write(f.summaryPlanPath, { kind: "falatrace-reviewed-summary-plan", plan, sha256: jsonHash(plan) }); await write(f.summaryResultPath, result);
+    await write(f.summaryIndexPath, { version: 1, jobId: id, sequence: 1, requests: [{ requestId: "synthetic-1", planSha256: jsonHash(plan), status: "completed", requestsSpent: 1, resultSha256: jsonHash(result), sequence: 1 }] });
+  };
+  await writeChain({ inputScope: "reviewed-transcript-and-notes", humanNotesUsed: true });
+  const before = await treeHashes(f.root), removal = await buildRemovalPlan(f.request);
+  expect(removal.candidates.filter(item => item.kind === "derived-summary").map(item => item.path).sort()).toEqual([f.summaryIndexPath, f.summaryPlanPath, f.summaryResultPath].sort());
+  expect(await treeHashes(f.root)).toEqual(before);
+  // A result that hides the notes it was given does not belong to this plan.
+  await writeChain({ inputScope: "reviewed-transcript-only", humanNotesUsed: false });
+  const forged = await buildRemovalPlan(f.request);
+  expect(forged.candidates.some(item => item.path === f.summaryResultPath)).toBe(false);
+  expect(forged.preserved.some(item => item.path === f.summaryResultPath)).toBe(true);
 }));
 
 test("cross-job and hash-mismatched sidecars are explicitly preserved", async () => fixture(async f => {

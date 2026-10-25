@@ -2,11 +2,11 @@ import { createHash, randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import type { AppConfig, SummaryProvider } from "../config/defaults";
+import { SUMMARY_LANGUAGES, type AppConfig, type SummaryProvider } from "../config/defaults";
 import { validateConfig } from "../config/load";
 import { JobStore, hashFile } from "../jobs/store";
 import { readBoundedArtifact } from "../jobs/transcript-access";
-import { validateJobId, validateSummary, type JobRecord, type RecordingSummary, type SummaryContext, type Transcript } from "../jobs/types";
+import { SUMMARY_TEMPLATE_SETTING, validateJobId, validateSummary, type JobRecord, type RecordingSummary, type SummaryContext, type Transcript } from "../jobs/types";
 import { aiContextRoot, invalidateAiContextOwned, withContextPublicationLease } from "../knowledge/invalidation";
 import { readReviewedView, RevisionConflictError, withRevisionLease, type ReviewedView, type RevisionHead } from "../revisions";
 import { acquireSingleton } from "../runtime/singleton";
@@ -15,6 +15,11 @@ import { planSummaryChunks, type SummaryAdapter, type SummaryChunk } from "./chu
 import { attachSummarySupport, buildSummaryEvidence, summaryEvidenceMatches, summaryTranscriptEvidenceSha256 } from "./evidence";
 import { summarizeWithOllama } from "./ollama";
 import { SUMMARY_JSON_SCHEMA, SUMMARY_SYSTEM_PROMPT } from "./schema";
+import { SUMMARY_LABELS } from "./language";
+import {
+  chunkRequestFor, finalizeSummaryV2, mergeSummarySections, resolveSummaryV2Request, resolvedSelection, templateAfterFirstPart, templateHeadings,
+  validateStoredSummaryRequest, type SummaryChoices, type SummaryInputSources, type SummaryV2Request
+} from "./v2";
 
 export const REVIEWED_SUMMARY_LIMITS = Object.freeze({ requests: 32, providerRequests: 8, planBytes: 4 * 1024 * 1024, artifactBytes: 2 * 1024 * 1024, indexBytes: 64 * 1024 });
 export type ReviewedSummaryProvider = { provider: SummaryProvider; model: string; adapterIdentity: string; endpoint?: string };
@@ -24,19 +29,30 @@ export type ReviewedSummarySnapshot = {
   original: { path: string; origin: "published" | "work"; receipt: "verified" | "legacy-unverified"; receiptSha256?: string };
   human: { reviewed: boolean; notes: string[]; segments: Array<{ id: string; humanEdited: boolean; humanSpeakerEdited: boolean }>; labels?: Record<string, string>; turns?: Array<{ id: string; speaker?: string; label?: string; humanSpeakerEdited: boolean }> };
 };
-export type ReviewedSummaryPlan = {
-  version: 1; jobId: string; requestId: string; createdAt: string; snapshot: ReviewedSummarySnapshot; snapshotSha256: string;
+/** What a reviewed regeneration sends: the reviewed transcript, plus (v2) the meeting notes. */
+export type ReviewedInputScope = "reviewed-transcript-only" | "reviewed-transcript-and-notes";
+type ReviewedPlanBase = {
+  jobId: string; requestId: string; createdAt: string; snapshot: ReviewedSummarySnapshot; snapshotSha256: string;
   provider: ReviewedSummaryProvider; context?: SummaryContext; maxCharacters: number; maxRequests: number; chunkCount: number;
-  inputIdentity: string; consentKey: string; requiresConsent: true; inputScope: "reviewed-transcript-only";
+  inputIdentity: string; consentKey: string; requiresConsent: true;
 };
+/** Plans stored before v2 summaries: legacy prompt, transcript only. Still verified and readable. */
+export type ReviewedSummaryPlanV1 = ReviewedPlanBase & { version: 1; inputScope: "reviewed-transcript-only" };
+/** v2 plans bind the whole summary request (spec, template choice, language, notes sent). */
+export type ReviewedSummaryPlanV2 = ReviewedPlanBase & { version: 2; specId: string; request: SummaryV2Request; inputScope: ReviewedInputScope };
+export type ReviewedSummaryPlan = ReviewedSummaryPlanV1 | ReviewedSummaryPlanV2;
 export type ReviewedSummaryProvenance = {
-  authorship: "model"; humanReviewedInput: boolean; provider: ReviewedSummaryProvider; inputScope: "reviewed-transcript-only";
-  humanNotesUsed: false; acousticLabelsUsed: false; originalTranscriptReceipt: "verified" | "legacy-unverified";
+  authorship: "model"; humanReviewedInput: boolean; provider: ReviewedSummaryProvider; inputScope: ReviewedInputScope;
+  /** Always false on version 1 results; true on version 2 results when meeting notes were sent. */
+  humanNotesUsed: boolean; acousticLabelsUsed: false; originalTranscriptReceipt: "verified" | "legacy-unverified";
 };
 type StoredResult = {
-  version: 1; jobId: string; requestId: string; generatedAt: string; revision: RevisionHead; snapshotSha256: string;
+  /** 1: legacy plans (literal transcript-only provenance); 2: v2 plans. */
+  version: 1 | 2; jobId: string; requestId: string; generatedAt: string; revision: RevisionHead; snapshotSha256: string;
   transcriptSha256: string; summarySha256: string; summary: RecordingSummary; provenance: ReviewedSummaryProvenance;
 };
+/** Template, language and notes choices of one regeneration; the recording's saved choices apply when absent. */
+export type ReviewedSummaryChoices = SummaryChoices;
 export type ReviewedSummaryArtifact = StoredResult & { path: string; raw: string };
 type RequestState = { requestId: string; planSha256: string; status: "planned" | "running" | "cancelled" | "completed"; requestsSpent: number; resultSha256?: string; sequence?: number };
 type Index = { version: 1; jobId: string; sequence: number; requests: RequestState[] };
@@ -152,35 +168,66 @@ const validateProvider = (provider: ReviewedSummaryProvider): ReviewedSummaryPro
   if (copy.endpoint !== undefined) { const url = new URL(copy.endpoint); if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.search || url.hash) throw Error("Reviewed summary endpoint cannot contain credentials or query/fragment secrets"); copy.endpoint = url.href; }
   return copy;
 };
-const chunksFor = (plan: ReviewedSummaryPlan): SummaryChunk[] => planSummaryChunks(plan.snapshot.transcript, plan.snapshot.revision.base.mediaSha256, plan.context, plan.maxCharacters);
+/** The parts of a stored plan, recomputed from its own fields (pure). */
+export const reviewedPlanChunks = (plan: ReviewedSummaryPlan): SummaryChunk[] => planSummaryChunks(plan.snapshot.transcript, plan.snapshot.revision.base.mediaSha256, plan.context, plan.maxCharacters,
+  undefined, undefined, "characters", plan.version === 2 ? { spec: plan.request.spec, notes: plan.request.notes } : undefined);
+const chunksFor = reviewedPlanChunks;
 const inputIdentity = (snapshotSha256: string, provider: ReviewedSummaryProvider, context: SummaryContext | undefined, maxCharacters: number, maxRequests: number): string => hash({ snapshotSha256, provider, context, maxCharacters, maxRequests, prompt: SUMMARY_SYSTEM_PROMPT, schema: SUMMARY_JSON_SCHEMA });
+const inputIdentityV2 = (snapshotSha256: string, provider: ReviewedSummaryProvider, context: SummaryContext | undefined, maxCharacters: number, maxRequests: number, request: SummaryV2Request): string => hash({ snapshotSha256, provider, context, maxCharacters, maxRequests, specId: request.spec.id, request });
+/** inputIdentity of a stored plan from its own fields (pure): legacy prompt for v1, the bound request for v2. */
+export const reviewedPlanInputIdentity = (plan: ReviewedSummaryPlan): string => plan.version === 2
+  ? inputIdentityV2(plan.snapshotSha256, plan.provider, plan.context, plan.maxCharacters, plan.maxRequests, plan.request)
+  : inputIdentity(plan.snapshotSha256, plan.provider, plan.context, plan.maxCharacters, plan.maxRequests);
+const notesSent = (plan: ReviewedSummaryPlan): boolean => plan.version === 2 && plan.request.spec.notesIncluded && plan.request.notes.length > 0;
+/** Scope a plan must declare: notes sent or not. */
+export const reviewedPlanScope = (plan: ReviewedSummaryPlan): ReviewedInputScope => notesSent(plan) ? "reviewed-transcript-and-notes" : "reviewed-transcript-only";
 const readPlan = async (jobId: string, id: string, state: RequestState): Promise<ReviewedSummaryPlan> => {
   const envelope = JSON.parse(await readPrivate(planPath(jobId, id), REVIEWED_SUMMARY_LIMITS.planBytes)), plan = envelope.plan as ReviewedSummaryPlan;
-  if (envelope.kind !== "falatrace-reviewed-summary-plan" || envelope.sha256 !== state.planSha256 || hash(plan) !== state.planSha256 || !object(plan) || plan.version !== 1 || plan.jobId !== jobId || plan.requestId !== id || !object(plan.snapshot) || hash(plan.snapshot) !== plan.snapshotSha256 || plan.snapshot.revision.base.jobId !== jobId || !Number.isSafeInteger(plan.snapshot.revision.revision) || plan.snapshot.revision.revision < 0 || plan.snapshot.transcriptSha256 !== summaryTranscriptEvidenceSha256(plan.snapshot.transcript) || !Number.isSafeInteger(plan.maxCharacters) || plan.maxCharacters < 4096 || plan.maxCharacters > 200000 || !Number.isSafeInteger(plan.maxRequests) || plan.maxRequests < 1 || plan.maxRequests > REVIEWED_SUMMARY_LIMITS.providerRequests || plan.requiresConsent !== true || plan.inputScope !== "reviewed-transcript-only") throw Error("Invalid reviewed summary plan fingerprint");
+  if (envelope.kind !== "falatrace-reviewed-summary-plan" || envelope.sha256 !== state.planSha256 || hash(plan) !== state.planSha256 || !object(plan) || (plan.version !== 1 && plan.version !== 2) || plan.jobId !== jobId || plan.requestId !== id || !object(plan.snapshot) || hash(plan.snapshot) !== plan.snapshotSha256 || plan.snapshot.revision.base.jobId !== jobId || !Number.isSafeInteger(plan.snapshot.revision.revision) || plan.snapshot.revision.revision < 0 || plan.snapshot.transcriptSha256 !== summaryTranscriptEvidenceSha256(plan.snapshot.transcript) || !Number.isSafeInteger(plan.maxCharacters) || plan.maxCharacters < 4096 || plan.maxCharacters > 200000 || !Number.isSafeInteger(plan.maxRequests) || plan.maxRequests < 1 || plan.maxRequests > REVIEWED_SUMMARY_LIMITS.providerRequests || plan.requiresConsent !== true) throw Error("Invalid reviewed summary plan fingerprint");
+  if (plan.version === 2) { validateStoredSummaryRequest(plan.request); if (plan.specId !== plan.request.spec.id) throw Error("Invalid reviewed summary plan fingerprint"); }
+  if (plan.inputScope !== reviewedPlanScope(plan)) throw Error("Invalid reviewed summary plan fingerprint");
   validateProvider(plan.provider);
   const { consentKey, ...fields } = plan;
-  if (consentKey !== hash(fields) || plan.inputIdentity !== inputIdentity(plan.snapshotSha256, plan.provider, plan.context, plan.maxCharacters, plan.maxRequests) || chunksFor(plan).length !== plan.chunkCount || plan.chunkCount > plan.maxRequests) throw Error("Reviewed summary consent/budget fingerprint mismatch");
+  if (consentKey !== hash(fields) || plan.inputIdentity !== reviewedPlanInputIdentity(plan) || chunksFor(plan).length !== plan.chunkCount || plan.chunkCount > plan.maxRequests) throw Error("Reviewed summary consent/budget fingerprint mismatch");
   return plan;
 };
-export const planReviewedSummary = async (job: JobRecord, input: { requestId: string; config: AppConfig; provider?: ReviewedSummaryProvider; maxRequests?: number; signal?: AbortSignal }): Promise<ReviewedSummaryPlan> => {
-  if (!object(input) || Object.keys(input).some(key => !["requestId", "config", "provider", "maxRequests", "signal"].includes(key))) throw Error("Invalid reviewed summary plan fields");
+const validateChoices = (input: ReviewedSummaryChoices): ReviewedSummaryChoices => {
+  if ((input.templateId !== undefined && (typeof input.templateId !== "string" || !SUMMARY_TEMPLATE_SETTING.test(input.templateId))) ||
+      (input.language !== undefined && !(SUMMARY_LANGUAGES as readonly string[]).includes(String(input.language))) ||
+      (input.useNotes !== undefined && typeof input.useNotes !== "boolean")) throw Error("Invalid reviewed summary template, language or notes choice");
+  return {
+    ...(input.templateId !== undefined ? { templateId: input.templateId } : {}),
+    ...(input.language !== undefined ? { language: input.language } : {}),
+    ...(input.useNotes !== undefined ? { useNotes: input.useNotes } : {})
+  };
+};
+/** Plans a regeneration over the current reviewed transcript. The summary request is chosen like the
+ * pipeline's (templateId overrides the template; the meeting notes are included when allowed) and the
+ * plan binds it, so consent covers exactly what will be sent. */
+export const planReviewedSummary = async (job: JobRecord, input: { requestId: string; config: AppConfig; provider?: ReviewedSummaryProvider; maxRequests?: number; signal?: AbortSignal; sources?: SummaryInputSources } & ReviewedSummaryChoices): Promise<ReviewedSummaryPlan> => {
+  if (!object(input) || Object.keys(input).some(key => !["requestId", "config", "provider", "maxRequests", "signal", "templateId", "language", "useNotes", "sources"].includes(key))) throw Error("Invalid reviewed summary plan fields");
   job = structuredClone(job);
+  const choices = validateChoices(input), sources = input.sources;
   input = { ...input, config: structuredClone(input.config), ...(input.provider ? { provider: structuredClone(input.provider) } : {}) };
   requestId(input.requestId); validateConfig(input.config); input.signal?.throwIfAborted();
   const provider = validateProvider(input.provider || reviewedSummaryProviderForConfig(input.config)), maxCharacters = input.config.summary.maxInputCharacters, maxRequests = input.maxRequests ?? 1;
   if (!Number.isSafeInteger(maxRequests) || maxRequests < 1 || maxRequests > REVIEWED_SUMMARY_LIMITS.providerRequests) throw Error("Reviewed summary request budget must be explicit and bounded by eight");
   return withRevisionLease(job.id, async () => {
     const snapshot = await currentSnapshot(job), snapshotSha256 = hash(snapshot), context = job.summary.context ? structuredClone(job.summary.context) : undefined;
-    const identity = inputIdentity(snapshotSha256, provider, context, maxCharacters, maxRequests), { index, raw } = await readIndex(job.id), existing = index.requests.find(item => item.requestId === input.requestId);
+    // The request is built from the reviewed transcript, so notes align to the reviewed segments.
+    const request = await resolveSummaryV2Request({ config: input.config, job: { id: job.id, sourcePath: job.sourcePath }, summary: job.summary, transcript: snapshot.transcript, choices }, sources);
+    input.signal?.throwIfAborted();
+    const identity = inputIdentityV2(snapshotSha256, provider, context, maxCharacters, maxRequests, request), { index, raw } = await readIndex(job.id), existing = index.requests.find(item => item.requestId === input.requestId);
     if (existing) {
       const plan = await readPlan(job.id, input.requestId, existing);
       if (plan.inputIdentity !== identity) throw new RevisionConflictError("Request id already belongs to another summary snapshot/provider/budget; preserved");
       return plan;
     }
     if (index.requests.length >= REVIEWED_SUMMARY_LIMITS.requests) throw Error("Reviewed summary history reached 32 requests; prior evidence preserved");
-    const chunks = planSummaryChunks(snapshot.transcript, snapshot.revision.base.mediaSha256, context, maxCharacters);
+    const chunks = planSummaryChunks(snapshot.transcript, snapshot.revision.base.mediaSha256, context, maxCharacters, undefined, undefined, "characters", { spec: request.spec, notes: request.notes });
     if (chunks.length > maxRequests) throw Error("Summary chunk plan exceeds explicit request budget; no provider called");
-    const fields = { version: 1 as const, jobId: job.id, requestId: input.requestId, createdAt: new Date().toISOString(), snapshot, snapshotSha256, provider, ...(context ? { context } : {}), maxCharacters, maxRequests, chunkCount: chunks.length, inputIdentity: identity, requiresConsent: true as const, inputScope: "reviewed-transcript-only" as const };
+    const inputScope: ReviewedInputScope = request.spec.notesIncluded && request.notes.length ? "reviewed-transcript-and-notes" : "reviewed-transcript-only";
+    const fields = { version: 2 as const, jobId: job.id, requestId: input.requestId, createdAt: new Date().toISOString(), snapshot, snapshotSha256, provider, ...(context ? { context } : {}), maxCharacters, maxRequests, chunkCount: chunks.length, specId: request.spec.id, request, inputIdentity: identity, requiresConsent: true as const, inputScope };
     let plan: ReviewedSummaryPlan = { ...fields, consentKey: hash(fields) };
     input.signal?.throwIfAborted(); await assertCurrent(job, plan);
     await directory(getReviewedSummaryRoot(), true); await directory(getReviewedSummaryJobDir(job.id), true);
@@ -201,7 +248,10 @@ export const planReviewedSummary = async (job: JobRecord, input: { requestId: st
   });
 };
 const stateFor = (index: Index, id: string): RequestState => { const state = index.requests.find(item => item.requestId === id); if (!state) throw Error("Reviewed summary request is unavailable; create a plan first"); if (state.status === "cancelled") throw Error("Reviewed summary request was cancelled; fresh plan/consent required"); return state; };
-const checkpointKey = (plan: ReviewedSummaryPlan, chunk: SummaryChunk): string => hash({ inputIdentity: plan.inputIdentity, chunk: chunk.key });
+// v2 parts after a model's template choice run a fixed spec: its id is part of the key.
+const checkpointKey = (plan: ReviewedSummaryPlan, chunk: SummaryChunk): string => plan.version === 2
+  ? hash({ inputIdentity: plan.inputIdentity, chunk: chunk.key, spec: chunk.request?.spec.id ?? plan.specId })
+  : hash({ inputIdentity: plan.inputIdentity, chunk: chunk.key });
 const attachChunkSupport = (summary: RecordingSummary, chunk: SummaryChunk): RecordingSummary => {
   const supported = attachSummarySupport(summary, chunk.evidence), seen = new Set<string>();
   // Text fragments share the canonical segment/time; a support reference is unique per ID.
@@ -215,19 +265,21 @@ const readCheckpoint = async (plan: ReviewedSummaryPlan, chunk: SummaryChunk): P
   if (stored.version !== 1 || stored.key !== key || stored.snapshotSha256 !== plan.snapshotSha256 || hash(stored.provider) !== hash(plan.provider) || stored.summary?.provider !== plan.provider.provider || stored.summary?.model !== plan.provider.model || hash(stored.summary) !== stored.summarySha256) throw Error("Reviewed summary checkpoint fingerprint mismatch");
   return attachChunkSupport(validateSummary(stored.summary, plan.provider.provider, plan.provider.model), chunk);
 };
-const merge = (plan: ReviewedSummaryPlan, summaries: RecordingSummary[]): RecordingSummary => {
+const merge = (plan: ReviewedSummaryPlan, summaries: RecordingSummary[], order: readonly string[] = []): RecordingSummary => {
   if (summaries.length === 1) return summaries[0]!;
-  const combined: RecordingSummary = { ...summaries[0]!, support: undefined, overview: summaries.map(summary => summary.overview).join("\n\n"), topics: [], decisions: [], actionItems: [], citations: [], limitations: [] };
+  const combined: RecordingSummary = { ...summaries[0]!, support: undefined, overview: summaries.map(summary => summary.overview).join("\n\n"), topics: [], decisions: [], actionItems: [], citations: [], limitations: [],
+    sections: mergeSummarySections(summaries.map(summary => summary.sections), order) };
   for (const summary of summaries) {
     for (const citation of summary.citations || []) { const offset = citation.section === "topic" ? combined.topics.length : citation.section === "decision" ? combined.decisions.length : citation.section === "action" ? combined.actionItems.length : 0; combined.citations!.push({ ...citation, index: citation.section === "overview" ? 0 : citation.index + offset }); }
     combined.topics.push(...summary.topics); combined.decisions.push(...summary.decisions); combined.actionItems.push(...summary.actionItems); combined.limitations!.push(...summary.limitations || []);
   }
-  combined.limitations = [...new Set(combined.limitations)].slice(0, 98).concat("Resumo montado por partes: revisar contexto global, redundâncias e conflitos; intervalos dos segmentos originais preservados.");
+  combined.limitations = [...new Set(combined.limitations)].slice(0, 98).concat(SUMMARY_LABELS[plan.version === 2 ? plan.request.language : "pt-BR"].limitation.chunkedReviewed);
   const output = attachSummarySupport(validateSummary(combined, plan.provider.provider, plan.provider.model), buildSummaryEvidence(plan.snapshot.transcript, plan.snapshot.revision.base.mediaSha256, 8000)); output.support!.reviewRequired = true; return output;
 };
 const readResult = async (jobId: string, state: RequestState, plan: ReviewedSummaryPlan): Promise<ReviewedSummaryArtifact> => {
   const path = resultPath(jobId, state.requestId), raw = await readPrivate(path, REVIEWED_SUMMARY_LIMITS.artifactBytes), result = JSON.parse(raw) as StoredResult;
-  if (state.status !== "completed" || hash(result) !== state.resultSha256 || result.version !== 1 || result.jobId !== jobId || result.requestId !== state.requestId || hash(result.revision) !== hash(plan.snapshot.revision) || result.snapshotSha256 !== plan.snapshotSha256 || result.transcriptSha256 !== plan.snapshot.transcriptSha256 || hash(result.summary) !== result.summarySha256 || result.summary.provider !== plan.provider.provider || result.summary.model !== plan.provider.model || result.provenance.authorship !== "model" || hash(result.provenance.provider) !== hash(plan.provider) || result.provenance.humanReviewedInput !== plan.snapshot.human.reviewed || result.provenance.inputScope !== "reviewed-transcript-only" || result.provenance.humanNotesUsed !== false || result.provenance.acousticLabelsUsed !== false) throw Error("Reviewed summary result fingerprint mismatch");
+  // Version 1 results keep their literal transcript-only provenance; version 2 results state whether notes were sent.
+  if (state.status !== "completed" || hash(result) !== state.resultSha256 || result.version !== plan.version || result.jobId !== jobId || result.requestId !== state.requestId || hash(result.revision) !== hash(plan.snapshot.revision) || result.snapshotSha256 !== plan.snapshotSha256 || result.transcriptSha256 !== plan.snapshot.transcriptSha256 || hash(result.summary) !== result.summarySha256 || result.summary.provider !== plan.provider.provider || result.summary.model !== plan.provider.model || result.provenance.authorship !== "model" || hash(result.provenance.provider) !== hash(plan.provider) || result.provenance.humanReviewedInput !== plan.snapshot.human.reviewed || result.provenance.inputScope !== reviewedPlanScope(plan) || result.provenance.humanNotesUsed !== notesSent(plan) || result.provenance.acousticLabelsUsed !== false) throw Error("Reviewed summary result fingerprint mismatch");
   const summary = validateSummary(result.summary, plan.provider.provider, plan.provider.model);
   if (!Number.isFinite(Date.parse(result.generatedAt)) || result.provenance.originalTranscriptReceipt !== plan.snapshot.original.receipt) throw Error("Reviewed summary provenance fingerprint mismatch");
   if (!summary.support || !summaryEvidenceMatches(summary, plan.snapshot.revision.base.mediaSha256, plan.snapshot.transcript)) throw Error("Reviewed summary support fingerprint mismatch");
@@ -286,8 +338,12 @@ export const regenerateReviewedSummary = async (job: JobRecord, input: { request
     });
     const initial = await readIndex(job.id), completed = stateFor(initial.index, input.requestId);
     if (completed.status === "completed") { const result = await readResult(job.id, completed, plan); await assertCurrent(job, plan); input.signal?.throwIfAborted(); return result; }
-    const config = structuredClone(input.config), adapter = input.adapter?.summarize || ((chunk: SummaryChunk, signal?: AbortSignal) => summarizeWithOllama(config, chunk.text, plan.provider.model, plan.context, chunk.evidence, signal)), chunks = chunksFor(plan), summaries: RecordingSummary[] = [];
-    for (const chunk of chunks) {
+    const config = structuredClone(input.config), adapter = input.adapter?.summarize || ((chunk: SummaryChunk, signal?: AbortSignal) => summarizeWithOllama(config, chunk.text, plan.provider.model, plan.context, chunk.evidence, signal, chunk.request)), summaries: RecordingSummary[] = [];
+    const request = plan.version === 2 ? plan.request : undefined, planned = chunksFor(plan);
+    let fixed: ReturnType<typeof templateAfterFirstPart>;
+    for (const [position, part] of planned.entries()) {
+      // v2: each part carries its spec and notes; a model-choice summary keeps the first part's template.
+      const chunk: SummaryChunk = request ? { ...part, request: chunkRequestFor(request, part.notes || [], fixed) } : part;
       input.signal?.throwIfAborted();
       const cached = await withRevisionLease(job.id, async () => {
         const { index, raw } = await readIndex(job.id), state = stateFor(index, input.requestId); await assertCurrent(job, plan); input.signal?.throwIfAborted();
@@ -303,12 +359,16 @@ export const regenerateReviewedSummary = async (job: JobRecord, input: { request
         const key = checkpointKey(plan, chunk); await publishImmutable(join(getReviewedSummaryJobDir(job.id), "cache", `${key}.json`), { version: 1, key, snapshotSha256: plan.snapshotSha256, provider: plan.provider, summary, summarySha256: hash(summary) }, REVIEWED_SUMMARY_LIMITS.artifactBytes);
       });
       summaries.push(summary);
+      if (request && position === 0 && planned.length > 1) fixed = templateAfterFirstPart(request, summary);
     }
-    let summary = merge(plan, summaries);
-    if (plan.snapshot.human.notes.length || plan.snapshot.human.labels) summary = { ...summary, limitations: [...new Set([...(summary.limitations || []).slice(0, 98), "Notas humanas sem tempo e rótulos acústicos permanecem na revisão; não foram usados como evidência do modelo."])] };
-    if (plan.snapshot.original.receipt === "legacy-unverified") { summary.support!.reviewRequired = true; summary.limitations = [...new Set([...(summary.limitations || []).slice(0, 98), "Transcrição original legada sem recibo verificado; resumo requer revisão humana."])]; }
-    let result: StoredResult = { version: 1, jobId: job.id, requestId: plan.requestId, generatedAt: new Date().toISOString(), revision: plan.snapshot.revision, snapshotSha256: plan.snapshotSha256, transcriptSha256: plan.snapshot.transcriptSha256, summarySha256: hash(summary), summary,
-      provenance: { authorship: "model", humanReviewedInput: plan.snapshot.human.reviewed, provider: plan.provider, inputScope: "reviewed-transcript-only", humanNotesUsed: false, acousticLabelsUsed: false, originalTranscriptReceipt: plan.snapshot.original.receipt } };
+    const selection = request ? (fixed?.selection || resolvedSelection(request, summaries[0])) : undefined;
+    let summary = merge(plan, summaries, request && selection ? templateHeadings(selection, request.language) : []);
+    const limitation = SUMMARY_LABELS[request?.language ?? "pt-BR"].limitation;
+    if (plan.snapshot.human.notes.length || plan.snapshot.human.labels) summary = { ...summary, limitations: [...new Set([...(summary.limitations || []).slice(0, 98), limitation.reviewedNotesNotUsed])] };
+    if (plan.snapshot.original.receipt === "legacy-unverified") { summary.support!.reviewRequired = true; summary.limitations = [...new Set([...(summary.limitations || []).slice(0, 98), limitation.reviewedLegacyUnverified])]; }
+    if (request && selection) summary = finalizeSummaryV2(summary, request, selection, plan.provider.provider, plan.provider.model);
+    let result: StoredResult = { version: plan.version, jobId: job.id, requestId: plan.requestId, generatedAt: new Date().toISOString(), revision: plan.snapshot.revision, snapshotSha256: plan.snapshotSha256, transcriptSha256: plan.snapshot.transcriptSha256, summarySha256: hash(summary), summary,
+      provenance: { authorship: "model", humanReviewedInput: plan.snapshot.human.reviewed, provider: plan.provider, inputScope: reviewedPlanScope(plan), humanNotesUsed: notesSent(plan), acousticLabelsUsed: false, originalTranscriptReceipt: plan.snapshot.original.receipt } };
     return withRevisionLease(job.id, () => withContextPublicationLease(aiContextRoot(), async () => {
       const { index, raw } = await readIndex(job.id), state = stateFor(index, input.requestId); await assertCurrent(job, plan); input.signal?.throwIfAborted();
       const orphan = await readPrivate(resultPath(job.id, plan.requestId), REVIEWED_SUMMARY_LIMITS.artifactBytes).catch(error => { if (missing(error)) return undefined; throw error; });

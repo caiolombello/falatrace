@@ -177,7 +177,7 @@ describe("SUMMARY_LABELS", () => {
     });
     // No producer keeps its own copy of a localized phrase.
     const root = join(import.meta.dir, "..", "..");
-    const sources = ["summary/evidence.ts", "summary/chunks.ts", "jobs/pipeline.ts", "jobs/format.ts"]
+    const sources = ["summary/evidence.ts", "summary/chunks.ts", "summary/reviewed.ts", "jobs/pipeline.ts", "jobs/format.ts"]
       .map((path) => readFileSync(join(root, path), "utf8")).join("\n");
     for (const phrase of Object.values(pt.limitation)) expect(sources).not.toContain(phrase);
     for (const heading of [pt.topics, pt.decisions, pt.evidence, pt.limitations]) expect(sources).not.toContain(`"## ${heading}"`);

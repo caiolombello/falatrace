@@ -9,6 +9,7 @@ import { readReviewedView, saveRevision, RevisionConflictError } from "../../rev
 import { withHeavyAdmission, readHeavyStatus } from "../../runtime/heavy-admission";
 import { getReviewedSummaryJobDir, readReviewedSummary, reviewedSummaryProviderForConfig } from "../reviewed";
 import { StudioSummaryFlow, StudioSummaryCancelledError, STUDIO_SUMMARY_LIMITS } from "../studio";
+import { BUILT_IN_TEMPLATES } from "../../templates/catalog";
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => fs.rm(root, { recursive: true, force: true }))); });
@@ -260,4 +261,63 @@ test("terminal shutdown rejects an accepted caller delayed before flow registrat
   await f.absentResults();
   // Persistent cancellation remains permitted; shutdown does not alter that contract.
   expect(await flow.cancel(f.job, p.requestId)).toMatchObject({ status: "cancelled", persisted: true });
+});
+
+const quietSources = (notes?: unknown) => ({ notes: async () => notes as never, prefs: async () => undefined, templates: async () => [...BUILT_IN_TEMPLATES] });
+
+test("the plan names its destination, template and language, and a template can be chosen for this regeneration", async () => {
+  const f = await fixture(), flow = new StudioSummaryFlow(undefined, { sources: quietSources() });
+  const automatic = await flow.plan(f.job, f.config, { requestId: "automatic", maxRequests: 1 });
+  expect(automatic).toMatchObject({ external: false, destination: { provider: "ollama", model: f.config.summary.ollamaModel, where: "Ollama neste computador" },
+    template: { id: "auto", name: "Automático", mode: "model-choice", source: "ai" }, language: "pt-BR", notesUsed: false, notesCount: 0 });
+  await flow.cancel(f.job, automatic.requestId);
+  const chosen = await flow.plan(f.job, f.config, { requestId: "chosen", maxRequests: 1, templateId: "postmortem", language: "en" });
+  expect(chosen.template).toEqual({ id: "postmortem", name: "Incident postmortem", mode: "fixed", source: "user" });
+  expect(chosen.language).toBe("en");
+  expect(chosen.consentKey).not.toBe(automatic.consentKey);
+  await flow.cancel(f.job, chosen.requestId);
+  const notes = { version: 1, id: f.job.id, createdAt: "2026-10-25T12:00:00.000Z", updatedAt: "2026-10-25T12:00:00.000Z", rev: 1,
+    entries: [{ id: "n000001", createdAt: "2026-10-25T12:00:00.000Z", offsetSeconds: 1, text: "Nota da reunião" }] };
+  const withNotes = await new StudioSummaryFlow(undefined, { sources: quietSources(notes) }).plan(f.job, f.config, { requestId: "with-notes", maxRequests: 1 });
+  expect(withNotes).toMatchObject({ inputScope: "reviewed-transcript-and-notes", notesUsed: true, notesCount: 1 });
+  expect(JSON.stringify(withNotes)).not.toContain("Nota da reunião");
+  await expect(flow.plan(f.job, f.config, { requestId: "bad", maxRequests: 1, templateId: "Not An Id" })).rejects.toThrow("choice");
+});
+
+test("a started regeneration returns at once and its outcome is polled: completed, failed or cancelled", async () => {
+  const f = await fixture(), gate = deferred(), entered = deferred(); let calls = 0;
+  const flow = new StudioSummaryFlow({ identity: reviewedSummaryProviderForConfig(f.config), summarize: async () => { calls++; entered.resolve(); await gate.promise; return f.response(); } }, { sources: quietSources() });
+  const p = await flow.plan(f.job, f.config, { requestId: "async", maxRequests: 1 });
+  expect(await flow.start(f.job, f.config, runInput(p))).toEqual({ jobId: f.job.id, requestId: "async", status: "running" });
+  await entered.promise;
+  expect(flow.status("async")).toEqual({ jobId: f.job.id, requestId: "async", status: "running" });
+  // Starting again while it runs is the same run.
+  expect((await flow.start(f.job, f.config, runInput(p))).status).toBe("running");
+  gate.resolve();
+  await until(async () => flow.status("async").status !== "running");
+  const done = flow.status("async");
+  expect(done).toMatchObject({ status: "completed", receipt: { status: "completed", requestId: "async", notesUsed: false, inputScope: "reviewed-transcript-only" } });
+  expect(calls).toBe(1); expect((await readReviewedSummary(f.job))!.requestId).toBe("async");
+  // Refused before starting: no run is recorded.
+  await expect(flow.start(f.job, f.config, { ...runInput(p), requestId: "other", consent: false })).rejects.toThrow("consent");
+  expect(() => flow.status("other")).toThrow("unavailable");
+  expect(() => flow.status("bad id!")).toThrow("Invalid");
+
+  // Fresh recordings: an identical input would reuse the first run's checkpoint.
+  const g = await fixture(), h = await fixture();
+  const failing = new StudioSummaryFlow({ identity: reviewedSummaryProviderForConfig(g.config), summarize: async () => { throw Error("Synthetic provider failure"); } }, { sources: quietSources() });
+  const failedPlan = await failing.plan(g.job, g.config, { requestId: "async-failed", maxRequests: 1 });
+  await failing.start(g.job, g.config, runInput(failedPlan));
+  await until(async () => failing.status("async-failed").status !== "running");
+  expect(failing.status("async-failed")).toEqual({ jobId: g.job.id, requestId: "async-failed", status: "failed", error: "Synthetic provider failure" });
+
+  const slowGate = deferred(), slowEntered = deferred();
+  const slow = new StudioSummaryFlow({ identity: reviewedSummaryProviderForConfig(h.config), summarize: async () => { slowEntered.resolve(); await slowGate.promise; return h.response(); } }, { sources: quietSources() });
+  const cancelPlan = await slow.plan(h.job, h.config, { requestId: "async-cancel", maxRequests: 1 });
+  await slow.start(h.job, h.config, runInput(cancelPlan)); await slowEntered.promise;
+  expect(await slow.cancel(h.job, "async-cancel")).toMatchObject({ status: "cancelled", persisted: true });
+  await until(async () => slow.status("async-cancel").status !== "running");
+  expect(slow.status("async-cancel")).toEqual({ jobId: h.job.id, requestId: "async-cancel", status: "cancelled" });
+  slowGate.resolve(); await until(async () => !(await readHeavyStatus()).active);
+  expect(await readReviewedSummary(h.job)).toBeUndefined(); await h.absentResults();
 });

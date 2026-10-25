@@ -7,7 +7,8 @@ import { validateJobId, validateSummary, validateTranscript, type JobRecord } fr
 import { planSummaryChunks } from "../summary/chunks";
 import { summaryEvidenceMatches, summaryTranscriptEvidenceSha256 } from "../summary/evidence";
 import { SUMMARY_JSON_SCHEMA, SUMMARY_SYSTEM_PROMPT } from "../summary/schema";
-import type { ReviewedSummaryPlan } from "../summary/reviewed";
+import { reviewedPlanInputIdentity, reviewedPlanScope, type ReviewedSummaryPlan } from "../summary/reviewed";
+import { validateStoredSummaryRequest } from "../summary/v2";
 
 /** Planning is deliberately separate from Trash and permanent removal. No writer is exported. */
 export const REMOVAL_LIMITS = Object.freeze({ entries: 4096, depth: 3, fileBytes: 64 * 1024 * 1024, totalBytes: 128 * 1024 * 1024 });
@@ -40,21 +41,29 @@ const jsonDigest = (value: unknown): string => digest(JSON.stringify(value));
 /** Same pure fingerprints as the summary reader; no adapter or provider is called. */
 const verifiedSummaryPlan = (value: unknown): ReviewedSummaryPlan | undefined => {
   try {
-    if (!object(value) || value.version !== 1 || !object(value.snapshot) || !object(value.snapshot.revision) || value.snapshot.revision.version !== 1 || !Number.isSafeInteger(value.snapshot.revision.revision) || Number(value.snapshot.revision.revision) < 0 || !object(value.snapshot.revision.base) || value.snapshot.revision.base.jobId !== value.jobId || !object(value.snapshot.human) || typeof value.snapshot.human.reviewed !== "boolean" || !object(value.snapshot.original)) return undefined;
+    if (!object(value) || (value.version !== 1 && value.version !== 2) || !object(value.snapshot) || !object(value.snapshot.revision) || value.snapshot.revision.version !== 1 || !Number.isSafeInteger(value.snapshot.revision.revision) || Number(value.snapshot.revision.revision) < 0 || !object(value.snapshot.revision.base) || value.snapshot.revision.base.jobId !== value.jobId || !object(value.snapshot.human) || typeof value.snapshot.human.reviewed !== "boolean" || !object(value.snapshot.original)) return undefined;
     const plan = value as unknown as ReviewedSummaryPlan;
     const transcript = validateTranscript(plan.snapshot.transcript), provider = plan.provider;
     if (!object(provider) || !exact(provider, ["provider", "model", "adapterIdentity", "endpoint"]) || !["openai", "ollama"].includes(provider.provider) || [provider.model, provider.adapterIdentity].some(item => typeof item !== "string" || !item.trim() || item.length > 300 || /[\x00-\x1f\x7f]/.test(item))) return undefined;
     if (provider.endpoint !== undefined) { if (typeof provider.endpoint !== "string" || provider.endpoint.length > 1000) return undefined; const url = new URL(provider.endpoint); if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.search || url.hash) return undefined; }
-    if (jsonDigest(plan.snapshot) !== plan.snapshotSha256 || plan.snapshot.transcriptSha256 !== summaryTranscriptEvidenceSha256(transcript) || !Number.isSafeInteger(plan.maxCharacters) || plan.maxCharacters < 4096 || plan.maxCharacters > 200000 || !Number.isSafeInteger(plan.maxRequests) || plan.maxRequests < 1 || plan.maxRequests > 8 || plan.requiresConsent !== true || plan.inputScope !== "reviewed-transcript-only") return undefined;
+    if (jsonDigest(plan.snapshot) !== plan.snapshotSha256 || plan.snapshot.transcriptSha256 !== summaryTranscriptEvidenceSha256(transcript) || !Number.isSafeInteger(plan.maxCharacters) || plan.maxCharacters < 4096 || plan.maxCharacters > 200000 || !Number.isSafeInteger(plan.maxRequests) || plan.maxRequests < 1 || plan.maxRequests > 8 || plan.requiresConsent !== true) return undefined;
+    // Version 1: legacy prompt, transcript only. Version 2: the bound summary request (spec, template, notes).
+    if (plan.version === 2 && (validateStoredSummaryRequest(plan.request).spec.id !== plan.specId)) return undefined;
+    if (plan.version === 1 ? plan.inputScope !== "reviewed-transcript-only" : plan.inputScope !== reviewedPlanScope(plan)) return undefined;
+    const identity = plan.version === 1
+      ? jsonDigest({ snapshotSha256: plan.snapshotSha256, provider, context: plan.context, maxCharacters: plan.maxCharacters, maxRequests: plan.maxRequests, prompt: SUMMARY_SYSTEM_PROMPT, schema: SUMMARY_JSON_SCHEMA })
+      : reviewedPlanInputIdentity(plan);
+    const chunks = planSummaryChunks(transcript, plan.snapshot.revision.base.mediaSha256, plan.context, plan.maxCharacters, undefined, undefined, "characters",
+      plan.version === 2 ? { spec: plan.request.spec, notes: plan.request.notes } : undefined);
     const { consentKey, ...fields } = plan;
-    if (consentKey !== jsonDigest(fields) || plan.inputIdentity !== jsonDigest({ snapshotSha256: plan.snapshotSha256, provider, context: plan.context, maxCharacters: plan.maxCharacters, maxRequests: plan.maxRequests, prompt: SUMMARY_SYSTEM_PROMPT, schema: SUMMARY_JSON_SCHEMA }) || planSummaryChunks(transcript, plan.snapshot.revision.base.mediaSha256, plan.context, plan.maxCharacters).length !== plan.chunkCount || plan.chunkCount > plan.maxRequests) return undefined;
+    if (consentKey !== jsonDigest(fields) || plan.inputIdentity !== identity || chunks.length !== plan.chunkCount || plan.chunkCount > plan.maxRequests) return undefined;
     return plan;
   } catch { return undefined; }
 };
 
 const verifiedSummaryResult = (value: unknown, plan: ReviewedSummaryPlan): boolean => {
   try {
-    if (!object(value) || value.version !== 1 || value.jobId !== plan.jobId || value.requestId !== plan.requestId || jsonDigest(value.revision) !== jsonDigest(plan.snapshot.revision) || value.snapshotSha256 !== plan.snapshotSha256 || value.transcriptSha256 !== plan.snapshot.transcriptSha256 || !object(value.summary) || jsonDigest(value.summary) !== value.summarySha256 || value.summary.provider !== plan.provider.provider || value.summary.model !== plan.provider.model || !object(value.provenance) || value.provenance.authorship !== "model" || jsonDigest(value.provenance.provider) !== jsonDigest(plan.provider) || value.provenance.humanReviewedInput !== plan.snapshot.human.reviewed || value.provenance.inputScope !== "reviewed-transcript-only" || value.provenance.humanNotesUsed !== false || value.provenance.acousticLabelsUsed !== false || value.provenance.originalTranscriptReceipt !== plan.snapshot.original.receipt || typeof value.generatedAt !== "string" || !Number.isFinite(Date.parse(value.generatedAt))) return false;
+    if (!object(value) || value.version !== plan.version || value.jobId !== plan.jobId || value.requestId !== plan.requestId || jsonDigest(value.revision) !== jsonDigest(plan.snapshot.revision) || value.snapshotSha256 !== plan.snapshotSha256 || value.transcriptSha256 !== plan.snapshot.transcriptSha256 || !object(value.summary) || jsonDigest(value.summary) !== value.summarySha256 || value.summary.provider !== plan.provider.provider || value.summary.model !== plan.provider.model || !object(value.provenance) || value.provenance.authorship !== "model" || jsonDigest(value.provenance.provider) !== jsonDigest(plan.provider) || value.provenance.humanReviewedInput !== plan.snapshot.human.reviewed || value.provenance.inputScope !== reviewedPlanScope(plan) || value.provenance.humanNotesUsed !== (reviewedPlanScope(plan) === "reviewed-transcript-and-notes") || value.provenance.acousticLabelsUsed !== false || value.provenance.originalTranscriptReceipt !== plan.snapshot.original.receipt || typeof value.generatedAt !== "string" || !Number.isFinite(Date.parse(value.generatedAt))) return false;
     const summary = validateSummary(value.summary, plan.provider.provider, plan.provider.model);
     return !!summary.support && summaryEvidenceMatches(summary, plan.snapshot.revision.base.mediaSha256, plan.snapshot.transcript);
   } catch { return false; }
