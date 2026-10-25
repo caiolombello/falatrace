@@ -8,6 +8,7 @@ import { transcribeWithGemini } from "../../transcription/gemini";
 import { JOB_VERSION, type JobManifest } from "../types";
 import { hashFile } from "../store";
 import { processJob } from "../pipeline";
+import { fakeSummaryAnswer } from "../../summary/__tests__/v2-reply";
 
 const originalPath = process.env.PATH;
 const originalGeminiKey = process.env.GEMINI_API_KEY;
@@ -91,13 +92,13 @@ else:
     summaryRequests += 1;
     return Response.json({
       message: {
-        content: JSON.stringify({
+        content: JSON.stringify(fakeSummaryAnswer(JSON.parse(String(init?.body)), {
           title: "Reunião Gemini",
           overview: "Resumo gerado localmente.",
           topics: ["Transcrição"],
           decisions: [],
           actionItems: []
-        })
+        }))
       }
     });
   }) as unknown as typeof fetch;

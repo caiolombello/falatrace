@@ -155,16 +155,31 @@ describe("SUMMARY_LABELS", () => {
     expect(() => { (SUMMARY_LABELS.en as { summary: string }).summary = "x"; }).toThrow();
   });
 
-  test("the pt-BR headings and limitation phrases are the exact strings the pipeline writes today", () => {
-    const root = join(import.meta.dir, "..", "..");
-    const sources = ["summary/evidence.ts", "summary/chunks.ts", "summary/reviewed.ts", "jobs/pipeline.ts", "jobs/format.ts"]
-      .map((path) => readFileSync(join(root, path), "utf8")).join("\n");
+  test("the pt-BR headings and limitation phrases are the exact strings summaries were written with before v2", () => {
+    // The pipeline now writes these through SUMMARY_LABELS; pinned here so older summaries and
+    // stored reviewed results keep reading (and rendering) byte for byte the same.
     const pt = SUMMARY_LABELS["pt-BR"];
-    const existing = [pt.summary, pt.topics, pt.decisions, pt.actions, pt.evidence, pt.limitations, pt.noneFound, pt.noneFoundFeminine,
-      pt.owner, pt.dueDate, pt.reviewNeeded, pt.notFlagged, pt.timing, pt.mediaSha256, pt.transcriptSha256, pt.fullText, pt.excerpts,
-      pt.limitation.reviewRequired, pt.limitation.chunked, pt.limitation.chunkedReviewed, pt.limitation.visualEvidence,
-      pt.limitation.legacyTranscript, pt.limitation.visualExpired, pt.limitation.partialRange, pt.limitation.reviewedNotesNotUsed,
-      pt.limitation.reviewedLegacyUnverified];
-    for (const phrase of existing) expect(sources).toContain(phrase);
+    expect([pt.summary, pt.topics, pt.decisions, pt.actions, pt.evidence, pt.limitations, pt.noneFound, pt.noneFoundFeminine,
+      pt.owner, pt.dueDate, pt.reviewNeeded, pt.yes, pt.notFlagged, pt.timing, pt.mediaSha256, pt.transcriptSha256, pt.fullText, pt.excerpts]).toEqual([
+      "Resumo", "Tópicos", "Decisões", "Ações", "Evidências e limites", "Limitações", "Nenhum identificado", "Nenhuma identificada",
+      "responsável", "prazo", "Revisão necessária", "sim", "não sinalizada (não garante correção semântica)", "Precisão temporal",
+      "Mídia SHA-256", "Transcrição SHA-256", "Texto completo", "Trechos"]);
+    expect(pt.limitation).toMatchObject({
+      reviewRequired: "Resumo requer revisão: afirmação sem referência clara ou precisão temporal indisponível. Referências válidas não comprovam correção semântica.",
+      chunked: "Resumo montado por partes: revisar redundâncias, contexto global e eventuais conflitos. Fragmentos mantêm o intervalo do segmento original.",
+      chunkedReviewed: "Resumo montado por partes: revisar contexto global, redundâncias e conflitos; intervalos dos segmentos originais preservados.",
+      visualEvidence: "Evidência visual seletiva requer revisão; um frame representa somente seu instante e suas observações não são prova semântica.",
+      legacyTranscript: "Transcrição legada: mídia verificada, parâmetros originais completos não comprovados; revisar antes de reutilizar decisões.",
+      visualExpired: "Evidência visual expirada; este resumo utiliza somente a transcrição e requer revisão das referências visuais.",
+      partialRange: "Resumo parcial do intervalo selecionado; restante omitido.",
+      reviewedNotesNotUsed: "Notas humanas sem tempo e rótulos acústicos permanecem na revisão; não foram usados como evidência do modelo.",
+      reviewedLegacyUnverified: "Transcrição original legada sem recibo verificado; resumo requer revisão humana."
+    });
+    // No producer keeps its own copy of a localized phrase.
+    const root = join(import.meta.dir, "..", "..");
+    const sources = ["summary/evidence.ts", "summary/chunks.ts", "jobs/pipeline.ts", "jobs/format.ts"]
+      .map((path) => readFileSync(join(root, path), "utf8")).join("\n");
+    for (const phrase of Object.values(pt.limitation)) expect(sources).not.toContain(phrase);
+    for (const heading of [pt.topics, pt.decisions, pt.evidence, pt.limitations]) expect(sources).not.toContain(`"## ${heading}"`);
   });
 });

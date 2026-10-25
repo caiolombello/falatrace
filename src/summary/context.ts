@@ -8,6 +8,7 @@ import type { TimesheetContext } from "../timesheet/types";
 import type { SummaryProvider } from "../config/defaults";
 import type { SummaryInputEvidence } from "./evidence";
 import { MAX_SUMMARY_INPUT_CHARACTERS, summaryInputSize, type SummaryInputUnit } from "./budget";
+import type { NoteForSummary } from "../notes/align";
 
 const normalized = (value: string): string =>
   value
@@ -58,18 +59,22 @@ export const buildSummaryClientHints = (
     };
   });
 
+/** The user message of a summary request. `notes` (v2 only) are the user's notes for this part,
+ * already sanitized by notesForSummary; without them the content is exactly the legacy one. */
 export const buildSummaryUserContent = (
   transcript: string,
   context?: SummaryContext,
   evidence?: SummaryInputEvidence,
   maxCharacters = 24_000,
-  unit: SummaryInputUnit = "characters"
+  unit: SummaryInputUnit = "characters",
+  notes?: readonly NoteForSummary[]
 ): string => {
   const content = JSON.stringify({
     meeting: context?.meeting,
     clients: context?.clients || [],
     transcript,
-    ...(evidence ? { evidence } : {})
+    ...(evidence ? { evidence } : {}),
+    ...(notes ? { notes: notes.map(({ id, text, at, nearSegmentIds }) => ({ id, text, at, nearSegmentIds })) } : {})
   });
   if (!Number.isSafeInteger(maxCharacters) || maxCharacters < 4096 || maxCharacters > MAX_SUMMARY_INPUT_CHARACTERS || summaryInputSize(content, unit) > maxCharacters) {
     throw new Error("Summary input exceeds the explicit character budget; chunking or an explicit larger budget is required");
@@ -158,7 +163,15 @@ export const canonicalizeSummary = (
       description: canonicalizeText(item.description, clients),
       owner: canonicalizeText(item.owner, clients),
       dueDate: item.dueDate
-    }))
+    })),
+    // Template headings and the user's own items stay as written; AI items get the canonical client names.
+    ...(summary.sections ? {
+      sections: summary.sections.map((section) => ({
+        heading: section.heading,
+        items: section.items.map((item) => (item.origin === "ai" ? { ...item, text: canonicalizeText(item.text, clients) } : item))
+      }))
+    } : {}),
+    ...(summary.meta ? { meta: summary.meta } : {})
   };
   return validateSummary(value, provider, model);
 };

@@ -6,6 +6,7 @@ import { validateSummary, type Transcript } from "../../jobs/types";
 import { formatSummaryMarkdown } from "../../jobs/format";
 import { DEFAULT_CONFIG } from "../../config/defaults";
 import { summarizeWithOllama } from "../ollama";
+import { SUMMARY_LABELS } from "../language";
 
 const transcript: Transcript = { version: 1, provider: "whisper-cpp", model: "synthetic", language: "pt", text: "Revisar antes de publicar.", segments: [{ start: 12, end: 18, text: "Revisar antes de publicar." }] };
 const summary = () => validateSummary({ title: "Revisão do protótipo", overview: "Revisar antes de publicar.", topics: [], decisions: ["Revisar antes de publicar."], actionItems: [], citations: [
@@ -54,4 +55,17 @@ test("oversized input and cancelled summary invoke no provider", async () => {
 test("legacy summaries remain readable and oversized segment sets require explicit chunking", () => {
   expect(validateSummary({ title: "Legado", overview: "Sintético", topics: [], decisions: [], actionItems: [] },"ollama","synthetic").support).toBeUndefined();
   expect(() => buildSummaryEvidence({ ...transcript, segments: Array(1001).fill(transcript.segments[0]) },"a".repeat(64))).toThrow("chunking");
+});
+
+test("section items are checked like citations, add their references, and an uncertain item asks for review in the summary's language", () => {
+  const evidence = buildSummaryEvidence(transcript, "a".repeat(64));
+  const meta = { schemaVersion: 2 as const, specId: "v2:0123456789ab", template: { id: "general", source: "default" as const, confidence: 1, reason: "Padrão." }, language: "es" as const, notes: { count: 0, digest: "b".repeat(64) } };
+  const item = { text: "Revisar antes de publicar.", origin: "ai" as const, noteIds: [], segmentIds: ["s000000"], uncertainty: "clear" as const };
+  const clear = attachSummarySupport({ ...summary(), citations: [], sections: [{ heading: "Decisiones", items: [item] }], meta }, evidence);
+  expect(clear.support!.references).toEqual([{ id: "s000000", start: 12, end: 18 }]);
+  expect(clear.limitations).toEqual([SUMMARY_LABELS.es.limitation.reviewRequired]);
+  const uncertain = attachSummarySupport({ ...summary(), sections: [{ heading: "Decisiones", items: [{ ...item, uncertainty: "uncertain" }] }], meta }, evidence);
+  expect(uncertain.support!.reviewRequired).toBe(true);
+  expect(attachSummarySupport({ ...summary(), sections: [{ heading: "Decisiones", items: [item] }], meta }, evidence).support!.reviewRequired).toBe(false);
+  expect(() => attachSummarySupport({ ...summary(), sections: [{ heading: "Decisiones", items: [{ ...item, segmentIds: ["s000007"] }] }] }, evidence)).toThrow("does not exist");
 });

@@ -1,7 +1,9 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import type { AppConfig } from "../config/defaults";
 import { isPlaceholderRemoteHost } from "../config/settings";
+import { notesDigest } from "../notes/align";
+import { findNotesForJob, type MeetingNotes } from "../notes/store";
 import { probeMedia } from "./media";
 import { queueSelectedJob, type QueueSelectedJobResult } from "./queue";
 import { getSshDestination } from "./remote";
@@ -31,6 +33,8 @@ export type ProcessPlan = {
   remote?: { destination: string; port: number };
   transcription: Destination;
   summary: Destination;
+  /** The meeting notes the summary will use (v2 summaries send them with the transcript). */
+  notes?: { count: number; external: boolean };
   consentKey: string;
 };
 
@@ -76,6 +80,8 @@ export type ManualProcessDeps = {
   store: Pick<JobStore, "get" | "enqueue">;
   duration: (path: string) => Promise<number>;
   queue: (id: string, options?: { retry?: boolean }) => Promise<QueueSelectedJobResult>;
+  /** The meeting notes of a recording; the notes store by default. */
+  notes?: (job: { id: string; sourcePath: string }) => Promise<MeetingNotes | undefined>;
 };
 
 export const defaultManualProcessDeps = (): ManualProcessDeps => ({
@@ -144,14 +150,22 @@ export const planRecordingProcessing = async (
   const durationSeconds = stat && action !== "none" ? await deps.duration(entry.sourcePath).catch(() => null) : null;
   // The worker is part of what the user approves: another host, user, port or identity asks again.
   const remote = target === "remote" ? { destination: getSshDestination(config), port: config.remote.port } : undefined;
+  // The summary sends the meeting notes with the transcript. Run elsewhere, they are part of what
+  // the user approves: notes changed since the plan ask again. Unreadable notes are not sent.
+  const notes = action !== "none" && config.notes.enabled && config.summary.useNotes
+    ? await (deps.notes || ((job: { id: string; sourcePath: string }) => findNotesForJob(job)))({ id: latest?.id ?? randomUUID(), sourcePath: entry.sourcePath }).catch(() => undefined)
+    : undefined;
+  const sentNotes = notes?.entries.length ? { count: notes.entries.length, external: destinations.summary.external } : undefined;
   const consentKey = createHash("sha256").update(JSON.stringify([
     entry.sourcePath, stat?.size ?? null, stat?.mtimeMs ?? null, sha256, action, latest?.id ?? null, target,
     destinations.transcription, destinations.summary, config.summary.ollamaUrl,
-    remote ? [remote.destination, remote.port, config.remote.identityFile ?? null] : null
+    remote ? [remote.destination, remote.port, config.remote.identityFile ?? null] : null,
+    ...(sentNotes?.external ? [["notes", notesDigest(notes)]] : [])
   ])).digest("hex");
   return {
     key: entry.sourcePath, action, reason, ...(latest ? { jobId: latest.id, jobState: latest.state } : {}),
-    durationSeconds, target, ...(sha256 ? { sourceSha256: sha256 } : {}), ...(remote ? { remote } : {}), ...destinations, consentKey
+    durationSeconds, target, ...(sha256 ? { sourceSha256: sha256 } : {}), ...(remote ? { remote } : {}), ...destinations,
+    ...(sentNotes ? { notes: sentNotes } : {}), consentKey
   };
 };
 

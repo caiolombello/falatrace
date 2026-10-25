@@ -133,8 +133,41 @@ export type RecordingSummary = {
   }>;
   citations?: SummaryCitation[];
   limitations?: string[];
+  /** v2: the template sections, with the user's notes (origin "user") and what the model added. */
+  sections?: SummarySection[];
+  /** v2: how this summary was made (prompt spec, template, language, notes). */
+  meta?: SummaryMeta;
   support?: SummarySupport;
 };
+
+export type SummarySectionItem = {
+  text: string;
+  origin: "user" | "ai";
+  /** Notes behind a user item (n000001); always empty on AI items. */
+  noteIds: string[];
+  /** Transcript segments supporting the item (s000000). */
+  segmentIds: string[];
+  uncertainty: "clear" | "uncertain";
+};
+
+export type SummarySection = { heading: string; items: SummarySectionItem[] };
+
+export type SummaryTemplateSource = "user" | "default" | "calendar" | "keywords" | "ai" | "fallback";
+
+export type SummaryMeta = {
+  schemaVersion: 2;
+  /** Prompt spec of the request ("v2:<sha12>"). */
+  specId: string;
+  template: { id: string; source: SummaryTemplateSource; confidence: number; reason: string };
+  language: "pt-BR" | "en" | "es";
+  /** The meeting notes the summary could see: how many and their digest (0 and the empty digest when none). */
+  notes: { count: number; digest: string };
+};
+
+/** Bounds of stored v2 sections: a merged multi-part summary plus the notes the model did not use. */
+export const SUMMARY_SECTION_LIMITS = Object.freeze({
+  sections: 100, items: 4000, headingCharacters: 200, itemCharacters: 2000, noteIds: 16, segmentIds: 8, reasonCharacters: 1000
+});
 
 export type SummaryCitation = {
   section: "overview" | "topic" | "decision" | "action";
@@ -494,6 +527,70 @@ export const validateJobManifest = (value: unknown): JobManifest => {
   };
 };
 
+const SUMMARY_TEMPLATE_SOURCES = ["user", "default", "calendar", "keywords", "ai", "fallback"];
+const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f-\u009f]/;
+
+const parseIdList = (value: unknown, pattern: RegExp, max: number): string[] => {
+  if (!Array.isArray(value) || value.length > max || value.some((id) => typeof id !== "string" || !pattern.test(id)) || new Set(value).size !== value.length) {
+    throw new Error("Invalid summary section item");
+  }
+  return [...value] as string[];
+};
+
+const parseSummarySections = (value: unknown): SummarySection[] => {
+  if (!Array.isArray(value) || value.length > SUMMARY_SECTION_LIMITS.sections) throw new Error("Invalid summary sections");
+  let total = 0;
+  return value.map((section) => {
+    if (!isObject(section) || !Array.isArray(section.items)) throw new Error("Invalid summary section");
+    const heading = section.heading;
+    if (typeof heading !== "string" || !heading.trim() || heading.length > SUMMARY_SECTION_LIMITS.headingCharacters || CONTROL_CHARACTERS.test(heading)) {
+      throw new Error("Invalid summary section heading");
+    }
+    total += section.items.length;
+    if (total > SUMMARY_SECTION_LIMITS.items) throw new Error("Summary has too many section items");
+    return {
+      heading,
+      items: section.items.map((item): SummarySectionItem => {
+        if (!isObject(item) || (item.origin !== "user" && item.origin !== "ai") || typeof item.text !== "string" || !item.text.trim() ||
+            item.text.length > SUMMARY_SECTION_LIMITS.itemCharacters || (item.uncertainty !== "clear" && item.uncertainty !== "uncertain")) {
+          throw new Error("Invalid summary section item");
+        }
+        const noteIds = parseIdList(item.noteIds, /^n\d{6}$/, SUMMARY_SECTION_LIMITS.noteIds);
+        // A user item always names its notes; an AI item never claims one.
+        if ((item.origin === "user") !== (noteIds.length > 0)) throw new Error("Invalid summary section item origin");
+        return {
+          text: item.text, origin: item.origin, noteIds,
+          segmentIds: parseIdList(item.segmentIds, /^s\d{6}$/, SUMMARY_SECTION_LIMITS.segmentIds),
+          uncertainty: item.uncertainty
+        };
+      })
+    };
+  });
+};
+
+const parseSummaryMeta = (value: unknown): SummaryMeta => {
+  if (!isObject(value) || value.schemaVersion !== 2 || typeof value.specId !== "string" || !/^v2:[a-f0-9]{12}$/.test(value.specId) ||
+      !isObject(value.template) || !isObject(value.notes) || !["pt-BR", "en", "es"].includes(String(value.language))) {
+    throw new Error("Invalid summary metadata");
+  }
+  const { id, source, confidence, reason } = value.template;
+  const { count, digest } = value.notes;
+  if (typeof id !== "string" || id === "auto" || !SUMMARY_TEMPLATE_SETTING.test(id) || !SUMMARY_TEMPLATE_SOURCES.includes(String(source)) ||
+      typeof confidence !== "number" || !Number.isFinite(confidence) || confidence < 0 || confidence > 1 ||
+      typeof reason !== "string" || reason.length > SUMMARY_SECTION_LIMITS.reasonCharacters || CONTROL_CHARACTERS.test(reason) ||
+      typeof count !== "number" || !Number.isSafeInteger(count) || count < 0 || count > 100_000 ||
+      typeof digest !== "string" || !/^[a-f0-9]{64}$/.test(digest)) {
+    throw new Error("Invalid summary metadata");
+  }
+  return {
+    schemaVersion: 2,
+    specId: value.specId,
+    template: { id, source: source as SummaryTemplateSource, confidence, reason },
+    language: value.language as SummaryMeta["language"],
+    notes: { count, digest }
+  };
+};
+
 export const validateSummary = (
   value: unknown,
   provider: SummaryProvider,
@@ -534,6 +631,8 @@ export const validateSummary = (
     });
   }
   const limitations = value.limitations === undefined ? undefined : parseStringArray(value.limitations, "limitations");
+  const sections = value.sections === undefined ? undefined : parseSummarySections(value.sections);
+  const meta = value.meta === undefined ? undefined : parseSummaryMeta(value.meta);
   let support: SummarySupport | undefined;
   if (value.support !== undefined) {
     const item = value.support;
@@ -547,6 +646,10 @@ export const validateSummary = (
     support = item as SummarySupport;
     const ids = new Set(support.references.map((reference) => reference.id));
     if (citations?.some((citation) => citation.segmentIds.some((id) => !ids.has(id)))) throw new Error("Stored summary citation has no supporting reference");
+    // Section items cite segments the same way; each needs its supporting reference.
+    if (sections?.some((section) => section.items.some((item) => item.segmentIds.some((id) => !ids.has(id))))) {
+      throw new Error("Stored summary citation has no supporting reference");
+    }
   }
   return {
     version: JOB_VERSION,
@@ -562,6 +665,8 @@ export const validateSummary = (
     actionItems,
     ...(citations === undefined ? {} : { citations }),
     ...(limitations === undefined ? {} : { limitations }),
+    ...(sections === undefined ? {} : { sections }),
+    ...(meta === undefined ? {} : { meta }),
     ...(support === undefined ? {} : { support })
   };
 };

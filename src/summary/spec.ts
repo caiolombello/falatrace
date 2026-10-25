@@ -215,8 +215,10 @@ const renderSystem = (
   return lines.join("\n");
 };
 
-const specId = (system: string, schema: unknown): string =>
+/** Id of a v2 spec from its own text; lets stored plans prove their spec was not altered. */
+export const summarySpecId = (system: string, schema: unknown): string =>
   `v2:${createHash("sha256").update(JSON.stringify({ version: SUMMARY_SPEC_VERSION, system, schema })).digest("hex").slice(0, 12)}`;
+const specId = summarySpecId;
 
 /** System prompt and JSON schema of one v2 summary request. Deterministic: the same
  * language, templates and notes flag always give the same id. */

@@ -23,6 +23,7 @@ import { processLocalJob, retryJob, syncJobs } from "../sync";
 import { JobStore, mergeTranscriptionPrompt, writeJsonAtomic } from "../store";
 import { archiveDirectory } from "../worker";
 import { SUMMARY_JSON_SCHEMA } from "../../summary/schema";
+import { fakeSummaryAnswer } from "../../summary/__tests__/v2-reply";
 import {
   deriveMeetingTitle,
   JOB_VERSION,
@@ -633,13 +634,13 @@ test("processes a local job through fake whisper.cpp and Ollama providers", asyn
           ?.content || "";
       return Response.json({
         message: {
-          content: JSON.stringify({
+          content: JSON.stringify(fakeSummaryAnswer(requestBody, {
             title: "Alocações e atualizações de infraestrutura",
             overview: "Foram discutidas atividades da Example Alias.",
             topics: ["Demandas da Example Alias"],
             decisions: [],
             actionItems: []
-          })
+          }))
         }
       });
     }
@@ -738,16 +739,16 @@ test("resumes a failed local job from its valid transcript", async () => {
   const store = new JobStore(join(root, "state"), join(root, "data"));
   const server = Bun.serve({
     port: 0,
-    fetch: () =>
+    fetch: async (request) =>
       Response.json({
         message: {
-          content: JSON.stringify({
+          content: JSON.stringify(fakeSummaryAnswer(await request.json(), {
             title: "Recuperação do processamento",
             overview: "Resumo recuperado.",
             topics: ["Retry"],
             decisions: [],
             actionItems: []
-          })
+          }))
         }
       })
   });

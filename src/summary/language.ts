@@ -127,6 +127,8 @@ export type SummaryLimitationLabels = {
   notesNotUsed: string;
   /** v2: notes were present but left out (setting off or not consented). */
   notesExcluded: string;
+  /** v2: the notes file of the meeting could not be read; the summary went on without it. */
+  notesUnreadable: string;
 };
 
 export type SummaryLabels = {
@@ -145,6 +147,8 @@ export type SummaryLabels = {
   dueDate: string;
   unusedNotes: string;
   template: string;
+  /** Template chosen by the model from the conversation. */
+  autoTemplate: string;
   transcript: string;
   fullText: string;
   excerpts: string;
@@ -184,6 +188,7 @@ export const SUMMARY_LABELS: Readonly<Record<ContentLanguage, Readonly<SummaryLa
     dueDate: "prazo",
     unusedNotes: "Notas suas que o modelo não usou",
     template: "Modelo",
+    autoTemplate: "Automático",
     transcript: "Transcrição",
     fullText: "Texto completo",
     excerpts: "Trechos",
@@ -206,7 +211,8 @@ export const SUMMARY_LABELS: Readonly<Record<ContentLanguage, Readonly<SummaryLa
       reviewedNotesNotUsed: "Notas humanas sem tempo e rótulos acústicos permanecem na revisão; não foram usados como evidência do modelo.",
       reviewedLegacyUnverified: "Transcrição original legada sem recibo verificado; resumo requer revisão humana.",
       notesNotUsed: "Algumas notas suas não aparecem no resumo; elas estão listadas em \"Notas suas que o modelo não usou\".",
-      notesExcluded: "Suas notas desta reunião não foram enviadas ao modelo; o resumo usa somente a transcrição."
+      notesExcluded: "Suas notas desta reunião não foram enviadas ao modelo; o resumo usa somente a transcrição.",
+      notesUnreadable: "Não foi possível ler suas notas desta reunião; o resumo usa somente a transcrição e o arquivo das notas foi mantido."
     }
   },
   en: {
@@ -223,6 +229,7 @@ export const SUMMARY_LABELS: Readonly<Record<ContentLanguage, Readonly<SummaryLa
     dueDate: "due",
     unusedNotes: "Your notes the model did not use",
     template: "Template",
+    autoTemplate: "Automatic",
     transcript: "Transcript",
     fullText: "Full text",
     excerpts: "Excerpts",
@@ -245,7 +252,8 @@ export const SUMMARY_LABELS: Readonly<Record<ContentLanguage, Readonly<SummaryLa
       reviewedNotesNotUsed: "Untimed human notes and acoustic labels stay in the review; they were not used as evidence by the model.",
       reviewedLegacyUnverified: "Legacy original transcript without a verified receipt; the summary needs human review.",
       notesNotUsed: "Some of your notes do not appear in the summary; they are listed under \"Your notes the model did not use\".",
-      notesExcluded: "Your notes for this meeting were not sent to the model; the summary uses only the transcript."
+      notesExcluded: "Your notes for this meeting were not sent to the model; the summary uses only the transcript.",
+      notesUnreadable: "Your notes for this meeting could not be read; the summary uses only the transcript and the notes file was kept."
     }
   },
   es: {
@@ -262,6 +270,7 @@ export const SUMMARY_LABELS: Readonly<Record<ContentLanguage, Readonly<SummaryLa
     dueDate: "plazo",
     unusedNotes: "Notas tuyas que el modelo no usó",
     template: "Plantilla",
+    autoTemplate: "Automática",
     transcript: "Transcripción",
     fullText: "Texto completo",
     excerpts: "Fragmentos",
@@ -284,7 +293,8 @@ export const SUMMARY_LABELS: Readonly<Record<ContentLanguage, Readonly<SummaryLa
       reviewedNotesNotUsed: "Las notas humanas sin tiempo y las etiquetas acústicas permanecen en la revisión; no se usaron como evidencia del modelo.",
       reviewedLegacyUnverified: "Transcripción original heredada sin recibo verificado; el resumen requiere revisión humana.",
       notesNotUsed: "Algunas de tus notas no aparecen en el resumen; están listadas en \"Notas tuyas que el modelo no usó\".",
-      notesExcluded: "Tus notas de esta reunión no se enviaron al modelo; el resumen usa solo la transcripción."
+      notesExcluded: "Tus notas de esta reunión no se enviaron al modelo; el resumen usa solo la transcripción.",
+      notesUnreadable: "No se pudieron leer tus notas de esta reunión; el resumen usa solo la transcripción y el archivo de notas se conservó."
     }
   }
 });

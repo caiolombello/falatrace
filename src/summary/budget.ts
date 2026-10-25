@@ -1,5 +1,6 @@
 import type { AppConfig, SummaryProvider } from "../config/defaults";
 import { SUMMARY_JSON_SCHEMA, SUMMARY_SYSTEM_PROMPT } from "./schema";
+import type { SummaryPromptSpec } from "./prompt";
 
 /** Upper bound for a single summary request payload, whatever the model. */
 export const MAX_SUMMARY_INPUT_CHARACTERS = 2_000_000;
@@ -21,17 +22,21 @@ const DEFAULT_OPENAI_CONTEXT_TOKENS = 128_000;
 // Byte-level BPE tokens each cover at least one UTF-8 byte, so a payload's byte length
 // bounds its token count for any language. The fixed prompt and schema are reserved the
 // same way, plus slack for message framing.
-const PROMPT_RESERVE_TOKENS = Buffer.byteLength(SUMMARY_SYSTEM_PROMPT, "utf8") +
-  Buffer.byteLength(JSON.stringify(SUMMARY_JSON_SCHEMA), "utf8") + 1_024;
+const promptReserveTokens = (system: string, schema: unknown): number =>
+  Buffer.byteLength(system, "utf8") + Buffer.byteLength(JSON.stringify(schema), "utf8") + 1_024;
+const PROMPT_RESERVE_TOKENS = promptReserveTokens(SUMMARY_SYSTEM_PROMPT, SUMMARY_JSON_SCHEMA);
 
 /** An OpenAI summary cannot be split without an explicit paid-budget policy, so its
  * input limit follows the chosen model's context window, measured in UTF-8 bytes so a
- * single request can never exceed it. Local Ollama keeps the configured character
- * budget because its usable context depends on the local runtime. */
-export const summaryInputLimit = (config: AppConfig, provider: SummaryProvider, model: string): SummaryInputLimit => {
+ * single request can never exceed it. The reserve is the prompt and schema actually sent:
+ * the legacy ones by default, or the given spec's (a v2 prompt with templates is larger).
+ * Local Ollama keeps the configured character budget for the user content because its
+ * usable context depends on the local runtime. */
+export const summaryInputLimit = (config: AppConfig, provider: SummaryProvider, model: string, spec?: Pick<SummaryPromptSpec, "system" | "schema">): SummaryInputLimit => {
   if (provider !== "openai") return { max: config.summary.maxInputCharacters, unit: "characters" };
   const contextTokens = OPENAI_CONTEXT_TOKENS.find(([pattern]) => pattern.test(model))?.[1] ?? DEFAULT_OPENAI_CONTEXT_TOKENS;
-  return { max: Math.min(MAX_SUMMARY_INPUT_CHARACTERS, contextTokens - OPENAI_SUMMARY_OUTPUT_TOKENS - PROMPT_RESERVE_TOKENS), unit: "utf8-bytes" };
+  const reserve = spec ? promptReserveTokens(spec.system, spec.schema) : PROMPT_RESERVE_TOKENS;
+  return { max: Math.min(MAX_SUMMARY_INPUT_CHARACTERS, contextTokens - OPENAI_SUMMARY_OUTPUT_TOKENS - reserve), unit: "utf8-bytes" };
 };
 
 /** Size of a summary payload in the unit its limit is expressed in. */

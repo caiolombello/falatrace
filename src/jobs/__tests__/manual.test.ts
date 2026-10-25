@@ -164,3 +164,36 @@ test("a malformed Ollama address from an older configuration is named and blocks
     expect(calls).toEqual([]);
   });
 });
+
+test("notes that go with an external summary are disclosed and bound to the consent", async () => {
+  await withRecording(async (path) => {
+    const config = structuredClone(DEFAULT_CONFIG);
+    config.summary.provider = "openai";
+    let text = "Ligar para a Ana";
+    const notes = async () => ({ version: 1 as const, id: "123e4567-e89b-42d3-a456-426614174000", createdAt: "2026-10-25T12:00:00.000Z", updatedAt: "2026-10-25T12:00:00.000Z", rev: 1,
+      entries: [{ id: "n000001", createdAt: "2026-10-25T12:00:00.000Z", offsetSeconds: 3, text }] });
+    const { deps, calls } = fakeDeps();
+    const withNotes = { ...deps, notes };
+    const plan = await planRecordingProcessing(config, { sourcePath: path, sourceExists: true, jobs: [] }, withNotes);
+    expect(plan.notes).toEqual({ count: 1, external: true });
+    expect(JSON.stringify(plan)).not.toContain("Ligar");
+    text = "Ligar para a Ana amanhã";
+    await expect(runRecordingProcessing(config, { sourcePath: path, sourceExists: true, jobs: [] }, { consent: true, consentKey: plan.consentKey }, withNotes)).rejects.toThrow("mudaram");
+    expect(calls).toEqual([]);
+    // Local summaries keep the notes on this computer: disclosed, but a new note asks nothing again.
+    config.summary.provider = "ollama";
+    const local = await planRecordingProcessing(config, { sourcePath: path, sourceExists: true, jobs: [] }, withNotes);
+    expect(local.notes).toEqual({ count: 1, external: false });
+    text = "Outra nota";
+    expect((await planRecordingProcessing(config, { sourcePath: path, sourceExists: true, jobs: [] }, withNotes)).consentKey).toBe(local.consentKey);
+    // Notes off, unreadable or absent: nothing disclosed, the key is the one without notes.
+    const plain = await planRecordingProcessing(config, { sourcePath: path, sourceExists: true, jobs: [] }, { ...deps, notes: async () => undefined });
+    expect(plain.notes).toBeUndefined();
+    expect(plain.consentKey).toBe(local.consentKey);
+    expect((await planRecordingProcessing(config, { sourcePath: path, sourceExists: true, jobs: [] }, { ...deps, notes: async () => { throw new Error("corrompidas"); } })).notes).toBeUndefined();
+    config.notes.enabled = false;
+    let reads = 0;
+    expect((await planRecordingProcessing(config, { sourcePath: path, sourceExists: true, jobs: [] }, { ...deps, notes: async () => { reads++; return notes(); } })).notes).toBeUndefined();
+    expect(reads).toBe(0);
+  });
+});

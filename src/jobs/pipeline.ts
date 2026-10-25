@@ -14,6 +14,8 @@ import {validatePipelineVisualReview,withPipelineVisualClaim,pipelineSessionIden
 import {VisualAppBudget} from "../visual/app-budget";
 import { summarizeInChunks } from "../summary/chunks";
 import { summaryInputLimit } from "../summary/budget";
+import { SUMMARY_LABELS } from "../summary/language";
+import { resolveSummaryV2Request, type SummaryInputSources } from "../summary/v2";
 import { transcribeWithOpenAI } from "../transcription/openai";
 import { transcribeWithGemini } from "../transcription/gemini";
 import { transcribeWithWhisperCpp } from "../transcription/whisperCpp";
@@ -66,7 +68,9 @@ const processJobOwned = async (
   manifest: JobManifest,
   sourcePath: string,
   outputDir: string,
-  options: { signal?: AbortSignal; visual?: { root: string; adapter: LocalVisualAdapter; ttlSeconds?: number; manual?: ManualVisualConsent; review?:{id:string;consent:boolean;consentKey:string} } } = {}
+  options: { signal?: AbortSignal; visual?: { root: string; adapter: LocalVisualAdapter; ttlSeconds?: number; manual?: ManualVisualConsent; review?:{id:string;consent:boolean;consentKey:string} };
+    /** Where notes, saved choices and templates come from (tests); the user's stores by default. */
+    summaryInputs?: SummaryInputSources } = {}
 ): Promise<void|{committedGrantId:string}> => {
   options.signal?.throwIfAborted();
   await assertUnreviewedPublication(manifest.id);
@@ -144,8 +148,13 @@ const processJobOwned = async (
       adapterIdentity: options.visual!.adapter.identity, expiresAt: visual.expiresAt,
       observations: visual.observations.map(({timestampSeconds,frameSha256,text,uncertainty}) => ({timestampSeconds,frameSha256,text,uncertainty}))
     } : undefined;
-    const inputLimit = summaryInputLimit(config, manifest.summary.provider, manifest.summary.model);
-    const summary = await summarizeInChunks({
+    // The v2 summary: template sections, the summary language and the user's notes. A scoped visual
+    // review keeps its legacy partial-range summary (its consent binds the legacy request).
+    const request = scoped ? undefined : await resolveSummaryV2Request({
+      config, job: { id: manifest.id, sourcePath }, summary: manifest.summary, transcript
+    }, options.summaryInputs);
+    const inputLimit = summaryInputLimit(config, manifest.summary.provider, manifest.summary.model, request?.spec);
+    const summary = await summarizeInChunks({ request,
       transcript, segmentIds:scoped?.scope.segments.map(s=>s.id), mediaHash: manifest.source.sha256, context: scoped?undefined:manifest.summary.context, visual: visualEvidence,
       maxCharacters: inputLimit.max, inputUnit: inputLimit.unit, legacyMaxCharacters: config.summary.maxInputCharacters, provider: manifest.summary.provider,
       model: manifest.summary.model, adapterIdentity: manifest.summary.provider === "ollama" ? config.summary.ollamaUrl : "openai-chat", cacheDir: join(outputDir, ".summary-chunks"), signal: options.signal,
@@ -154,27 +163,28 @@ const processJobOwned = async (
         if(appBudget){await validateReview();await appBudget.reserve('inference',manifest.id,budgetIdentity,config.visualReview,true,scoped!.review.policyRevision);}
         await assertUnreviewedPublication(manifest.id);
         signal?.throwIfAborted();return manifest.summary.provider === "openai"
-        ? summarizeWithOpenAI(config, part.text, manifest.summary.model, scoped?undefined:manifest.summary.context, part.evidence, signal)
-        : summarizeWithOllama(config, part.text, manifest.summary.model, scoped?undefined:manifest.summary.context, part.evidence, signal);
+        ? summarizeWithOpenAI(config, part.text, manifest.summary.model, scoped?undefined:manifest.summary.context, part.evidence, signal, part.request)
+        : summarizeWithOllama(config, part.text, manifest.summary.model, scoped?undefined:manifest.summary.context, part.evidence, signal, part.request);
       }
     });
+    const limitation = SUMMARY_LABELS[summary.meta?.language ?? "pt-BR"].limitation;
     if (visualEvidence) {
       summary.support!.reviewRequired = true;
-      summary.limitations = [...(summary.limitations || []), "Evidência visual seletiva requer revisão; um frame representa somente seu instante e suas observações não são prova semântica."];
+      summary.limitations = [...(summary.limitations || []), limitation.visualEvidence];
 
     }
     if (reusable?.legacy) {
       summary.support!.reviewRequired = true;
-      summary.limitations = [...(summary.limitations || []), "Transcrição legada: mídia verificada, parâmetros originais completos não comprovados; revisar antes de reutilizar decisões."];
+      summary.limitations = [...(summary.limitations || []), limitation.legacyTranscript];
     }
     if (visual?.expired) {
       summary.support!.reviewRequired = true;
-      summary.limitations = [...(summary.limitations || []), "Evidência visual expirada; este resumo utiliza somente a transcrição e requer revisão das referências visuais."];
+      summary.limitations = [...(summary.limitations || []), limitation.visualExpired];
     }
     options.signal?.throwIfAborted();
     if (await hashFile(sourcePath) !== manifest.source.sha256) throw new Error("Source changed during summary; artifacts not published");
     if(options.visual)await validateReview();
-    if(scoped)summary.limitations=[...(summary.limitations||[]),"Resumo parcial do intervalo selecionado; restante omitido."];
+    if(scoped)summary.limitations=[...(summary.limitations||[]),limitation.partialRange];
     const summaryPrefix=scoped?"visual-summary":"summary";
     const summaryJson=JSON.stringify(summary,null,2);
     // Sidecars bind to exact summary bytes; summary.json is the final commit file.

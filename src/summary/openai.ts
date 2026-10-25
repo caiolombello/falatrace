@@ -9,10 +9,11 @@ import {
   buildSummaryUserContent,
   canonicalizeSummary
 } from "./context";
-import { SUMMARY_JSON_SCHEMA, SUMMARY_SYSTEM_PROMPT } from "./schema";
 import { OPENAI_SUMMARY_OUTPUT_TOKENS, summaryInputLimit } from "./budget";
 import type { SummaryInputEvidence } from "./evidence";
 import { readSecret } from "../config/secrets";
+import { LEGACY_SUMMARY_SPEC, summarySchemaName } from "./prompt";
+import { summaryFromV2Response, type SummaryChunkRequest } from "./v2";
 
 export const summarizeWithOpenAI = async (
   config: AppConfig,
@@ -20,11 +21,15 @@ export const summarizeWithOpenAI = async (
   model: string,
   context?: SummaryContext,
   evidence?: SummaryInputEvidence,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  /** v2 request (template spec, language, notes); the legacy prompt without it. */
+  request?: SummaryChunkRequest
 ): Promise<RecordingSummary> => {
   signal?.throwIfAborted();
-  const limit = summaryInputLimit(config, "openai", model);
-  const userContent = buildSummaryUserContent(transcript, context, evidence, limit.max, limit.unit);
+  const spec = request?.spec ?? LEGACY_SUMMARY_SPEC;
+  const limit = summaryInputLimit(config, "openai", model, request?.spec);
+  const userContent = buildSummaryUserContent(transcript, context, evidence, limit.max, limit.unit,
+    request?.spec.notesIncluded ? request.notes : undefined);
   const apiKey = (await readSecret("OPENAI_API_KEY")) || config.openai.apiKey;
   if (!apiKey) {
     throw new Error("OPENAI_API_KEY is not configured");
@@ -34,15 +39,15 @@ export const summarizeWithOpenAI = async (
     model,
     max_completion_tokens: OPENAI_SUMMARY_OUTPUT_TOKENS,
     messages: [
-      { role: "system", content: SUMMARY_SYSTEM_PROMPT },
+      { role: "system", content: spec.system },
       { role: "user", content: userContent }
     ],
     response_format: {
       type: "json_schema",
       json_schema: {
-        name: "recording_summary",
+        name: summarySchemaName(spec),
         strict: true,
-        schema: SUMMARY_JSON_SCHEMA
+        schema: spec.schema as Record<string, unknown>
       }
     }
   }, { signal });
@@ -55,8 +60,9 @@ export const summarizeWithOpenAI = async (
   if (!content) {
     throw new Error("OpenAI summary response was empty");
   }
+  const parsed: unknown = JSON.parse(content);
   return canonicalizeSummary(
-    validateSummary(JSON.parse(content), "openai", model),
+    request ? summaryFromV2Response(parsed, request, evidence, "openai", model) : validateSummary(parsed, "openai", model),
     context,
     "openai",
     model

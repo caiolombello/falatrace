@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { RecordingSummary, Transcript, SummarySupport } from "../jobs/types";
 import { sourceTimingQuality } from "../transcript/timing";
+import { SUMMARY_LABELS } from "./language";
 
 export type SummaryInputEvidence = {
   visual?: { adapterIdentity: string; expiresAt: number; observations: Array<{ timestampSeconds: number; frameSha256: string; text: string; uncertainty: "clear" | "uncertain" }> };
@@ -37,17 +38,21 @@ export const buildSummaryEvidence = (transcript: Transcript, mediaSha256: string
 export const attachSummarySupport = (summary: RecordingSummary, evidence: SummaryInputEvidence): RecordingSummary => {
   const ids = new Set(evidence.segments.filter((segment) => segment.text.trim()).map((segment) => segment.id));
   const citations = summary.citations || [];
-  for (const citation of citations) {
-    if (citation.segmentIds.some((id) => !ids.has(id))) throw new Error("Summary cited a transcript segment that does not exist");
+  const items = (summary.sections || []).flatMap((section) => section.items);
+  for (const cited of [...citations, ...items]) {
+    if (cited.segmentIds.some((id) => !ids.has(id))) throw new Error("Summary cited a transcript segment that does not exist");
   }
   const covered = new Set(citations.filter((citation) => citation.uncertainty === "clear").map((citation) => `${citation.section}:${citation.index}`));
   const required = ["overview:0", ...summary.decisions.map((_, index) => `decision:${index}`), ...summary.actionItems.map((_, index) => `action:${index}`)];
-  const reviewRequired = required.some((key) => !covered.has(key)) || citations.some((citation) => citation.uncertainty === "uncertain") || evidence.timingQuality === "none";
+  // Legacy rules, plus any section item the model itself marked uncertain.
+  const reviewRequired = required.some((key) => !covered.has(key)) || citations.some((citation) => citation.uncertainty === "uncertain") ||
+    items.some((item) => item.uncertainty === "uncertain") || evidence.timingQuality === "none";
   const limitations = [...(summary.limitations || [])];
-  if (reviewRequired) limitations.push("Resumo requer revisão: afirmação sem referência clara ou precisão temporal indisponível. Referências válidas não comprovam correção semântica.");
+  if (reviewRequired) limitations.push(SUMMARY_LABELS[summary.meta?.language ?? "pt-BR"].limitation.reviewRequired);
+  const cited = new Set([...citations, ...items].flatMap((entry) => entry.segmentIds));
   return { ...summary, limitations: [...new Set(limitations)].slice(0,100), support: {
     version: 1, mediaSha256: evidence.mediaSha256, transcriptSha256: evidence.transcriptSha256,
     timingQuality: evidence.timingQuality, reviewRequired,
-    references: evidence.segments.filter((segment) => citations.some((citation) => citation.segmentIds.includes(segment.id))).map(({id,start,end}) => ({id,start,end}))
+    references: evidence.segments.filter((segment) => cited.has(segment.id)).map(({id,start,end}) => ({id,start,end}))
   } };
 };

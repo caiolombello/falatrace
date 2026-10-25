@@ -8,8 +8,9 @@ import {
   buildSummaryUserContent,
   canonicalizeSummary
 } from "./context";
-import { SUMMARY_JSON_SCHEMA, SUMMARY_SYSTEM_PROMPT } from "./schema";
 import type { SummaryInputEvidence } from "./evidence";
+import { LEGACY_SUMMARY_SPEC } from "./prompt";
+import { summaryFromV2Response, type SummaryChunkRequest } from "./v2";
 
 export const validateOllamaUrl = (value: string): URL => {
   const url = new URL(value);
@@ -26,10 +27,14 @@ export const summarizeWithOllama = async (
   model: string,
   context?: SummaryContext,
   evidence?: SummaryInputEvidence,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  /** v2 request (template spec, language, notes of this part); the legacy prompt without it. */
+  request?: SummaryChunkRequest
 ): Promise<RecordingSummary> => {
   signal?.throwIfAborted();
-  const userContent = buildSummaryUserContent(transcript, context, evidence, config.summary.maxInputCharacters);
+  const spec = request?.spec ?? LEGACY_SUMMARY_SPEC;
+  const userContent = buildSummaryUserContent(transcript, context, evidence, config.summary.maxInputCharacters, "characters",
+    request?.spec.notesIncluded ? request.notes : undefined);
   const url = new URL("/api/chat", validateOllamaUrl(config.summary.ollamaUrl));
   const response = await fetch(url, {
     method: "POST",
@@ -38,9 +43,9 @@ export const summarizeWithOllama = async (
     body: JSON.stringify({
       model,
       stream: false,
-      format: SUMMARY_JSON_SCHEMA,
+      format: spec.schema,
       messages: [
-        { role: "system", content: SUMMARY_SYSTEM_PROMPT },
+        { role: "system", content: spec.system },
         { role: "user", content: userContent }
       ],
       options: { temperature: 0.2 }
@@ -54,8 +59,9 @@ export const summarizeWithOllama = async (
   if (typeof body.message?.content !== "string") {
     throw new Error("Ollama summary response was invalid");
   }
+  const parsed: unknown = JSON.parse(body.message.content);
   return canonicalizeSummary(
-    validateSummary(JSON.parse(body.message.content), "ollama", model),
+    request ? summaryFromV2Response(parsed, request, evidence, "ollama", model) : validateSummary(parsed, "ollama", model),
     context,
     "ollama",
     model
