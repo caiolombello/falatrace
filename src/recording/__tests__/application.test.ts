@@ -307,4 +307,13 @@ test("record stop on the fast path starts processing the new job right away, aft
   slow.processing.fastPath = false;
   expect((await run(slow, { queueFastPath: true }, async () => ({ status: "queued" }))).result).toMatchObject({ state: "stopped", queued: null });
   expect((await run(fast, { queueFastPath: true }, async () => { throw new Error("systemd-run failed"); })).result).toMatchObject({ state: "stopped", queued: null });
+  // A legacy capture's job is queued the same way.
+  const legacyQueued: string[] = [];
+  const legacy = await stopCapture(fast, { queueFastPath: true }, {
+    sessionStore: { read: async () => null }, readLegacyState: async () => ({ backend: "gnome" }) as never,
+    stopLegacy: async () => ({ state: {} as never, videoPath: "/tmp/legacy.webm", endedAt: "x", job: { id: session.id } as never }),
+    queueJob: async (id) => { legacyQueued.push(id); return { status: "queued" }; }
+  });
+  expect(legacy).toMatchObject({ state: "stopped", queued: "queued" });
+  expect(legacyQueued).toEqual([session.id]);
 });

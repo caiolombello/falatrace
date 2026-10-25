@@ -786,6 +786,8 @@ const main = async (): Promise<void> => {
           }
           if (legacy.warning) console.warn(legacy.warning);
           console.log(`Recording stopped: ${legacy.videoPath}`);
+          const { queueFastPathJob } = await import("../recording/application");
+          if (await queueFastPathJob(config, legacy.job)) console.log(`Processing started: ${legacy.job?.id}`);
           break;
         } catch (err) {
           console.error(err instanceof Error ? err.message : String(err));
