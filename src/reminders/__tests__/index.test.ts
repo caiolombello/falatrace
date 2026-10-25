@@ -139,6 +139,13 @@ const sent = (mode: ReminderRecordingMode, actions: Array<[string, string]>, ext
 const RECORD_LATER: Array<[string, string]> = [["record", "Gravar"], ["later", "Agora não"], ["brief", "Ver resumo anterior"]];
 const SKIP_OK: Array<[string, string]> = [["skip", "Pular esta gravação"], ["ok", "OK"]];
 
+/** No call detection, with a capture backend that runs in its own unit (the helper may start it). */
+const managed = (backend: AppConfig["backend"] = "audio"): AppConfig => {
+  const value = config();
+  value.backend = backend;
+  return value;
+};
+
 /** The configuration when the button is pressed: a call monitor watching calls, or no call detection. */
 const monitored = (mode: "notify-only" | "record" = "notify-only"): AppConfig => {
   const value = config();
@@ -157,7 +164,7 @@ describe("handleReminderNotification", () => {
     const result = await handleReminderNotification(HASH, {
       stateDir,
       now: () => now,
-      config: entry.recordingMode === "off" ? config() : monitored(entry.recordingMode === "record" ? "record" : "notify-only"),
+      config: entry.recordingMode === "off" ? managed() : monitored(entry.recordingMode === "record" ? "record" : "notify-only"),
       notify: async (options) => { shown.push(options); return options.actions.length ? choice : null; },
       open: async (uri) => { opened.push(uri); },
       startCapture: async (current, title) => { captures.push({ title, config: current }); },
@@ -202,6 +209,25 @@ describe("handleReminderNotification", () => {
     expect(captures.map((capture) => capture.title)).toEqual(["Revisão semanal"]);
     expect(opened).toEqual(["falatrace://capture"]);
     expect(await activeOverride(new Date(at(31)), { stateDir })).toBeUndefined();
+  });
+
+  test("a legacy backend, whose capture would die with the helper's unit, only opens the Studio's capture page", async () => {
+    // "simple" without OBS picks the GNOME screencast or wf-recorder: children of the caller, not units of their own.
+    for (const current of [config(), managed("gnome"), managed("wf-recorder"), managed("hybrid"), managed("ffmpeg-only")]) {
+      const { stateDir, result, opened, captures } = await setup(sent("off", RECORD_LATER), "record", at(28), { config: current });
+      expect(result).toEqual({ shown: true, choice: "record", opened: "falatrace://capture" });
+      expect(captures).toEqual([]);
+      expect(opened).toEqual(["falatrace://capture"]);
+      expect(await activeOverride(new Date(at(31)), { stateDir })).toBeUndefined();
+    }
+    // Managed captures (audio, GPU Screen Recorder, OBS, and "simple" with OBS on) start from the helper.
+    const withObs = config();
+    withObs.obs.enabled = true;
+    for (const current of [managed("gpu-screen-recorder"), managed("obs"), managed("obs-ws"), withObs]) {
+      const { result, captures } = await setup(sent("off", RECORD_LATER), "record", at(28), { config: current });
+      expect(result).toMatchObject({ choice: "record", capture: "started" });
+      expect(captures.map((capture) => capture.title)).toEqual(["Revisão semanal"]);
+    }
   });
 
   test("the configuration at click time decides: a monitor enabled since the reminder gets a decision", async () => {

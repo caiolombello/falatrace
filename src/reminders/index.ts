@@ -178,11 +178,23 @@ const defaultStartCapture = async (config: AppConfig, title: string): Promise<un
   (await import("../recording/application")).startCapture(config, { title });
 
 /**
+ * Whether a capture started by this helper keeps running after it exits. Managed captures (audio,
+ * GPU Screen Recorder, OBS) run in their own user unit or in OBS. The legacy backends (GNOME
+ * screencast, wf-recorder, which "simple" picks when OBS is off) run as children of the caller,
+ * and the helper's transient unit would stop them as soon as the helper returns.
+ */
+export const captureOutlivesReminderHelper = async (config: AppConfig): Promise<boolean> => {
+  if (config.backend === "simple") return config.obs.enabled === true;
+  return (await import("../recording/capabilities")).sharedControllerBackend(config) !== null;
+};
+
+/**
  * `notify reminder --event <hash>`: show the reminder the service recorded for this event and apply
  * the button. "skip" saves a decision for this meeting. "record" saves a decision when the call
  * monitor runs (it records the meeting's call); without call detection nothing would act on a
  * decision, so a manual capture named after the meeting starts right away and the Studio opens on
- * it. "brief" opens the event in the Studio. Nothing is shown for an unknown event or a meeting
+ * it (with a legacy backend, whose capture would not outlive this helper, only the Studio's capture
+ * page opens). "brief" opens the event in the Studio. Nothing is shown for an unknown event or a meeting
  * that already ended.
  */
 export const handleReminderNotification = async (eventIdHash: string, deps: ReminderNotificationDeps = {}): Promise<ReminderNotificationResult> => {
@@ -207,7 +219,9 @@ export const handleReminderNotification = async (eventIdHash: string, deps: Remi
     const config = deps.config ?? await (deps.loadConfig ?? defaultLoadConfig)().catch(() => undefined);
     const monitored = config ? effectiveRecordingMode(config) !== "off" : entry.recordingMode !== "off";
     if (!monitored) {
-      if (!config) {
+      // Without the configuration, or with a backend whose capture would die with this helper, the
+      // Studio's capture page starts it instead (the Studio keeps such captures alive).
+      if (!config || !await captureOutlivesReminderHelper(config)) {
         await open("falatrace://capture");
         return { shown: true, choice, opened: "falatrace://capture" };
       }
