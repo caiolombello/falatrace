@@ -132,7 +132,7 @@ describe("createReminderBrief", () => {
 const sent = (mode: ReminderRecordingMode, actions: Array<[string, string]>, extra: Partial<SentReminder> = {}): SentReminder => ({
   eventIdHash: HASH, startAt: iso(30), endAt: iso(60), title: "Revisão semanal", source: "google-calendar", recurring: true, sentAt: iso(28),
   recordingMode: mode,
-  notification: { title: "Em 2 min: Revisão semanal", body: "13:30–14:00\nTexto.", actions: actions.map(([id, label]) => ({ id, label })) },
+  notification: { title: "Revisão semanal em 2 min", body: "13:30–14:00\nTexto.", actions: actions.map(([id, label]) => ({ id, label })) },
   ...extra
 });
 
@@ -170,7 +170,7 @@ describe("handleReminderNotification", () => {
     const { shown, result } = await setup(sent("notify-only", RECORD_LATER), null);
     expect(result).toEqual({ shown: true, choice: null });
     expect(shown).toEqual([{
-      title: "Em 2 min: Revisão semanal", body: "13:30–14:00\nTexto.",
+      title: "Revisão semanal em 2 min", body: "13:30–14:00\nTexto.",
       actions: [{ id: "record", label: "Gravar" }, { id: "later", label: "Agora não" }, { id: "brief", label: "Ver resumo anterior" }],
       timeoutMs: 12 * 60_000, signal: undefined
     }]);

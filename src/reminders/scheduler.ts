@@ -56,9 +56,9 @@ export type ReminderActionId = (typeof REMINDER_ACTION_IDS)[number];
 
 const TEXT = {
   "pt-BR": {
-    soon: (minutes: number, title: string) => `Em ${minutes} min: ${title}`,
-    now: (title: string) => `Começando agora: ${title}`,
-    started: (title: string) => `Já começou: ${title}`,
+    soon: (minutes: number, title: string) => `${title} em ${minutes} min`,
+    now: (title: string) => `${title} começa agora`,
+    started: (title: string) => `${title} já começou`,
     mode: {
       off: "A gravação automática está desligada.",
       "notify-only": "Esta reunião não será gravada automaticamente.",
@@ -69,9 +69,9 @@ const TEXT = {
     actions: { record: "Gravar", later: "Agora não", brief: "Ver resumo anterior", skip: "Pular esta gravação", ok: "OK" }
   },
   en: {
-    soon: (minutes: number, title: string) => `In ${minutes} min: ${title}`,
-    now: (title: string) => `Starting now: ${title}`,
-    started: (title: string) => `Already started: ${title}`,
+    soon: (minutes: number, title: string) => `${title} in ${minutes} min`,
+    now: (title: string) => `${title} starts now`,
+    started: (title: string) => `${title} already started`,
     mode: {
       off: "Automatic recording is off.",
       "notify-only": "This meeting will not be recorded automatically.",

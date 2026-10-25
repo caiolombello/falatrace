@@ -140,20 +140,20 @@ describe("notification content", () => {
     const content = buildReminderNotification({
       event: meeting, now: at(28), mode: "notify-only", briefLines: ["Ações abertas: 2", "", "Última decisão: X", "L3", "L4"], language: "pt-BR", timeZone: "America/Sao_Paulo"
     });
-    expect(content.title).toBe("Em 2 min: Revisão <b>semanal</b>");
+    expect(content.title).toBe("Revisão <b>semanal</b> em 2 min");
     expect(content.body.split("\n")).toEqual(["10:30–11:00", "Esta reunião não será gravada automaticamente.", "Ações abertas: 2", "Última decisão: X", "L3"]);
     expect(content.actions.map((action) => action.id)).toEqual(["record", "later", "brief"]);
   });
 
   test("starting now, already started, other modes and English", () => {
     const now = buildReminderNotification({ event: meeting, now: at(29.6), mode: "record", timeZone: "UTC" });
-    expect(now.title).toBe("Começando agora: Revisão <b>semanal</b>");
+    expect(now.title).toBe("Revisão <b>semanal</b> começa agora");
     expect(now.body.split("\n")).toEqual(["13:30–14:00", "Esta reunião será gravada automaticamente."]);
     expect(now.actions.map((action) => action.id)).toEqual(["skip", "ok"]);
-    expect(buildReminderNotification({ event: meeting, now: at(33), mode: "paused", timeZone: "UTC" }).title).toBe("Já começou: Revisão <b>semanal</b>");
+    expect(buildReminderNotification({ event: meeting, now: at(33), mode: "paused", timeZone: "UTC" }).title).toBe("Revisão <b>semanal</b> já começou");
     expect(buildReminderNotification({ event: meeting, now: at(33), mode: "paused", timeZone: "UTC" }).body).toContain("pausada");
     const english = buildReminderNotification({ event: meeting, now: at(25), mode: "off", language: "en", timeZone: "UTC" });
-    expect(english.title).toBe("In 5 min: Revisão <b>semanal</b>");
+    expect(english.title).toBe("Revisão <b>semanal</b> in 5 min");
     expect(english.body).toContain("Automatic recording is off.");
     expect(english.body).not.toMatch(/[  ]/);
     expect(english.actions.map((action) => action.label)).toEqual(["Record", "Not now"]);
@@ -165,7 +165,7 @@ describe("notification content", () => {
 const sentEntry = (id: string, start: number, sentAt: number, extra: Partial<SentReminder> = {}): SentReminder => ({
   eventIdHash: hashOf(id), startAt: iso(start), endAt: iso(start + 30), title: `Reunião ${id}`, source: "google-calendar", recurring: false,
   sentAt: iso(sentAt), recordingMode: "notify-only",
-  notification: { title: `Em 2 min: Reunião ${id}`, body: "13:30–14:00\nEsta reunião não será gravada automaticamente.", actions: [{ id: "record", label: "Gravar" }, { id: "later", label: "Agora não" }] },
+  notification: { title: `Reunião ${id} em 2 min`, body: "13:30–14:00\nEsta reunião não será gravada automaticamente.", actions: [{ id: "record", label: "Gravar" }, { id: "later", label: "Agora não" }] },
   ...extra
 });
 
@@ -292,12 +292,12 @@ describe("the reminder loop", () => {
     const loop = harness({ stateDir, start: at(0), calendar: () => [event("a", 30, 60)] });
     await loop.run(at(90));
     expect(loop.notified.map((reminder) => [reminder.at, reminder.event.title, reminder.recordingMode])).toEqual([[at(28), "Reunião a", "off"]]);
-    expect(loop.notified[0].notification.title).toBe("Em 2 min: Reunião a");
+    expect(loop.notified[0].notification.title).toBe("Reunião a em 2 min");
     expect(loop.notified[0].notification.actions.map((action) => action.id)).toEqual(["record", "later"]);
     expect(loop.lists.slice(0, 7)).toEqual([at(0), at(5), at(10), at(15), at(20), at(25), at(28)]);
     expect(Math.max(...loop.sleeps)).toBeLessThanOrEqual(REMINDER_TIMING.pollMs);
     expect(loop.errors).toEqual([]);
-    expect((await findSentReminder(hashOf("a"), { stateDir, now: at(30) }))?.notification.title).toBe("Em 2 min: Reunião a");
+    expect((await findSentReminder(hashOf("a"), { stateDir, now: at(30) }))?.notification.title).toBe("Reunião a em 2 min");
   });
 
   test("a restart never repeats a reminder that was already shown", async () => {
@@ -313,13 +313,13 @@ describe("the reminder loop", () => {
   test("a meeting starting within the lead time when the service starts is announced at once", async () => {
     const loop = harness({ stateDir: await tempDir(), start: at(0), calendar: () => [event("a", 1, 30)] });
     await loop.run(at(10));
-    expect(loop.notified.map((reminder) => [reminder.at, reminder.notification.title])).toEqual([[at(0), "Em 1 min: Reunião a"]]);
+    expect(loop.notified.map((reminder) => [reminder.at, reminder.notification.title])).toEqual([[at(0), "Reunião a em 1 min"]]);
   });
 
   test("a meeting that started up to 5 minutes before the service started is still announced; older ones are not", async () => {
     const loop = harness({ stateDir: await tempDir(), start: at(0), calendar: () => [event("recent", -3, 30), event("old", -6, 30)] });
     await loop.run(at(10));
-    expect(loop.notified.map((reminder) => [reminder.event.title, reminder.notification.title])).toEqual([["Reunião recent", "Já começou: Reunião recent"]]);
+    expect(loop.notified.map((reminder) => [reminder.event.title, reminder.notification.title])).toEqual([["Reunião recent", "Reunião recent já começou"]]);
   });
 
   test("a meeting moved before its reminder is announced at the new time only", async () => {
