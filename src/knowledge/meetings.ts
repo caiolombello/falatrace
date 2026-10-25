@@ -202,6 +202,10 @@ const readValidated = async (job: JobRecord) => {
     transcriptPath: artifact.path, transcriptProvenance: artifact.provenance };
 };
 
+/** The validated artifacts of one job (reviewed view, current summary, transcript), as search and context read them. */
+export type MeetingArtifacts = Awaited<ReturnType<typeof readValidated>>;
+export const readMeetingArtifacts = (job: JobRecord): Promise<MeetingArtifacts> => readValidated(job);
+
 const summaryText = (summary: RecordingSummary): string =>
   [summary.title, summary.overview, ...summary.topics, ...summary.decisions,
     ...summary.actionItems.flatMap((item) => [item.description, item.owner, item.dueDate])]
