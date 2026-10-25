@@ -83,7 +83,10 @@
 			"src/people/**",
 			"src/clients/**",
 			"src/actions/**",
-			"src/brief/**"
+			"src/brief/**",
+			"src/recipes/**",
+			"src/share/**",
+			"src/destinations/**"
 		]
 	},
 	"formatter": { "enabled": false },

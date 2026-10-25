@@ -95,12 +95,14 @@ export const buildTerminalLaunchArgs = (
   terminal: (typeof terminalCandidates)[number],
   command: string[],
   unitSuffix: string,
-  env: NodeJS.ProcessEnv = process.env
+  env: NodeJS.ProcessEnv = process.env,
+  workingDirectory?: string
 ): string[] => [
   "--user",
   "--quiet",
   "--collect",
   `--unit=recording-cli-terminal-${unitSuffix}`,
+  ...(workingDirectory ? [`--working-directory=${workingDirectory}`] : []),
   ...transientUnitEnvironment(env),
   "--",
   ...transientCommand([terminal.path, ...terminal.args, ...command])
@@ -167,7 +169,8 @@ export const launchRecordingStudio = async (
   }
 };
 
-const launchInTerminal = async (command: string[]): Promise<void> => {
+/** Opens a terminal window running `command`, optionally in `options.workingDirectory`. */
+export const launchInTerminal = async (command: string[], options: { workingDirectory?: string } = {}): Promise<void> => {
   const terminal = await findTerminal();
   // The tray runs with ProtectHome=read-only. Ask the user manager to create
   // the terminal outside that mount namespace so the TUI can safely update
@@ -175,7 +178,9 @@ const launchInTerminal = async (command: string[]): Promise<void> => {
   const child = spawn("/usr/bin/systemd-run", buildTerminalLaunchArgs(
     terminal,
     command,
-    `${process.pid}-${Date.now()}`
+    `${process.pid}-${Date.now()}`,
+    process.env,
+    options.workingDirectory
   ), {
     detached: true,
     stdio: "ignore"
