@@ -69,7 +69,8 @@
 			"src/assistant/citations.ts",
 			"src/assistant/prompts.ts",
 			"src/assistant/threads.ts",
-			"src/assistant/runner.ts"
+			"src/assistant/runner.ts",
+			"src/live/**"
 		]
 	},
 	"formatter": { "enabled": false },

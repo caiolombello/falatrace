@@ -5,49 +5,18 @@ import { JOB_VERSION, type Transcript, type TranscriptSegment } from "../jobs/ty
 import { runCommand } from "../jobs/command";
 import { extractAudioWav } from "../jobs/media";
 
-type WhisperJson = {
+export type WhisperJson = {
   result?: { language?: unknown };
   transcription?: unknown;
 };
 
-export const transcribeWithWhisperCpp = async (
-  config: AppConfig,
-  sourcePath: string,
-  workDir: string,
-  model: string,
-  language: string,
-  signal?: AbortSignal
-): Promise<Transcript> => {
-  signal?.throwIfAborted();
-  const whisper = config.transcription.whisperCpp;
-  await fs.access(whisper.modelPath);
-  const audioPath = await extractAudioWav(sourcePath, workDir, signal);
-  const outputPrefix = join(workDir, "whisper");
-  await runCommand(
-    whisper.command,
-    [
-      "-m",
-      whisper.modelPath,
-      "-f",
-      audioPath,
-      "-l",
-      language,
-      "-t",
-      String(whisper.threads),
-      "-oj",
-      "-of",
-      outputPrefix
-    ],
-    { timeoutMs: 12 * 60 * 60 * 1000, signal }
-  );
-
-  signal?.throwIfAborted();
-  const parsed = JSON.parse(await fs.readFile(`${outputPrefix}.json`, "utf-8")) as WhisperJson;
+/** Validated segments of a `whisper-cli -oj` file, in seconds. The live transcript reads the same format. */
+export const parseWhisperCppSegments = (parsed: WhisperJson): TranscriptSegment[] => {
   if (!Array.isArray(parsed.transcription) || parsed.transcription.length > 100_000) {
     throw new Error("whisper.cpp output did not include transcription segments");
   }
   let speakerIndex = 1;
-  const segments: TranscriptSegment[] = parsed.transcription.map((value) => {
+  return parsed.transcription.map((value) => {
     if (typeof value !== "object" || value === null) {
       throw new Error("whisper.cpp returned an invalid segment");
     }
@@ -83,6 +52,42 @@ export const transcribeWithWhisperCpp = async (
     }
     return result;
   });
+};
+
+export const transcribeWithWhisperCpp = async (
+  config: AppConfig,
+  sourcePath: string,
+  workDir: string,
+  model: string,
+  language: string,
+  signal?: AbortSignal
+): Promise<Transcript> => {
+  signal?.throwIfAborted();
+  const whisper = config.transcription.whisperCpp;
+  await fs.access(whisper.modelPath);
+  const audioPath = await extractAudioWav(sourcePath, workDir, signal);
+  const outputPrefix = join(workDir, "whisper");
+  await runCommand(
+    whisper.command,
+    [
+      "-m",
+      whisper.modelPath,
+      "-f",
+      audioPath,
+      "-l",
+      language,
+      "-t",
+      String(whisper.threads),
+      "-oj",
+      "-of",
+      outputPrefix
+    ],
+    { timeoutMs: 12 * 60 * 60 * 1000, signal }
+  );
+
+  signal?.throwIfAborted();
+  const parsed = JSON.parse(await fs.readFile(`${outputPrefix}.json`, "utf-8")) as WhisperJson;
+  const segments = parseWhisperCppSegments(parsed);
 
   return {
     version: JOB_VERSION,
