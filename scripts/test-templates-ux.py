@@ -127,7 +127,12 @@ PLANS = {
         ('open again', PICKER, '''
     const picker = detailView.templatePicker
     uxFind(picker.contentItem, "templateOption-postmortem").clicked()
-    check("a click chooses without applying", picker.chosen === "postmortem" && picker.visible && summaryStage === "")''')]),
+    check("a click chooses without applying", picker.chosen === "postmortem" && picker.visible && summaryStage === "")
+    picker.prefs = ({})
+    send("summary-prefs-read", picker.prefsKey, ({}), {origin: "templates", pickerGeneration: picker.pickerGeneration})
+    summaryGeneration += 1'''),
+        ('prefs routed', 'typeof detailView.templatePicker.prefs.rev === "number"', '''
+    check("summary-prefs replies go to the picker, not to the notes generation guard", detailView.templatePicker.prefs.id === "''' + JOB + '''")''')]),
     'local': ('1320x820', False, [OPEN[:2] + (OPEN[2] + '''
     uxFind(detailView.notesDocument, "templateChip").clicked()''',),
         ('picker open', PICKER, '''
@@ -258,7 +263,7 @@ plan = payloads('local', 'summary-plan')
 run = payloads('local', 'summary-run')
 checks += [
     {'name': 'picker: templates and the saved choice are read once; nothing is saved or planned before applying',
-     'pass': len(sent('picker', 'templates-list')) == 1 and [q['key'] for q in sent('picker', 'summary-prefs-read')] == [JOB, JOB]
+     'pass': len(sent('picker', 'templates-list')) == 1 and [q['key'] for q in sent('picker', 'summary-prefs-read')] == [JOB, JOB, JOB]
      and not sent('picker', 'summary-prefs-save') and not sent('picker', 'summary-plan')},
     {'name': 'local: the choice is saved for the meeting with its revision',
      'pass': [(q['key'], q['payload']) for q in sent('local', 'summary-prefs-save')] == [(JOB, {'expectedRev': 0, 'templateId': 'postmortem'})]},
