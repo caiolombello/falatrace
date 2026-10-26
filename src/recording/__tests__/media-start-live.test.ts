@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { DEFAULT_CONFIG } from "../../config/defaults";
 import { runCommand } from "../../jobs/command";
 import { notesCaptureReference } from "../../notes/capture";
+import { NotesStore } from "../../notes/store";
 import { readActivity } from "../../runtime/heavy-admission";
 import { type LiveTranscriptUnits, RecordingController } from "../controller";
 import { captureMediaStartedAt, RecordingSessionStore } from "../session";
@@ -150,4 +151,27 @@ test("notes typed during a capture use its media start, and its end once stopped
   expect(notesCaptureReference(session)).toEqual({ id: ID, mediaStartedAt: "2026-10-25T10:00:04.000Z", sourcePath: session.outputPath });
   expect(notesCaptureReference({ ...session, mediaStartedAt: undefined })).toEqual({ id: ID, mediaStartedAt: session.startedAt, sourcePath: session.outputPath });
   expect(notesCaptureReference({ ...session, phase: "stopped", endedAt: "2026-10-25T11:00:00.000Z" }).mediaEndedAt).toBe("2026-10-25T11:00:00.000Z");
+});
+
+test("stopping a capture stores where its media ends on its notes, so a line typed long after it is untimed", async () => {
+  const { root, store, config } = await setup(false);
+  const id = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  try {
+    const recorder = new RecordingController(config, "manual", store, fakeCapture([]), fakeLive([]));
+    expect(await recorder.start({ sessionId: id })).toBe("started");
+    const notes = new NotesStore();
+    const reference = notesCaptureReference((await store.read())!);
+    // Typed during the capture (as the Studio saves it, with the capture's reference).
+    await notes.save(id, { text: "durante a reunião", expectedRev: 0, mediaStartedAt: reference.mediaStartedAt, sourcePath: reference.sourcePath });
+    const stopped = await recorder.stop(id);
+    await recorder.acknowledge(id);
+    expect(await store.read()).toBeNull();
+    const stored = await notes.read(id);
+    expect(stored?.mediaEndedAt).toBe(stopped!.endedAt);
+    expect(stored?.rev).toBe(1);
+    // Ten minutes later, from the meeting page: the session is gone, so the save carries no reference.
+    const later = await notes.save(id, { text: "durante a reunião\nlembrei depois", expectedRev: 1, now: new Date(Date.parse(stopped!.endedAt!) + 10 * 60_000) });
+    expect(later.entries[0]!.offsetSeconds).not.toBeNull();
+    expect(later.entries[1]!.offsetSeconds).toBeNull();
+  } finally { await fs.rm(root, { recursive: true, force: true }); }
 });

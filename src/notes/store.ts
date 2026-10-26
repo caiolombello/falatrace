@@ -300,6 +300,33 @@ export class NotesStore {
     }
   }
 
+  /**
+   * Records where the media of the capture these notes belong to ends (the capture stopped), so a
+   * line typed long after it is not placed on its timeline; timed lines are clamped to the end like a
+   * save would. Not an edit: the revision stays, so a notepad still open saves without a conflict
+   * (a save keeps the stored end). Writes nothing when there are no notes or the end is already stored,
+   * and ignores an end before the media start.
+   */
+  async setMediaEnd(id: string, endedAt: string): Promise<MeetingNotes | undefined> {
+    const safeId = normalizeNotesId(id);
+    const mediaEndedAt = optionalTime(endedAt) as string;
+    // Most captures have no notes: no lock, no file.
+    if (!await this.read(safeId)) return undefined;
+    const lease = await this.lock(safeId);
+    try {
+      const current = await this.read(safeId);
+      if (!current || current.mediaEndedAt === mediaEndedAt) return current;
+      if (current.mediaStartedAt && Date.parse(mediaEndedAt) < Date.parse(current.mediaStartedAt)) return current;
+      const next: MeetingNotes = { ...current, mediaEndedAt, entries: rebaseNoteOffsets(current.entries, current.mediaStartedAt, mediaEndedAt) };
+      validateMeetingNotes(next, safeId);
+      await this.checkRoot(true);
+      await writePrivateJson(join(this.root, `${safeId}.json`), next);
+      return next;
+    } finally {
+      await lease.release();
+    }
+  }
+
   /** Deletes the notes; false when there were none. */
   async remove(id: string): Promise<boolean> {
     const safeId = normalizeNotesId(id);

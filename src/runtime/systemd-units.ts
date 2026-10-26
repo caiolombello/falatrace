@@ -106,11 +106,11 @@ export const persistentUnitEnvironment = (env: NodeJS.ProcessEnv = process.env, 
  * the FalaTrace folders under XDG_STATE_HOME and XDG_DATA_HOME, each optional ("-") so a folder that
  * does not exist yet never stops the unit. Empty when neither is set.
  */
-export const persistentUnitWritablePaths = (folders: Array<"state" | "data" | "data/jobs" | "data/calendar-links">, env: NodeJS.ProcessEnv = process.env): string => {
+export const persistentUnitWritablePaths = (folders: Array<"state" | "data" | "data/jobs" | "data/calendar-links" | "data/notes">, env: NodeJS.ProcessEnv = process.env): string => {
   const directories = Object.fromEntries(xdgDirectories(env));
   return folders.flatMap((folder) => {
     const base = folder === "state" ? directories.XDG_STATE_HOME : directories.XDG_DATA_HOME;
-    const sub = folder === "data/jobs" ? "jobs" : folder === "data/calendar-links" ? "calendar-links" : "";
+    const sub = folder === "data/jobs" ? "jobs" : folder === "data/calendar-links" ? "calendar-links" : folder === "data/notes" ? "notes" : "";
     return base ? [` ${quoteSystemd(`-${join(base, "recording-cli", sub)}`.replace(/\/$/, ""))}`] : [];
   }).join("");
 };

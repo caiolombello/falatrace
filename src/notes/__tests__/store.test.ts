@@ -249,6 +249,29 @@ describe("NotesStore.save and read", () => {
     await expect(store.save(id, { text: "durante", expectedRev: 2, mediaStartedAt: at(3500).toISOString() })).rejects.toThrow(NOTES_ERRORS.invalidMediaTime);
   });
 
+  test("the capture's stop stores its media end without a new revision; later lines are then untimed", async () => {
+    const id = randomUUID();
+    // Most captures have no notes: nothing is created for them.
+    expect(await store.setMediaEnd(id, at(3000).toISOString())).toBeUndefined();
+    expect(await fs.stat(root).catch(() => undefined)).toBeUndefined();
+    await store.save(id, { text: "durante", expectedRev: 0, now: at(60), mediaStartedAt: START });
+    // A line saved a moment after the stop, before the end was known, is clamped to the end like a save would.
+    await store.save(id, { text: "durante\nlogo depois", expectedRev: 1, now: at(3050), mediaStartedAt: START });
+    const ended = await store.setMediaEnd(id, at(3000).toISOString());
+    expect(ended).toMatchObject({ rev: 2, mediaStartedAt: START, mediaEndedAt: at(3000).toISOString() });
+    expect(ended?.entries.map((entry) => entry.offsetSeconds)).toEqual([60, 3000]);
+    expect(await store.read(id)).toEqual(ended);
+    // The notepad still open saves on the revision it had: no conflict, and the end is kept.
+    const later = await store.save(id, { text: "durante\nlogo depois\ndez minutos depois", expectedRev: 2, now: at(3600) });
+    expect(later.rev).toBe(3);
+    expect(later.mediaEndedAt).toBe(at(3000).toISOString());
+    expect(later.entries.map((entry) => entry.offsetSeconds)).toEqual([60, 3000, null]);
+    // The same end again writes nothing; an end before the media start is ignored.
+    expect(await store.setMediaEnd(id, at(3000).toISOString())).toEqual(later);
+    expect(await store.setMediaEnd(id, at(-10).toISOString())).toEqual(later);
+    expect(await store.read(id)).toEqual(later);
+  });
+
   test("a busy lock is retried, then reported; other lock failures surface as they are", async () => {
     let attempts = 0;
     const busy = new NotesStore(root, {

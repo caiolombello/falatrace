@@ -19,6 +19,7 @@ import { captureProcessMatches, findFlatpakCapture } from "./flatpak-capture";
 import { ArchiveStore } from "../archive/store";
 import { LiveStore } from "../live/store";
 import { startLiveUnit, stopLiveUnit } from "../live/unit";
+import { NotesStore } from "../notes/store";
 
 /**
  * The live transcript worker that runs next to a capture (a transient user unit). It is a preview:
@@ -77,7 +78,9 @@ export class RecordingController {
     private readonly owner: RecordingSession["owner"],
     readonly store = new RecordingSessionStore(),
     private readonly run = runCommand,
-    private readonly live: LiveTranscriptUnits = defaultLiveTranscriptUnits
+    private readonly live: LiveTranscriptUnits = defaultLiveTranscriptUnits,
+    /** Stores where the capture's media ends on the notes typed during it (they are keyed by the session id). */
+    private readonly notesMediaEnd: (id: string, endedAt: string) => Promise<unknown> = (id, endedAt) => new NotesStore().setMediaEnd(id, endedAt)
   ) {}
 
   ownsRecording(): boolean { return this.session?.owner === this.owner; }
@@ -365,6 +368,9 @@ export class RecordingController {
         await this.store.write(session);
       }
       this.session = session;
+      // Before the session is acknowledged (and gone): notes typed later are then not put on the timeline.
+      // Every stop path (Studio, CLI, call monitor) comes here; a failure never fails the stop.
+      if (session.endedAt) await this.notesMediaEnd(session.id, session.endedAt).catch((error) => liveWarning("notes.media-end-failed", session.id, error));
       if (this.config.archive.enabled) {
         await new ArchiveStore().enqueue(session.outputPath, { id: session.id, createdAt: session.startedAt });
       }
