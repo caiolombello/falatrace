@@ -64,6 +64,8 @@ const digest = (value: unknown): value is string => typeof value === "string" &&
 const requestId = (id: string): string => { if (typeof id !== "string" || !/^[a-zA-Z0-9_-]{1,80}$/.test(id)) throw Error("Invalid reviewed summary request id"); return id; };
 export const getReviewedSummaryRoot = (): string => join(process.env.XDG_DATA_HOME || join(homedir(), ".local/share"), "recording-cli/reviewed-summaries");
 export const getReviewedSummaryJobDir = (jobId: string): string => join(getReviewedSummaryRoot(), validateJobId(jobId));
+/** The lease a regeneration holds from before its first "running" write until it ends; a "running" status without it is a stale leftover. */
+export const reviewedSummaryLeaseName = (root: string, jobId: string, id: string): string => `reviewed-summary-${hash({ root, job: jobId, request: id }).slice(0, 32)}`;
 const planPath = (jobId: string, id: string): string => join(getReviewedSummaryJobDir(jobId), "plans", `${requestId(id)}.json`);
 const resultPath = (jobId: string, id: string): string => join(getReviewedSummaryJobDir(jobId), "results", `${requestId(id)}.json`);
 const sourceIdentity = (job: JobRecord): string => hash({ id: job.id, source: job.source, sourcePath: job.sourcePath, artifactDir: job.artifactDir, target: job.target, transcription: job.transcription, summary: job.summary });
@@ -332,7 +334,7 @@ export const regenerateReviewedSummary = async (job: JobRecord, input: { request
   // Admission precedes all request/revision leases and protects real and injected adapters alike.
   return withHeavyAdmission("pipeline", job.id, async () => {
   // The request lease is distinct from the revision lease; human edits remain possible during inference.
-  const lease = await acquireSingleton(`reviewed-summary-${hash({ root: getReviewedSummaryRoot(), job: job.id, request: input.requestId }).slice(0, 32)}`);
+  const lease = await acquireSingleton(reviewedSummaryLeaseName(getReviewedSummaryRoot(), job.id, input.requestId));
   try {
     const plan = await withRevisionLease(job.id, async () => {
       const { index } = await readIndex(job.id), state = stateFor(index, input.requestId), plan = await readPlan(job.id, input.requestId, state);

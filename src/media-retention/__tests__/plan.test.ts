@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { DiarizationStore } from "../../diarization/store";
 import { acquireSingleton } from "../../runtime/singleton";
 import { SpeakerSuggestionStore } from "../../speakers/store";
+import { reviewedSummaryLeaseName } from "../../summary/reviewed";
 import { type MediaRetentionBlockerCode, type MediaRetentionPlan, defaultLeaseHeld, diarizationUnitName, planMediaRetention, processLeaseName, speakersUnitName } from "../plan";
 import { MEDIA_RETENTION_MESSAGES, MediaRetentionStore, serializeTombstone, tombstonePathOf } from "../store";
 import { DAY, THREE_TRACKS, archiveRecord, createFixture, fakeRunner, sha, treeHashes, writeDerivedCopies, writeSpeakerWork, type Fixture } from "./fixture";
@@ -191,7 +192,14 @@ describe("2. no capture or in-flight media work", () => {
     const index = join(fixture.root, "data/reviewed-summaries", fixture.job.id, "index.json");
     await fs.mkdir(join(index, ".."), { recursive: true, mode: 0o700 });
     await fs.writeFile(index, JSON.stringify({ version: 1, jobId: fixture.job.id, sequence: 0, requests: [{ requestId: "r1", planSha256: sha("p"), status: "running", requestsSpent: 1 }] }));
+    fixture.held.add(reviewedSummaryLeaseName(join(fixture.root, "data/reviewed-summaries"), fixture.job.id, "r1"));
     await blockedOnlyBy(fixture, "summary-running");
+    // A failed, abandoned or crashed regeneration leaves "running" behind without its request lease: no live work.
+    fixture.held.clear();
+    expect((await plan(fixture)).eligible).toBe(true);
+    expect((await plan(fixture, { reason: "manual" })).eligible).toBe(true);
+    await fs.writeFile(index, JSON.stringify({ version: 1, jobId: fixture.job.id, sequence: 0, requests: [{ requestId: "../r1", planSha256: sha("p"), status: "running", requestsSpent: 1 }] }));
+    await blockedOnlyBy(fixture, "summary-state-unreadable");
     await fs.writeFile(index, JSON.stringify({ version: 1, jobId: fixture.job.id, sequence: 0, requests: [{ requestId: "r1", planSha256: sha("p"), status: "cancelled", requestsSpent: 1 }] }));
     expect((await plan(fixture)).eligible).toBe(true);
     await fs.writeFile(index, "{broken");

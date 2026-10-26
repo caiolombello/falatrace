@@ -12,7 +12,8 @@ import { withContextPublicationLease, aiContextRoot, readContextInvalidation } f
 import { DiarizationStore, transcriptChecksum } from "../../diarization/store";
 import { getRecordingStateDir } from "../../recording/session";
 import { readHeavyStatus } from "../../runtime/heavy-admission";
-import { cancelReviewedSummary, getReviewedSummaryJobDir, getReviewedSummaryRoot, planReviewedSummary, readReviewedSummary, readCurrentReviewedSummary, regenerateReviewedSummary, reviewedSummaryProviderForConfig, type ReviewedSummaryAdapter, type ReviewedSummaryProvider } from "../reviewed";
+import { cancelReviewedSummary, getReviewedSummaryJobDir, getReviewedSummaryRoot, planReviewedSummary, readReviewedSummary, readCurrentReviewedSummary, regenerateReviewedSummary, reviewedSummaryLeaseName, reviewedSummaryProviderForConfig, type ReviewedSummaryAdapter, type ReviewedSummaryProvider } from "../reviewed";
+import { isSingletonHeld } from "../../runtime/singleton";
 import { attachSummarySupport, buildSummaryEvidence, summaryTranscriptEvidenceSha256 } from "../evidence";
 import { planSummaryChunks } from "../chunks";
 import { SUMMARY_JSON_SCHEMA, SUMMARY_SYSTEM_PROMPT } from "../schema";
@@ -147,6 +148,17 @@ test("exhausted requests never invoke a retry or reset counters", async () => {
   const f = await fixture(), p = await f.plan("failed"); let calls = 0;
   const options = { requestId: p.requestId, config: f.config, consent: true, consentKey: p.consentKey, adapter: { identity, summarize: async () => { calls++; throw Error("fixture failed"); } } };
   await expect(regenerateReviewedSummary(f.job, options)).rejects.toThrow("fixture failed"); await expect(regenerateReviewedSummary(f.job, options)).rejects.toThrow("budget exhausted"); expect(calls).toBe(1); await absentResults(f.dir);
+});
+
+test("the request lease covers the running window; a failure leaves \"running\" without it", async () => {
+  // Media retention counts a "running" request as live work only while this lease is held.
+  const f = await fixture(), p = await f.plan("lease"), name = reviewedSummaryLeaseName(getReviewedSummaryRoot(), f.job.id, p.requestId);
+  const status = async () => JSON.parse(await fs.readFile(join(f.dir, "index.json"), "utf8")).requests[0].status;
+  let during: [boolean, unknown] | undefined;
+  const adapter = { identity, summarize: async () => { during = [await isSingletonHeld(name), await status()]; throw Error("fixture failed"); } };
+  await expect(regenerateReviewedSummary(f.job, { requestId: p.requestId, config: f.config, consent: true, consentKey: p.consentKey, adapter })).rejects.toThrow("fixture failed");
+  expect(during).toEqual([true, "running"]);
+  expect(await status()).toBe("running"); expect(await isSingletonHeld(name)).toBe(false);
 });
 
 test("corrupt checkpoint/private paths and mismatched provider claims fail closed without replacement", async () => {

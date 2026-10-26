@@ -16,7 +16,7 @@ import { readDiarizationContext } from "../speakers/record";
 import { SpeakerSuggestionStore } from "../speakers/store";
 import { VoiceRecordStore } from "../speakers/voices";
 import { summaryEvidenceMatches } from "../summary/evidence";
-import { getReviewedSummaryRoot } from "../summary/reviewed";
+import { getReviewedSummaryRoot, reviewedSummaryLeaseName } from "../summary/reviewed";
 import { assertExistingJobArtifactPath, assertExistingManagedPath } from "../tui/library";
 import {
   MEDIA_RETENTION_LIMITS, MEDIA_RETENTION_MESSAGES, MediaRetentionStore, assertRecordingRoot, digestText, hasControlCharacters, recordingRootOf, tombstonePathOf,
@@ -286,25 +286,28 @@ export const hashStable = async (
   return { sha256, stat: after };
 };
 
-const readReviewedRunning = async (root: string, jobId: string): Promise<"running" | "idle" | "unreadable"> => {
+/** Request ids the reviewed summary index marks "running" (none when idle). */
+const readReviewedRunning = async (root: string, jobId: string): Promise<string[] | "unreadable"> => {
   try {
     const directory = join(root, jobId);
     for (const path of [root, directory]) {
       const stat = await fs.lstat(path).catch((error) => { if (missing(error)) return undefined; throw error; });
-      if (!stat) return "idle";
+      if (!stat) return [];
       if (!stat.isDirectory() || stat.isSymbolicLink()) return "unreadable";
     }
     let raw: string;
     try { raw = await readBoundedArtifact(join(directory, "index.json"), 64 * 1024); }
-    catch (error) { return missing(error) ? "idle" : "unreadable"; }
+    catch (error) { return missing(error) ? [] : "unreadable"; }
     const index: unknown = JSON.parse(raw);
     if (!isRecord(index) || index.version !== 1 || index.jobId !== jobId || !Array.isArray(index.requests) || index.requests.length > 32) return "unreadable";
-    let running = false;
+    const running: string[] = [];
     for (const request of index.requests) {
       if (!isRecord(request) || !["planned", "running", "cancelled", "completed"].includes(String(request.status))) return "unreadable";
-      running ||= request.status === "running";
+      if (request.status !== "running") continue;
+      if (typeof request.requestId !== "string" || !/^[a-zA-Z0-9_-]{1,80}$/.test(request.requestId)) return "unreadable";
+      running.push(request.requestId);
     }
-    return running ? "running" : "idle";
+    return running;
   } catch { return "unreadable"; }
 };
 
@@ -443,9 +446,14 @@ export const planMediaRetention = async (
     const suggesting = await leaseHeld(`speakers-${job.id}`) || await leaseHeld(`speakers-queue-${job.id}`) ||
       ((await deps.speakers.readOperation(job.id))?.state === "running" && await deps.unitActive(speakersUnitName(job.id)));
     if (suggesting) block("speakers-running", job.id);
+    // A failed, abandoned or crashed regeneration leaves "running" behind; only a held request lease is live work.
     const reviewed = await readReviewedRunning(deps.reviewedSummaryRoot, job.id);
-    if (reviewed === "running") block("summary-running", job.id);
     if (reviewed === "unreadable") block("summary-state-unreadable", job.id);
+    else {
+      for (const id of reviewed) {
+        if (await leaseHeld(reviewedSummaryLeaseName(deps.reviewedSummaryRoot, job.id, id))) { block("summary-running", job.id); break; }
+      }
+    }
   }
   try {
     plan.purge.visualSessions = await findVisualSessions(deps.visualSessionsRoot, identity.sha256);
