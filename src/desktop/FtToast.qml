@@ -31,8 +31,11 @@ Rectangle {
     height: toastRow.implicitHeight + 16
     radius: 10
     color: lightTheme ? "#102B2A" : "#E9F1EC"
+    // Inverted against the page (dark on a light theme, light on a dark one): the warning tint is the
+    // other theme's, so the icon and the border stand out on it (8.5:1 and 5.5:1).
+    readonly property color warningTint: lightTheme ? "#FFB377" : "#A34125"
     border.width: kind === "warning" ? 2 : 0
-    border.color: warningColor
+    border.color: warningTint
     Accessible.role: Accessible.AlertMessage
     Accessible.name: message
     Timer { id: hideTimer; interval: 6000; onTriggered: toast.hide() }
@@ -42,7 +45,7 @@ Rectangle {
         anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
         anchors.leftMargin: 14; anchors.rightMargin: 6
         spacing: 10
-        FtIcon { name: toast.kind === "warning" ? "alert" : "check"; tint: toast.kind === "warning" ? warningColor : (lightTheme ? "#57D5B0" : "#0F705A"); size: 16 }
+        FtIcon { objectName: "noticeToastIcon"; name: toast.kind === "warning" ? "alert" : "check"; tint: toast.kind === "warning" ? toast.warningTint : (lightTheme ? "#57D5B0" : "#0F705A"); size: 16 }
         Label { Layout.fillWidth: true; Layout.maximumWidth: 520; text: toast.message; textFormat: Text.PlainText; color: lightTheme ? "#F4F1E9" : "#102B2A"; font.pixelSize: 13; wrapMode: Text.WordWrap }
         Button {
             id: toastAction

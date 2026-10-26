@@ -92,6 +92,12 @@ for line in sys.stdin:
     print(json.dumps({'id': r['id'], 'ok': True, 'result': v}), flush=True)
 '''
 
+# A warning toast in this mode's theme: its icon and border against the toast (inverted) background.
+TOAST_CONTRAST = '''
+    function lum(c) { const f = function(v) { return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4) }; return 0.2126 * f(c.r) + 0.7152 * f(c.g) + 0.0722 * f(c.b) }
+    function ratio(a, b) { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05) }
+    toast.show("Aviso de teste", "", null, {kind: "warning"})
+    check("a warning toast's icon and border stand out on it (3:1 or more)", ratio(toast.border.color, toast.color) >= 3 && ratio(uxFind(toast, "noticeToastIcon").tint, toast.color) >= 3)'''
 PLANS = {
     'upcoming': ('1320x820', False, [
         ('home read', 'homeView.visible && homeView.homeLoaded && homeView.upcoming.length === 2 && captureKnown', '''
@@ -130,14 +136,14 @@ PLANS = {
     check("declining the test recording leaves no test mode behind", !liveView.testMode)
     uxFind(homeView, "homeRecord").clicked()
     check("the next recording is a real one (no one-minute stop)", captureConsent.visible && !liveView.testMode && captureConsent.captureTitle === "")
-    captureConsent.close()''')]),
+    captureConsent.close()''' + TOAST_CONTRAST)]),
     'celebration': ('1320x820', False, [
         ('home read', 'homeView.visible && homeView.homeLoaded && newBridge', '''
     const card = uxFind(homeView, "firstRunCelebration")
     check("the first notes are celebrated with the measured time", card.visible && homeView.firstRunState === "done" && homeView.ttfsText(firstRun.ttfsMs) === "3 min 42 s")
     uxFind(homeView, "firstRunDismiss").clicked()
     check("closing hides it at once", !uxFind(homeView, "firstRunCelebration").visible)'''),
-        ('dismissed', '!hasPending("first-run-dismiss") && !!firstRun.celebrationDismissedAt', 'check("the bridge remembers it", !homeView.firstRunShown)')]),
+        ('dismissed', '!hasPending("first-run-dismiss") && !!firstRun.celebrationDismissedAt', 'check("the bridge remembers it", !homeView.firstRunShown)' + TOAST_CONTRAST)]),
     'refresh': ('1320x820', False, [
         ('refreshing', 'homeView.homeLoaded && homeView.home.refreshing === true', 'check("the index refresh is seen", indexRefreshing)'),
         ('refreshed', 'homeView.home.refreshing === false && !hasPending("list")', '''
