@@ -22,7 +22,7 @@ They depend on how recordings start:
 
 | Recording mode | Buttons |
 | --- | --- |
-| Call detection off or `notify-only` | **Gravar** and **Agora não** |
+| Call detection off, `notify-only`, or automatic recording paused | **Gravar** and **Agora não** |
 | `record` or `obs` | **Pular esta gravação** and **OK** |
 
 **Ver resumo anterior** is added when a brief exists (below). Buttons need a `notify-send` that supports actions; otherwise you get a plain notification.
@@ -70,7 +70,7 @@ falatrace live show <session-id> --follow   # until the capture stops
 
 | `live.provider` | Where the audio goes | Approximate cost per hour of meeting |
 | --- | --- | --- |
-| `whisper-cpp` (default) | Nowhere: this computer's CPU, with the small model in `live.whisperModelPath` (default `ggml-base.bin`, `live.whisperThreads` threads) | Free |
+| `whisper-cpp` (default) | Nowhere: this computer's CPU, with the light model in `live.whisperModelPath` (default `ggml-base.bin`, `live.whisperThreads` threads) | Free |
 | `openai` | OpenAI, in chunks, with `live.openaiModel` (default `gpt-transcribe`) and `OPENAI_API_KEY` | About US$0.27 |
 | `groq` | Groq, in chunks of at least 10 seconds, with `live.groqModel` (default `whisper-large-v3-turbo`) and `GROQ_API_KEY` | About US$0.04 |
 

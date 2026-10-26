@@ -236,7 +236,7 @@
      <p>Pergunte sobre uma reunião, uma pessoa, um cliente ou a biblioteca inteira: a resposta cita os trechos. Acompanhe pessoas, clientes e ações combinadas, e envie as notas ao Obsidian, ao Notion, ao Slack ou a um app de IA depois de uma prévia.</p>
      <ul class="checks">
       <li>Ollama local por padrão; APIs, agentes ACP, Claude Code, Codex ou ChatGPT se você escolher — o destino aparece antes.</li>
-      <li>Destinos fora do computador pedem seu consentimento, a cada pergunta ou envio.</li>
+      <li>Destinos fora do computador pedem seu consentimento antes que uma pergunta ou um envio saia dele.</li>
       <li>Correções de trechos e falantes viram revisões com desfazer; a exportação sai da versão que você conferiu.</li>
      </ul>
     </div>
@@ -264,7 +264,7 @@
    <div class="section-head">
     <p class="eyebrow">Para suas IAs</p>
     <h2 id="agents-title">Contexto com fonte para os seus agentes.</h2>
-    <p>Pergunte no próprio FalaTrace, ou deixe agentes que rodam no seu computador — como Claude Code, Codex e Gemini CLI — consultarem suas gravações pela CLI ou por um servidor MCP local. Eles recebem trechos limitados, com horário, origem e hash, e só dentro do que você autorizou.</p>
+    <p>Pergunte no próprio FalaTrace, ou deixe agentes que rodam no seu computador — como Claude Code, Codex e Gemini CLI — consultarem suas gravações pela CLI ou por um servidor MCP local. Eles recebem trechos limitados, com horário, origem e hash: pela CLI, de qualquer gravação processada, como qualquer programa que você roda; pelo servidor MCP, só das gravações que você autorizou.</p>
    </div>
    <div class="agents-grid">
     <figure class="terminal">
@@ -362,7 +362,7 @@
     <article class="status-card">
      <h3><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check-circle"/></svg>Verificado offline</h3>
      <ul>
-      <li><strong>2.531 testes</strong> sem falhas no código atual (26/10/2026), com dados sintéticos.</li>
+      <li><strong>2.541 testes</strong> sem falhas no código atual (26/10/2026), com dados sintéticos.</li>
       <li>Instalação com lockfile, configuração que não sobrescreve a sua e desinstalação que preserva dados.</li>
       <li>Jornadas do Studio com QML real em Qt offscreen rodando no CI.</li>
      </ul>

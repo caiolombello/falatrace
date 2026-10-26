@@ -21,7 +21,7 @@ falatrace notes path <job-id>
 
 `notes edit` replaces the whole notepad with standard input. `--rev N` refuses the save when the notes changed after revision N. An empty input over existing notes is refused unless you add `--clear`. The id can be the job id or the capture session id.
 
-Settings: `notes.enabled` shows the notepad during captures; `summary.useNotes` uses the notes as the skeleton of the summary. Both are on by default.
+Settings: `notes.enabled` shows the notepad during captures; `summary.useNotes` uses the notes as the skeleton of the summary. Both are on by default; with `notes.enabled` off, summaries leave the notes out too.
 
 ## How the AI notes are built
 
@@ -138,7 +138,8 @@ A custom template with the same keywords as a built-in one wins the keyword matc
 
 ## Regenerating
 
-- In the Studio you can regenerate a meeting's notes with another template or language. Your notes stay as they are; the AI notes are rewritten. A summary on this computer runs right away; an external destination (OpenAI, or an Ollama on another computer) first shows where the text goes and asks for consent. The choices are saved for that recording. <!-- studio-check -->
+- In the Studio you can regenerate a meeting's notes with another template or language. Your notes stay as they are; the AI notes are rewritten. It first shows the plan (model, parts and limits) and runs after you confirm. The choices are saved for that recording. <!-- studio-check -->
+- Regeneration runs only with Ollama on this computer: `summary.provider` set to `ollama` with a loopback `summary.ollamaUrl`. With OpenAI, or an Ollama on another computer, it is refused before anything is sent; the notes made when the recording was processed stay as they are.
 - Regeneration uses the reviewed transcript, so your corrections are included.
-- From the terminal, `falatrace summary-review plan|run <job-id>` regenerates from the reviewed transcript with the recording's saved choices, after an explicit plan and consent; see `falatrace help summary-review`.
+- From the terminal, `falatrace summary-review plan|run <job-id>` regenerates from the reviewed transcript with the recording's saved choices, after an explicit plan and consent, with the same local-only rule; see `falatrace help summary-review`.
 - Recordings whose media was removed by [retention](PRIVACY.md#media-retention) can still be regenerated: only the transcript is needed.

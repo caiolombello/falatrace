@@ -51,7 +51,7 @@ Pelo terminal: `falatrace record start`, `falatrace record stop` (encerra a capt
 ## 4. Ler e usar as notas
 
 - A reunião abre nas notas: suas linhas como você escreveu, completadas pela IA com o que foi dito. Cada linha da IA cita o momento de onde veio; siga a citação para ouvir esse trecho. Linhas incertas aparecem marcadas. <!-- studio-check -->
-- O modelo (1:1, daily, postmortem…) foi escolhido para esta reunião; dá para gerar as notas de novo com outro modelo ou idioma sem perder as suas. Veja [notas e modelos](NOTES-AND-TEMPLATES.md) (em inglês).
+- O modelo (1:1, daily, postmortem…) foi escolhido para esta reunião; com o Ollama neste computador, dá para gerar as notas de novo com outro modelo ou idioma sem perder as suas. Veja [notas e modelos](NOTES-AND-TEMPLATES.md) (em inglês).
 - As abas **Transcrição** e **Falantes** mostram a fonte. Correções viram revisões humanas; o original é preservado.
 - **Pergunte** sobre esta reunião, uma pessoa, um cliente ou a biblioteca inteira; as respostas citam as fontes. O padrão é o Ollama local; qualquer outro provedor mostra para onde vai a pergunta e pede confirmação antes. Veja [assistente](ASSISTANT.md) (em inglês).
 - **Compartilhe** as notas no Obsidian, no Notion, no Slack ou num app de IA depois de uma prévia; veja [compartilhamento](SHARING.md) (em inglês). **Exportar** grava arquivos JSON, Markdown, SRT ou WebVTT neste computador.

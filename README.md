@@ -46,7 +46,7 @@ Details: [notes and templates](docs/NOTES-AND-TEMPLATES.md), [assistant](docs/AS
 - **Your data stays in private files.** Notes, conversations, people and action states are files only your user can read. Deleting a recording does not yet remove all of them; see [privacy and data](docs/PRIVACY.md).
 - **Record with permission.** Confirm that the people in the call agree. Automatic call detection is opt-in and does not establish consent.
 
-**Agents.** Local agents such as Claude Code, Codex and Gemini CLI can read bounded, cited context through the CLI or a local MCP server, only for the recordings you grant: [skill](skills/README.md), [agent access](skills/falatrace/references/agent-frames.md).
+**Agents.** Local agents such as Claude Code, Codex and Gemini CLI can read bounded, cited context through the CLI (any processed recording, like any program you run) or a local MCP server (only the recordings you grant): [skill](skills/README.md), [agent access](skills/falatrace/references/agent-frames.md).
 
 ## Documentation
 

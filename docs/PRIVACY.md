@@ -22,7 +22,7 @@ Paths below are the defaults. `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOM
 
 | What | Path | Contents |
 | --- | --- | --- |
-| Transcripts, summaries, job files | `jobs/` | Per processed recording |
+| Job work files | `jobs/<job-id>/` | The job's manifest and working copies of its transcript and summary; the published ones are next to the recording (below) |
 | Meeting notes | `notes/<id>.json` | Your notepad lines with the time each was typed |
 | Template and language per recording | `summary-prefs/<id>.json` | The choices used to regenerate |
 | Assistant conversations | `assistant/threads/<uuid>.json` | Questions, answers, citations, destination and model |
@@ -53,7 +53,7 @@ Paths below are the defaults. `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOM
 
 ### Temporary: `$XDG_RUNTIME_DIR/recording-cli/` (cleared at logout)
 
-Without a runtime folder, these go under the state folder instead.
+Without a runtime folder, these go under the state folder instead (the assistant workspace as `assistant-work/`).
 
 | What | Path | Lifetime |
 | --- | --- | --- |
@@ -63,7 +63,7 @@ Without a runtime folder, these go under the state folder instead.
 
 ### Recordings
 
-Media files live in `recordingsDir` (default `~/Videos/Recordings`). Next to each one, a `<name>.recording/` folder holds the media retention record (`media-retention.json`) and, in audio-only mode, `retained-audio.mka`. Obsidian notes are ordinary files in your vault.
+Media files live in `recordingsDir` (default `~/Videos/Recordings`). Next to each one, a `<name>.recording/` folder holds a `<job-id>/` folder per processing with the transcript and the summary (`transcript.json`, `transcript.md`, `summary.json`, `summary.md`), the media retention record (`media-retention.json`) and, in audio-only mode, `retained-audio.mka`. Obsidian notes are ordinary files in your vault.
 
 ### Outside FalaTrace
 
@@ -79,14 +79,15 @@ Nothing leaves unless a setting or an action of yours says so. When you start pr
 | Transcription | Whisper.cpp | `transcription.provider` is OpenAI or Gemini | The audio |
 | Notes and summaries | Ollama on loopback | OpenAI, or an Ollama on another computer | Transcript, your notes, the template, the calendar title and client names |
 | Remote worker | | `processing.defaultTarget` is `remote` | The media and the job manifest; never your notes |
-| Asking and recipes | Ollama on loopback | Any other assistant provider | The question, earlier messages of the conversation, and meeting excerpts: title, date, people, summary, notes, transcript lines with speakers |
+| Asking and recipes | Ollama on loopback, or a `custom` API at an address on this computer | Any other assistant provider | The question, earlier messages of the conversation, and meeting excerpts: title, date, people, summary, notes, transcript lines with speakers |
 | Live transcript | Whisper.cpp | `live.provider` is OpenAI or Groq | The audio, in chunks, for every capture while `live.enabled` is on |
 | Sharing | Clipboard, Obsidian | Notion, Slack, an AI app | The shared note (see [sharing](SHARING.md#what-is-sent)) |
-| Speaker names from the conversation | | When you ask for suggestions | The diarizer's turns, to the summary provider |
+| Speaker names from the conversation | Ollama on loopback | When you ask for suggestions and the summary provider is OpenAI or an Ollama on another computer | The transcript as speaker turns (only the turns that may carry a name when it does not fit) and the calendar guest names |
 | Reminders and briefs | Always | Never; only the calendar is read | Google receives only the time window it is asked about |
 | Google Calendar titles | | When connected | The recording's time window |
 | Archive, Proton Drive, S3 | | When enabled | Media and results, to those destinations |
-| Agents (MCP or CLI) | | When you grant access | Bounded context and frames of the granted recordings |
+| Agents through the CLI | | When an agent you run calls `falatrace context search` or `context meeting` | Bounded excerpts of any processed recording, to that agent and its model provider; the CLI checks no grant |
+| Agents through MCP (`agent-context`) | | When you grant access | Bounded context and frames of the granted recordings only |
 | Key tests | | When you press Test | One read-only request (a model list or key check); no audio or text |
 
 A cloud-backed agent or AI app may send what it receives to its own provider. Deleting a recording cannot recall data a provider, destination or agent already received.
@@ -126,7 +127,7 @@ Separate older settings remove only processing work data: `retention.localComple
 
 ## Deleting a recording
 
-Deleting a recording (in `falatrace tui`; the Studio has no delete action) first invalidates the derived AI context, and cancels the deletion if that fails. It then moves the media, its `<name>.recording/` folder and its job folders to the Trash, and removes its calendar link. The Trash keeps a full copy until you empty it.
+Deleting a recording (in `falatrace tui`; the Studio has no delete action) first invalidates the derived AI context, and cancels the deletion if that fails. It then moves the media and its `<name>.recording/` folder (with the transcripts and summaries) to the Trash, deletes its jobs' queue records and work files, and removes its calendar link. The Trash keeps a full copy until you empty it.
 
 It does **not** yet remove:
 

@@ -41,7 +41,7 @@ falatrace library search "migração do banco" --limit 5    # JSON passages, mar
 ## Consent
 
 - Before anything is sent, the destination is shown: `Destino: <provider · model> (neste computador|fora deste computador) · N reuniões`, with "(trechos)" when only passages fit.
-- Ollama on this computer needs no consent: nothing leaves.
+- Ollama on this computer, or a `custom` API at an address on this computer, needs no consent: nothing leaves.
 - Every other destination sends the question and the excerpts above off the computer. In the CLI, add `--yes` after checking the destination line; without it, the command stops and nothing is sent. In the Studio, a consent card names the destination once per conversation. <!-- studio-check -->
 - Consent covers one destination and one scope. A new provider, model or scope asks again.
 

@@ -20,8 +20,8 @@
     },
     {
       "path": "CHANGELOG.md",
-      "sha256": "fbba223cbb08e02c03e439ac4ccb7ee8ef8b0d9ce1a78b7e022aec060dcee468",
-      "bytes": 27390
+      "sha256": "455de416e2aa9421b079126163de01cba69945bdebe6aad787a2f17815408da6",
+      "bytes": 27628
     },
     {
       "path": "LICENSE",
@@ -35,8 +35,8 @@
     },
     {
       "path": "README.md",
-      "sha256": "da5e126048ccfda81e4d4bc7bd58265852a38790fcd21c995b85b06bb5da8c0a",
-      "bytes": 6459
+      "sha256": "edfe948cf0596a7c1bebab6f5bbfe5e9edad254b3a141a86edd304181e3f9bc8",
+      "bytes": 6508
     },
     {
       "path": "SECURITY.md",
@@ -70,8 +70,8 @@
     },
     {
       "path": "biome.json",
-      "sha256": "2d6a09331dc247ec94ff0fe6b0ccddc15d3d2fbc7961b968d7e76486c84f35d8",
-      "bytes": 5270
+      "sha256": "874709a32654439db2921f4c9b936111e5e1e082247be0c8f787edfb58d89e3c",
+      "bytes": 5312
     },
     {
       "path": "branding/README.md",
@@ -195,8 +195,8 @@
     },
     {
       "path": "docs/ASSISTANT.md",
-      "sha256": "1d109fd5303d7e8acf0a9195c893cf3f75603b2d8e1ae88a690699632a7557b4",
-      "bytes": 12721
+      "sha256": "53dd7a7dbe5d6f8ce87f5dc54bd5357daff150338e7d6a5b5a4a3ac3558cdf32",
+      "bytes": 12772
     },
     {
       "path": "docs/CAPTURE-CALL-LIGHT.md",
@@ -210,8 +210,8 @@
     },
     {
       "path": "docs/CONFIGURATION.md",
-      "sha256": "5f2a71c15b0487288c1fc9a474a4f881656845237381fa0079a9b3fed937084e",
-      "bytes": 25657
+      "sha256": "73323f10a60de2b0907e3e45305ec8190987fe82f246f221ed9bf614f228565a",
+      "bytes": 25969
     },
     {
       "path": "docs/DEVELOPMENT.md",
@@ -220,8 +220,8 @@
     },
     {
       "path": "docs/EVIDENCE-AND-LIMITS.md",
-      "sha256": "0bd3ded204cef5a03f2df67f522fd601087759b2555eabaf5bfedcb96c520e39",
-      "bytes": 8481
+      "sha256": "22868830f86186a2fc6d855c65842a9ddacfbaeaa2b00a836ec24b0b312aa3b9",
+      "bytes": 8556
     },
     {
       "path": "docs/HUMAN-REVIEW-EXPORT.md",
@@ -240,8 +240,8 @@
     },
     {
       "path": "docs/NOTES-AND-TEMPLATES.md",
-      "sha256": "e5d759ca2c104392351f31aa3fcb6408dd2cfd32ced63c1f2493f576178b0c57",
-      "bytes": 10120
+      "sha256": "18d9618d9ee21aecd3faee52240a085b1bcac474a2148c1ae42e1f5e68635999",
+      "bytes": 10404
     },
     {
       "path": "docs/ONBOARDING.md",
@@ -260,23 +260,23 @@
     },
     {
       "path": "docs/PRIVACY.md",
-      "sha256": "e5579a6d824dd2203178546f2989e40e13d916db4446a04c5f17b31da8893323",
-      "bytes": 11002
+      "sha256": "673219a5c6dcd226566024fe4d1d15a67a0cf8c58e772aa2d2b05e2e6c10a3a5",
+      "bytes": 11795
     },
     {
       "path": "docs/QUICKSTART.md",
-      "sha256": "bf6165c83c7bc49c7a0bd6beb0db1ea470c813f43e5e65b1a08e0e5896c6075b",
-      "bytes": 7000
+      "sha256": "72123288a8bda04bae71a43780bc1e51742b9f6e9c5cc921ab9ea664fe59c6b1",
+      "bytes": 7030
     },
     {
       "path": "docs/QUICKSTART.pt-BR.md",
-      "sha256": "6dcd831a7563adf706bcb9a17b332a6e949b06bf0a8a61f8892dc7ace3993fd7",
-      "bytes": 7449
+      "sha256": "c480e6fa1c48953424dd4c0d92de316aa67dbb2a3e1978df92beaf0cad615a09",
+      "bytes": 7480
     },
     {
       "path": "docs/REMINDERS-AND-LIVE.md",
-      "sha256": "382d73518b3c8ace4dee6eee1a48bfc8cd9ba8f2e7879b945f153602b84b9fef",
-      "bytes": 5744
+      "sha256": "c496254396668372dcb8f8b2693e58dcbea4775e16adff5934082dae83cac195",
+      "bytes": 5773
     },
     {
       "path": "docs/REVIEWED-SNAPSHOT-COMPATIBILITY.md",
@@ -435,8 +435,8 @@
     },
     {
       "path": "docs/en/index.html",
-      "sha256": "6d5b3482aa14cec5927b312c88a1ddbd1edbfc4725c6ea52185508cd2f94a454",
-      "bytes": 42462
+      "sha256": "c1ee2911b1de8659024ef61b311cf981d202654935f6ab4038e1a476fa72df81",
+      "bytes": 42574
     },
     {
       "path": "docs/en/privacy/index.html",
@@ -445,8 +445,8 @@
     },
     {
       "path": "docs/index.html",
-      "sha256": "5b5121702a648797872a142f6e86c82671f79dfc7137405076230013d564072c",
-      "bytes": 43115
+      "sha256": "00f71a9b9912b46f56ca1290b2c240e6611f75c4c30da0693164b6d9c51896b7",
+      "bytes": 43241
     },
     {
       "path": "docs/privacidade/index.html",
@@ -1402,6 +1402,11 @@
       "path": "src/config/__tests__/docs.test.ts",
       "sha256": "51bb6a8b812a1068de813447ff3f58a002a3e160f64da5218e1a223c9d62634f",
       "bytes": 1755
+    },
+    {
+      "path": "src/config/__tests__/guides.test.ts",
+      "sha256": "b4a9dbd6750c7b74d07e5a16c68e15655d388c08494f925e88ee52afca3a3079",
+      "bytes": 13272
     },
     {
       "path": "src/config/__tests__/installation.test.ts",

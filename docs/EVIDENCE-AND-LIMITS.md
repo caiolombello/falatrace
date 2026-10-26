@@ -51,7 +51,7 @@ FalaTrace 0.2.0-alpha.14 is an experimental source alpha for Linux. General nati
 These are covered by unit tests, production-bridge tests and CLI contract tests with synthetic data. None was exercised against the real service or tool:
 
 - **Assistant providers.** Ollama, the API presets, ACP agents, subscription CLIs and Sign in with ChatGPT are tested against fake servers and fake processes. Real accounts, plan limits, model quality and each agent's current command-line behaviour are unverified. Plan eligibility and terms are set by each vendor and can change.
-- **Templates and language.** Template choice by calendar title and keywords is a heuristic; language detection may pick English for a meeting that mixes Portuguese and English equally.
+- **Templates and language.** Template choice by calendar title and keywords is a heuristic; language detection counts common words, so a meeting that mixes languages without a clear majority is written in Portuguese; set `summary.language` when that is wrong.
 - **People and clients.** People are grouped by normalized name; two different people with the same name are merged until you separate them. You are recognized as yourself only through the calendar, where the event marks your own attendance; never by voice or by name.
 - **Reminders.** Notification buttons depend on the desktop's notification server; libnotify action output and GNOME's handling were not checked on a real desktop.
 - **Live transcript.** A preview with chunk-level timing. Its accuracy and real-time factor depend on the CPU and model; the final transcript is still made after the meeting.

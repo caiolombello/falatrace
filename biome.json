@@ -40,6 +40,7 @@
 			"src/config/settings.ts",
 			"src/config/setup-checks.ts",
 			"src/config/__tests__/credential-test.test.ts",
+			"src/config/__tests__/guides.test.ts",
 			"src/config/__tests__/secrets.test.ts",
 			"src/desktop/model-bridge.ts",
 			"src/desktop/install.ts",

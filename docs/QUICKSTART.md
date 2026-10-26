@@ -51,7 +51,7 @@ From the terminal: `falatrace record start`, `falatrace record stop` (ends the c
 ## 4. Read and use the notes
 
 - The meeting opens on its notes: your lines as you wrote them, completed by the AI with what was said. Each AI line cites the moment it came from; follow it to hear that moment. Uncertain lines are marked. <!-- studio-check -->
-- The template (1:1, stand-up, postmortem…) was picked for this meeting; you can regenerate the notes with another template or language without losing yours. See [notes and templates](NOTES-AND-TEMPLATES.md).
+- The template (1:1, stand-up, postmortem…) was picked for this meeting; with Ollama on this computer, you can regenerate the notes with another template or language without losing yours. See [notes and templates](NOTES-AND-TEMPLATES.md).
 - The **Transcript** and **Speakers** tabs show the source. Corrections are saved as human revisions; the original is kept.
 - **Ask** about this meeting, a person, a client or the whole library; answers cite their sources. Local Ollama is the default; any other provider shows where your question goes and asks first. See [assistant](ASSISTANT.md).
 - **Share** the notes to Obsidian, Notion, Slack or an AI app after a preview; see [sharing](SHARING.md). **Export** writes JSON, Markdown, SRT or WebVTT files on this computer.
