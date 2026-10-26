@@ -21,14 +21,18 @@ Rectangle {
     property bool reading: false
     property bool switching: false
     property bool followEnd: true
-    readonly property string currentProvider: provider || String(studioSettings["live.provider"] || "whisper-cpp")
+    readonly property string currentProvider: provider || String(studioSettings["live.provider"] || "")
+    // Fail closed, like the bridge: a provider not known here (settings not read yet) counts as one
+    // outside this computer, so the consent is asked instead of a switch the bridge would refuse.
     readonly property bool external: currentProvider !== "whisper-cpp"
     readonly property bool running: status === "running" || status === "behind"
     signal addToNotes(string text)
     color: surfaceAlt
     Rectangle { anchors.left: parent.left; anchors.top: parent.top; anchors.bottom: parent.bottom; width: 1; color: divider }
+    // A consent names one provider: another provider needs it again.
+    onCurrentProviderChanged: consent.checked = false
 
-    function providerName(value) { return ({"whisper-cpp": t("Neste computador (Whisper)"), groq: "Groq", openai: "OpenAI"})[value] || value }
+    function providerName(value) { return ({"whisper-cpp": t("Neste computador (Whisper)"), groq: "Groq", openai: "OpenAI", "": t("o provedor configurado")})[value] || value }
     function reset() {
         liveGeneration += 1
         lastSeq = 0; lines = []; status = ""; stale = false; provider = ""; error = ""; reading = false; switching = false; followEnd = true
@@ -154,10 +158,13 @@ Rectangle {
             FtButton {
                 objectName: "liveEnable"
                 Layout.alignment: Qt.AlignLeft
+                // Never wider than the panel (a long provider name elides instead of pushing the panel out).
+                Layout.maximumWidth: parent.width
                 compact: true
                 variant: "primary"
                 iconName: panel.external ? "cloud" : "wave"
-                text: panel.external ? tf("Ligar e enviar para %1", panel.providerName(panel.currentProvider)) : t("Ligar")
+                text: !panel.external ? t("Ligar") : panel.currentProvider ? tf("Ligar e enviar para %1", panel.providerName(panel.currentProvider)) : t("Ligar e enviar")
+                Accessible.name: panel.external ? tf("Ligar e enviar para %1", panel.providerName(panel.currentProvider)) : t("Ligar")
                 enabled: feature("live") && !!panel.sessionId && captureStatus.active && !panel.switching && (!panel.external || consent.checked)
                 onClicked: panel.setEnabled(true)
             }
