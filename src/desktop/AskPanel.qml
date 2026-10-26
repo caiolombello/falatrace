@@ -592,7 +592,8 @@ Rectangle {
                     }
                     RowLayout {
                         spacing: 8
-                        FtButton { id: askConsentAccept; objectName: "askConsentAccept"; compact: true; variant: "primary"; iconName: "send"; text: t("Enviar"); enabled: backend.available; onClicked: askPanel.acceptConsent() }
+                        // The card goes once answered: the focus goes back to the question, like Cancelar, never nowhere.
+                        FtButton { id: askConsentAccept; objectName: "askConsentAccept"; compact: true; variant: "primary"; iconName: "send"; text: t("Enviar"); enabled: backend.available; onClicked: { askPanel.acceptConsent(); askInput.forceActiveFocus() } }
                         FtButton { id: askConsentCancel; objectName: "askConsentCancel"; compact: true; variant: "outline"; text: t("Cancelar"); onClicked: { askPanel.restore(askPanel.waiting); askPanel.waiting = null; askInput.forceActiveFocus() } }
                     }
                 }

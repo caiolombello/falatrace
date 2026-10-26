@@ -182,7 +182,11 @@ PLANS = {
     check("a destination outside this computer asks first", card.visible && uxFind(askPanel, "askConsentText").text.indexOf("4 reuniões") >= 0 && uxFind(askPanel, "askConsentText").text.indexOf("OpenRouter") >= 0)
     check("the meetings of the plan are counted", askPanel.planMeetingCount() === 4 && uxFind(askPanel, "askConsentText").text.indexOf("NaN") < 0)
     check("nothing starts before the consent", !hasPending("assistant-start") && !askPanel.live && askPanel.messages.length === 0)
-    uxFind(askPanel, "askConsentAccept").clicked()'''),
+    uxFind(askPanel, "askConsentAccept").forceActiveFocus(Qt.TabFocusReason)
+    qaKeys = [Qt.Key_Space]'''),
+        ('consent given', '!askPanel.waiting', '''
+    check("Space on Enviar, reached with the keyboard, sends", askPanel.messages.length >= 1 && (!!askPanel.live || askPanel.messages.length === 2))
+    check("the card goes and the focus is back on the question, not lost", askPanel.input.activeFocus)'''),
         ('answer done', ANSWERED, '''
     const second = askPanel.messages[1].citations[1]
     check("library citations name the meeting and the moment", askPanel.citationLabel(second) === "2 · 1:1 com Ana · 20/10 · 00:42")
