@@ -41,7 +41,7 @@ If the first diarization appears after text-only edits, the acoustic base can
 expand once while preserving that history. An old editor must reread the new
 base. An existing acoustic hash is never silently reassigned to another result.
 
-## Speaker name suggestions — unreleased
+## Speaker name suggestions — alpha.15
 
 The Speakers tab can suggest names for the diarized speakers (S01, S02…). A
 suggestion never changes a label: **Usar** opens the review above prefilled, and
@@ -140,7 +140,7 @@ preserved and refused. Each bundle includes the output, full snapshot and JSON
 manifest with hashes and format limitations. No arbitrary destination or silent
 overwrite is accepted, and export itself sends nothing to another app.
 
-Sending notes elsewhere is a separate **Share** action (unreleased). It renders
+Sending notes elsewhere is a separate **Send** action (alpha.15). It renders
 the meeting's notes as Markdown, shows that preview, and then sends it to the
 clipboard, an Obsidian vault, Notion, Slack or an AI app. Notion, Slack and AI
 apps receive the content outside this computer, so each share needs explicit

@@ -1,6 +1,6 @@
 {
   "scope": "sanitized experimental Linux source alpha; no private history/config/media/dependencies/binaries",
-  "version": "0.2.0-alpha.14",
+  "version": "0.2.0-alpha.15",
   "selfExcluded": "SOURCE-MANIFEST.json; external release manifest includes this file",
   "files": [
     {
@@ -20,8 +20,8 @@
     },
     {
       "path": "CHANGELOG.md",
-      "sha256": "17fa4fb77a9267a61c7cf5dcc8eb8b660c7bd938fe6f5c7f7c751b5d4abab4ed",
-      "bytes": 27860
+      "sha256": "fb2025495bf39ec8d6a9426d8c783a2146ab5257ef55419038db8c41ec27d178",
+      "bytes": 30136
     },
     {
       "path": "LICENSE",
@@ -35,7 +35,7 @@
     },
     {
       "path": "README.md",
-      "sha256": "2d87729b91754aee3604b4109e6817e32af5142aa12537be5b8bc946401defad",
+      "sha256": "47f7bca9c72a45318020562b3486a61da3b995600f6923b32669094518a82166",
       "bytes": 6620
     },
     {
@@ -154,6 +154,11 @@
       "bytes": 18447
     },
     {
+      "path": "docs/ALPHA15.md",
+      "sha256": "8962968c716e0b4085229e85fea0cf3ccb591816b5a5a3ece2c0d150a192922a",
+      "bytes": 20100
+    },
+    {
       "path": "docs/ALPHA2-LOCAL-REVIEW.md",
       "sha256": "ab91a67ce5c670b59c4cf92d26046a0c3a3aec1c179408dc264ad666627a15dd",
       "bytes": 11842
@@ -220,13 +225,13 @@
     },
     {
       "path": "docs/EVIDENCE-AND-LIMITS.md",
-      "sha256": "2a5a9034932f61f6707e0b9d5488dd1b14f535c94bcd4508e1f96a2c4abfa64a",
-      "bytes": 8820
+      "sha256": "e240829ea633a087e0a67358ae61cf261746a25f5ae1acaffe6ad0192471f7bb",
+      "bytes": 8809
     },
     {
       "path": "docs/HUMAN-REVIEW-EXPORT.md",
-      "sha256": "784687a40be1c0926d959d4828c8ff045b0bd07cba096bf5e09a738f3739e33c",
-      "bytes": 11387
+      "sha256": "981a28e9407363f5fc5c6ec13d3315d59b7705020752a20a2e6c946358fc40b6",
+      "bytes": 11382
     },
     {
       "path": "docs/LOCAL-AGENT-RETRIEVAL-CONTRACT.md",
@@ -285,8 +290,8 @@
     },
     {
       "path": "docs/ROADMAP.md",
-      "sha256": "bc93bff0f13f51b6c6b7bb9d0881c40f819d0a6fe101b1f91bad3fbc00d6beca",
-      "bytes": 18089
+      "sha256": "0b8c9e53e77a04f7acb6fbd0c7be148ea3290da7db74ea074c3edb243090f93f",
+      "bytes": 18261
     },
     {
       "path": "docs/SHARING.md",
@@ -300,8 +305,8 @@
     },
     {
       "path": "docs/UX-VERIFICATION.md",
-      "sha256": "77039d8e074f35b02b4bf25872eb3f862e7f6b6de1dfa8dc7851b1ecdba8dd7e",
-      "bytes": 21746
+      "sha256": "49be82c710ecc98621bd1c3b10a488842335db7f1c0369405fd8d44282db5644",
+      "bytes": 21821
     },
     {
       "path": "docs/assets/agent-access-alpha5.png",
@@ -465,8 +470,8 @@
     },
     {
       "path": "docs/en/index.html",
-      "sha256": "41edef1b8570a211cc249eef029d6010c3f969036fb38ff573ae57302fb0ded2",
-      "bytes": 42689
+      "sha256": "b259666afaae1f821beff448e942e9c98c3f6bf3246480452089f9303c2465eb",
+      "bytes": 43609
     },
     {
       "path": "docs/en/privacy/index.html",
@@ -475,8 +480,8 @@
     },
     {
       "path": "docs/index.html",
-      "sha256": "ebfd7ca6bbc606a442063706c81c4e63671d4649c4bfdf1204b20d8ebbee18d0",
-      "bytes": 43359
+      "sha256": "91ca7a5b3893b16bbb9ab0437b63be76226e3f852bed4c1f3d7e996c0bf01ece",
+      "bytes": 44294
     },
     {
       "path": "docs/privacidade/index.html",
@@ -495,7 +500,7 @@
     },
     {
       "path": "package.json",
-      "sha256": "3c17a293e62d3e5e85e4bcd1a3e3bdebb5dac7ef07a8c30ecfddc6bd316bb183",
+      "sha256": "b6ff2da298eb7c93b1aefd7f03f29f4c2363c8819c4f28328a6d862918d5b883",
       "bytes": 1488
     },
     {
@@ -640,7 +645,7 @@
     },
     {
       "path": "skills/README.md",
-      "sha256": "7e30aa5fe88cb8157064966c9b2455b47f00ca2eb9a20d31d50704902f6ff04b",
+      "sha256": "ed4f4e415aff0de9fabb368093647cb5c9c2b39d53640330aaad3c59de08d43e",
       "bytes": 2147
     },
     {
@@ -650,8 +655,8 @@
     },
     {
       "path": "skills/falatrace/SKILL.md",
-      "sha256": "d682be4e92e6ca90a43a8963ff27d9f814d07f120929e3cce5741986dd93191e",
-      "bytes": 9701
+      "sha256": "c616203e87c1b9e8a541b9372e36865a2fd3d947534235af8eab84153a75478c",
+      "bytes": 9723
     },
     {
       "path": "skills/falatrace/evals/evals.json",

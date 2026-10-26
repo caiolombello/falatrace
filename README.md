@@ -5,7 +5,7 @@
 
 # FalaTrace
 
-Meeting notes for Linux that point back to the recording. You type short notes during the meeting. After it, the AI completes them with what was said, and every line it adds cites the moment of the recording it came from. Recording, transcription and notes run on your computer by default. FalaTrace is an experimental source alpha (0.2.0-alpha.14); see [evidence and limits](docs/EVIDENCE-AND-LIMITS.md).
+Meeting notes for Linux that point back to the recording. You type short notes during the meeting. After it, the AI completes them with what was said, and every line it adds cites the moment of the recording it came from. Recording, transcription and notes run on your computer by default. FalaTrace is an experimental source alpha (0.2.0-alpha.15); see [evidence and limits](docs/EVIDENCE-AND-LIMITS.md).
 
 ![FalaTrace Studio with a synthetic meeting: the sidebar with Home, Actions, People, Clients and the meetings by day; the meeting's notes in the middle, with your lines, the lines the AI completed and a citation to the moment of each](docs/assets/studio-notes-en.png)
 

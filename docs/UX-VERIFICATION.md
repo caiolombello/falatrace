@@ -1,4 +1,4 @@
-Current alpha.7 verification and limits: [ALPHA7.md](ALPHA7.md#verification). The historical matrix below describes earlier releases and is not the current feature inventory.
+Current verification and limits: the [alpha.15 section](#notes-ask-and-a-redesigned-studio--alpha15) at the end and [ALPHA15.md](ALPHA15.md#verification). The historical matrix below describes earlier releases and is not the current feature inventory.
 
 This original matrix documents published alpha.1. The alpha.2 changes and exact validation are in ALPHA2-LOCAL-REVIEW.md and OPUS-REVIEW-RESOLUTION.md.
 
@@ -76,7 +76,7 @@ The Studio QML is now split into component and dialog files. Journeys run the re
 
 Limits: the shipped `recording-studio` binary, MpvQt playback, real capture, real providers and model downloads, physical keyboard and screen readers were not exercised. Native file dialogs are loaded on demand and were not opened. The system-Qt build path was not compiled on a machine with Qt 6.10 and MpvQt.
 
-## Notes, Ask and a redesigned Studio — unreleased
+## Notes, Ask and a redesigned Studio — alpha.15
 
 The Studio is rebuilt around the notes: a sidebar with Home, Actions, People, Clients and the meetings by day; a meeting page that opens on its notes, with the transcript, speakers and agent access on tabs and the player in a strip below; a live capture page with the notepad; the Ask panel; and sixteen settings sections. `bash scripts/test-studio-journeys.sh` runs 18 journeys against synthetic bridges through `scripts/studio-qml-runner.py` (PySide6 6.11.2, pinned by hash in CI), offscreen with software rendering. Together they render 205 screens and pass 955 assertions.
 

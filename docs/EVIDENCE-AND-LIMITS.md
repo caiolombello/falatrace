@@ -4,7 +4,7 @@ What FalaTrace's references prove, what the tests cover, and what is still unver
 
 ## Status
 
-FalaTrace 0.2.0-alpha.14 is an experimental source alpha for Linux. General native capture, desktop compatibility, model quality and redistributed binaries remain unqualified. The offline suite and the Studio journeys use synthetic data, stubbed providers and a synthetic HOME; they do not exercise a real call, a real model or the native Studio binary. The author uses the recording and context core every day; that is a report of real use, not a reliability measurement.
+FalaTrace 0.2.0-alpha.15 is an experimental source alpha for Linux. General native capture, desktop compatibility, model quality and redistributed binaries remain unqualified. The offline suite and the Studio journeys use synthetic data, stubbed providers and a synthetic HOME; they do not exercise a real call, a real model or the native Studio binary. The author uses the recording and context core every day; that is a report of real use, not a reliability measurement.
 
 ## Citations prove where, not whether
 
@@ -46,7 +46,7 @@ FalaTrace 0.2.0-alpha.14 is an experimental source alpha for Linux. General nati
 - Frames have a configurable time to live from 60 seconds to 24 hours (default one hour). Expired evidence falls back to transcript-only with review warnings and no visual inference. Explicit cleanup deletes only verified derived frames and keeps the budget ledger and observation metadata; it is not a scheduled service and never erases original media. A sidecar belongs to `summary.json` only when its `summarySha256` matches.
 - Bounded evidence and processing admission arrived in [alpha.3](ALPHA3.md). Call-light capture is opt-in and has no demonstrated call-performance benefit.
 
-## New features in this batch
+## New in alpha.15
 
 These are covered by unit tests, production-bridge tests and CLI contract tests with synthetic data. None was exercised against the real service or tool:
 
