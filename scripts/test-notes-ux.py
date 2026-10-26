@@ -58,7 +58,9 @@ BASE_DETAIL = {'transcript': {'segments': SEGMENTS, 'text': 'Bom dia.', 'timing'
                'clients': [{'code': 'ACME', 'name': 'ACME', 'source': 'calendar'}], 'notes': NOTES}
 DETAILS = {
     'v2': {**BASE_DETAIL, 'summary': '# Daily\n\n- Equipe revisou o lançamento', 'notesDoc': NOTES_DOC},
-    'legacy': {**BASE_DETAIL, 'summary': '# Daily\n\n## Decisões\n\n- Lançamento no dia 30 [00:42]\n- Falta acesso ao bucket', 'notes': None},
+    # An older summary, and the transcript corrected after it (the bridge marks derived artifacts stale).
+    'legacy': {**BASE_DETAIL, 'summary': '# Daily\n\n## Decisões\n\n- Lançamento no dia 30 [00:42]\n- Falta acesso ao bucket', 'notes': None,
+               'review': {**REVIEW, 'revision': {'revision': 1, 'base': {'jobId': JOB}, 'humanReviewed': True}, 'derivedStale': True}},
     'processing': {**BASE_DETAIL, 'transcript': {'segments': [], 'text': '', 'timing': 'none'}, 'summary': '', 'status': 'processing', 'review': None},
 }
 for value in DETAILS.values():
@@ -143,6 +145,7 @@ PLANS = {
     check("notes mode offered", detailView.notesMode.visible)
     uxFind(window.contentItem, "notesAboutToggle").clicked()
     check("about these notes opens with limits and unused notes", uxFind(window.contentItem, "notesAbout").visible)
+    check("notes made from the original transcript say so", uxFind(window.contentItem, "notesSource").text === "Feitas a partir da transcrição original." && !uxFind(window.contentItem, "notesStale").visible)
     uxFind(window.contentItem, "actionCheck-''' + ACTION + '''").click()
     check("checking is optimistic", detailView.notesDocument.effectiveStatus({actionId: "''' + ACTION + '''", status: "open"}) === "done")
     check("another action of the same recording waits for this save", !detailView.notesDocument.actionEditable(detailView.notesDocument.findAction("''' + DONE_ACTION + '''")))'''),
@@ -180,7 +183,9 @@ PLANS = {
     check("template chip says the format is older", uxFind(window.contentItem, "templateChip").chipText.indexOf("Formato antigo") === 0)
     check("a [mm:ss] bullet gets a citation", !!uxFind(window.contentItem, "legacyCitation-2") && uxFind(window.contentItem, "legacyCitation-2").start === 42)
     check("contextArea keeps the summary text on tab 1", contextArea.text.indexOf("Lançamento no dia 30") >= 0)
-    check("no notes doc ops without a v2 document", !hasPending("action-set"))''')]),
+    check("no notes doc ops without a v2 document", !hasPending("action-set"))
+    uxFind(window.contentItem, "notesAboutToggle").clicked()
+    check("an older summary made before your transcript corrections says so", uxFind(window.contentItem, "notesStale").visible && uxFind(window.contentItem, "notesSource").text === "Feitas antes das suas correções na transcrição.")''')]),
     'mine': ('1320x820', False, [OPEN,
         ('switch to my notes', None, 'detailView.notesMode.currentIndex = 1'),
         ('notes loaded', 'detailView.notesEditor.loaded', '''

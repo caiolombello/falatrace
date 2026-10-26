@@ -2082,6 +2082,7 @@ var EN = {
     "fora deste computador": "outside this computer",
     "Feitas a partir da transcrição corrigida por você.": "Made from the transcript you corrected.",
     "Feitas a partir da transcrição original.": "Made from the original transcript.",
+    "Feitas antes das suas correções na transcrição.": "Made before your corrections to the transcript.",
     "Limites desta gravação": "Limits of this recording",
     "Notas suas que não entraram": "Your notes that were left out",
     "Arquivo não encontrado": "File not found",

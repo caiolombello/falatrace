@@ -15,6 +15,8 @@ Flickable {
     readonly property bool visualShown: showVisualSummary && !!detail.visualReview && !!detail.visualReview.summaryMarkdown
     readonly property string recordingStatus: String(detail.status || selected.status || "")
     readonly property var myNotes: asList(detail.notes && detail.notes.entries)
+    // The transcript was corrected after these notes were made (v2: notesDoc.stale; older summaries: the review's derivedStale).
+    readonly property bool transcriptStale: (!!notesDoc && notesDoc.stale === "transcript") || (!notesDoc && !!detail.review && detail.review.derivedStale === true)
     readonly property string docState: {
         if (visualShown) return "visual"
         if (notesDoc) return "v2"
@@ -181,11 +183,12 @@ Flickable {
             }
         }
 
-        // Stale notes: one line and the way to refresh them.
+        // Stale notes: one line and the way to refresh them. Older (Markdown) summaries are stale when the
+        // transcript was corrected after them, as the bridge says for every derived artifact.
         Rectangle {
             objectName: "notesStale"
             Layout.fillWidth: true
-            visible: doc.docState === "v2" && !!doc.notesDoc.stale
+            visible: (doc.docState === "v2" && !!doc.notesDoc.stale) || (doc.docState === "legacy" && doc.transcriptStale)
             implicitHeight: staleRow.implicitHeight + 16
             radius: 10; color: warningSoft
             RowLayout {
@@ -193,7 +196,7 @@ Flickable {
                 anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; anchors.margins: 10
                 spacing: 8
                 FtIcon { name: "alert"; tint: warningColor; size: 16 }
-                Label { Layout.fillWidth: true; text: doc.notesDoc && doc.notesDoc.stale === "transcript" ? t("Você corrigiu a transcrição depois destas notas.") : t("Estas notas não incluem a versão atual das suas notas."); textFormat: Text.PlainText; color: ink; wrapMode: Text.WordWrap; font.pixelSize: 13 }
+                Label { Layout.fillWidth: true; text: doc.transcriptStale ? t("Você corrigiu a transcrição depois destas notas.") : t("Estas notas não incluem a versão atual das suas notas."); textFormat: Text.PlainText; color: ink; wrapMode: Text.WordWrap; font.pixelSize: 13 }
                 FtButton { compact: true; variant: "outline"; text: t("Atualizar notas"); enabled: backend.available && !!detail.review && !summaryBusy(); onClicked: openSummary() }
             }
         }
@@ -431,7 +434,8 @@ Flickable {
                 Label { visible: !!doc.notesDoc && !!doc.notesDoc.language; text: doc.notesDoc ? tf("Idioma: %1", doc.languageName(doc.notesDoc.language)) : ""; textFormat: Text.PlainText; color: ink; font.pixelSize: 13; Layout.fillWidth: true }
                 Label { visible: !!doc.notesDoc && !!doc.notesDoc.model; text: doc.notesDoc && doc.notesDoc.model ? tf("Feitas por %1", doc.notesDoc.model.label) + " · " + (doc.notesDoc.model.local ? t("neste computador") : t("fora deste computador")) : ""; textFormat: Text.PlainText; color: ink; font.pixelSize: 13; wrapMode: Text.Wrap; Layout.fillWidth: true }
                 Label { visible: !doc.notesDoc && !!detail.summaryInfo; text: t("Resumo: ") + t(detail.summaryInfo || ""); textFormat: Text.PlainText; color: ink; font.pixelSize: 13; wrapMode: Text.Wrap; Layout.fillWidth: true }
-                Label { text: detail.review && detail.review.revision && detail.review.revision.revision > 0 ? t("Feitas a partir da transcrição corrigida por você.") : t("Feitas a partir da transcrição original."); textFormat: Text.PlainText; color: muted; font.pixelSize: 13; wrapMode: Text.Wrap; Layout.fillWidth: true }
+                // Which transcript these notes were made from: a correction after them does not make them "corrected".
+                Label { objectName: "notesSource"; text: doc.transcriptStale ? t("Feitas antes das suas correções na transcrição.") : detail.review && detail.review.revision && detail.review.revision.revision > 0 ? t("Feitas a partir da transcrição corrigida por você.") : t("Feitas a partir da transcrição original."); textFormat: Text.PlainText; color: muted; font.pixelSize: 13; wrapMode: Text.Wrap; Layout.fillWidth: true }
                 Label { visible: !!detail.artifactMessage; text: t(detail.artifactMessage || ""); textFormat: Text.PlainText; color: muted; font.pixelSize: 12; wrapMode: Text.Wrap; Layout.fillWidth: true }
                 FtOverline { visible: !!doc.notesDoc && asList(doc.notesDoc.limitations).length > 0; text: t("Limites desta gravação"); Layout.topMargin: 4 }
                 Repeater { model: doc.notesDoc ? asList(doc.notesDoc.limitations) : []; Label { required property var modelData; text: "– " + modelData; textFormat: Text.PlainText; color: aiInk; font.pixelSize: 13; wrapMode: Text.Wrap; Layout.fillWidth: true } }
