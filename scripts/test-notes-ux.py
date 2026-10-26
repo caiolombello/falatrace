@@ -6,7 +6,8 @@ studio_fixture.qml_steps: every step waits (bounded) for the state the previous 
 never a fixed delay, and prints its own assertion line. Modes: the v2 notes document (your lines
 vs lines the AI completed, citations, actions with undo, a second action of the same recording,
 the place in the notes kept across a list refresh), a conflicting action, the Markdown fallback,
-"Minhas notas" (notes-read/notes-save, and text typed while a save runs), a meeting still being
+"Minhas notas" (notes-read/notes-save, and text typed while a save runs; Tab leaves the notepad
+instead of typing a tab, through a real key press), a meeting still being
 processed in English and compact, the transcript search in the sidebar, and a bridge that offers
 none of the new features. Exit 77 means no Studio runtime is available.
 """
@@ -113,6 +114,7 @@ for line in sys.stdin:
 # touch an item not built yet (false instead of a TypeError).
 HELPERS = '''
  property real uxScroll: 0
+ property var qaKeys: []
  function uxFind(item, name) { if (!item) return null; if (item.objectName === name) return item
   const kids = [].concat(item.children || [], item.contentItem && item.contentItem !== item ? [item.contentItem] : [])
   for (let i = 0; i < kids.length; i++) { const f = uxFind(kids[i], name); if (f) return f } return null }
@@ -203,6 +205,16 @@ PLANS = {
     detailView.notesMode.currentIndex = 0'''),
         ('closed during a save', '!hasPending("notes-save") && !detailView.notesEditor.flush', '''
     check("what was typed during that save is sent once it answers", detailView.notesEditor.flush === null && !detailView.notesEditor.loaded)''')]),
+    'tab': ('1320x820', False, [OPEN,
+        ('switch to my notes', None, 'detailView.notesMode.currentIndex = 1'),
+        ('notes loaded', 'detailView.notesEditor.loaded', '''
+    detailView.notesEditor.area.forceActiveFocus(Qt.TabFocusReason)
+    check("the notepad has the focus", detailView.notesEditor.area.activeFocus)
+    qaKeys = [Qt.Key_Tab]'''),
+        ('tabbed out', '!detailView.notesEditor.area.activeFocus && !!window.activeFocusItem', '''
+    check("Tab leaves the notepad for the next control and types no tab", detailView.notesEditor.area.text.indexOf("\\t") < 0)
+    qaKeys = [Qt.Key_Backtab]'''),
+        ('tabbed back', 'detailView.notesEditor.area.activeFocus', 'check("Shift+Tab comes back to the notepad", detailView.notesEditor.area.text.indexOf("\\t") < 0)')]),
     'processing-en': ('900x640', True, [(OPEN[0], OPEN[1], 'check("opens on Notes", tabs.currentIndex === 1)'),
         ('progress', 'detailView.notesDocument.docState === "processing" && compactLayout', '''
     check("English interface", uiLanguage === "en")
@@ -232,7 +244,7 @@ PLANS = {
     check("actions are read-only", !uxFind(window.contentItem, "actionCheck-''' + ACTION + '''").enabled)
     const row = uxFind(window.contentItem, "librarySearchButton"); check("no library search row", !(row && row.visible))''')]),
 }
-DETAIL_FOR = {'v2': 'v2', 'conflict': 'v2', 'legacy': 'legacy', 'mine': 'v2', 'processing-en': 'processing', 'search': 'v2', 'no-features': 'v2'}
+DETAIL_FOR = {'v2': 'v2', 'conflict': 'v2', 'legacy': 'legacy', 'mine': 'v2', 'tab': 'v2', 'processing-en': 'processing', 'search': 'v2', 'no-features': 'v2'}
 FAMILY = ('notes-', 'live-', 'templates-', 'assistant-', 'recipes-', 'share-', 'actions-', 'action-', 'people-', 'person-', 'clients-', 'client-', 'meeting-client-', 'meeting-override', 'home-', 'inbox-', 'first-run-', 'media-', 'library-search', 'summary-prefs-')
 MINE_TEXT = NOTES['text'] + '\nperguntar sobre o orçamento'
 

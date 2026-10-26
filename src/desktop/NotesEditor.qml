@@ -286,6 +286,9 @@ FocusScope {
                 Keys.onReturnPressed: event => { editor.newLine(); event.accepted = true }
                 Keys.onEnterPressed: event => { editor.newLine(); event.accepted = true }
                 Keys.onEscapePressed: event => { editor.saveNow(); editor.focus = false; window.contentItem.forceActiveFocus(); event.accepted = true }
+                // Tab moves on to the next control (Shift+Tab back): it never types a tab character in the notes.
+                Keys.onTabPressed: event => { const next = nextItemInFocusChain(true); if (next) next.forceActiveFocus(Qt.TabFocusReason); event.accepted = true }
+                Keys.onBacktabPressed: event => { const previous = nextItemInFocusChain(false); if (previous) previous.forceActiveFocus(Qt.BacktabFocusReason); event.accepted = true }
                 Keys.onPressed: event => {
                     const control = (event.modifiers & Qt.ControlModifier) !== 0, alt = (event.modifiers & Qt.AltModifier) !== 0
                     if (control && !alt && event.key === Qt.Key_S) { editor.saveNow(); event.accepted = true }

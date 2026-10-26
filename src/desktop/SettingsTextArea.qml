@@ -26,6 +26,8 @@ ColumnLayout {
             background:Rectangle { radius:8; color:fieldSurface; border.width:areaInput.activeFocus?2:1; border.color:areaInput.activeFocus?accent:divider }
             onTextChanged:if (activeFocus) setSettingsField(areaControl.field, text.length > areaControl.maximumLength ? text.slice(0, areaControl.maximumLength) : text)
             Accessible.name:areaControl.label
+            Keys.onTabPressed: event => { const next = nextItemInFocusChain(true); if (next) next.forceActiveFocus(Qt.TabFocusReason); event.accepted = true }
+            Keys.onBacktabPressed: event => { const previous = nextItemInFocusChain(false); if (previous) previous.forceActiveFocus(Qt.BacktabFocusReason); event.accepted = true }
         }
     }
     SettingsHint { text:(areaControl.hint ? areaControl.hint + " " : "") + areaInput.text.length + " / " + areaControl.maximumLength }

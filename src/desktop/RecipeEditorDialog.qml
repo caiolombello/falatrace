@@ -119,6 +119,8 @@ FtDialog {
                     placeholderTextColor: muted
                     selectionColor: accent; selectedTextColor: onAccent
                     Accessible.name: t("Pedido da receita")
+                    Keys.onTabPressed: event => { const next = nextItemInFocusChain(true); if (next) next.forceActiveFocus(Qt.TabFocusReason); event.accepted = true }
+                    Keys.onBacktabPressed: event => { const previous = nextItemInFocusChain(false); if (previous) previous.forceActiveFocus(Qt.BacktabFocusReason); event.accepted = true }
                     background: Rectangle { radius: 8; color: fieldSurface; border.width: promptArea.activeFocus ? 2 : 1; border.color: promptArea.activeFocus ? accent : divider }
                 }
             }
