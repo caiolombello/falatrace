@@ -125,7 +125,12 @@ PLANS = {
     check("the first-run card shows until the first notes", uxFind(homeView, "firstRunCard").visible && homeView.firstRunState === "start")
     uxFind(homeView, "firstRunRecord").clicked()
     check("the test recording asks first, in test mode", captureConsent.visible && liveView.testMode && captureConsent.captureTitle === "Conversa de teste")
-    captureConsent.reject()''')]),
+    captureConsent.reject()'''),
+        ('test declined', '!captureConsent.visible', '''
+    check("declining the test recording leaves no test mode behind", !liveView.testMode)
+    uxFind(homeView, "homeRecord").clicked()
+    check("the next recording is a real one (no one-minute stop)", captureConsent.visible && !liveView.testMode && captureConsent.captureTitle === "")
+    captureConsent.close()''')]),
     'celebration': ('1320x820', False, [
         ('home read', 'homeView.visible && homeView.homeLoaded && newBridge', '''
     const card = uxFind(homeView, "firstRunCelebration")

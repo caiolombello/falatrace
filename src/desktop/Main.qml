@@ -1175,7 +1175,8 @@ ApplicationWindow {
     // Asks before a capture (title: the meeting from the calendar, when known).
     function startCaptureFor(title, test) {
         if (!backend.available || !captureKnown || captureBusy || captureStatus.active) return
-        if (test) liveView.testMode = true
+        // Only the test recording runs in test mode (it stops by itself after a minute).
+        liveView.testMode = test === true
         captureConsent.intent = "capture"; captureConsent.captureTitle = title || ""; captureConsent.open()
     }
     // The meeting page lives in MeetingView.qml; these keep the ids the controller, the dialogs and the journeys use.

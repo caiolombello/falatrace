@@ -41,12 +41,20 @@ FtDialog {
         }
     }
     // Cancel keeps the initial focus: an accidental Enter never starts a capture.
-    onOpened: captureConsentCancel.forceActiveFocus(Qt.TabFocusReason)
-    onClosed: captureTitle = ""
+    onOpened: { captureRequested = false; captureConsentCancel.forceActiveFocus(Qt.TabFocusReason) }
+    // A test capture (liveView.testMode, which stops by itself after a minute) is armed only for the
+    // capture this dialog starts: closed without starting one, the next capture is a real one again.
+    // (Dialog emits accepted before closed.)
+    property bool captureRequested: false
+    onClosed: {
+        if (intent !== "resume" && !captureRequested && !captureStatus.active) liveView.testMode = false
+        captureTitle = ""; captureRequested = false
+    }
     onAccepted: {
         if (backend.available && !captureBusy && (intent === "resume" || !captureStatus.active)) {
             captureBusy = true
             if (send(intent === "resume" ? "automation-resume" : "capture-start", "", intent === "resume" ? ({}) : {title: captureTitle}) < 0) captureBusy = false
+            else if (intent !== "resume") captureRequested = true
         }
     }
 }
