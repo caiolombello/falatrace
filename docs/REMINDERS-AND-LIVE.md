@@ -27,9 +27,9 @@ They depend on how recordings start:
 
 **Ver resumo anterior** is added when a brief exists (below). Buttons need a `notify-send` that supports actions; otherwise you get a plain notification.
 
-- **Gravar** saves a "record" decision for that meeting. The call monitor then records it when the call starts, even in `notify-only` mode or while automatic recording is paused. With call detection off, it starts a manual capture named after the meeting instead and opens it in the Studio.
+- **Gravar** saves a "record" decision for that meeting. The call monitor then records it when the call starts, even in `notify-only` mode or while automatic recording is paused (a pause set after the decision wins). The decision covers one call: the first one it records; another call later in its window, or a call that only starts after the meeting's scheduled end, follows the configured mode. With call detection off, it starts a manual capture named after the meeting instead and opens it in the Studio.
 - **Pular esta gravação** saves a "skip" decision: the call monitor will not record that meeting.
-- A decision applies from 10 minutes before the start to 15 minutes after the end. It only starts or blocks new recordings: it never stops one already running.
+- A decision applies from 10 minutes before the start to 15 minutes after the end. It only starts or blocks new recordings, with one exception: withdrawing a "record" decision (**Desfazer**, or switching to **Pular**) stops the recording that decision started when the configured mode would not have recorded the call; the media captured so far is kept.
 
 Decisions are kept in `~/.local/state/recording-cli/meeting-overrides.json` and pruned when they expire. The Studio's Home lists upcoming meetings with the same record and skip choices. <!-- studio-check -->
 

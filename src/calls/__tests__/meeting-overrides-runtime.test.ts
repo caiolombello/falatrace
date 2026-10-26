@@ -18,11 +18,11 @@ const nodes: PipeWireNodeRecord[] = ["Stream/Input/Audio", "Stream/Output/Audio"
 const HASH = "a".repeat(64);
 const quiet = { callStarted: async () => {}, callEnded: async () => {}, recordingStarted: async () => {}, recordingStopped: async () => {}, unavailable: async () => {}, warning: async () => {} };
 
-const override = (decision: "skip" | "record", title = "Daily Sync"): MeetingOverride => {
+const override = (decision: "skip" | "record", title = "Daily Sync", createdAt = Date.now() - 120_000): MeetingOverride => {
   const now = Date.now();
   return {
     eventIdHash: HASH, title, decision, startAt: new Date(now - 60_000).toISOString(), endAt: new Date(now + 30 * 60_000).toISOString(),
-    createdAt: new Date(now - 120_000).toISOString(), expiresAt: new Date(now + 45 * 60_000).toISOString()
+    createdAt: new Date(createdAt).toISOString(), expiresAt: new Date(now + 45 * 60_000).toISOString()
   };
 };
 
@@ -164,10 +164,65 @@ test("while automation is paused, only a meeting marked record is recorded", asy
     expect(f.runtime.machine.getSnapshot().state).toBe("IN_CALL");
     expect(f.starts).toHaveLength(0);
     await f.emit([]); await f.emit([]);
-    decision = override("record", "Retro");
+    // "Gravar" clicked after the pause: that meeting is recorded.
+    await Bun.sleep(5);
+    decision = override("record", "Retro", Date.now());
     await f.emit(nodes); await f.emit(nodes);
     expect(f.starts).toHaveLength(1);
     expect(basename(dirname(f.starts[0]))).toMatch(/_Retro-[0-9a-f]{8}$/);
+  } finally { await f.close(); }
+}, 15_000);
+
+test("a record decision covers one call: a later call in its window follows the configured mode", async () => {
+  const decision = override("record", "Daily Sync");
+  const f = await fixture({ mode: "notify-only", decision: () => decision });
+  try {
+    await f.emit(nodes); await f.emit(nodes);
+    expect(f.starts).toHaveLength(1);
+    await f.emit([]); await f.emit([]);
+    expect(f.runtime.recorder.ownsRecording()).toBe(false);
+    // Another call (a personal one after the meeting) inside the window: notify-only, nothing recorded.
+    await f.emit(nodes); await f.emit(nodes);
+    expect(f.runtime.machine.getSnapshot().state).toBe("IN_CALL");
+    expect(f.starts).toHaveLength(1);
+  } finally { await f.close(); }
+  // In record mode the later call is recorded as usual, but not named after the meeting.
+  const record = await fixture({ mode: "record", decision: () => decision });
+  try {
+    await record.emit(nodes); await record.emit(nodes);
+    await record.emit([]); await record.emit([]);
+    await record.emit(nodes); await record.emit(nodes);
+    expect(record.starts).toHaveLength(2);
+    expect(basename(dirname(record.starts[0]))).toMatch(/_Daily_Sync-[0-9a-f]{8}$/);
+    expect(basename(dirname(record.starts[1]))).toMatch(/_recording-[0-9a-f]{8}$/);
+  } finally { await record.close(); }
+}, 25_000);
+
+test("a pause set after a record decision wins over it", async () => {
+  const decision = override("record", "Daily Sync");
+  const f = await fixture({ mode: "record", decision: () => decision });
+  try {
+    // The decision was made two minutes ago; the pause now.
+    await setAutomationPaused(true);
+    await f.emit(nodes); await f.emit(nodes);
+    expect(f.runtime.machine.getSnapshot().state).toBe("IN_CALL");
+    expect(f.starts).toHaveLength(0);
+  } finally { await f.close(); }
+}, 15_000);
+
+test("an unused record decision does not record a call that starts after the meeting's scheduled end", async () => {
+  // The meeting (no call took place) ended five minutes ago; the decision's window still runs for ten.
+  const now = Date.now();
+  const ended: MeetingOverride = {
+    ...override("record", "Daily Sync"),
+    startAt: new Date(now - 35 * 60_000).toISOString(), endAt: new Date(now - 5 * 60_000).toISOString(),
+    expiresAt: new Date(now + 10 * 60_000).toISOString()
+  };
+  const f = await fixture({ mode: "notify-only", decision: () => ended });
+  try {
+    await f.emit(nodes); await f.emit(nodes);
+    expect(f.runtime.machine.getSnapshot().state).toBe("IN_CALL");
+    expect(f.starts).toHaveLength(0);
   } finally { await f.close(); }
 }, 15_000);
 

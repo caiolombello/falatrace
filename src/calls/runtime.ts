@@ -103,7 +103,11 @@ export class CallMonitorRuntime {
   private evaluationQueue: Promise<void> = Promise.resolve();
   private runSignal?: AbortSignal;
   private automationPaused = false;
+  /** When the pause was last set or lifted (ms); undefined when not known (damaged or older file). */
+  private automationUpdatedAt?: number;
   private meetingOverride?: MeetingOverride;
+  /** The "record" decision a recording already used, and its call: a decision covers one call. */
+  private recordDecisionUsed?: { key: string; sessionId: string };
   /** The "record" decision a mid-call start was already tried for, so a failure is not retried in a loop. */
   private overrideStartTried?: string;
   /** The recording a "record" decision started, so withdrawing that decision ("Desfazer") can stop it. */
@@ -406,7 +410,7 @@ export class CallMonitorRuntime {
     let inactiveDuringStart = false;
     let blocked: RecordingBlock | undefined;
     // A meeting marked "record" names the recording folder after the meeting.
-    const decided = this.meetingOverride?.decision === "record" ? this.meetingOverride : undefined;
+    const decided = this.recordDecision();
     const title = decided?.title;
     try {
       const result = await this.recorder.start({
@@ -428,6 +432,8 @@ export class CallMonitorRuntime {
       }
       logCallEvent(result === "started" ? "recording.started" : "recording.already-recording");
       if (result === "started") {
+        // The decision is used up by this call: a later call in its window follows the configured mode.
+        if (decided && this.sessionId) this.recordDecisionUsed = { key: recordDecisionKey(decided), sessionId: this.sessionId };
         this.overrideRecording = decided && this.sessionId
           ? { eventIdHash: decided.eventIdHash, sessionId: this.sessionId, expiresAt: decided.expiresAt } : undefined;
         // First-run milestone in the state directory; it never affects the recording.
@@ -650,11 +656,32 @@ export class CallMonitorRuntime {
 
   private async refreshAutomation(): Promise<void> {
     try {
-      this.automationPaused = (await readAutomationState()).paused;
+      const state = await readAutomationState();
+      this.automationPaused = state.paused;
+      this.automationUpdatedAt = state.updatedAt ? Date.parse(state.updatedAt) : undefined;
     } catch (err) {
       this.automationPaused = true;
+      this.automationUpdatedAt = undefined;
       logCallEvent("automation.invalid-state", { error: sanitizeError(err) });
     }
+  }
+
+  /**
+   * The "record" decision that applies to the current call, if any. It does not apply once a pause
+   * was set after it (or a pause whose time is unknown), nor to another call than the one it
+   * already recorded, nor (while unused) to a call that began after the meeting's scheduled end:
+   * consent given for one meeting never covers a different conversation.
+   */
+  private recordDecision(): MeetingOverride | undefined {
+    const override = this.meetingOverride;
+    if (override?.decision !== "record") return undefined;
+    if (this.automationPaused && (this.automationUpdatedAt === undefined || this.automationUpdatedAt > Date.parse(override.createdAt))) return undefined;
+    const used = this.recordDecisionUsed;
+    if (used?.key === recordDecisionKey(override)) return used.sessionId === this.sessionId ? override : undefined;
+    // The window's grace after the end keeps the meeting's own call; a call that starts then is another one.
+    const began = this.candidateStartedAt ?? Date.parse(this.sessionStartedAt ?? "");
+    if (Number.isFinite(began) && began > Date.parse(override.endAt)) return undefined;
+    return override;
   }
 
   /**
@@ -673,14 +700,15 @@ export class CallMonitorRuntime {
 
   /**
    * Whether a new automatic recording may start now: a meeting marked "skip" never records; one
-   * marked "record" records even in notify-only mode or while automation is paused (the person
-   * asked for this meeting); otherwise notify-only and a pause keep today's behaviour.
+   * marked "record" records its call even in notify-only mode or while automation is paused (the
+   * person asked for this meeting), unless paused after the decision; otherwise notify-only and a
+   * pause keep today's behaviour.
    */
   private async recordingBlock(): Promise<RecordingBlock | undefined> {
     await this.refreshAutomation();
     const decision = (await this.refreshMeetingOverride())?.decision;
     if (decision === "skip") return "meeting-skipped";
-    if (decision === "record") return undefined;
+    if (this.recordDecision()) return undefined;
     if (this.config.callDetection.mode === "notify-only") return "notify-only";
     return this.automationPaused ? "automation-paused" : undefined;
   }
@@ -695,7 +723,7 @@ export class CallMonitorRuntime {
     if (this.stopped || this.dryRun || this.runSignal?.aborted || !this.sessionId) return;
     if (this.machine.getSnapshot().state !== "IN_CALL" || !this.observation.active || this.recorder.ownsRecording()) return;
     const override = this.meetingOverride;
-    if (override?.decision !== "record" || await this.recordingBlock()) return;
+    if (override?.decision !== "record" || await this.recordingBlock() || !this.recordDecision()) return;
     const key = `${override.eventIdHash}:${override.createdAt}:${this.sessionId}`;
     if (this.overrideStartTried === key) return;
     const began = Date.parse(this.sessionStartedAt ?? "");
@@ -745,6 +773,8 @@ export class CallMonitorRuntime {
     await this.persistStatus();
   }
 }
+
+const recordDecisionKey = (override: MeetingOverride): string => `${override.eventIdHash}:${override.createdAt}`;
 
 export const runCallMonitor = async (
   config: AppConfig,
