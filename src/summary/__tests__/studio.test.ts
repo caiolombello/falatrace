@@ -272,7 +272,7 @@ test("the plan names its destination, template and language, and a template can 
     template: { id: "auto", name: "Automático", mode: "model-choice", source: "ai" }, language: "pt-BR", notesUsed: false, notesCount: 0 });
   await flow.cancel(f.job, automatic.requestId);
   const chosen = await flow.plan(f.job, f.config, { requestId: "chosen", maxRequests: 1, templateId: "postmortem", language: "en" });
-  expect(chosen.template).toEqual({ id: "postmortem", name: "Incident postmortem", mode: "fixed", source: "user" });
+  expect(chosen.template).toEqual({ id: "postmortem", name: "Incident postmortem", mode: "fixed", source: "user", confidence: 1 });
   expect(chosen.language).toBe("en");
   expect(chosen.consentKey).not.toBe(automatic.consentKey);
   await flow.cancel(f.job, chosen.requestId);

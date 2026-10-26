@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { AppConfig } from "../config/defaults";
 import { validateJobId, type JobRecord } from "../jobs/types";
+import { RevisionConflictError } from "../revisions";
 import { templateName } from "../templates/catalog";
 import { SUMMARY_LABELS, type ContentLanguage } from "./language";
 import {
@@ -17,7 +18,7 @@ type ProviderPresentation = { provider: "ollama" | "openai"; model: string; endp
 /** Where the summary input goes, in the words of the processing plan ("Ollama neste computador"). */
 export type StudioSummaryDestination = { provider: "ollama" | "openai"; model: string; where: string };
 /** The template of the plan: a fixed one, or "auto" when the model picks it from the conversation. */
-export type StudioSummaryTemplate = { id: string; name: string; mode: "fixed" | "model-choice"; source: string };
+export type StudioSummaryTemplate = { id: string; name: string; mode: "fixed" | "model-choice"; source: string; confidence: number };
 export type StudioSummaryPlan = {
   status: "planned"; jobId: string; requestId: string; consentKey: string; snapshotSha256: string; revision: number;
   provider: ProviderPresentation; chunkCount: number; maxRequests: number; inputCharacters: number;
@@ -38,6 +39,8 @@ export type StudioSummaryReceipt = {
 export type StudioSummaryRunStatus = {
   jobId: string; requestId: string; status: "running" | "completed" | "failed" | "cancelled";
   receipt?: StudioSummaryReceipt; error?: string;
+  /** The reviewed transcript or its source changed under the run (a new plan is needed). */
+  conflict?: boolean;
 };
 export type StudioSummaryCancellation = { jobId: string; requestId: string; status: "cancelled" | "completed"; persisted: boolean };
 type Item = {
@@ -68,8 +71,8 @@ const templateOf = (plan: ReviewedSummaryPlan): StudioSummaryTemplate | null => 
   if (plan.version !== 2) return null;
   const { selection, language } = plan.request;
   return selection.mode === "fixed" && selection.template
-    ? { id: selection.template.id, name: templateName(selection.template, language), mode: "fixed", source: selection.source }
-    : { id: "auto", name: SUMMARY_LABELS[language].autoTemplate, mode: "model-choice", source: "ai" };
+    ? { id: selection.template.id, name: templateName(selection.template, language), mode: "fixed", source: selection.source, confidence: selection.confidence }
+    : { id: "auto", name: SUMMARY_LABELS[language].autoTemplate, mode: "model-choice", source: "ai", confidence: selection.confidence };
 };
 const presentPlan = (plan: ReviewedSummaryPlan): StudioSummaryPlan => ({
   status: "planned", jobId: plan.jobId, requestId: plan.requestId, consentKey: plan.consentKey,
@@ -92,7 +95,7 @@ const presentResult = (result: ReviewedSummaryArtifact): StudioSummaryReceipt =>
 export class StudioSummaryCancelledError extends Error {
   constructor() { super("Studio summary request cancelled; no late result accepted"); this.name = "StudioSummaryCancelledError"; }
 }
-type RunRecord = { jobId: string; promise: Promise<StudioSummaryReceipt>; status: StudioSummaryRunStatus["status"]; receipt?: StudioSummaryReceipt; error?: string; finishedAt?: number };
+type RunRecord = { jobId: string; promise: Promise<StudioSummaryReceipt>; status: StudioSummaryRunStatus["status"]; receipt?: StudioSummaryReceipt; error?: string; conflict?: boolean; finishedAt?: number };
 /** Abort presentation promptly even when transport ignores abort; production still guards publication. */
 const abortable = <T>(work: Promise<T>, signal: AbortSignal): Promise<T> => new Promise((resolve, reject) => {
   const stop = () => reject(signal.reason || new StudioSummaryCancelledError());
@@ -191,7 +194,7 @@ export class StudioSummaryFlow {
         if (this.runs.get(id) !== record) return;
         const cancelled = error instanceof StudioSummaryCancelledError;
         Object.assign(record, { status: cancelled ? "cancelled" : "failed", finishedAt: Date.now(),
-          ...(cancelled ? {} : { error: (error instanceof Error ? error.message : String(error)).slice(0, 500) }) });
+          ...(cancelled ? {} : { error: (error instanceof Error ? error.message : String(error)).slice(0, 500), ...(error instanceof RevisionConflictError ? { conflict: true } : {}) }) });
       });
     }
     return { jobId: job.id, requestId: id, status: "running" };
@@ -202,7 +205,12 @@ export class StudioSummaryFlow {
     const record = this.runs.get(requestId(id));
     if (!record) throw Error("Studio summary request is unavailable");
     return structuredClone({ jobId: record.jobId, requestId: id, status: record.status,
-      ...(record.receipt ? { receipt: record.receipt } : {}), ...(record.error ? { error: record.error } : {}) });
+      ...(record.receipt ? { receipt: record.receipt } : {}), ...(record.error ? { error: record.error } : {}), ...(record.conflict ? { conflict: true } : {}) });
+  }
+  /** The job of a request still planned, running or being cancelled, so a cancel needs no disk read. */
+  activeJob(jobId: string, id: string): JobRecord | undefined {
+    const item = this.items.get(jobId);
+    return item && item.requestId === id ? structuredClone(item.job) : undefined;
   }
   private pruneRuns(): void {
     const now = Date.now();

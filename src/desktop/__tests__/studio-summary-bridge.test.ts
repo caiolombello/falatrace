@@ -9,9 +9,15 @@ import { StudioSummaryFlow } from "../../summary/studio";
 import { readCurrentReviewedSummary, reviewedSummaryProviderForConfig } from "../../summary/reviewed";
 import type { RecordingSummary } from "../../jobs/types";
 import { desktopRequestAdmitted, handleStudioSummaryOperation, StudioSummaryRequestRouter, parseRequest } from "../bridge";
+import { summaryStatus } from "../summary-bridge";
 
 assertQaIsolation();
 const roots: string[]=[];
+/** summary-run starts the generation and returns; the Studio polls summary-status until it settles. */
+const settled=async(flow:StudioSummaryFlow,requestId:string)=>{
+  for(let attempt=0;attempt<500;attempt++){const status=flow.status(requestId);if(status.status!=="running")return status;await new Promise(resolve=>setTimeout(resolve,10));}
+  throw Error("summary run did not settle");
+};
 afterEach(async()=>{for(const root of roots.splice(0))await fs.rm(root,{recursive:true,force:true});});
 const fixture=async()=>{
   const root=await fs.mkdtemp(join(process.env.TMPDIR!,"studio-summary-bridge-"));roots.push(root);
@@ -46,9 +52,14 @@ test("Studio handler composes production plan/run/read with synthetic response a
   expect(plan.provider.model).toBe("fixture-local");expect(plan.provider.endpoint).toContain("127.0.0.1");
   expect(plan.cost).toMatchObject({state:"unknown",estimatedUsd:null});expect(calls).toBe(0);
   await expect(handleStudioSummaryOperation(flow,parseRequest({id:2,op:"summary-plan",key:randomUUID(),payload:{requestId:randomUUID(),maxRequests:1}}),f.job,f.config)).rejects.toThrow("mismatch");
-  const completed:any=await handleStudioSummaryOperation(flow,parseRequest({id:3,op:"summary-run",key:f.job.id,payload:{requestId,consent:true,consentKey:plan.consentKey}}),f.job,f.config);
-  expect(completed.status).toBe("completed");expect(completed.requestId).toBe(requestId);expect(calls).toBe(1);
+  const started:any=await handleStudioSummaryOperation(flow,parseRequest({id:3,op:"summary-run",key:f.job.id,payload:{requestId,consent:true,consentKey:plan.consentKey}}),f.job,f.config);
+  expect(started).toEqual({jobId:f.job.id,requestId,status:"running"});
+  const status=await settled(flow,requestId),completed:any=status.receipt;
+  expect(status.status).toBe("completed");expect(completed.status).toBe("completed");expect(completed.requestId).toBe(requestId);expect(calls).toBe(1);
   expect(completed.raw).toBeUndefined();expect(completed.path).toBeUndefined();
+  // What the Studio polls: the outcome, never raw provider or exception text.
+  expect(parseRequest({id:4,op:"summary-status",key:f.job.id,payload:{requestId}}).op).toBe("summary-status");
+  expect(summaryStatus(flow,{id:4,op:"summary-status",key:f.job.id,payload:{requestId}})).toMatchObject({jobId:f.job.id,requestId,status:"completed",notesUsed:false});
   expect((await readCurrentReviewedSummary(f.job))?.summary.overview).toContain("Nota de teste");
   expect(await Promise.all([f.source,f.transcript,f.original].map(hashFile))).toEqual(before);
   expect(JSON.stringify(f.config)).toBe(configBefore);
@@ -100,11 +111,13 @@ test("cancel intent aborts active response before a delayed source lookup could 
   }});
   const router=new StudioSummaryRequestRouter(flow),requestId=randomUUID();
   const plan:any=await router.dispatch(parseRequest({id:1,op:"summary-plan",key:f.job.id,payload:{requestId,maxRequests:1}}),async()=>({job:f.job,config:f.config}));
-  const pending=router.dispatch(parseRequest({id:2,op:"summary-run",key:f.job.id,payload:{requestId,consent:true,consentKey:plan.consentKey}}),async()=>({job:f.job,config:f.config}));
-  const outcome=pending.catch(error=>error);await started;
+  // summary-run returns at once; the started run stays known to the flow, so cancelling needs no source read.
+  const running:any=await router.dispatch(parseRequest({id:2,op:"summary-run",key:f.job.id,payload:{requestId,consent:true,consentKey:plan.consentKey}}),async()=>({job:f.job,config:f.config}));
+  expect(running).toMatchObject({requestId,status:"running"});await started;
   let cancelSourceReads=0;
   const cancelled=router.dispatch(parseRequest({id:3,op:"summary-cancel",key:f.job.id,payload:{requestId}}),async()=>{cancelSourceReads++;await new Promise(()=>{});return {job:f.job};});
-  release();expect((await outcome as Error).message).toContain("cancelled");
+  release();
   expect((await cancelled as any).status).toBe("cancelled");expect(cancelSourceReads).toBe(0);
+  expect((await settled(flow,requestId)).status).toBe("cancelled");
   expect(await readCurrentReviewedSummary(f.job)).toBeUndefined();await flow.shutdown();
 });

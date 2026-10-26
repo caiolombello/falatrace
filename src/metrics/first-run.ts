@@ -1,5 +1,5 @@
 // First-run milestones, kept only on this computer: when the setup wizard opened and finished,
-// the first recording and the first summary. Each milestone is written once (the first time
+// the first recording, the first summary and when the person dismissed the first-summary card. Each milestone is written once (the first time
 // wins), so "time to first summary" measures the real first experience.
 import { join } from "node:path";
 import {
@@ -7,7 +7,7 @@ import {
   type LockOptions, withPrivateLock, writePrivateFile
 } from "../runtime/private-file";
 
-export const FIRST_RUN_EVENTS = ["wizardOpened", "wizardFinished", "firstRecording", "firstSummary"] as const;
+export const FIRST_RUN_EVENTS = ["wizardOpened", "wizardFinished", "firstRecording", "firstSummary", "celebrationDismissed"] as const;
 export type FirstRunEvent = (typeof FIRST_RUN_EVENTS)[number];
 
 export type FirstRunMetrics = {
@@ -16,13 +16,16 @@ export type FirstRunMetrics = {
   wizardFinishedAt?: string;
   firstRecordingAt?: string;
   firstSummaryAt?: string;
+  /** The Studio's first-summary celebration was dismissed (it is not shown again). */
+  celebrationDismissedAt?: string;
 };
 
 const FIELDS: Record<FirstRunEvent, Exclude<keyof FirstRunMetrics, "version">> = {
   wizardOpened: "wizardOpenedAt",
   wizardFinished: "wizardFinishedAt",
   firstRecording: "firstRecordingAt",
-  firstSummary: "firstSummaryAt"
+  firstSummary: "firstSummaryAt",
+  celebrationDismissed: "celebrationDismissedAt"
 };
 
 export const FIRST_RUN_ERRORS = {

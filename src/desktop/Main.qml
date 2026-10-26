@@ -132,6 +132,7 @@ ApplicationWindow {
     property string summaryRequestId: ""
     property string summaryJobId: ""
     property bool summaryRunning: false
+    property bool summaryPolling: false
     property bool summaryNeedsReload: false
     property bool summaryCompleted: false
     property bool captureBusy: false
@@ -339,10 +340,10 @@ ApplicationWindow {
     }
     function abandonSummary() {
         if (!summaryCompleted && summaryRequestId && summaryJobId && backend.available) send("summary-cancel",summaryJobId,{requestId:summaryRequestId})
-        summaryGeneration+=1;summaryPlan=({});summaryConsent.checked=false;summaryRequestId="";summaryJobId="";summaryRunning=false;summaryCompleted=false
+        summaryGeneration+=1;summaryPlan=({});summaryConsent.checked=false;summaryRequestId="";summaryJobId="";summaryRunning=false;summaryPolling=false;summaryCompleted=false
     }
     function summaryConnectionLost() {
-        summaryGeneration+=1;summaryPlan=({});summaryConsent.checked=false;summaryRunning=false;summaryNeedsReload=true
+        summaryGeneration+=1;summaryPlan=({});summaryConsent.checked=false;summaryRunning=false;summaryPolling=false;summaryNeedsReload=true
         if(summaryDialog.visible)summaryError=t("Conexão perdida; a geração pode ter iniciado. Releia o resumo antes de preparar outro pedido. O original foi preservado.")
     }
     function openSummary() {
@@ -827,6 +828,7 @@ ApplicationWindow {
     Timer { interval: processingWait || summaryRunning || hasPending("frames-preview") || hasPending("frames-confirm") ? 500 : 2000; running: backend.available; repeat: true; onTriggered: { if (!hasPending("processing-status")) send("processing-status", "") } }
     Label { z: 100; anchors.bottom: parent.bottom; anchors.bottomMargin: 48; anchors.horizontalCenter: parent.horizontalCenter; width: Math.min(parent.width - 32, implicitWidth); visible: !!processingWait; text: t(processingWait); textFormat: Text.PlainText; wrapMode: Text.WordWrap; color: warningColor; padding: 10; leftPadding: 14; rightPadding: 14; background: Rectangle { color: surface; radius: 10; border.width: 1; border.color: warningColor } }
     Timer { interval: 1000; running: captureStatus.active; repeat: true; onTriggered: statusNow = Date.now() }
+    Timer { interval: 1000; running: summaryPolling && backend.available; repeat: true; onTriggered: { if (!hasPending("summary-status")) send("summary-status", summaryJobId, { requestId: summaryRequestId }) } }
     Component.onCompleted: if (backend.available) { send("list-cached", ""); send("list", ""); send("capture-status", ""); send("jobs-list", ""); send("ux-capabilities", ""); send("settings-read", "") }
     Connections {
         target: backend
@@ -857,7 +859,7 @@ ApplicationWindow {
             if (!message.ok && (request.op.startsWith("agent-")||request.op.startsWith("provider-"))) { agentError=message.error; return }
             if (!message.ok && request.op === "processing-status") { processingWait = t("Estado do processamento indisponível; nenhuma alteração na captura."); return }
             if (!message.ok && request.op.startsWith("onboarding-")) { if(request.op==="onboarding-save-local")onboardingSaveUncertain=true;invalidateOnboarding(message.error+t(" Releia a configuração e confirme sua escolha antes de salvar novamente."));return }
-            if (!message.ok && request.op.startsWith("summary-") && request.op!=="summary-cancel") {summaryRunning=false;summaryNeedsReload=true;summaryConsent.checked=false;summaryPlan=({});summaryError=message.error;return}
+            if (!message.ok && request.op.startsWith("summary-") && request.op!=="summary-cancel") {summaryRunning=false;summaryPolling=false;summaryNeedsReload=true;summaryConsent.checked=false;summaryPlan=({});summaryError=message.error;return}
             if (request.op==="summary-cancel")return
             if (!message.ok && request.op.startsWith("frames-")) { uxError = message.error; return }
             if (!message.ok && request.op.startsWith("revision-")) { reviewNeedsReload=true;reviewError=message.error+t(" Releia os dados antes de tentar novamente.");errorText=reviewError;detailLoading=true;send("detail",selected.key);return }
@@ -865,7 +867,9 @@ ApplicationWindow {
             if (!message.ok) { errorText = message.error; notice = ""; captureBusy = false; contextLoading = false; if (request.op === "subtitles") subtitleQueued = false; if (request.op === "diarization") diarizationQueued = false; if (request.op === "speakers-suggest") speakersQueued = false; if (request.op === "resolve" || request.op === "playback-status") { resolving = false; playbackOperation = "" } return }
             const result = message.result
             if(request.op === "summary-plan") {summaryPlan=result;summaryConsent.checked=false;summaryError=""
-            } else if(request.op === "summary-run") {summaryRunning=false;summaryCompleted=true;notice=t("Resumo novo ligado à revisão; confira a fonte. Original preservado.");summaryDialog.close();clearDerivedView();detailLoading=true;send("detail",selected.key)
+            } else if((request.op === "summary-run" && result.status !== "running") || (request.op === "summary-status" && result.status === "completed")) {summaryRunning=false;summaryPolling=false;summaryCompleted=true;notice=t("Resumo novo ligado à revisão; confira a fonte. Original preservado.");summaryDialog.close();clearDerivedView();detailLoading=true;send("detail",selected.key)
+            } else if(request.op === "summary-run") {summaryPolling=true
+            } else if(request.op === "summary-status") {if(result.status !== "running"){summaryRunning=false;summaryPolling=false;summaryNeedsReload=true;summaryConsent.checked=false;summaryPlan=({});summaryError=result.error||""}
             } else if(request.op === "provider-authorize") {providerConsent.checked=false;showAgentSetup=false;preferredGrantId=result.id;changeAgentGrant()
             } else if(request.op === "provider-analyze") {providerPendingGrant="";providerResult=result;send("agent-status",selected.key)
             } else if(request.op === "provider-cancel") {agentError=t("Pedido de análise cancelado; resultado/custo podem ser incertos se já enviado.")

@@ -66,15 +66,43 @@ export const handleRealFrameOperation=async(flow:StudioVisualFlow,request:Reques
 };
 
 import { setAutomationPaused } from "../calls/control";
+import { DEFAULT_CONFIG, SUMMARY_LANGUAGES } from "../config/defaults";
+import { markFirstRun, readFirstRun } from "../metrics/first-run";
+import { type BridgeCall, type BridgeFamily, familyError, TEMPLATE_ID } from "./bridge-family";
+import type { BridgeContext } from "./bridge-context";
+import { studioFeatures } from "./capabilities";
+import { LIBRARY_REFRESH_MIN_AGE_MS, StudioServices } from "./studio-services";
+import { detailExtras, listItemExtras } from "./meeting-view";
+import { NOTES_BRIDGE_OPERATIONS, notesBridge } from "./notes-bridge";
+import { SUMMARY_BRIDGE_OPERATIONS, summaryBridge } from "./summary-bridge";
+import { ASSISTANT_BRIDGE_OPERATIONS, assistantBridge, stopChatGptSignIn } from "./assistant-bridge";
+import { SHARE_BRIDGE_OPERATIONS, shareBridge } from "./share-bridge";
+import { ENTITIES_BRIDGE_OPERATIONS, entitiesBridge } from "./entities-bridge";
+import { firstRunView, HOME_BRIDGE_OPERATIONS, homeBridge } from "./home-bridge";
+import { MEDIA_BRIDGE_OPERATIONS, mediaBridge } from "./media-bridge";
 import { MEDIA_RETENTION_MESSAGES } from "../media-retention/store";
 import { mediaStateOf, type MediaState } from "../media-retention/state";
 import { resolveMediaEvidence } from "../media-retention/evidence";
 
-const OPERATIONS = ["summary-plan", "summary-run", "summary-cancel","provider-authorize","provider-analyze","provider-cancel","agent-cancel","agent-status","agent-authorize","agent-pause","agent-resume","agent-revoke","agent-frames","agent-connect","recording-process-plan","recording-process","processing-status", "ux-capabilities", "list-cached", "onboarding-read", "onboarding-save-local", ...SETTINGS_OPERATIONS, "frames-check-models", "frames-scope", "frames-plan", "frames-preview-plan", "frames-preview", "frames-confirm", "frames-cancel", "list", "detail", "resolve", "playback-status", "subtitles", "diarization", "automation-pause", "automation-resume", "capture-status", "capture-start", "capture-stop", "capture-recover", "audio-defaults", "jobs-list", "job-process", "job-retry", "diarization-name", "speakers-suggest", "context-meeting", "revision-save", "revision-undo", "export-preview", "export-save"] as const;
-export type Request = { id: number; op: typeof OPERATIONS[number]; key?: string; payload?: {maxRequests?:number;expectedRevision?:number;expectedSnapshotSha256?:string;base?:RevisionBase;expectedBase?:RevisionBase;operations?:RevisionOperation[];format?:"json"|"markdown"|"srt"|"vtt";track?:"transcript"|"diarization";provider?:'openai'|'google';model?:string;analysis?:import('../provider-analysis/contracts').AnalysisOptions;context?:boolean;maxFrames?:number;maxBytes?:number;requestId?:string;grantId?:string;recipientId?:string;data?:Array<'context'|'frames'>;timestamps?:number[]; title?: string; speakerId?: string; label?: string; maxCharacters?: number; query?: string; offset?: number; question?: string; seconds?: number; previewId?: string; consent?: boolean; revision?: string; visionModel?: string; summaryModel?: string; capabilityId?: string; consentKey?: string; planId?:string; consentTranscript?:boolean; scopeId?:string; startSeconds?:number; endSeconds?:number; changes?: Record<string, unknown>; action?: string; audioSource?: string; microphone?: string; desktop?: string; name?: string; value?: string; service?: string; backup?: string; path?: string; kind?: string; ollamaUrl?: string; initialize?: boolean; client?: string; conversation?: boolean; personId?: string; all?: boolean } };
+const OPERATIONS = ["summary-plan", "summary-run", "summary-cancel","provider-authorize","provider-analyze","provider-cancel","agent-cancel","agent-status","agent-authorize","agent-pause","agent-resume","agent-revoke","agent-frames","agent-connect","recording-process-plan","recording-process","processing-status", "ux-capabilities", "list-cached", "onboarding-read", "onboarding-save-local", ...SETTINGS_OPERATIONS, "frames-check-models", "frames-scope", "frames-plan", "frames-preview-plan", "frames-preview", "frames-confirm", "frames-cancel", "list", "detail", "resolve", "playback-status", "subtitles", "diarization", "automation-pause", "automation-resume", "capture-status", "capture-start", "capture-stop", "capture-recover", "audio-defaults", "jobs-list", "job-process", "job-retry", "diarization-name", "speakers-suggest", "context-meeting", "revision-save", "revision-undo", "export-preview", "export-save",
+  ...NOTES_BRIDGE_OPERATIONS, ...SUMMARY_BRIDGE_OPERATIONS, ...ASSISTANT_BRIDGE_OPERATIONS, ...SHARE_BRIDGE_OPERATIONS, ...ENTITIES_BRIDGE_OPERATIONS,
+  ...HOME_BRIDGE_OPERATIONS, ...MEDIA_BRIDGE_OPERATIONS] as const;
+export type Request = { id: number; op: typeof OPERATIONS[number]; key?: string; payload?: {maxRequests?:number;expectedRevision?:number;expectedSnapshotSha256?:string;base?:RevisionBase;expectedBase?:RevisionBase;operations?:RevisionOperation[];format?:"json"|"markdown"|"srt"|"vtt";track?:"transcript"|"diarization";provider?:'openai'|'google';model?:string;analysis?:import('../provider-analysis/contracts').AnalysisOptions;context?:boolean;maxFrames?:number;maxBytes?:number;requestId?:string;grantId?:string;recipientId?:string;data?:Array<'context'|'frames'>;timestamps?:number[]; title?: string; speakerId?: string; label?: string; maxCharacters?: number; query?: string; offset?: number; question?: string; seconds?: number; previewId?: string; consent?: boolean; revision?: string; visionModel?: string; summaryModel?: string; capabilityId?: string; consentKey?: string; planId?:string; consentTranscript?:boolean; scopeId?:string; startSeconds?:number; endSeconds?:number; changes?: Record<string, unknown>; action?: string; audioSource?: string; microphone?: string; desktop?: string; name?: string; value?: string; service?: string; backup?: string; path?: string; kind?: string; ollamaUrl?: string; initialize?: boolean; client?: string; conversation?: boolean; personId?: string; all?: boolean; templateId?: string; language?: string; useNotes?: boolean } };
 type Response = { id: number; ok: true; result: unknown } | { id: number; ok: false; error: string };
 const MAX_LINE = 1024 * 1024;
 const UUID = /^[a-f0-9-]{36}$/i;
+/** Long-lived services of this Studio (index, assistant, facts snapshot, presence). */
+const studio = new StudioServices();
+/** Operation families registered here; each owns its allowlist, validation, handler and messages. */
+const FAMILIES: readonly BridgeFamily<BridgeContext>[] = [notesBridge, summaryBridge(studioSummary), assistantBridge, shareBridge, entitiesBridge, homeBridge, mediaBridge];
+const FAMILY_BY_OP = new Map<string, BridgeFamily<BridgeContext>>(FAMILIES.flatMap((family) => family.operations.map((op) => [op, family] as const)));
+export const familyOf = (op: string): BridgeFamily<BridgeContext> | undefined => FAMILY_BY_OP.get(op);
+const ALWAYS_ADMITTED = new Set<string>(["summary-cancel", ...FAMILIES.flatMap((family) => family.alwaysAdmitted ?? [])]);
+const bridgeContext: BridgeContext = {
+  studio,
+  library: { find: (key) => findEntry(key), load: () => loadLibrary(), invalidate: () => invalidateLibrary() },
+  deps: {}
+};
 let libraryCache: { at: number; config: Awaited<ReturnType<typeof loadConfig>>["config"]; entries: LibraryEntry[] } | undefined;
 let libraryLoad: Promise<NonNullable<typeof libraryCache>> | undefined;
 
@@ -105,6 +133,8 @@ const safeError = (op: string, error: unknown): string => {
     "A gravação ainda não possui contexto disponível.", "Muitas operações pendentes; tente novamente."
   ];
   if (known.includes(text)) return text;
+  const family = familyOf(op);
+  if (family) return familyError(family, op, error);
   if (op === "speakers-suggest") return SPEAKER_KNOWN_ERRORS.includes(text) ? text : "Não foi possível pedir sugestões de nomes. Os nomes atuais foram preservados.";
   if (op.startsWith("settings-")) return isDisplayableSettingsError(op, text) ? text : settingsErrorMessage(op);
   if (op.startsWith("summary-")) return error instanceof RevisionConflictError ? "A revisão ou sua origem mudou. Prepare um novo plano antes de gerar; o original foi preservado." : "Resumo não confirmado ou cancelado. Confira modelo local, destino, limite e consentimento. Não repita uma tentativa incerta; releia antes de preparar outro plano. Original preservado.";
@@ -270,7 +300,10 @@ export const assertCurrentSummaryPresentation = async (job: JobRecord, expected:
 };
 const list = async (): Promise<unknown> => {
   const { entries } = await loadLibrary(true);
-  const items = await Promise.all(entries.map(async (entry) => ({ key: entry.sourcePath, recordingId:registeredAgentRecordingId(entry), ...recordingPresentation(entry, entry.jobs[0] ? await readArtifactStates(entry.jobs[0]) : undefined), fileName: basename(entry.sourcePath), modifiedAt: entry.modifiedAt, sourceExists: entry.sourceExists, location: locationOf(entry), status: statusOf(entry), backup: backupOf(entry), ...(entry.media ? { media: entry.media.state } : {}) })));
+  // People, client, duration, notes and open actions come from the in-memory index snapshot (no extra reads).
+  const items = await Promise.all(entries.map(async (entry) => ({ key: entry.sourcePath, recordingId:registeredAgentRecordingId(entry), ...recordingPresentation(entry, entry.jobs[0] ? await readArtifactStates(entry.jobs[0]) : undefined), fileName: basename(entry.sourcePath), modifiedAt: entry.modifiedAt, sourceExists: entry.sourceExists, location: locationOf(entry), status: statusOf(entry), backup: backupOf(entry), ...(entry.media ? { media: entry.media.state } : {}), ...listItemExtras(entry, studio) })));
+  // New recordings and summaries reach the index (and the next list) through a background refresh.
+  studio.refreshInBackground(LIBRARY_REFRESH_MIN_AGE_MS);
   // Presentation cache only; a failed write never fails the fresh list.
   await writeLibrarySnapshot(items).catch(() => undefined);
   return { items };
@@ -311,8 +344,10 @@ const detail = async (key: string): Promise<unknown> => {
   const presentation = recordingPresentation(entry, artifacts);
   if (job && entry.jobs[0] && entry.jobs[0].id !== job.id) presentation.artifactStatus += " · conteúdo de tarefa anterior";
   if (job && reviewed) { await assertCurrentReviewedView(job, reviewed); await assertCurrentSummaryPresentation(job,currentSummary); }
+  // Notes, people, clients, calendar and the notes document; each part is omitted when it cannot be read.
+  const extras = await detailExtras({ job: job ?? entry.jobs[0], config, studio, summaryReady: artifacts?.summary.state === "ready", generatedAt: currentSummary?.generatedAt }).catch(() => ({}));
   return { key: entry.sourcePath, recordingId:registeredAgentRecordingId(entry), ...presentation, status: entry.jobs[0]?.state || statusOf(entry), backup: backupOf(entry), media: mediaDetail(media), artifacts, transcriptProvenance: reviewed?.original.provenance || readable?.artifact.provenance, artifactMessage: currentSummary ? "Resumo de modelo vinculado à revisão humana atual; o original foi preservado. Hashes verificam origem, não qualidade semântica." : reviewed?.derivedStale ? "Revisão humana aplicada. O resumo e a revisão visual anteriores estão desatualizados; nenhum modelo foi chamado para refazê-los." : readable && job?.state !== "completed" ? "Transcrição pronta e verificada. O processamento posterior não foi concluído; o resumo está indisponível. Não é necessário repetir a transcrição." : "", ...boundary, summary: artifacts?.summary.state!=="ready" ? "" : summary, visualReview, summaryInfo: currentSummary ? `${currentSummary.provenance.provider.provider}/${currentSummary.provenance.provider.model} · revisão ${currentSummary.revision.revision} · autoria: modelo` : job ? `${job.summary.provider}/${job.summary.model} · ${job.summary.provider === "openai" ? "provedor externo" : "Ollama: endpoint configurado"}` : "", timesheet, subtitleState, subtitleMessage,
-    ...(job && canonical ? { jobId: job.id, ...(job.state === "completed" ? { diarizationId: job.id } : {}) } : {}), ...(subtitleId ? { subtitleId } : {}), ...(speakerSuggestions ? { speakerSuggestions } : {}) };
+    ...(job && canonical ? { jobId: job.id, ...(job.state === "completed" ? { diarizationId: job.id } : {}) } : {}), ...(subtitleId ? { subtitleId } : {}), ...(speakerSuggestions ? { speakerSuggestions } : {}), ...extras };
 };
 const resolvePlayback = async (key: string): Promise<unknown> => {
   const { config, entry } = await findEntry(key);
@@ -344,7 +379,7 @@ const subtitles = async (key: string): Promise<unknown> => {
 };
 /** Payload keys each operation accepts; anything else is refused before dispatch. */
 const ALLOWED_PAYLOAD: Partial<Record<Request["op"], string[]>> = {
-  "summary-plan": ["requestId", "maxRequests"], "summary-run": ["requestId", "consent", "consentKey"], "summary-cancel": ["requestId"],
+  "summary-plan": ["requestId", "maxRequests", "templateId", "language", "useNotes"], "summary-run": ["requestId", "consent", "consentKey"], "summary-cancel": ["requestId"],
   "provider-authorize": ["provider", "model", "analysis", "context", "maxFrames", "maxBytes", "consent"],
   "provider-analyze": ["grantId", "requestId", "question", "timestamps"], "provider-cancel": ["grantId"],
   "agent-status": [], "agent-authorize": ["recipientId", "data", "consent"],
@@ -366,7 +401,8 @@ const ALLOWED_PAYLOAD: Partial<Record<Request["op"], string[]>> = {
   "recording-process": ["consent", "consentKey"],
   "capture-start": ["title"], "diarization-name": ["speakerId", "label"], "speakers-suggest": ["conversation", "consent", "consentKey"],
   "settings-voices-list": [], "settings-voices-delete": ["personId", "all"],
-  "settings-google-status": [], "settings-google-connect": [], "settings-google-disconnect": [], "context-meeting": ["maxCharacters", "query", "offset"]
+  "settings-google-status": [], "settings-google-connect": [], "settings-google-disconnect": [], "context-meeting": ["maxCharacters", "query", "offset"],
+  ...Object.assign({}, ...FAMILIES.map((family) => family.allowedPayload)) as Partial<Record<Request["op"], string[]>>
 };
 export const parseRequest = (value: unknown): Request => {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("request inválido");
@@ -378,6 +414,12 @@ export const parseRequest = (value: unknown): Request => {
   const payload = (request.payload || {}) as Record<string, unknown>;
   const allowed = ALLOWED_PAYLOAD[request.op as Request["op"]] || [];
   if (Object.keys(payload).some((key) => !allowed.includes(key))) throw new Error("payload inválido");
+  const family = familyOf(request.op as string);
+  if (family) {
+    // New families validate every field themselves; the legacy per-name checks below do not apply.
+    family.validate({ id: request.id as number, op: request.op as string, ...(request.key === undefined ? {} : { key: request.key as string }), payload });
+    return { id: request.id as number, op: request.op as Request["op"], ...(request.key === undefined ? {} : { key: request.key as string }), payload };
+  }
   for (const [key, max] of [["title", 200], ["speakerId", 8], ["label", 80], ["query", 1000], ["question", 1000], ["previewId", 36], ["revision", 64], ["visionModel", 200], ["summaryModel", 200], ["capabilityId", 36], ["consentKey", 64]] as const) {
     if (payload[key] !== undefined && (typeof payload[key] !== "string" || (payload[key] as string).length > max || /[\x00-\x1f\x7f]/.test(payload[key] as string))) throw new Error("payload inválido");
   }
@@ -439,6 +481,9 @@ export const parseRequest = (value: unknown): Request => {
   if ((request.op as string).startsWith("summary-")) {
     if (typeof request.key!=="string" || !UUID.test(request.key) || typeof payload.requestId!=="string" || !UUID.test(payload.requestId)) throw Error("payload inválido");
     if (request.op==="summary-plan" && (!Number.isSafeInteger(payload.maxRequests) || Number(payload.maxRequests)<1 || Number(payload.maxRequests)>8)) throw Error("payload inválido");
+    if (payload.templateId!==undefined && (typeof payload.templateId!=="string" || payload.templateId.length>60 || (payload.templateId!=="auto" && !TEMPLATE_ID.test(payload.templateId)))) throw Error("payload inválido");
+    if (payload.language!==undefined && !(SUMMARY_LANGUAGES as readonly string[]).includes(payload.language as string)) throw Error("payload inválido");
+    if (payload.useNotes!==undefined && typeof payload.useNotes!=="boolean") throw Error("payload inválido");
     if (request.op==="summary-run" && (payload.consent!==true || typeof payload.consentKey!=="string" || !/^[a-f0-9]{64}$/.test(payload.consentKey))) throw Error("payload inválido");
   }
   return { id: request.id as number, op: request.op as Request["op"], ...(request.key === undefined ? {} : { key: request.key as string }), payload };
@@ -448,8 +493,10 @@ export const handleStudioSummaryOperation = async (flow: StudioSummaryFlow, requ
   if (request.key!==job.id) throw Error("Summary request/source mismatch");
   if (request.op==="summary-cancel") return flow.cancel(job,p.requestId || "");
   if (!config) throw Error("Explicit summary configuration required");
-  if (request.op==="summary-plan") return flow.plan(job,config,{requestId:p.requestId || "",maxRequests:p.maxRequests!});
-  if (request.op==="summary-run") return flow.run(job,config,{requestId:p.requestId || "",consent:p.consent===true,consentKey:p.consentKey || ""});
+  if (request.op==="summary-plan") return flow.plan(job,config,{requestId:p.requestId || "",maxRequests:p.maxRequests!,
+    ...(p.templateId!==undefined?{templateId:p.templateId}:{}),...(p.language!==undefined?{language:p.language}:{}),...(p.useNotes!==undefined?{useNotes:p.useNotes}:{})});
+  // Generation can take minutes: start it and let the Studio poll summary-status (30 s request limit).
+  if (request.op==="summary-run") return flow.start(job,config,{requestId:p.requestId || "",consent:p.consent===true,consentKey:p.consentKey || ""});
   throw Error("Unknown summary operation");
 };
 /** Register cancellation before awaiting source/config reads, including an in-flight plan. */
@@ -464,6 +511,9 @@ export class StudioSummaryRequestRouter {
       // Active/queued work already resolved this exact job. Abort its controller
       // before any further disk read can allow a late response to commit.
       if(pending?.job)return handleStudioSummaryOperation(this.flow,request,pending.job);
+      // A started run (summary-run returned already) is still known to the flow: no source read either.
+      const active=this.flow.activeJob(request.key || "",request.payload?.requestId || "");
+      if(active)return handleStudioSummaryOperation(this.flow,request,active);
       const source=await readSource();
       try { return await handleStudioSummaryOperation(this.flow,request,source.job); }
       catch(error) {
@@ -483,14 +533,18 @@ export class StudioSummaryRequestRouter {
   }
 }
 const summaryRouter=new StudioSummaryRequestRouter(studioSummary);
-export const desktopRequestAdmitted=(pending:number,op:Request["op"]):boolean=>pending<32 || op==="summary-cancel";
+export const desktopRequestAdmitted=(pending:number,op:Request["op"]):boolean=>pending<32 || ALWAYS_ADMITTED.has(op);
 const handle = async (request: Request): Promise<unknown> => {
+  const family = familyOf(request.op);
+  if (family) {
+    const call: BridgeCall = { id: request.id, op: request.op, ...(request.key === undefined ? {} : { key: request.key }), payload: (request.payload || {}) as Record<string, unknown> };
+    return family.handle(call, bridgeContext);
+  }
   if (request.op.startsWith("summary-")) {
     const result=await summaryRouter.dispatch(request,async()=>({
       job:await new JobStore().get(request.key!),
       config:request.op==="summary-cancel" ? undefined : (await loadConfig()).config,
     }));
-    if (request.op==="summary-run") invalidateLibrary();
     return result;
   }
   if(request.op.startsWith('provider-')){const p=request.payload||{},key=request.key||'';
@@ -509,12 +563,20 @@ const handle = async (request: Request): Promise<unknown> => {
    return agentStudio.change(recordingId,p.grantId||'',request.op.slice(6) as 'pause'|'resume'|'revoke');
   }
   if(request.op === "processing-status") return readHeavyStatus();
-  if (request.op === "ux-capabilities") return {mockFrames: process.env.FALATRACE_UX_MOCK_ONLY === "1",realFrames:true,productVersion,release:await readReleaseInfo()};
+  if (request.op === "ux-capabilities") {
+    const config = await loadConfig().then((loaded) => loaded.config, () => DEFAULT_CONFIG);
+    const [features, firstRun] = await Promise.all([studioFeatures(config), readFirstRun().catch(() => ({ version: 1 as const }))]);
+    return {mockFrames: process.env.FALATRACE_UX_MOCK_ONLY === "1",realFrames:true,productVersion,release:await readReleaseInfo(),features,firstRun:firstRunView(firstRun)};
+  }
   if ((SETTINGS_OPERATIONS as readonly string[]).includes(request.op)) {
     // A save or a restore replaces the configuration and may move the recordings folder; one that
     // failed may have replaced it too. Library reads after it start from the file on disk.
     try {
-      return await handleSettingsOperation(request.op as SettingsOperation, request.payload || {});
+      const result = await handleSettingsOperation(request.op as SettingsOperation, request.payload || {});
+      // First-run milestones: the wizard opens when no configuration exists, and finishes with the first save.
+      if (request.op === "settings-read" && (result as { exists?: unknown } | null)?.exists === false) await markFirstRun("wizardOpened").catch(() => undefined);
+      if (request.op === "settings-save" && request.payload?.initialize === true) await markFirstRun("wizardFinished").catch(() => undefined);
+      return result;
     } finally {
       if (request.op === "settings-save" || request.op === "settings-restore") invalidateLibrary();
     }
@@ -632,6 +694,10 @@ const handle = async (request: Request): Promise<unknown> => {
 };
 export const runDesktopBridge = async (): Promise<void> => {
   const pending = new Set<Promise<void>>();
+  // Links from notifications are queued for this Studio while it runs. The library index catches up in the
+  // background from the Studio's first `list` (sent at startup) or page read, so reads like onboarding never
+  // write state.
+  studio.holdPresence();
   const accept = (line: string): void => {
     const task = (async () => {
       let request: Request;
@@ -670,6 +736,8 @@ export const runDesktopBridge = async (): Promise<void> => {
   studioFrames.cancelAll();
   await studioSummary.shutdown();
   await stopGoogleSignIn();
+  await stopChatGptSignIn();
   await Promise.allSettled([...pending]);
+  await studio.close();
 };
 if (import.meta.main) void runDesktopBridge();
