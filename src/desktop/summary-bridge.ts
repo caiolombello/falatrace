@@ -19,6 +19,8 @@ export const SUMMARY_BRIDGE_OPERATIONS = [
 /** Existing summary refusals (also shown by summary-plan/run); translated in i18n.js. */
 export const SUMMARY_CONFLICT_MESSAGE = "A revisão ou sua origem mudou. Prepare um novo plano antes de gerar; o original foi preservado.";
 export const SUMMARY_FAILED_MESSAGE = "Resumo não confirmado ou cancelado. Confira modelo local, destino, limite e consentimento. Não repita uma tentativa incerta; releia antes de preparar outro plano. Original preservado.";
+/** summary-plan once the recording used its 32 requests: trying again cannot help, so it says so. */
+export const SUMMARY_LIMIT_MESSAGE = "Esta gravação já usou os 32 pedidos de notas que pode ter (os cancelados também contam). As notas atuais foram preservadas.";
 
 export const SUMMARY_BRIDGE_MESSAGES = Object.freeze({
   unavailable: "Esta geração de notas não está mais disponível; releia as notas da reunião.",
@@ -27,7 +29,7 @@ export const SUMMARY_BRIDGE_MESSAGES = Object.freeze({
 });
 
 export const SUMMARY_BRIDGE_KNOWN_ERRORS: readonly string[] = Object.freeze([
-  ...new Set([SUMMARY_CONFLICT_MESSAGE, SUMMARY_FAILED_MESSAGE, ...Object.values(SUMMARY_BRIDGE_MESSAGES), ...SUMMARY_PREFS_KNOWN_ERRORS, ...TEMPLATE_KNOWN_ERRORS])
+  ...new Set([SUMMARY_CONFLICT_MESSAGE, SUMMARY_FAILED_MESSAGE, SUMMARY_LIMIT_MESSAGE, ...Object.values(SUMMARY_BRIDGE_MESSAGES), ...SUMMARY_PREFS_KNOWN_ERRORS, ...TEMPLATE_KNOWN_ERRORS])
 ]);
 
 /** A stored template file is at most 64 KiB; the request line is bounded by 1 MiB anyway. */

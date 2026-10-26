@@ -12,7 +12,7 @@ import { withContextPublicationLease, aiContextRoot, readContextInvalidation } f
 import { DiarizationStore, transcriptChecksum } from "../../diarization/store";
 import { getRecordingStateDir } from "../../recording/session";
 import { readHeavyStatus } from "../../runtime/heavy-admission";
-import { cancelReviewedSummary, getReviewedSummaryJobDir, getReviewedSummaryRoot, planReviewedSummary, readReviewedSummary, readCurrentReviewedSummary, regenerateReviewedSummary, reviewedSummaryLeaseName, reviewedSummaryProviderForConfig, type ReviewedSummaryAdapter, type ReviewedSummaryProvider } from "../reviewed";
+import { cancelReviewedSummary, ReviewedSummaryLimitError, getReviewedSummaryJobDir, getReviewedSummaryRoot, planReviewedSummary, readReviewedSummary, readCurrentReviewedSummary, regenerateReviewedSummary, reviewedSummaryLeaseName, reviewedSummaryProviderForConfig, type ReviewedSummaryAdapter, type ReviewedSummaryProvider } from "../reviewed";
 import { isSingletonHeld } from "../../runtime/singleton";
 import { attachSummarySupport, buildSummaryEvidence, summaryTranscriptEvidenceSha256 } from "../evidence";
 import { planSummaryChunks } from "../chunks";
@@ -258,6 +258,8 @@ test("cancelled requests retain per-job lifetime slots across process restart wi
   const f = await fixture();
   for (let i = 0; i < 32; i++) { await f.plan(`cancel-${i}`); await cancelReviewedSummary(f.job, `cancel-${i}`); }
   const before = await hashFile(join(f.dir, "index.json")); await expect(f.plan("33rd")).rejects.toThrow("32 requests"); expect(await hashFile(join(f.dir, "index.json"))).toBe(before);
+  // A refusal of its own kind, so the Studio can say that trying again will not help.
+  await expect(f.plan("34th")).rejects.toBeInstanceOf(ReviewedSummaryLimitError);
   const script = join(f.root, "restart-cap.ts");
   await fs.writeFile(script, `import {planReviewedSummary} from ${JSON.stringify(join(import.meta.dir, "../reviewed.ts"))};\ntry { await planReviewedSummary(${JSON.stringify(f.job)}, {requestId:'restart-33rd',config:${JSON.stringify(f.config)},provider:${JSON.stringify(identity)}}); throw Error('unexpected reset'); } catch (error) { if (!String(error).includes('32 requests')) throw error; console.log('persisted 32-request cap'); }\n`);
   const child = Bun.spawn([process.execPath, "run", "--preload", join(import.meta.dir, "../../../scripts/offline-network.ts"), script], { env: process.env, stdout: "pipe", stderr: "pipe" });

@@ -6,10 +6,10 @@ import { assertQaIsolation } from "../../../scripts/qa-isolation-guard";
 import { DEFAULT_CONFIG } from "../../config/defaults";
 import { JobStore, hashFile } from "../../jobs/store";
 import { StudioSummaryFlow } from "../../summary/studio";
-import { readCurrentReviewedSummary, reviewedSummaryProviderForConfig } from "../../summary/reviewed";
+import { readCurrentReviewedSummary, ReviewedSummaryLimitError, reviewedSummaryProviderForConfig } from "../../summary/reviewed";
 import type { RecordingSummary } from "../../jobs/types";
-import { desktopRequestAdmitted, handleStudioSummaryOperation, StudioSummaryRequestRouter, parseRequest } from "../bridge";
-import { summaryStatus } from "../summary-bridge";
+import { desktopRequestAdmitted, handleStudioSummaryOperation, StudioSummaryRequestRouter, parseRequest, safeError } from "../bridge";
+import { SUMMARY_BRIDGE_KNOWN_ERRORS, SUMMARY_FAILED_MESSAGE, SUMMARY_LIMIT_MESSAGE, summaryStatus } from "../summary-bridge";
 
 assertQaIsolation();
 const roots: string[]=[];
@@ -120,4 +120,12 @@ test("cancel intent aborts active response before a delayed source lookup could 
   expect((await cancelled as any).status).toBe("cancelled");expect(cancelSourceReads).toBe(0);
   expect((await settled(flow,requestId)).status).toBe("cancelled");
   expect(await readCurrentReviewedSummary(f.job)).toBeUndefined();await flow.shutdown();
+});
+
+test("a recording that used its 32 note requests says so, instead of the generic retry message",()=>{
+  const limit=new ReviewedSummaryLimitError("Reviewed summary history reached 32 requests; prior evidence preserved");
+  expect(safeError("summary-plan",limit)).toBe(SUMMARY_LIMIT_MESSAGE);
+  expect(SUMMARY_BRIDGE_KNOWN_ERRORS).toContain(SUMMARY_LIMIT_MESSAGE);
+  // Any other planning failure keeps the generic message.
+  expect(safeError("summary-plan",Error("Reviewed summary history reached 32 requests"))).toBe(SUMMARY_FAILED_MESSAGE);
 });

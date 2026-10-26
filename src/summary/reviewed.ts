@@ -22,6 +22,8 @@ import {
   validateStoredSummaryRequest, type SummaryChoices, type SummaryInputSources, type SummaryV2Request
 } from "./v2";
 
+/** The recording has used every request it is ever allowed (cancelled ones included); nothing was written. */
+export class ReviewedSummaryLimitError extends Error {}
 export const REVIEWED_SUMMARY_LIMITS = Object.freeze({ requests: 32, providerRequests: 8, planBytes: 4 * 1024 * 1024, artifactBytes: 2 * 1024 * 1024, indexBytes: 64 * 1024 });
 export type ReviewedSummaryProvider = { provider: SummaryProvider; model: string; adapterIdentity: string; endpoint?: string };
 export type ReviewedSummaryAdapter = { identity: ReviewedSummaryProvider; summarize: SummaryAdapter };
@@ -250,7 +252,7 @@ export const planReviewedSummary = async (job: JobRecord, input: { requestId: st
       if (plan.inputIdentity !== identity) throw new RevisionConflictError("Request id already belongs to another summary snapshot/provider/budget; preserved");
       return plan;
     }
-    if (index.requests.length >= REVIEWED_SUMMARY_LIMITS.requests) throw Error("Reviewed summary history reached 32 requests; prior evidence preserved");
+    if (index.requests.length >= REVIEWED_SUMMARY_LIMITS.requests) throw new ReviewedSummaryLimitError("Reviewed summary history reached 32 requests; prior evidence preserved");
     const chunks = planSummaryChunks(snapshot.transcript, snapshot.revision.base.mediaSha256, context, maxCharacters, undefined, undefined, "characters", { spec: request.spec, notes: request.notes });
     if (chunks.length > maxRequests) throw Error("Summary chunk plan exceeds explicit request budget; no provider called");
     const inputScope: ReviewedInputScope = request.spec.notesIncluded && request.notes.length ? "reviewed-transcript-and-notes" : "reviewed-transcript-only";
@@ -267,7 +269,7 @@ export const planReviewedSummary = async (job: JobRecord, input: { requestId: st
       plan = recovered;
     } else {
       const plansDirectory = dirname(planPath(job.id, input.requestId));
-      if (await directory(plansDirectory) && (await fs.readdir(plansDirectory)).length >= REVIEWED_SUMMARY_LIMITS.requests) throw Error("Reviewed summary plan storage reached 32 requests; uncommitted evidence preserved");
+      if (await directory(plansDirectory) && (await fs.readdir(plansDirectory)).length >= REVIEWED_SUMMARY_LIMITS.requests) throw new ReviewedSummaryLimitError("Reviewed summary plan storage reached 32 requests; uncommitted evidence preserved");
       await publishImmutable(planPath(job.id, input.requestId), { kind: "falatrace-reviewed-summary-plan", plan, sha256: hash(plan) }, REVIEWED_SUMMARY_LIMITS.planBytes);
     }
     index.requests.push({ requestId: input.requestId, planSha256: hash(plan), status: "planned", requestsSpent: 0 });

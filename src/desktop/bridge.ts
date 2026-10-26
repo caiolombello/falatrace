@@ -2,7 +2,7 @@ import { readTranscriptArtifact, readArtifactStates, artifactDigest, type Transc
 import { recordingPresentation } from "./recording-presentation";
 import { readReviewedView, saveRevision, undoRevision, withRevisionLease, RevisionConflictError, type RevisionBase, type RevisionOperation, type ReviewedView } from "../revisions";
 import { readCurrentReviewedView, assertCurrentReviewedView } from "../revisions/compat";
-import { readCurrentReviewedSummary, type ReviewedSummaryArtifact } from "../summary/reviewed";
+import { readCurrentReviewedSummary, ReviewedSummaryLimitError, type ReviewedSummaryArtifact } from "../summary/reviewed";
 import { StudioSummaryFlow } from "../summary/studio";
 import type { AppConfig } from "../config/defaults";
 const studioSummary = new StudioSummaryFlow();
@@ -74,7 +74,7 @@ import { studioFeatures } from "./capabilities";
 import { LIBRARY_REFRESH_MIN_AGE_MS, StudioServices } from "./studio-services";
 import { detailExtras, listItemExtras } from "./meeting-view";
 import { NOTES_BRIDGE_OPERATIONS, notesBridge } from "./notes-bridge";
-import { SUMMARY_BRIDGE_OPERATIONS, summaryBridge } from "./summary-bridge";
+import { SUMMARY_BRIDGE_OPERATIONS, SUMMARY_LIMIT_MESSAGE, summaryBridge } from "./summary-bridge";
 import { ASSISTANT_BRIDGE_OPERATIONS, assistantBridge, stopChatGptSignIn } from "./assistant-bridge";
 import { SHARE_BRIDGE_OPERATIONS, shareBridge } from "./share-bridge";
 import { ENTITIES_BRIDGE_OPERATIONS, entitiesBridge } from "./entities-bridge";
@@ -114,7 +114,7 @@ const PROCESS_KNOWN_ERRORS = [
   MEDIA_RETENTION_MESSAGES.reprocessRefused
 ];
 const emit = (response: Response): void => { process.stdout.write(`${JSON.stringify(response)}\n`); };
-const safeError = (op: string, error: unknown): string => {
+export const safeError = (op: string, error: unknown): string => {
   const text = error instanceof Error ? error.message : String(error);
   const known = [
     "id deve ser um inteiro positivo", "key é obrigatório para esta operação",
@@ -137,6 +137,7 @@ const safeError = (op: string, error: unknown): string => {
   if (family) return familyError(family, op, error);
   if (op === "speakers-suggest") return SPEAKER_KNOWN_ERRORS.includes(text) ? text : "Não foi possível pedir sugestões de nomes. Os nomes atuais foram preservados.";
   if (op.startsWith("settings-")) return isDisplayableSettingsError(op, text) ? text : settingsErrorMessage(op);
+  if (op.startsWith("summary-") && error instanceof ReviewedSummaryLimitError) return SUMMARY_LIMIT_MESSAGE;
   if (op.startsWith("summary-")) return error instanceof RevisionConflictError ? "A revisão ou sua origem mudou. Prepare um novo plano antes de gerar; o original foi preservado." : "Resumo não confirmado ou cancelado. Confira modelo local, destino, limite e consentimento. Não repita uma tentativa incerta; releia antes de preparar outro plano. Original preservado.";
   if (op.startsWith("revision-")) return error instanceof RevisionConflictError ? "A revisão ou sua origem mudou. Releia antes de salvar; sua edição não foi aplicada." : "Não foi possível confirmar a revisão. Releia o resultado antes de tentar novamente.";
   if (op.startsWith("export-")) return "Não foi possível confirmar a exportação. Atualize a prévia e confira a origem e a revisão antes de salvar novamente.";

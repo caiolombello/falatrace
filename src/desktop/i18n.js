@@ -1253,6 +1253,7 @@ var EN = {
     "A gravação ainda não possui contexto disponível.": "The recording has no context available yet.",
     "Muitas operações pendentes; tente novamente.": "Too many pending operations; try again.",
     "A revisão ou sua origem mudou. Prepare um novo plano antes de gerar; o original foi preservado.": "The revision or its source changed. Prepare a new plan before generating; the original was kept.",
+    "Esta gravação já usou os 32 pedidos de notas que pode ter (os cancelados também contam). As notas atuais foram preservadas.": "This recording has used all 32 note requests it can have (cancelled ones count too). The current notes were kept.",
     "Resumo não confirmado ou cancelado. Confira modelo local, destino, limite e consentimento. Não repita uma tentativa incerta; releia antes de preparar outro plano. Original preservado.": "Summary not confirmed or canceled. Check the local model, destination, limit and consent. Do not repeat an uncertain attempt; reload before preparing another plan. Original kept.",
     "A revisão ou sua origem mudou. Releia antes de salvar; sua edição não foi aplicada.": "The revision or its source changed. Reload before saving; your edit was not applied.",
     "Não foi possível confirmar a revisão. Releia o resultado antes de tentar novamente.": "Could not confirm the revision. Reload the result before trying again.",
