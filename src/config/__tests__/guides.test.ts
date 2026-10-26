@@ -244,7 +244,7 @@ test("every Studio button the guides name is a label the Studio shows", () => {
     for (const match of readFileSync(join(desktop, name), "utf8").matchAll(/\bt[f]?\(\s*"((?:[^"\\]|\\.)*)"/g)) {
       const text = JSON.parse(`"${match[1]}"`) as string;
       shown.add(text);
-      if (Object.prototype.hasOwnProperty.call(english, text)) shown.add(english[text] ?? "");
+      if (Object.getOwnPropertyDescriptor(english, text) !== undefined) shown.add(english[text] ?? "");
     }
   }
   const problems: string[] = [];
