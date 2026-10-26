@@ -78,6 +78,12 @@ def run_studio(command, qml_folder, program, env, timeout):
     return subprocess.run([*command, str(qml_folder), str(program)], env=env, capture_output=True, text=True, timeout=timeout)
 
 
+# QML that rereads the selected recording's detail exactly as Main.qml's 5 s refresh does (it runs while a
+# smoke recording is selected, so a slow run can hit it between any two steps). A step that ends with it,
+# followed by one that waits for `!detailLoading`, proves the state under test survives that reread.
+REREAD = 'if (!detailLoading) { detailLoading = true; send("detail", selected.key) }; '
+
+
 def qml_steps(steps, settle, limit=6000):
     """QML for a journey's timed steps, run strictly one after another.
 

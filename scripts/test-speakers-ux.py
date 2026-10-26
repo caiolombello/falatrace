@@ -18,7 +18,7 @@ import tempfile
 
 repo = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(repo / 'scripts'))
-from studio_fixture import copy_qml_siblings, qml_steps, require_assertion_lines, require_studio_command, runner_kind  # noqa: E402
+from studio_fixture import REREAD, copy_qml_siblings, qml_steps, require_assertion_lines, require_studio_command, runner_kind  # noqa: E402
 
 command = require_studio_command()
 out = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path(tempfile.mkdtemp(dir='/tmp', prefix='falatrace-speakers-ux-'))
@@ -62,6 +62,8 @@ STUB = '''#!/usr/bin/python3
 import sys,json,os
 mode=os.environ['FALATRACE_TEST_MODE'];log=open(os.environ['FALATRACE_REQUEST_LOG'],'a')
 detail=json.loads(os.environ['FALATRACE_DETAIL']);people=json.loads(os.environ['FALATRACE_PEOPLE'])
+# Once a suggestion is queued, detail reports it running, as the real bridge does while its unit is active.
+suggested=False
 item={'key':'synthetic-speakers','title':'Exemplo sintético — falantes','fileName':'synthetic.mkv','modifiedAt':'2026-10-20T12:00:00Z','location':'local','status':'completed','backup':'none'}
 for line in sys.stdin:
  r=json.loads(line);op=r['op'];log.write(line.strip()+'\\n');log.flush()
@@ -78,9 +80,9 @@ for line in sys.stdin:
  elif op=='settings-voices-delete':people=[person for person in people if person['id']!=r['payload'].get('personId')];v={'people':people,'removed':1}
  elif op=='settings-google-status':v={'connected':True,'email':'dono@example.com','connectedAt':'2026-10-21T10:00:00Z','clientConfigured':True,'calendar':True,'flow':'idle'}
  elif op in ('settings-model-download','settings-model-status'):v={'kind':'voice','id':'eres2net-base','state':'running','receivedBytes':1048576,'totalBytes':50683414}
- elif op=='detail':v=detail
+ elif op=='detail':v=detail if not suggested else {**detail,'speakerSuggestions':{**detail['speakerSuggestions'],'state':'running','message':'Procurando nomes em segundo plano'}}
  elif op=='revision-save':v={'version':1,'revision':1,'base':r['payload']['base']}
- elif op=='speakers-suggest':v={'id':r['key'],'status':'queued','unit':'recording-cli-speakers-'+r['key']+'.service'}
+ elif op=='speakers-suggest':suggested=True;v={'id':r['key'],'status':'queued','unit':'recording-cli-speakers-'+r['key']+'.service'}
  else:print(json.dumps({'id':r['id'],'ok':False,'error':'Operação recusada no fixture; nada foi alterado.'}),flush=True);continue
  print(json.dumps({'id':r['id'],'ok':True,'result':v}),flush=True)
 '''
@@ -141,6 +143,7 @@ MODES = {
 '''), (2100, '!hasSettingsPending("settings-voices-delete")', '''
   console.log("UX_ASSERTIONS "+JSON.stringify([{name:"the list follows the deletion and says what happened",pass:(settingsDialog.voices.people||[]).length === 1 && settingsNotice.indexOf("Voz apagada") === 0}]))
 ''')], 400),
+    # The last step follows a detail reread, as Main.qml's 5 s smoke refresh can at any time: the queued state must survive it.
     'flow': ([(1000, READY + ' && speakerRows.length === 4', '''
   const a=[]; function check(name,pass){a.push({name:name,pass:!!pass})}
   check("speakers tab open with four speakers", tabs.currentIndex === 2 && speakerRows.length === 4)
@@ -175,7 +178,8 @@ MODES = {
   run.clicked()
   check("request sent and dialog closed", hasPending("speakers-suggest") && !speakerSuggestDialog.visible)
   console.log("UX_ASSERTIONS "+JSON.stringify(a))
-'''), (2100, '!hasPending("speakers-suggest")', '''
+  ''' + REREAD + '''
+'''), (2100, '!hasPending("speakers-suggest") && !detailLoading', '''
   console.log("UX_ASSERTIONS "+JSON.stringify([{name:"queued request polls and disables a second request",pass:speakersQueued && !uxFind(window.contentItem, "speakerSuggestButton").enabled}]))
 ''')], 500),
 }

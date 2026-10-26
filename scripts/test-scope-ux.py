@@ -5,7 +5,7 @@ import runpy
 import tempfile,subprocess,json,sys,hashlib,shutil,secrets
 repo=Path(__file__).resolve().parents[1]
 out=Path(sys.argv[1]).resolve();out.mkdir(parents=True,exist_ok=True)
-from studio_fixture import require_studio_command,copy_qml_siblings,qml_steps,require_assertion_lines
+from studio_fixture import require_studio_command,copy_qml_siblings,qml_steps,require_assertion_lines,REREAD
 command=require_studio_command()
 bun=shutil.which('bun') or str(Path.home()/'.bun/bin/bun')
 source=(repo/'src/desktop/Main.qml').read_text()
@@ -19,6 +19,8 @@ with tempfile.TemporaryDirectory(dir='/tmp',prefix='falatrace-local-ux-') as tem
  for mode in ['real-scope-visible','real-scope-result','real-scope-none','real-scope-overlimit','real-scope-change','real-scope-compact']:
   folder=root/mode;folder.mkdir();config=folder/'config.json';before='{"future":{"synthetic":true},"obs":{"password":"synthetic-secret"}}' if mode!='onboarding-invalid' else '{invalid';config.write_text(before)
   receipt=folder/'bridge-receipt.json'
+  # The fixture keeps the last real visual result and returns it with `detail`, as the real bridge does
+  # (studioFrames.readResult): Main.qml rereads the detail every 5 s while the smoke recording is selected.
   bridge='''import GUARD_MODULE;
 import {createInterface} from 'node:readline';
 import {writeFile} from 'node:fs/promises';
@@ -31,7 +33,7 @@ import {readHeavyStatus} from HEAVY_MODULE;
 import {DEFAULT_CONFIG} from DEFAULT_MODULE;
 const flow=new MockFrameReview();const item={key:'synthetic-demo',title:'Exemplo sintético — UX local',fileName:'synthetic.mp4',modifiedAt:'2026-10-01T00:00:00Z',location:'local',status:'completed',backup:'none'};
 const transcript={version:1,provider:'whisper-cpp',model:'synthetic',language:'pt',text:'Synthetic long transcript',segments:Array.from({length:300},(_,i)=>({start:i/100,end:(i+1)/100,text:'Segmento sintético '+i+'; gráfico.'}))};
-let saves=0,operations=[],vision=0,summaries=0,planner=0;
+let saves=0,operations=[],vision=0,summaries=0,planner=0,visualReview;
 const config=structuredClone(DEFAULT_CONFIG);config.summary.ollamaUrl='http://127.0.0.1:11434';
 const realFlow=new StudioVisualFlow(REAL_ROOT);const source={key:item.key,jobId:'synthetic-job',path:VIDEO_PATH,mediaHash:VIDEO_HASH,transcript,config};
 globalThis.fetch=async(url,init)=>{
@@ -51,12 +53,12 @@ for await(const line of createInterface({input:process.stdin})){
  case 'processing-status':value=await readHeavyStatus();break;
  case 'jobs-list':value={items:[]};break;
  case 'ux-capabilities':value={mockFrames:!MODE.startsWith('real-'),realFrames:true};break;
- case 'detail':value={transcript:{...transcript,timing:'segment'},diarization:{state:'idle'},summary:'Fixture sem IA real.',status:'completed',backup:'none'};break;
+ case 'detail':value={transcript:{...transcript,timing:'segment'},diarization:{state:'idle'},summary:'Fixture sem IA real.',status:'completed',backup:'none',...(visualReview?{visualReview}:{})};break;
  case 'resolve':value={state:'failed',message:'Playback não validado no fixture.'};break;
  case 'frames-check-models':value=await handleRealFrameOperation(realFlow,r,source);break;
  case 'frames-scope':case 'frames-plan':case 'frames-preview-plan':value=await handleRealFrameOperation(realFlow,r,source);break;
  case 'frames-preview':if(MODE.startsWith('real-')){value=await handleRealFrameOperation(realFlow,r,source);break;}if(MODE==='frames-stale')await Bun.sleep(400);value=await prepareMockFramePreview(flow,r.key,VIDEO_PATH,VIDEO_HASH,transcript,r.payload.question,r.payload.seconds);break;
- case 'frames-confirm':if(MODE.startsWith('real-')){value=await handleRealFrameOperation(realFlow,r,source);break;}value=await flow.confirm(r.key,r.payload.previewId,r.payload.consent);break;
+ case 'frames-confirm':if(MODE.startsWith('real-')){value=await handleRealFrameOperation(realFlow,r,source);if(value&&!value.synthetic&&value.summaryMarkdown)visualReview=value;break;}value=await flow.confirm(r.key,r.payload.previewId,r.payload.consent);break;
  case 'frames-cancel':if(MODE.startsWith('real-')){value=await handleRealFrameOperation(realFlow,r,source);break;}value=flow.cancel(r.key,r.payload.previewId);break;
  case 'onboarding-read':value=await readOnboarding(CONFIG_PATH);break;
  case 'onboarding-save-local':value=await saveLocalOnboarding(r.payload.revision,CONFIG_PATH);saves++;break;
@@ -88,9 +90,11 @@ for await(const line of createInterface({input:process.stdin})){
   # The smoke recording is selected (a frames reply for an earlier selection is dropped) and the capabilities are known.
   steps=[(350,'selected.key === "synthetic-demo" && !detailLoading && !hasPending("ux-capabilities")','window.lightTheme = true; '+action),(650,'!!frameCapability.id',second)]
   if mode in ['real-scope-result','real-scope-none']:steps.append((1200,'!!frameScope.id','plannerTranscriptConsent.checked=true;planFrames()'))
-  if mode=='real-scope-result':steps+=[(1900,'!!framePlan.id','previewPlannedFrames()'),(2600,'!!framePreview.id','confirmFrames();confirmFrames()'),(3400,'!!frameResult.sourceKey','frameScroll.contentItem.contentY=Math.max(0,frameScroll.contentItem.contentHeight-frameScroll.availableHeight)')]
+  # Once the result is there, reread the detail as Main.qml's 5 s smoke refresh can at any time: the visual
+  # summary must survive it (the fixture returns it with the detail, like the real bridge).
+  if mode=='real-scope-result':steps+=[(1900,'!!framePlan.id','previewPlannedFrames()'),(2600,'!!framePreview.id','confirmFrames();confirmFrames()'),(3400,'!!frameResult.sourceKey',REREAD+'frameScroll.contentItem.contentY=Math.max(0,frameScroll.contentItem.contentHeight-frameScroll.availableHeight)')]
   if mode=='real-scope-change':steps.append((1200,'!!frameScope.id','plannerTranscriptConsent.checked=true;scopeEnd.text="1.4";selectionChanged()'))
-  ready={'real-scope-visible':'!!frameScope.id','real-scope-compact':'!!frameScope.id','real-scope-none':'!!framePlan.decision','real-scope-result':'!!frameResult.sourceKey','real-scope-overlimit':'frameScope.includedCount !== undefined','real-scope-change':'!frameScope.id && !hasPending("frames-cancel")'}[mode]
+  ready={'real-scope-visible':'!!frameScope.id','real-scope-compact':'!!frameScope.id','real-scope-none':'!!framePlan.decision','real-scope-result':'!!frameResult.sourceKey && !detailLoading','real-scope-overlimit':'frameScope.includedCount !== undefined','real-scope-change':'!frameScope.id && !hasPending("frames-cancel")'}[mode]
   if mode!='real-scope-result':steps.append((3000,ready,'frameScroll.contentItem.contentY=350'))
   steps.append((3700,ready,'const a=[]; function check(name,pass){a.push({name:name,pass:!!pass})}; '+assertion+'; console.log("LOCAL_UX_ASSERTIONS "+JSON.stringify(a))'))
   extra=qml_steps(steps,500)
