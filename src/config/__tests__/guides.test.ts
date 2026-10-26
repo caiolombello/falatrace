@@ -233,6 +233,14 @@ test("the guides do not promise regeneration through an external summary provide
   expect(section).not.toMatch(/OpenAI[^\n]*asks for consent/);
 });
 
+test("no guide or changelog promises that agents run without tools of their own", () => {
+  // Not advertising a file system or terminal does not stop an agent's built-in tools: only the claude
+  // CLI and goose run with none, and the others need the user's OK (assistant.agentToolsAccepted).
+  for (const path of [...GUIDES, "CHANGELOG.md"]) {
+    expect({ path, claim: /\b(?:with|has|have|get|gets) no file or terminal access|with (?:its|their) tools turned off(?! or refused)/i.exec(read(path))?.[0] }).toEqual({ path, claim: undefined });
+  }
+});
+
 test("every Studio button the guides name is a label the Studio shows", () => {
   // A bold label ending in "…" names a Studio button: the Portuguese guides use the QML text, the
   // English ones its English entry. A renamed button would otherwise leave the guides pointing at nothing.
