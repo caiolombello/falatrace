@@ -133,7 +133,9 @@ describe("settings bridge operations", () => {
     expect(calls).toContain("setSecret:OPENAI_API_KEY");
     await handleSettingsOperation("settings-secret-remove", { name: "OPENAI_API_KEY" }, deps);
     expect(calls).toContain("removeSecret:OPENAI_API_KEY");
-    await expect(handleSettingsOperation("settings-secret-test", { service: "anthropic" }, deps)).rejects.toThrow("Chave não suportada");
+    // Assistant API presets are tested too; anything that is not a provider key is refused.
+    expect(await handleSettingsOperation("settings-secret-test", { service: "anthropic" }, deps)).toMatchObject({ provider: "anthropic", status: "ok" });
+    await expect(handleSettingsOperation("settings-secret-test", { service: "notion" }, deps)).rejects.toThrow("Chave não suportada");
     expect(await handleSettingsOperation("settings-secret-test", { service: "gemini" }, deps)).toMatchObject({ provider: "gemini", status: "ok" });
   });
 
@@ -301,6 +303,10 @@ describe("settings bridge operations", () => {
     expect(() => parseRequest({ id: 4, op: "settings-audio-test", payload: { seconds: 60 } })).toThrow("payload inválido");
     expect(() => parseRequest({ id: 4, op: "agent-connect", payload: { grantId: "123e4567-e89b-42d3-a456-426614174000", client: "vim" } })).toThrow("payload inválido");
     expect(parseRequest({ id: 5, op: "settings-secret-test", payload: { service: "gemini" } }).op).toBe("settings-secret-test");
+    for (const service of ["openrouter", "anthropic", "xai", "groq", "mistral", "deepseek", "together", "custom"]) {
+      expect(parseRequest({ id: 6, op: "settings-secret-test", payload: { service } }).payload?.service).toBe(service);
+    }
+    expect(() => parseRequest({ id: 7, op: "settings-secret-test", payload: { service: "notion" } })).toThrow("payload inválido");
   });
 });
 

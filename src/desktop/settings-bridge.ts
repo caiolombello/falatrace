@@ -6,7 +6,7 @@ import {
 } from "../config/settings";
 import { checkAutomation, checkProcessing, listAudioDevices, readServiceStatus } from "../config/setup-checks";
 import { getSecretFiles, parseManagerEnvironment, readSecret, readSecretFiles, removeSecret, setSecret, unitEnvironment } from "../config/secrets";
-import { defaultKeyTestDeps, testProviderKey, type KeyTestProvider } from "../config/credential-test";
+import { defaultKeyTestDeps, KEY_TEST_PROVIDERS, testProviderKey, type KeyTestProvider } from "../config/credential-test";
 import { automaticRecordingBackend, diagnoseRecordingBackend } from "../recording/capabilities";
 import { translateCaptureMessage } from "../recording/messages";
 import { captureHoldsDevices, readCaptureStatus } from "../recording/application";
@@ -71,7 +71,7 @@ export type SettingsDeps = {
   disableReminders: () => Promise<unknown>;
   setSecret: typeof setSecret;
   removeSecret: typeof removeSecret;
-  testKey: (provider: KeyTestProvider, configApiKey?: string) => ReturnType<typeof testProviderKey>;
+  testKey: (provider: KeyTestProvider, configApiKey?: string, customBaseUrl?: string) => ReturnType<typeof testProviderKey>;
   remoteCheck: typeof checkRemote;
   obsCheck: (config: Awaited<ReturnType<typeof loadConfig>>["config"], managerEnv: NodeJS.ProcessEnv) => Promise<boolean>;
   audioTest: typeof runAudioTest;
@@ -112,7 +112,7 @@ export const defaultSettingsDeps: SettingsDeps = {
   disableReminders: () => uninstallRemindersService(),
   setSecret,
   removeSecret,
-  testKey: (provider, configApiKey) => testProviderKey(provider, defaultKeyTestDeps(readManagerEnv, configApiKey)),
+  testKey: (provider, configApiKey, customBaseUrl) => testProviderKey(provider, defaultKeyTestDeps(readManagerEnv, configApiKey, customBaseUrl)),
   remoteCheck: checkRemote,
   // Tested with the password automatic recording gets: the call monitor's environment with calls.env.
   obsCheck: async (config, managerEnv) => {
@@ -353,10 +353,11 @@ export const handleSettingsOperation = async (
     return { name: payload.name, ...result, ...(await refreshedCredentials()) };
   }
   if (op === "settings-secret-test") {
-    const provider = payload.service === "gemini" ? "gemini" : payload.service === "openai" ? "openai" : null;
+    // OpenAI and Gemini keys as background processing uses them; assistant API keys as the Studio's assistant does.
+    const provider = (KEY_TEST_PROVIDERS as readonly string[]).includes(payload.service as string) ? payload.service as KeyTestProvider : null;
     if (!provider) throw new Error("Chave não suportada.");
     const { config } = await deps.loadConfig();
-    return deps.testKey(provider, config.openai.apiKey);
+    return deps.testKey(provider, config.openai.apiKey, config.assistant.apiBaseUrl || undefined);
   }
   if (op === "settings-remote-check") {
     const { config } = await deps.loadConfig();

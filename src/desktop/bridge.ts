@@ -41,6 +41,7 @@ import { learnVoicesAfterChange } from "../speakers/voices";
 import { nameDiarizationSpeaker, queueDiarization, readCanonicalTranscript, readDiarizationStatus, resultStatus } from "../../src/diarization/service";
 
 import { readOnboarding, saveLocalOnboarding } from "../config/onboarding";
+import { KEY_TEST_PROVIDERS } from "../config/credential-test";
 import { SETTINGS_OPERATIONS, handleSettingsOperation, isDisplayableSettingsError, settingsErrorMessage, stopGoogleSignIn, type SettingsOperation } from "./settings-bridge";
 import { prepareMockFramePreview } from "../visual/mock-preview";
 import { MockFrameReview } from "../visual/review-flow";
@@ -383,7 +384,7 @@ export const parseRequest = (value: unknown): Request => {
   if (payload.action !== undefined && (typeof payload.action !== "string" || payload.action.length > 40)) throw new Error("payload inválido");
   if (payload.name !== undefined && (typeof payload.name !== "string" || !/^[A-Z_][A-Z0-9_]{0,63}$/.test(payload.name))) throw new Error("payload inválido");
   if (payload.value !== undefined && (typeof payload.value !== "string" || payload.value.length > 4096 || /[\x00-\x1f\x7f]/.test(payload.value))) throw new Error("payload inválido");
-  if (payload.service !== undefined && !["openai", "gemini"].includes(payload.service as string)) throw new Error("payload inválido");
+  if (payload.service !== undefined && !(KEY_TEST_PROVIDERS as readonly string[]).includes(payload.service as string)) throw new Error("payload inválido");
   if (payload.backup !== undefined && (typeof payload.backup !== "string" || !/^[\w.-]{1,200}$/.test(payload.backup))) throw new Error("payload inválido");
   if (payload.path !== undefined && (typeof payload.path !== "string" || !payload.path.startsWith("/") || payload.path.length > 4096 || /[\x00-\x1f\x7f]/.test(payload.path))) throw new Error("payload inválido");
   if (payload.kind !== undefined && !["whisper", "ollama", "voice"].includes(payload.kind as string)) throw new Error("payload inválido");
