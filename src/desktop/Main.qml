@@ -478,29 +478,32 @@ ApplicationWindow {
     // Leaving a meeting whose notes are being made again does not stop them: the run goes on in the
     // background (followed by its own summary-status poll, which says when it ends) and opening the
     // meeting again shows its progress in the bar. Only a run summary-run already confirmed is kept.
-    property var detachedSummary: ({})
+    // [{jobId, requestId, templateName, key, title}], one per meeting left while its notes were being made.
+    property var detachedSummaries: []
     function detachRegenerate() {
         if (summaryStage !== "running" || !summaryPolling || summaryCompleted || !summaryRequestId || !summaryJobId) return false
-        detachedSummary = {jobId: summaryJobId, requestId: summaryRequestId, templateName: regenerateTemplateName(), key: selected.key || "", title: recordingTitle(selected) || selected.fileName || ""}
+        detachedSummaries = detachedSummaries.concat([{jobId: summaryJobId, requestId: summaryRequestId, templateName: regenerateTemplateName(), key: selected.key || "", title: recordingTitle(selected) || selected.fileName || ""}])
         summaryGeneration+=1;summaryPlan=({});summaryConsent.checked=false;summaryRequestId="";summaryJobId="";summaryRunning=false;summaryPolling=false
         summaryStage = ""; regenerateRequest = ({}); summaryError = ""
         return true
     }
+    function forgetDetached(requestId) { detachedSummaries = detachedSummaries.filter(function(run){ return run.requestId !== requestId }) }
     // The meeting whose run went on in the background is open again: the bar follows it once more.
     function reattachRegenerate(review) {
-        const run = detachedSummary
-        if (!run.requestId || summaryStage !== "" || !review || review.revision.base.jobId !== run.jobId) return
-        detachedSummary = ({})
+        if (summaryStage !== "" || !review || !review.revision) return
+        const run = detachedSummaries.find(function(entry){ return entry.jobId === review.revision.base.jobId })
+        if (!run) return
+        forgetDetached(run.requestId)
         summaryGeneration+=1;summaryPlan=({});summaryJobId=run.jobId;summaryRequestId=run.requestId;summaryCompleted=false;summaryRunning=true;summaryPolling=true
         regenerateRequest = {templateId: "", templateName: run.templateName || "", language: ""}; summaryStage = "running"
     }
     function detachedSummaryAnswered(request, message) {
-        const run = detachedSummary
-        if (!run.requestId || request.detachedRequestId !== run.requestId) return
-        if (!message.ok) { detachedSummary = ({}); toast.show(t("Não deu para confirmar se as notas foram geradas. Recarregue a reunião e confira."), "", null, {kind: "warning"}); return }
+        const run = detachedSummaries.find(function(entry){ return entry.requestId === request.detachedRequestId })
+        if (!run) return
+        if (!message.ok) { forgetDetached(run.requestId); toast.show(t("Não deu para confirmar se as notas foram geradas. Recarregue a reunião e confira."), "", null, {kind: "warning"}); return }
         const status = message.result.status
         if (status === "running") return
-        detachedSummary = ({})
+        forgetDetached(run.requestId)
         if (status === "completed") {
             refreshLibrary()
             toast.show(tf("Notas prontas: %1", run.title || t("reunião")), t("Abrir"), function() { const item = items.find(function(entry){ return entry.key === run.key }); if (item) selectRecording(item) })
@@ -508,10 +511,12 @@ ApplicationWindow {
     }
     Timer {
         interval: 1000; repeat: true
-        running: !!detachedSummary.requestId && backend.available
+        running: detachedSummaries.length > 0 && backend.available
         onTriggered: {
-            if (Object.keys(pending).some(function(id){ return pending[id].detachedRequestId !== undefined })) return
-            send("summary-status", detachedSummary.jobId, {requestId: detachedSummary.requestId}, {detachedRequestId: detachedSummary.requestId})
+            for (const run of detachedSummaries) {
+                if (Object.keys(pending).some(function(id){ return pending[id].detachedRequestId === run.requestId })) continue
+                send("summary-status", run.jobId, {requestId: run.requestId}, {detachedRequestId: run.requestId})
+            }
         }
     }
     // Leaving the meeting: a confirmed run goes on in the background; anything before it is cancelled.
@@ -537,7 +542,7 @@ ApplicationWindow {
     }
     function summaryConnectionLost() {
         const ran = summaryRunning || summaryPolling
-        if (detachedSummary.requestId) { detachedSummary = ({}); toast.show(t("Não deu para confirmar se as notas foram geradas. Recarregue a reunião e confira."), "", null, {kind: "warning"}) }
+        if (detachedSummaries.length) { detachedSummaries = []; toast.show(t("Não deu para confirmar se as notas foram geradas. Recarregue a reunião e confira."), "", null, {kind: "warning"}) }
         summaryGeneration+=1;summaryPlan=({});summaryConsent.checked=false;summaryRunning=false;summaryPolling=false;summaryNeedsReload=true
         if (summaryStage !== "" && summaryStage !== "confirm") {
             summaryStage = "failed"

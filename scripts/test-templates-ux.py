@@ -34,6 +34,10 @@ external = mode in ('consent-en', 'external')
 names = ['notes', 'live', 'assistant', 'recipes', 'share', 'actions', 'people', 'clients', 'upcoming', 'openInbox', 'mediaRemoval', 'templates', 'librarySearch']
 features = {name: (name != 'templates' or mode != 'no-templates') for name in names}
 item = {'key': '/synthetic/Recordings/daily.mkv', 'recordingId': JOB, 'jobId': JOB, 'title': 'Daily do time', 'hasMeetingTitle': True, 'fileName': 'daily.mkv', 'modifiedAt': 1792000000000, 'location': 'local', 'status': 'completed', 'backup': 'none'}
+OTHER = '33333333-3333-4333-8333-333333333333'
+other = {'key': '/synthetic/Recordings/retro.mkv', 'recordingId': OTHER, 'jobId': OTHER, 'title': 'Retro da sprint', 'hasMeetingTitle': True, 'fileName': 'retro.mkv', 'modifiedAt': 1791900000000, 'location': 'local', 'status': 'completed', 'backup': 'none'}
+items = [item, other] if mode == 'two' else [item]
+request_polls = {}
 segments = [{'id': 's1', 'start': 3, 'end': 9, 'text': 'Bom dia, vamos revisar o incidente de ontem.'}, {'id': 's2', 'start': 42, 'end': 50, 'text': 'O deploy travou por falta de acesso ao bucket.'}]
 templates = [
     {'id': 'standup', 'name': 'Daily', 'description': 'Ontem, hoje e bloqueios de cada pessoa.', 'builtIn': True, 'sectionTitles': ['Ontem', 'Hoje', 'Bloqueios'], 'version': 1},
@@ -59,7 +63,7 @@ def plan(p):
 def refuse(r, message): print(json.dumps({'id': r['id'], 'ok': False, 'error': message}), flush=True)
 for line in sys.stdin:
     r = json.loads(line); op = r['op']; p = r.get('payload', {}); log.write(line.strip() + '\n'); log.flush()
-    if op in ('list', 'list-cached'): v = {'items': [item]}
+    if op in ('list', 'list-cached'): v = {'items': items}
     elif op == 'capture-status': v = {'active': False, 'session': None, 'paused': False, 'audio': {'configured': False}}
     elif op == 'jobs-list': v = {'items': []}
     elif op == 'processing-status': v = {'waiting': []}
@@ -70,6 +74,7 @@ for line in sys.stdin:
              'summary': '# Daily\n\n- ok', 'notesDoc': doc(), 'status': 'completed', 'backup': 'none', 'jobId': JOB, 'diarizationId': JOB, 'subtitleId': JOB,
              'review': {'revision': {'revision': 0, 'base': {'jobId': JOB}, 'humanReviewed': False}, 'canUndo': False, 'notes': [], 'derivedStale': False, 'segmentEditUnavailable': False}}
         if mode == 'no-review': del v['review']; del v['notesDoc']; v['summary'] = ''
+        if r['key'] == other['key']: v.update({'jobId': OTHER, 'diarizationId': OTHER, 'subtitleId': OTHER, 'review': dict(v['review'], revision={'revision': 0, 'base': {'jobId': OTHER}, 'humanReviewed': False})})
     elif op == 'resolve': v = {'state': 'completed', 'location': 'local', 'path': os.environ['FALATRACE_SYNTHETIC_MEDIA']}
     elif op == 'templates-list' and features['templates']: v = {'templates': templates, 'default': 'auto', 'problems': []}
     elif op == 'summary-prefs-read' and features['templates']: v = prefs
@@ -81,6 +86,9 @@ for line in sys.stdin:
         if p.get('consent') is not True or p.get('consentKey') != CONSENT: refuse(r, 'payload inválido'); continue
         runs += 1; status_polls = 0
         v = {'jobId': JOB, 'requestId': p['requestId'], 'status': 'running'}
+    elif op == 'summary-status' and mode == 'two':
+        request_polls[p['requestId']] = request_polls.get(p['requestId'], 0) + 1
+        v = {'jobId': r['key'], 'requestId': p['requestId'], 'status': 'running' if request_polls[p['requestId']] < 3 else 'completed'}
     elif op == 'summary-status':
         status_polls += 1
         if mode == 'stop-fail' and runs == 1: state = 'running'
@@ -200,21 +208,32 @@ PLANS = {
         ('confirm', 'summaryStage === "confirm"', 'uxFind(detailView.regenerateBar, "regenerateConfirm").clicked()'),
         ('running', 'summaryStage === "running" && summaryPolling', '''
     backToLibrary()
-    check("leaving the meeting keeps the run going in the background", !selected.key && summaryStage === "" && detachedSummary.requestId !== "" && detachedSummary.title === "Daily do time")
+    check("leaving the meeting keeps the run going in the background", !selected.key && summaryStage === "" && detachedSummaries.length === 1 && detachedSummaries[0].title === "Daily do time")
     check("nothing is cancelled", !hasPending("summary-cancel"))'''),
-        ('ready elsewhere', '!detachedSummary.requestId && toast.message !== ""', '''
+        ('ready elsewhere', '!detachedSummaries.length && toast.message !== ""', '''
     check("the notes say they are ready, with a way back", toast.message === "Notas prontas: Daily do time" && toast.actionText === "Abrir")
     check("errorText and notice stay untouched", errorText === "" && notice === "")''')]),
     'return': ('1320x820', False, [OPEN[:2] + (OPEN[2] + menu('Gerar de novo'),),
         ('confirm', 'summaryStage === "confirm"', 'uxFind(detailView.regenerateBar, "regenerateConfirm").clicked()'),
         ('running', 'summaryStage === "running" && summaryPolling', '''
     backToLibrary()
-    check("the run is followed in the background", !!detachedSummary.requestId && homeView.visible)
+    check("the run is followed in the background", detachedSummaries.length === 1 && homeView.visible)
     selectRecording(items[0])'''),
-        ('back in the meeting', 'summaryStage === "running" && !detachedSummary.requestId', '''
+        ('back in the meeting', 'summaryStage === "running" && !detachedSummaries.length', '''
     check("reopening the meeting shows the run in the bar again", detailView.regenerateBar.visible && uxFind(detailView.regenerateBar, "regenerateMessage").text === "Gerando as notas…" && summaryPolling)'''),
         ('finished', 'summaryStage === "" && toast.message !== "" && !detailLoading', '''
     check("the notes are updated in the open meeting", toast.message === "Notas atualizadas." && errorText === "")''')]),
+    'two': ('1320x820', False, [OPEN[:2] + (OPEN[2] + menu('Gerar de novo'),),
+        ('confirm', 'summaryStage === "confirm"', 'uxFind(detailView.regenerateBar, "regenerateConfirm").clicked()'),
+        ('running', 'summaryStage === "running" && summaryPolling', 'selectRecording(items[1])'),
+        ('other meeting', 'selected.key === "/synthetic/Recordings/retro.mkv" && !detailLoading && !!detail.review && summaryStage === ""', '''
+    check("the first meeting goes on in the background", detachedSummaries.length === 1 && detachedSummaries[0].title === "Daily do time")
+    ''' + menu('Gerar de novo')),
+        ('confirm again', 'summaryStage === "confirm"', 'uxFind(detailView.regenerateBar, "regenerateConfirm").clicked()'),
+        ('running again', 'summaryStage === "running" && summaryPolling', '''
+    backToLibrary()
+    check("both meetings are followed", detachedSummaries.length === 2 && detachedSummaries[1].title === "Retro da sprint")'''),
+        ('both ready', '!detachedSummaries.length', 'check("both runs ended without a warning", toast.message.indexOf("Notas prontas") === 0 && errorText === "")', 9000)]),
     'unsaid': ('1320x820', False, [OPEN[:2] + (OPEN[2] + menu('Gerar de novo'),),
         ('confirm', 'summaryStage === "confirm"', 'uxFind(detailView.regenerateBar, "regenerateConfirm").clicked()'),
         ('planned', 'summaryStage === "consent" || summaryStage === "running"', '''
@@ -248,7 +267,7 @@ def env_for(mode):
     return {'RECORDING_DESKTOP_SMOKE_KEY': '/synthetic/Recordings/daily.mkv', 'TEMPLATES_JOB': JOB, 'TEMPLATES_CONSENT': CONSENT}
 
 
-checks, screens, requests = run_journey_modes(command, 'templates', out, STUB, PLANS, env_for)
+checks, screens, requests = run_journey_modes(command, 'templates', out, STUB, PLANS, env_for, snapshot_ms=24000)
 
 
 def sent(mode, op):
@@ -289,6 +308,9 @@ checks += [
      if sent('leave', 'summary-run') else False},
     {'name': 'return: the run is never cancelled and the meeting is read again when it ends',
      'pass': not sent('return', 'summary-cancel') and len(sent('return', 'summary-run')) == 1 and len(sent('return', 'detail')) >= 3},
+    {'name': 'two: each meeting left while its notes were made is followed until its run ends, none cancelled',
+     'pass': not sent('two', 'summary-cancel') and len(sent('two', 'summary-run')) == 2
+     and all(sum(1 for q in sent('two', 'summary-status') if q['payload']['requestId'] == run['requestId']) >= 3 for run in payloads('two', 'summary-run'))},
     {'name': 'unsaid: no run without the consent when the plan does not say where it goes',
      'pass': len(sent('unsaid', 'summary-plan')) == 1 and not sent('unsaid', 'summary-run')},
     {'name': 'no-review: the choice is saved for the meeting and nothing is planned',
