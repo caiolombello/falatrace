@@ -42,7 +42,7 @@ falatrace library search "migração do banco" --limit 5    # JSON passages, mar
 
 - Before anything is sent, the destination is shown: `Destino: <provider · model> (neste computador|fora deste computador) · N reuniões`, with "(trechos)" when only passages fit.
 - Ollama on this computer, or a `custom` API at an address on this computer, needs no consent: nothing leaves.
-- An Ollama cloud model (a name with a `cloud` tag or suffix, such as `gpt-oss:120b-cloud`) leaves through the local server, to ollama.com: it is outside this computer and asks first. Before sending to a model presented as local, the Ollama is asked (`/api/show`) whether it runs that model itself; another name for a cloud model is refused.
+- An Ollama cloud model (a name with a `cloud` tag or suffix, such as `gpt-oss:120b-cloud`) leaves through the local server, to ollama.com: it is outside this computer and asks first, also through a `custom` API on this computer (Ollama's OpenAI-compatible `/v1`). Before sending to a model presented as local, the Ollama is asked (`/api/show`) whether it runs that model itself; another name for a cloud model is refused.
 - Every other destination sends the question and the excerpts above off the computer. In the CLI, add `--yes` after checking the destination line; without it, the command stops and nothing is sent. In the Studio, a consent card names the destination once per conversation. <!-- studio-check -->
 - Consent covers one destination and one scope. A new provider, model or scope asks again.
 

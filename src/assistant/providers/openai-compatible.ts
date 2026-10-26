@@ -1,6 +1,7 @@
 import type { ChatCompletionCreateParamsStreaming, ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import type { AppConfig, AssistantApiPreset } from "../../config/defaults";
 import { readSecret, type SecretName } from "../../config/secrets";
+import { isOllamaCloudModel } from "../../summary/ollama-locality";
 import { type ChatProvider, type ChatRequest, type ChatResult, type ChatStopReason, ProviderError, type ProviderDestination, type ProviderReadiness } from "../types";
 import {
   COMMON_PROVIDER_MESSAGES,
@@ -134,7 +135,9 @@ export const createOpenAiCompatibleProvider = (config: AppConfig, deps: OpenAiCo
   const timeouts = { ...DEFAULT_TIMEOUTS, ...deps.timeouts };
   const base = presetName === "custom" ? parseCustomBaseUrl(config.assistant.apiBaseUrl) : new URL(preset.baseURL);
   const model = config.assistant.apiModel || preset.defaultModel;
-  const local = presetName === "custom" && base !== undefined && isLoopbackHost(base.hostname);
+  // An API on this computer is local, unless it is Ollama's OpenAI-compatible API with one of its
+  // cloud models ("…-cloud"), which the local server forwards to ollama.com.
+  const local = presetName === "custom" && base !== undefined && isLoopbackHost(base.hostname) && !isOllamaCloudModel(model);
   const destination: ProviderDestination = {
     kind: "api",
     id: presetName,

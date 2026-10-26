@@ -103,6 +103,10 @@ describe("createChatProvider", () => {
     }
     expect(createChatProvider(configWith({ provider: "api", apiPreset: "custom", apiBaseUrl: "http://127.0.0.1:8080/v1", apiModel: "m" })).destination.external).toBe(false);
     expect(createChatProvider(configWith({ provider: "local" }, { ollamaUrl: "https://ollama.example.com" })).destination.external).toBe(true);
+    // Ollama's OpenAI-compatible API on this computer forwards its cloud models to ollama.com: consent first.
+    for (const apiModel of ["gpt-oss:120b-cloud", "glm-4.6:cloud"]) {
+      expect(createChatProvider(configWith({ provider: "api", apiPreset: "custom", apiBaseUrl: "http://127.0.0.1:11434/v1", apiModel })).destination.external).toBe(true);
+    }
   });
 
   test("the timeouts and deps given reach the chosen provider", async () => {
