@@ -25,7 +25,7 @@ export const CHATGPT_API_MESSAGES = {
   notEligible: "Sua conta do ChatGPT não pode usar o plano no FalaTrace (é preciso Plus ou Pro).",
   usageLimit: "Você atingiu o limite de uso do plano do ChatGPT para o FalaTrace. Veja em ChatGPT › Configurações › Uso.",
   usageUnavailable: "O uso do plano do ChatGPT está indisponível agora. Tente de novo em alguns minutos.",
-  invalidUser: "O ChatGPT não aceitou mais a sua sessão. Entre de novo com o ChatGPT em Configurações › Assistente.",
+  invalidUser: "O ChatGPT não aceitou mais a sua sessão. Entre de novo com o ChatGPT em Configurações › Perguntar e receitas.",
   modelUnavailable: "O modelo escolhido não está disponível no seu plano do ChatGPT.",
   badRequest: "O ChatGPT recusou o pedido. Confira o modelo e o tamanho do contexto.",
   unavailable: "O ChatGPT está indisponível no momento. Tente de novo em alguns minutos.",

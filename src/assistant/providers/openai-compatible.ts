@@ -57,7 +57,7 @@ export const missingKeyMessage = (keyName: SecretName): string => `Configure a c
 
 export const API_MESSAGES = {
   invalidBaseUrl: "O endereço da API compatível é inválido: use HTTPS (ou HTTP só neste computador), sem usuário, senha ou parâmetros.",
-  modelRequired: "Informe o modelo da API compatível em Configurações › Assistente.",
+  modelRequired: "Informe o modelo da API compatível em Configurações › Perguntar e receitas.",
   auth: "A API recusou a chave. Confira a chave em Configurações › Chaves de API.",
   forbidden: "A chave da API não tem permissão para este modelo.",
   rateLimit: "A API recusou por limite de uso ou falta de créditos. Tente mais tarde.",

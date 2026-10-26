@@ -63,8 +63,8 @@ export const ACP_AGENTS: Record<Exclude<AssistantAcpAgent, "custom">, AcpAgentPr
 const CUSTOM_LABEL = "ACP personalizado";
 
 export const ACP_MESSAGES = {
-  customMissing: "Informe o comando do agente ACP em Configurações › Assistente.",
-  customNotFound: "O programa do agente ACP personalizado não foi encontrado. Confira o comando em Configurações › Assistente.",
+  customMissing: "Informe o comando do agente ACP em Configurações › Perguntar e receitas.",
+  customNotFound: "O programa do agente ACP personalizado não foi encontrado. Confira o comando em Configurações › Perguntar e receitas.",
   customAuth: "O agente ACP personalizado pede login. Entre pelo terminal do próprio agente e tente de novo."
 } as const;
 

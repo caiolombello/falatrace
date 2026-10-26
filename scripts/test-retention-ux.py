@@ -165,6 +165,7 @@ MEDIA_PLANS = {
         ('plan ready', 'mediaRemoveDialog.stage === "ready"', '''
     check("the plan comes first, Cancel has the focus", uxFind(mediaRemoveDialog.footer, "mediaRemoveCancel").activeFocus)
     check("both choices say what they keep and free", !!uxFind(mediaRemoveDialog.contentItem, "mediaOption-audio-only") && mediaRemoveDialog.sizeText(1234567890) === "1,2 GB")
+    check("only the audio says the video can no longer be watched and the transcript not redone", uxFind(mediaRemoveDialog.contentItem, "mediaOptionBody-audio-only").text.indexOf("não poderá mais ser assistida nem transcrita de novo") >= 0)
     check("a removal with no other copy says so", mediaRemoveDialog.plan.scope === "total")
     uxFind(mediaRemoveDialog.contentItem, "mediaOption-transcript-only").clicked()
     check("nothing goes before the confirmation", !uxFind(mediaRemoveDialog.footer, "mediaRemoveConfirm").enabled && mediaRemoveDialog.mode === "transcript-only")

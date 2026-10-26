@@ -359,7 +359,7 @@ FtDialog {
         ColumnLayout { spacing:12
           Label { text:t("Bem-vindo ao FalaTrace"); color:ink; font.pixelSize:22; font.weight:Font.DemiBold; wrapMode:Text.WordWrap; Layout.fillWidth:true }
           Label { text:t("Anote o que importa durante a reunião. O FalaTrace completa as notas, e cada ponto leva ao momento em que foi dito."); color:ink; wrapMode:Text.WordWrap; Layout.fillWidth:true }
-          Label { text:t("Nada é gravado, enviado ou instalado até você concluir."); color:muted; wrapMode:Text.WordWrap; Layout.fillWidth:true }
+          Label { objectName:"wizardNothingYet"; text:t("Nada é gravado, enviado ou instalado até você concluir. O teste de áudio e os downloads só acontecem nos próprios botões."); color:muted; wrapMode:Text.WordWrap; Layout.fillWidth:true }
           RowLayout {
             Layout.fillWidth:true; spacing:10
             Label { text:t("Idioma do Studio"); color:ink }

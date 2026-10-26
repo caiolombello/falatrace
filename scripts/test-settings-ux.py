@@ -190,7 +190,8 @@ for line in sys.stdin:
 # mode: (action at 600 ms, assertions at 1500 ms, follow-up at 2300 ms, final at 3100 ms); each step waits until the
 # settings requests sent before it were answered (bounded), never a fixed delay.
 MODES = {
-    'first-run': ('', 'check("first use opens the assistant, not settings", setupWizard.visible && !settingsDialog.visible && setupWizard.step===0); check("continuing needs the consent acknowledgment", !wizardConsentGate()); check("assistant read the configuration", !!setupWizard.data.revision)', '', ''),
+    'first-run': ('', 'check("first use opens the assistant, not settings", setupWizard.visible && !settingsDialog.visible && setupWizard.step===0); check("continuing needs the consent acknowledgment", !wizardConsentGate()); check("assistant read the configuration", !!setupWizard.data.revision); '
+                  'check("the welcome says the audio test and the downloads run before Finish, from their own buttons", findObject(setupWizard.contentItem, "wizardNothingYet").text.indexOf("downloads só acontecem nos próprios botões")>=0)', '', ''),
     'wizard-flow': ('setupWizard.consentAck=true', 'setupWizard.recommend(); check("recommended defaults go to review", setupWizard.step===4 && setupWizard.value("backend")==="audio" && setupWizard.preset()==="local" && setupWizard.value("callDetection.enabled")===false); setupWizard.finish()',
                     'check("assistant finished and reports the save", setupWizard.step===5 && setupWizard.results.length===1 && setupWizard.results[0].ok)', ''),
     'wizard-key-cancel': ('setupWizard.consentAck=true',
@@ -352,7 +353,8 @@ MODES = {
                          'settingsDialog.goToSection(15); setSettingsField("media.retention","audio-only"); const warning = findObject(settingsDialog.contentItem, "retentionWarning"); '
                          'check("keeping only the audio says plainly the video can no longer be watched", !!warning && warning.visible && warning.text.indexOf("não poderão mais ser assistidas")>=0); '
                          'setSettingsField("media.retention","transcript-only"); check("keeping only the text says it can no longer be watched or listened to", warning.text.indexOf("assistidas nem ouvidas")>=0); '
-                         'check("each choice says what stops working", findObject(settingsDialog.contentItem, "retentionAudio").detail.indexOf("não dá mais para assistir")>=0)',
+                         'check("each choice says what stops working", findObject(settingsDialog.contentItem, "retentionAudio").detail.indexOf("não dá mais para assistir")>=0); '
+                         'check("only the audio: the transcript can no longer be redone (no reprocessing without the video file), listening and speakers keep working", findObject(settingsDialog.contentItem, "retentionAudio").detail.indexOf("nem refazer a transcrição")>=0 && findObject(settingsDialog.contentItem, "retentionAudio").detail.indexOf("Ouvir e identificar falantes continuam")>=0)',
                          'settingsDialog.goToSection(13); check("live transcript lists where the audio goes, with cost and delay", findObject(settingsDialog.contentItem, "liveGroq").detail.indexOf("US$ 0,04")>=0 && findObject(settingsDialog.contentItem, "liveWhisper").detail.indexOf("não sai daqui")>=0); '
                          'setSettingsField("live.provider","groq"); const groq = findObject(findObject(settingsDialog.contentItem, "settingsLive"), "secretInput_GROQ_API_KEY"); check("a cloud live provider shows its key inline", !!groq && groq.visible); settingsDialog.goToSection(15)'),
     'notes-section': ('settingsDialog.open(); settingsDialog.goToSection(10)',

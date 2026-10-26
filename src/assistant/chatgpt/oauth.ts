@@ -39,8 +39,8 @@ export const CHATGPT_MESSAGES = {
   identityFailed: "Não foi possível confirmar a identidade da conta do ChatGPT; nada foi salvo.",
   scopeDeclined: "Você não autorizou o FalaTrace a usar o seu plano do ChatGPT. Entre de novo e aceite essa permissão, ou use uma chave de API.",
   unreachable: "Não foi possível falar com o ChatGPT. Confira a conexão e tente de novo.",
-  signedOut: "Entre com o ChatGPT em Configurações › Assistente para usar o seu plano.",
-  expired: "A sessão do ChatGPT expirou. Entre de novo com o ChatGPT em Configurações › Assistente."
+  signedOut: "Entre com o ChatGPT em Configurações › Perguntar e receitas para usar o seu plano.",
+  expired: "A sessão do ChatGPT expirou. Entre de novo com o ChatGPT em Configurações › Perguntar e receitas."
 } as const;
 
 export type ChatGptEndpoints = { authorizeUrl: string; tokenUrl: string; jwksUrl: string; issuer: string };

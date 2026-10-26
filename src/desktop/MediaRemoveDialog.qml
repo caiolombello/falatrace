@@ -130,8 +130,9 @@ FtDialog {
                         }
                         Label {
                             id: optionBody
+                            objectName: "mediaOptionBody-" + optionRow.modelData.mode
                             Layout.fillWidth: true
-                            text: optionRow.modelData.mode === "audio-only" ? t("O vídeo some: esta gravação não poderá mais ser assistida. Ouvir, identificar falantes e refazer a transcrição continuam.") : t("O vídeo e o áudio somem: não dá mais para assistir nem ouvir esta gravação, identificar falantes de novo ou refazer a transcrição. Notas, transcrição, perguntas e envio continuam.")
+                            text: optionRow.modelData.mode === "audio-only" ? t("O vídeo some: esta gravação não poderá mais ser assistida nem transcrita de novo. Ouvir e identificar falantes continuam.") : t("O vídeo e o áudio somem: não dá mais para assistir nem ouvir esta gravação, identificar falantes de novo ou refazer a transcrição. Notas, transcrição, perguntas e envio continuam.")
                             textFormat: Text.PlainText; color: muted; font.pixelSize: 12; wrapMode: Text.WordWrap
                         }
                         Repeater { model: optionRow.modelData.eligible === true ? [] : asList(optionRow.modelData.reasons).slice(0, 2); Label { required property var modelData; text: t(modelData); textFormat: Text.PlainText; color: warningColor; font.pixelSize: 12; wrapMode: Text.WordWrap; Layout.fillWidth: true } }

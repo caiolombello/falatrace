@@ -19,7 +19,7 @@ SettingsPage {
     SettingsRadioCard {
         objectName: "retentionAudio"; field: "media.retention"; value: "audio-only"; iconName: "wave"
         heading: t("Só o áudio")
-        detail: t("O vídeo é apagado: não dá mais para assistir às gravações. Ouvir, identificar falantes e refazer a transcrição continuam.")
+        detail: t("O vídeo é apagado: não dá mais para assistir às gravações nem refazer a transcrição. Ouvir e identificar falantes continuam.")
     }
     SettingsRadioCard {
         objectName: "retentionText"; field: "media.retention"; value: "transcript-only"; iconName: "transcript"
