@@ -57,7 +57,8 @@ SettingsPage {
         error = ""; notice = ""
         if (request("recipes-delete", {id: recipe.id, expectedVersion: recipe.version}, {recipeName: recipe.name}) < 0) error = t("Sem conexão com o FalaTrace.")
     }
-    function saved(recipe) { notice = tf("Receita “%1” salva.", recipe.name || ""); recipesLoading = false; loadRecipes() }
+    // A recipe saved or deleted here also reaches the Ask drawer when it is open ("/" and the suggestions).
+    function saved(recipe) { notice = tf("Receita “%1” salva.", recipe.name || ""); recipesLoading = false; loadRecipes(); askPanel.reloadRecipes() }
     function found(list, field, value) { const entry = asList(list).find(function(item){ return item[field] === value }); return entry || null }
     function toolsAgent(kind) { return kind + ":" + (kind === "acp" ? settingsDraft["assistant.acpAgent"] : settingsDraft["assistant.cliTool"]) }
     function needsToolsOk(kind) { return toolAgents.indexOf(toolsAgent(kind)) >= 0 }
@@ -102,7 +103,7 @@ SettingsPage {
             confirmDelete = ""
             if (!message.ok) { error = t(message.error); return }
             notice = tf("Receita “%1” excluída.", request.recipeName || "")
-            loadRecipes()
+            loadRecipes(); askPanel.reloadRecipes()
         }
     }
     function connectionLost() {

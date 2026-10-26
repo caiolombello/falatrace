@@ -686,7 +686,8 @@ ApplicationWindow {
         if (message.ok && ["settings-read", "settings-save", "settings-restore"].indexOf(request.op) >= 0) {
             const savedValues = message.result.values || (message.result.settings && message.result.settings.values)
             if (savedValues) { languagePreference = savedValues["studio.language"] || "auto"; studioSettings = savedValues; if (request.op !== "settings-read") languagePreview = "" }
-            if (request.op !== "settings-read") refreshFeatures()
+            // A save or a restore can change the language the bridge names built-in recipes in.
+            if (request.op !== "settings-read") { refreshFeatures(); askPanel.reloadRecipes() }
         }
         if (request.origin === "wizard") { setupWizard.handleResponse(request, message); return }
         if (request.settingsGeneration !== settingsGeneration) return

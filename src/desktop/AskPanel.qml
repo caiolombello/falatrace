@@ -8,7 +8,9 @@ import QtQuick.Layouts
 // this computer needs a confirmation once per conversation (assistant-plan's consentKey binds the
 // destination and the scope). The answer streams (assistant-poll every 400 ms); under each
 // paragraph its citations open the meeting at that moment. "/" at the start of the input offers
-// recipes. Every failure stays in this panel: errorText and notice are never touched.
+// recipes, read again on each opening and after Settings changes them. The consent and the problem
+// cards sit above the input, never below the fold of a long conversation, and the consent takes the
+// focus. Every failure stays in this panel: errorText and notice are never touched.
 Rectangle {
     id: askPanel
     objectName: "askPanel"
@@ -31,7 +33,7 @@ Rectangle {
     property string problem: ""
     property int askGeneration: 0
     property var recipes: []
-    property bool recipesRequested: false
+    property int recipesGeneration: 0
     property bool threadsOpen: false
     property var threads: []
     property bool threadsLoading: false
@@ -100,11 +102,14 @@ Rectangle {
     function handleEscape() { if (runId) stop(); else if (threadsOpen) threadsOpen = false; else close() }
 
     // ── Asking ──
+    // Recipes are read on every opening and again when Settings saved, deleted or renamed one (or the
+    // language changed) while the drawer is open; the list there was stays until the new one arrives.
     function loadRecipes() {
-        if (recipesRequested || !feature("recipes") || !backend.available) return
-        recipesRequested = true
-        if (send("recipes-list", "", ({}), {origin: "ask"}) < 0) recipesRequested = false
+        if (!feature("recipes") || !backend.available) return
+        recipesGeneration += 1
+        send("recipes-list", "", ({}), {origin: "ask", recipesGeneration: recipesGeneration})
     }
+    function reloadRecipes() { if (shown) loadRecipes() }
     function submit() {
         if (recipeMode) { recipeList.choose(); return }
         const question = askInput.text.trim()
@@ -128,13 +133,15 @@ Rectangle {
         planning = false
         plan = result
         const pending = request.ask
-        if (result.ready !== true) { problem = t(result.message || "") || t("O assistente não está pronto. Confira em Configurações."); restore(pending); return }
+        if (result.ready !== true) { problem = t(result.message || "") || t("O assistente não está pronto. Confira em Configurações."); restore(pending); focusCard(askConfigure); return }
         // Outside this computer: one confirmation per conversation for this destination and scope.
         if (!(result.destination && result.destination.external === false) && !accepted[result.consentKey]) {
-            waiting = Object.assign({}, pending, {consentKey: result.consentKey}); return
+            waiting = Object.assign({}, pending, {consentKey: result.consentKey}); focusCard(askConsentCancel); return
         }
         start(pending, result.consentKey)
     }
+    // The card that needs an answer takes the keyboard focus once it is laid out (with the focus ring).
+    function focusCard(button) { Qt.callLater(function(){ if (shown && button.visible && button.enabled) button.forceActiveFocus(Qt.TabFocusReason) }) }
     // A question that could not go keeps its words in the input.
     function restore(pending) { if (pending && pending.question && !askInput.text) askInput.text = pending.question }
     function acceptConsent() {
@@ -175,7 +182,7 @@ Rectangle {
     // ── Replies (all of them stay in this panel) ──
     function handleResponse(request, message) {
         if (request.op === "recipes-list") {
-            if (!message.ok) { recipesRequested = false; return }
+            if (request.recipesGeneration !== recipesGeneration || !message.ok) return
             recipes = asList(message.result.recipes).map(function(recipe){ return {id: recipe.id, name: recipe.name, description: recipe.description || "", scope: recipe.scope} })
             return
         }
@@ -186,7 +193,7 @@ Rectangle {
             return
         }
         if (request.op === "assistant-plan") {
-            if (!message.ok) { planning = false; problem = t(message.error); restore(request.ask); return }
+            if (!message.ok) { planning = false; problem = t(message.error); restore(request.ask); focusCard(askConfigure); return }
             planned(request, message.result)
         } else if (request.op === "assistant-start") {
             planning = false
@@ -543,58 +550,71 @@ Rectangle {
                     streaming: !!askPanel.live && askPanel.live.status === "running"
                     onMessageChanged: Qt.callLater(function(){ messageList.positionViewAtEnd() })
                 }
-                RowLayout {
-                    visible: askPanel.planning && !askPanel.live
-                    spacing: 8
-                    BusyIndicator { running: parent.visible; implicitWidth: 22; implicitHeight: 22 }
-                    Label { text: t("Preparando…"); color: muted; font.pixelSize: 12 }
-                }
-                // Consent, inline, once per conversation for a destination outside this computer.
-                Rectangle {
-                    id: askConsentCard
-                    objectName: "askConsentCard"
-                    visible: !!askPanel.waiting
-                    Layout.fillWidth: true
-                    implicitHeight: consentColumn.implicitHeight + 24
-                    radius: 10
-                    color: warningSoft
-                    border.width: 1; border.color: warningColor
-                    ColumnLayout {
-                        id: consentColumn
-                        anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 12
-                        spacing: 8
-                        Label {
-                            objectName: "askConsentText"
-                            Layout.fillWidth: true
-                            text: askPanel.waiting ? (askPanel.planMeetingCount() === 1 ? tf("Para responder, vou enviar trechos de 1 reunião (≈ %1 mil caracteres) para %2.", Math.max(1, Math.round(Number(askPanel.plan.contextCharacters || 0) / 1000)), askPanel.destinationLabel())
-                                : tf("Para responder, vou enviar trechos de %1 reuniões (≈ %2 mil caracteres) para %3.", askPanel.planMeetingCount(), Math.max(1, Math.round(Number(askPanel.plan.contextCharacters || 0) / 1000)), askPanel.destinationLabel())) + " " + t("Você confirma uma vez por conversa.") : ""
-                            textFormat: Text.PlainText; wrapMode: Text.WordWrap; color: ink; font.pixelSize: 13
-                        }
-                        RowLayout {
-                            spacing: 8
-                            FtButton { objectName: "askConsentAccept"; compact: true; variant: "primary"; iconName: "send"; text: t("Enviar"); enabled: backend.available; onClicked: askPanel.acceptConsent() }
-                            FtButton { objectName: "askConsentCancel"; compact: true; variant: "outline"; text: t("Cancelar"); onClicked: { askPanel.restore(askPanel.waiting); askPanel.waiting = null; askInput.forceActiveFocus() } }
-                        }
-                    }
-                }
-                Rectangle {
-                    objectName: "askProblem"
-                    visible: askPanel.problem !== ""
-                    Layout.fillWidth: true
-                    implicitHeight: problemColumn.implicitHeight + 20
-                    radius: 10
-                    color: surfaceAlt
-                    border.width: 1; border.color: divider
-                    ColumnLayout {
-                        id: problemColumn
-                        anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 10
-                        spacing: 8
-                        Label { Layout.fillWidth: true; text: askPanel.problem; textFormat: Text.PlainText; wrapMode: Text.WordWrap; color: ink; font.pixelSize: 13 }
-                        // Who answers is set in Settings › Perguntar e receitas: open it there.
-                        FtButton { objectName: "askConfigure"; compact: true; variant: "outline"; iconName: "settings"; text: t("Configurar…"); enabled: backend.available; onClicked: settingsDialog.openSection(11) }
-                    }
-                }
                 Label { visible: askPanel.plan.truncated === true && askPanel.messages.length > 0; text: t("Algumas reuniões ficaram de fora por causa do tamanho."); textFormat: Text.PlainText; color: muted; font.pixelSize: 11; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+            }
+        }
+
+        // Under the conversation and above the input, so they are never below the fold of a long
+        // conversation: "Preparando…", the consent (once per conversation for a destination outside this
+        // computer) and a problem that stopped the question.
+        ColumnLayout {
+            objectName: "askCards"
+            visible: (askPanel.planning && !askPanel.live) || !!askPanel.waiting || askPanel.problem !== ""
+            Layout.fillWidth: true
+            Layout.leftMargin: 12; Layout.rightMargin: 12; Layout.topMargin: 4
+            spacing: 8
+            RowLayout {
+                visible: askPanel.planning && !askPanel.live
+                spacing: 8
+                BusyIndicator { running: parent.visible; implicitWidth: 22; implicitHeight: 22 }
+                Label { text: t("Preparando…"); color: muted; font.pixelSize: 12 }
+            }
+            // Consent, inline, once per conversation for a destination outside this computer.
+            Rectangle {
+                id: askConsentCard
+                objectName: "askConsentCard"
+                visible: !!askPanel.waiting
+                Layout.fillWidth: true
+                implicitHeight: consentColumn.implicitHeight + 24
+                radius: 10
+                color: warningSoft
+                border.width: 1; border.color: warningColor
+                ColumnLayout {
+                    id: consentColumn
+                    anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 12
+                    spacing: 8
+                    Label {
+                        objectName: "askConsentText"
+                        Layout.fillWidth: true
+                        text: askPanel.waiting ? (askPanel.planMeetingCount() === 1 ? tf("Para responder, vou enviar trechos de 1 reunião (≈ %1 mil caracteres) para %2.", Math.max(1, Math.round(Number(askPanel.plan.contextCharacters || 0) / 1000)), askPanel.destinationLabel())
+                            : tf("Para responder, vou enviar trechos de %1 reuniões (≈ %2 mil caracteres) para %3.", askPanel.planMeetingCount(), Math.max(1, Math.round(Number(askPanel.plan.contextCharacters || 0) / 1000)), askPanel.destinationLabel())) + " " + t("Você confirma uma vez por conversa.") : ""
+                        textFormat: Text.PlainText; wrapMode: Text.WordWrap; color: ink; font.pixelSize: 13
+                    }
+                    RowLayout {
+                        spacing: 8
+                        FtButton { id: askConsentAccept; objectName: "askConsentAccept"; compact: true; variant: "primary"; iconName: "send"; text: t("Enviar"); enabled: backend.available; onClicked: askPanel.acceptConsent() }
+                        FtButton { id: askConsentCancel; objectName: "askConsentCancel"; compact: true; variant: "outline"; text: t("Cancelar"); onClicked: { askPanel.restore(askPanel.waiting); askPanel.waiting = null; askInput.forceActiveFocus() } }
+                    }
+                }
+            }
+            Rectangle {
+                objectName: "askProblem"
+                Accessible.role: Accessible.AlertMessage
+                Accessible.name: askPanel.problem
+                visible: askPanel.problem !== ""
+                Layout.fillWidth: true
+                implicitHeight: problemColumn.implicitHeight + 20
+                radius: 10
+                color: surfaceAlt
+                border.width: 1; border.color: divider
+                ColumnLayout {
+                    id: problemColumn
+                    anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 10
+                    spacing: 8
+                    Label { Layout.fillWidth: true; text: askPanel.problem; textFormat: Text.PlainText; wrapMode: Text.WordWrap; color: ink; font.pixelSize: 13 }
+                    // Who answers is set in Settings › Perguntar e receitas: open it there.
+                    FtButton { id: askConfigure; objectName: "askConfigure"; compact: true; variant: "outline"; iconName: "settings"; text: t("Configurar…"); enabled: backend.available; onClicked: settingsDialog.openSection(11) }
+                }
             }
         }
 
@@ -635,6 +655,9 @@ Rectangle {
                         background: Item {}
                         enabled: backend.available
                         Accessible.name: t("Pergunta")
+                        // Tab goes on to Enviar (and Shift+Tab back): it never types a tab character here.
+                        Keys.onTabPressed: event => { const next = nextItemInFocusChain(true); if (next) next.forceActiveFocus(Qt.TabFocusReason); event.accepted = true }
+                        Keys.onBacktabPressed: event => { const previous = nextItemInFocusChain(false); if (previous) previous.forceActiveFocus(Qt.BacktabFocusReason); event.accepted = true }
                         Keys.onPressed: event => {
                             if (askPanel.recipeMode && (event.key === Qt.Key_Down || event.key === Qt.Key_Up)) { recipeList.move(event.key === Qt.Key_Down ? 1 : -1); event.accepted = true; return }
                             if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && !(event.modifiers & Qt.ShiftModifier)) { askPanel.submit(); event.accepted = true }

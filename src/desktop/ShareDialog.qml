@@ -121,8 +121,17 @@ FtDialog {
         if (sendResult.url) Qt.openUrlExternally(sendResult.url)
         else if (sendResult.path && destination === "obsidian") Qt.openUrlExternally("obsidian://open?path=" + encodeURIComponent(sendResult.path))
     }
+    // Closing gives the focus back to what opened the dialog (an Ask answer's "Enviar…", the header,
+    // Ctrl+Shift+E from the notes), else to the meeting's Enviar.
+    property Item opener: null
+    onAboutToShow: opener = window.activeFocusItem
     onOpened: shareCancel.forceActiveFocus(Qt.TabFocusReason)
-    onClosed: { shareGeneration += 1; preview = ({}); sendResult = null; error = ""; shareText = ""; if (detailView.shareButton.visible) detailView.shareButton.forceActiveFocus(Qt.TabFocusReason) }
+    onClosed: {
+        shareGeneration += 1; preview = ({}); sendResult = null; error = ""; shareText = ""
+        const back = opener; opener = null
+        if (back && back.visible && back.enabled) back.forceActiveFocus(Qt.TabFocusReason)
+        else if (detailView.shareButton.visible) detailView.shareButton.forceActiveFocus(Qt.TabFocusReason)
+    }
 
     TextEdit { id: shareClipboard; visible: false; textFormat: TextEdit.PlainText }
 

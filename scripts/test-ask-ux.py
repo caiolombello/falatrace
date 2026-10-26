@@ -9,8 +9,10 @@ moments that open the meeting there), a question to the whole library sent outsi
 "/" and sending an answer, an assistant that is not set up, an Ollama cloud model (outside this
 computer although the server is local: consent first), stopping an answer in the compact
 English layout, a question left by "Nova conversa" (its run is stopped), an earlier conversation
-reopened and asked again, a plan that does not say where it goes (consent first), and a bridge
-without the assistant. Exit 77 means no Studio runtime is available.
+reopened and asked again, a plan that does not say where it goes (consent first), a long
+conversation whose consent and problem cards still show above the input with the focus on them,
+recipes read again on each opening and after Settings saves one, and a bridge without the
+assistant. Exit 77 means no Studio runtime is available.
 """
 from pathlib import Path
 import json, sys, tempfile
@@ -44,7 +46,7 @@ def detail(job):
             'summary': '# Daily\n\n- Lançamento mantido no dia 30', 'status': 'completed', 'backup': 'none', 'jobId': job,
             'review': {'revision': {'revision': 0, 'base': {'jobId': job}}, 'canUndo': False, 'notes': [], 'derivedStale': False}}
 cloud = mode == 'local-cloud-model'
-external = mode == 'library-consent' or cloud
+external = mode in ('library-consent', 'long') or cloud
 destination = {'label': 'OpenRouter · deepseek/deepseek-v4.1-flash-1017', 'kind': 'api', 'external': True} if external else {'label': 'Ollama · qwen3.5:9b', 'kind': 'local', 'external': False}
 # The runner marks an Ollama cloud model external even when the server is this computer's.
 if cloud: destination = {'label': 'Ollama · gpt-oss:120b-cloud', 'kind': 'local', 'external': True}
@@ -53,7 +55,7 @@ consent_key = os.environ['ASK_EXTERNAL_KEY'] if external else os.environ['ASK_LO
 # Like the runner: the meetings whose excerpts go, one entry each (the panel counts them).
 def planned_meetings(n):
     return [{'jobId': JOB if i == 0 else OTHER, 'title': 'Daily do time' if i == 0 else '1:1 com Ana', 'date': '2026-10-2%dT14:00:00Z' % i} for i in range(n)]
-runs = {}; counter = 0
+runs = {}; counter = 0; recipe_lists = 0
 recipes = [{'id': 'follow-up-email', 'name': 'E-mail de follow-up', 'description': 'A follow-up email.', 'scope': 'meeting', 'builtIn': True, 'prompt': 'x', 'version': 1},
            {'id': 'risks', 'name': 'Riscos e mitigações', 'description': 'Risks.', 'scope': 'meeting', 'builtIn': True, 'prompt': 'x', 'version': 1},
            {'id': 'prep-next-meeting', 'name': 'Preparar a próxima reunião', 'description': 'Prep.', 'scope': 'library', 'builtIn': True, 'prompt': 'x', 'version': 1},
@@ -81,9 +83,13 @@ for line in sys.stdin:
     elif op == 'detail': v = detail(OTHER if r['key'].endswith('one.mkv') else JOB)
     elif op == 'resolve': v = {'state': 'failed', 'message': 'Mídia sintética indisponível.'}
     elif op == 'home-read': v = {'upcoming': [], 'openActions': [], 'openActionsTotal': 0, 'processing': [], 'calendarConnected': True, 'reminderMode': 'on', 'refreshing': False}
-    elif op == 'recipes-list' and features['recipes']: v = {'recipes': recipes, 'problems': []}
+    elif op == 'recipes-list' and features['recipes']:
+        # recipes: one made in Settings after the first read, then renamed there.
+        recipe_lists += 1
+        made = [{'id': 'client-summary', 'name': 'Resumo do cliente' if recipe_lists == 2 else 'Resumo do cliente (revisado)', 'description': 'Made in Settings.', 'scope': 'meeting', 'builtIn': False, 'prompt': 'x', 'version': recipe_lists}]
+        v = {'recipes': recipes + (made if mode == 'recipes' and recipe_lists > 1 else []), 'problems': []}
     elif op == 'assistant-plan' and features['assistant']:
-        if mode == 'not-configured':
+        if mode == 'not-configured' or (mode == 'long' and 'falha' in p.get('question', '')):
             v = {'ready': False, 'problem': 'missing-key', 'message': 'Falta a chave da API. Salve-a em Configurações › Perguntar.', 'destination': destination, 'consentKey': consent_key, 'contextCharacters': 0, 'meetings': [], 'truncated': False}
         else:
             v = {'ready': True, 'destination': destination, 'consentKey': consent_key, 'contextCharacters': 18200 if external else 5200, 'meetings': planned_meetings(1 if cloud or not external else 4), 'truncated': False}
@@ -108,9 +114,13 @@ for line in sys.stdin:
     elif op == 'assistant-threads' and features['assistant']: v = {'threads': [{'id': '99999999-9999-4999-8999-999999999999', 'title': 'O que foi decidido?', 'updatedAt': '2026-10-21T15:00:00Z', 'messageCount': 2}]}
     elif op == 'assistant-thread' and features['assistant']:
         text, citations = answer({'kind': 'meeting'})
-        v = {'id': p['threadId'], 'title': 'O que foi decidido?', 'scope': {'kind': 'meeting', 'jobId': JOB}, 'updatedAt': '2026-10-21T15:00:00Z',
-             'messages': [{'role': 'user', 'text': 'O que foi decidido?', 'citations': [], 'createdAt': '2026-10-21T15:00:00Z', 'destination': 'Ollama · qwen3.5:9b'},
-                          {'role': 'assistant', 'text': text, 'citations': citations, 'createdAt': '2026-10-21T15:00:05Z', 'destination': 'Ollama · qwen3.5:9b'}]}
+        pairs = 6 if mode == 'long' else 1
+        if mode == 'long': text = '\n\n'.join([text] * 4)
+        messages = []
+        for n in range(pairs):
+            messages += [{'role': 'user', 'text': 'O que foi decidido?', 'citations': [], 'createdAt': '2026-10-21T15:00:00Z', 'destination': 'Ollama · qwen3.5:9b'},
+                         {'role': 'assistant', 'text': text, 'citations': citations, 'createdAt': '2026-10-21T15:00:05Z', 'destination': 'Ollama · qwen3.5:9b'}]
+        v = {'id': p['threadId'], 'title': 'O que foi decidido?', 'scope': {'kind': 'meeting', 'jobId': JOB}, 'updatedAt': '2026-10-21T15:00:00Z', 'messages': messages}
     elif op == 'share-preview' and features['share']:
         v = {'previewId': '88888888-8888-4888-8888-888888888888', 'markdown': '# ' + p.get('title', '') + '\n\n' + p.get('text', ''), 'chars': 120, 'external': False, 'destinationLabel': 'Área de transferência', 'ready': True, 'target': 'clipboard'}
     else:
@@ -121,6 +131,16 @@ for line in sys.stdin:
 MEETING_OPEN = ('meeting open', '!!selected.key && !detailLoading && !!detail.jobId && features.assistant === true && settingsFirstRunChecked',
                 'check("Perguntar is in the meeting header", detailView.askToggle.visible); askPanel.toggle()')
 ANSWERED = 'askPanel.messages.length === 2 && !askPanel.runId && !askPanel.planning'
+# A card is on screen: inside the drawer and, when it sits in the conversation list, inside its viewport.
+ON_SCREEN = '''
+    function onScreen(item) {
+        if (!item || !item.visible) return false
+        const list = uxFind(askPanel, "askMessages"), at = item.mapToItem(askPanel, 0, 0)
+        if (at.y < 0 || at.y + item.height > askPanel.height) return false
+        for (let up = item.parent; up; up = up.parent) if (up === list) { const inList = item.mapToItem(list, 0, 0); return inList.y >= 0 && inList.y + item.height <= list.height }
+        return true
+    }'''
+FOCUSED = 'window.activeFocusItem && window.activeFocusItem.objectName === "%s"'
 PLANS = {
     'meeting-local': ('1320x820', False, [MEETING_OPEN,
         ('drawer open', 'askPanel.shown && askPanel.input.activeFocus', '''
@@ -183,12 +203,20 @@ PLANS = {
     askPanel.submit()'''),
         ('recipe answered', ANSWERED, '''
     check("a recipe run shows as /name", askPanel.messages[0].text === "/E-mail de follow-up")
+    uxFind(askPanel, "askShareAnswer-1").forceActiveFocus(Qt.TabFocusReason)
     uxFind(askPanel, "askShareAnswer-1").clicked()
     check("Enviar… opens the share dialog with the answer", shareDialog.visible && shareDialog.shareText === askPanel.messages[1].text && !shareDialog.jobId)'''),
         ('answer previewed', 'shareDialog.visible && !!shareDialog.preview.previewId', '''
     check("the preview shows what goes", shareDialog.previewArea.text.indexOf("lançamento") >= 0)
     check("an answer has nothing to include or exclude", !uxFind(shareDialog.contentItem, "shareInclude").visible)
-    shareDialog.close()''')]),
+    shareDialog.close()
+    check("closing gives the focus back to the answer's Enviar…", uxFind(askPanel, "askShareAnswer-1").activeFocus)
+    askPanel.close(); askPanel.toggle()'''),
+        ('reopened', 'askPanel.shown && askPanel.recipes.length === 5', '''
+    check("each opening reads the recipes again: one made in Settings meanwhile is offered", askPanel.recipes[4].name === "Resumo do cliente")
+    settingsDialog.assistantPage.saved({name: "Resumo do cliente (revisado)"})'''),
+        ('saved in Settings', 'askPanel.recipes.length === 5 && askPanel.recipes[4].name === "Resumo do cliente (revisado)"', '''
+    check("a recipe saved in Settings while the drawer is open shows its new name there", askPanel.shown && askPanel.recipes[4].name === "Resumo do cliente (revisado)")''')]),
     'not-configured': ('1320x820', False, [
         ('library loaded', 'items.length === 2 && features.assistant === true && homeView.visible', '''
     const bar = uxFind(homeView, "askBar")
@@ -246,6 +274,29 @@ PLANS = {
         ('planned', '!askPanel.planning', '''
     check("a destination that does not say it stays here asks first", !!askPanel.waiting && uxFind(askPanel, "askConsentCard").visible)
     check("nothing starts before the consent", !hasPending("assistant-start") && !askPanel.live)''')]),
+    'long': ('1320x820', False, [MEETING_OPEN,
+        ('drawer open', 'askPanel.shown', 'askPanel.openThread("99999999-9999-4999-8999-999999999999")'),
+        ('long conversation', 'askPanel.messages.length === 12 && !askPanel.threadsOpen', '''
+    const list = uxFind(askPanel, "askMessages")
+    check("the conversation is longer than the drawer", list.contentHeight > list.height)
+    askPanel.input.text = "E o prazo final?"; askPanel.submit()'''),
+        ('consent card', '!!askPanel.waiting && ' + FOCUSED % 'askConsentCancel', ON_SCREEN + '''
+    check("in a long conversation the consent card is on screen, not below the fold", onScreen(uxFind(askPanel, "askConsentCard")) && onScreen(uxFind(askPanel, "askConsentAccept")))
+    check("the consent takes the focus, on Cancelar", uxFind(askPanel, "askConsentCancel").activeFocus && uxFind(askPanel, "askConsentCancel").visualFocus)
+    check("nothing starts before the consent", !hasPending("assistant-start") && !askPanel.live)
+    uxFind(askPanel, "askConsentCancel").clicked()
+    check("Cancelar keeps the question to send again", !askPanel.waiting && askPanel.input.text === "E o prazo final?")
+    askPanel.input.text = "falha no plano"; askPanel.submit()'''),
+        ('problem card', 'askPanel.problem !== "" && ' + FOCUSED % 'askConfigure', ON_SCREEN + '''
+    check("in a long conversation the problem card is on screen too", onScreen(uxFind(askPanel, "askProblem")) && onScreen(uxFind(askPanel, "askConfigure")))
+    check("the problem takes the focus, on Configurar", uxFind(askPanel, "askConfigure").activeFocus)
+    check("the question stays in the input", askPanel.input.text === "falha no plano")
+    askPanel.input.forceActiveFocus(Qt.TabFocusReason)
+    qaKeys = [Qt.Key_Tab]'''),
+        ('tabbed out', FOCUSED % 'askSend', '''
+    check("Tab goes from the question to Enviar and types no tab", askPanel.input.text === "falha no plano")
+    qaKeys = [Qt.Key_Backtab]'''),
+        ('tabbed back', 'askPanel.input.activeFocus', 'check("Shift+Tab comes back to the question", askPanel.input.text === "falha no plano")')]),
     'no-assistant': ('1320x820', False, [
         ('meeting open', '!!selected.key && !detailLoading && !!detail.jobId && features.assistant === false', '''
     check("no Perguntar without the assistant", !detailView.askToggle.visible)
@@ -254,7 +305,7 @@ PLANS = {
     backToLibrary()'''),
         ('home', 'homeView.visible', 'check("no Ask bar on Início", !uxFind(homeView, "askBar").visible)')]),
 }
-SMOKE = {'meeting-local', 'recipes', 'stop-compact-en', 'no-assistant', 'threads', 'unsaid'}
+SMOKE = {'meeting-local', 'recipes', 'stop-compact-en', 'no-assistant', 'threads', 'unsaid', 'long'}
 
 
 def env_for(mode):
@@ -299,6 +350,10 @@ checks.append({'name': 'threads: asking again plans the question of that answer 
                'pass': [q['payload'] for q in sent('threads', 'assistant-plan')] == [{'scope': {'kind': 'meeting', 'jobId': JOB}, 'question': 'O que foi decidido?'}]
                and thread_starts[1]['payload'].get('threadId') == '99999999-9999-4999-8999-999999999999' if len(thread_starts) == 2 else False})
 checks.append({'name': 'threads: one conversation is read', 'pass': len(sent('threads', 'assistant-thread')) == 1})
+checks.append({'name': 'recipes: the recipes are read on each opening and after Settings saved one',
+               'pass': len(sent('recipes', 'recipes-list')) >= 4})
+checks.append({'name': 'long: nothing is started, neither before the consent nor after a plan that is not ready',
+               'pass': len(sent('long', 'assistant-plan')) == 2 and not sent('long', 'assistant-start')})
 checks.append({'name': 'unsaid: nothing is started without the consent', 'pass': len(sent('unsaid', 'assistant-plan')) == 1 and not sent('unsaid', 'assistant-start')})
 checks.append({'name': 'no-assistant: no assistant or recipe op without the flag', 'pass': not any(q['op'].startswith(('assistant-', 'recipes-')) for q in requests['no-assistant'])})
 finish_journey(command, 'ask', out, checks, screens)
