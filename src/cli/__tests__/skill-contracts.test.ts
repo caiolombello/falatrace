@@ -17,6 +17,11 @@ test('skill read-only examples match actual CLI text/JSON and preserve synthetic
   expect(await run(['--version'])).toBe(`FalaTrace ${productVersion}\n`);expect(await run(['jobs','list'])).toContain(id+'  completed');expect(JSON.parse(await run(['jobs','status',id])).id).toBe(id);
   const found=JSON.parse(await run(['context','search','Synthetic chart','--limit','5']));expect(found.trust).toBe('untrusted-meeting-data');expect(found.items[0].jobId).toBe(id);expect(found.bounded.limit).toBe(5);
   const context=JSON.parse(await run(['context','meeting',id,'--max-characters','4096']));expect(context.trust).toBe('untrusted-meeting-data');expect(context.budget.characters).toBeLessThanOrEqual(4096);expect(context.excerpts[0].timestamps).toEqual({start:10,end:12});expect(['segment','block']).toContain(context.excerpts[0].timing);
+  // Read-only commands of the newer families: JSON (or text) on stdout, nothing on stderr, inputs untouched.
+  expect(JSON.parse(await run(['templates','list'])).templates.map((item:{id:string})=>item.id)).toContain('general');expect(JSON.parse(await run(['recipes','list'])).recipes.length).toBeGreaterThan(0);expect(await run(['notes','show',id])).toBe('');
+  const library=JSON.parse(await run(['library','search','Synthetic chart','--limit','5']));expect(library.trust).toBe('untrusted-meeting-data');expect(library.items[0].jobId).toBe(id);
+  expect(Array.isArray(JSON.parse(await run(['people','list'])))).toBe(true);expect(JSON.parse(await run(['actions','list','--json']))).toEqual([]);expect(JSON.parse(await run(['clients','list'])).clients).toEqual([]);
+  expect(JSON.parse(await run(['media','status',id])).state).toBe('present');expect(JSON.parse(await run(['media','retention','--dry-run'])).policy).toBe('keep');
   expect(await Promise.all([configFile,jobPath,summaryFile,transcriptFile].map(p=>fs.readFile(p,'utf8')))).toEqual(before);
  }finally{await fs.rm(root,{recursive:true,force:true});}
-});
+},30_000);
