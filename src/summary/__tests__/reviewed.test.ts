@@ -1,6 +1,6 @@
 import { afterEach, expect, spyOn, test } from "bun:test";
 import { createHash, randomUUID } from "node:crypto";
-import { promises as fs } from "node:fs";
+import { existsSync, promises as fs, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { DEFAULT_CONFIG } from "../../config/defaults";
@@ -30,11 +30,11 @@ afterEach(async () => { await Promise.all(roots.splice(0).map(root => fs.rm(root
 const sha = (value: unknown): string => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const identity: ReviewedSummaryProvider = { provider: "ollama", model: "fixture-summary", adapterIdentity: "synthetic-stub-v1" };
 const response = (text = "Resumo sintético"): RecordingSummary => ({ version: 1, provider: "ollama", model: identity.model, title: "Resumo de fixture", overview: text, topics: [], decisions: [], actionItems: [], citations: [{ section: "overview", index: 0, segmentIds: ["s000000"], uncertainty: "clear" }] });
-const fixture = async (options: { verified?: boolean; long?: boolean; diarization?: boolean } = {}) => {
+const fixture = async (options: { verified?: boolean; long?: boolean; diarization?: boolean; mediaBytes?: number } = {}) => {
   const root = await fs.mkdtemp(join(tmpdir(), "reviewed-summary-")); roots.push(root);
   const config = structuredClone(DEFAULT_CONFIG); config.recordingsDir = root; config.timesheet.enabled = false; config.processing.defaultTarget = "local"; config.transcription.provider = "whisper-cpp"; config.summary.provider = "ollama";
   if (options.long) config.summary.maxInputCharacters = 4096;
-  const media = join(root, "synthetic.wav"); await fs.writeFile(media, "SYNTHETIC FIXTURE, NOT A RECORDING");
+  const media = join(root, "synthetic.wav"); await fs.writeFile(media, options.mediaBytes ? Buffer.alloc(options.mediaBytes, "SYNTHETIC ") : "SYNTHETIC FIXTURE, NOT A RECORDING");
   const jobs = new JobStore(), created = await jobs.enqueue(config, media), job = await jobs.update(created.id, "completed");
   await fs.mkdir(job.artifactDir, { recursive: true });
   const texts = options.long ? Array.from({ length: 3 }, (_, i) => `${i}:` + "conteúdo sintético ".repeat(80)) : ["Primeiro trecho.", "Segundo trecho."];
@@ -177,6 +177,28 @@ test("production default is explicit loopback Ollama and fresh config changes re
   const p = await planReviewedSummary(f.job, { requestId: "production-plan", config: f.config }); const changed = structuredClone(f.config); changed.summary.ollamaUrl = "http://localhost:11435";
   await expect(regenerateReviewedSummary(f.job, { requestId: p.requestId, config: changed, consent: true, consentKey: p.consentKey })).rejects.toThrow("identity changed"); await absentResults(f.dir);
 });
+
+// Bytes this process read from files so far (Linux task I/O accounting).
+const bytesRead = (): number => Number(/^rchar:\s+(\d+)$/m.exec(readFileSync("/proc/self/io", "utf8"))![1]);
+test.skipIf(!existsSync("/proc/self/io"))("planning and reading notes read the media once (Studio requests are bounded), and a rewrite after that read is still caught", async () => {
+  const size = 8 * 1024 * 1024, f = await fixture({ mediaBytes: size });
+  // Like any finished recording, the media last changed well before it is planned.
+  await Bun.sleep(2_200);
+  let before = bytesRead(); const p = await f.plan("one-read");
+  expect(bytesRead() - before).toBeLessThan(size * 1.5);
+  await regenerateReviewedSummary(f.job, { requestId: p.requestId, config: f.config, consent: true, consentKey: p.consentKey, adapter: { identity, summarize: async () => response() } });
+  // Opening the meeting reads its current notes the same way: one read, and the drift recheck reuses it.
+  before = bytesRead(); expect((await readReviewedSummary(f.job))?.requestId).toBe("one-read");
+  expect(bytesRead() - before).toBeLessThan(size * 1.5);
+  // The same bytes rewritten in place (same size) between the hash and the recheck: the recheck reads it again.
+  const nativeLstat = fs.lstat.bind(fs); let rewritten = false;
+  const lstat = spyOn(fs, "lstat").mockImplementation((async (path: string, ...rest: unknown[]) => {
+    if (!rewritten && String(path).endsWith("/index.json")) { rewritten = true; await fs.writeFile(f.media, Buffer.alloc(size, "OTHER ")); }
+    return (nativeLstat as (...args: unknown[]) => unknown)(path, ...rest);
+  }) as typeof fs.lstat);
+  try { await expect(f.plan("rewritten")).rejects.toBeInstanceOf(RevisionConflictError); } finally { lstat.mockRestore(); }
+  expect(rewritten).toBe(true);
+}, 20_000);
 
 test("reader double-checks asynchronous drift and does not acquire revision lease while context is held", async () => {
   const f = await fixture(); await f.generate("read");

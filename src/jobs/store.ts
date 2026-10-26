@@ -39,7 +39,8 @@ export const getDefaultJobDataDir = (): string =>
 export const hashFile = async (path: string): Promise<string> => {
   const hash = createHash("sha256");
   await new Promise<void>((resolvePromise, reject) => {
-    const input = createReadStream(path);
+    // 1 MiB reads: recordings are gigabytes, and 64 KiB chunks nearly double the time to hash one.
+    const input = createReadStream(path, { highWaterMark: 1 << 20 });
     input.on("data", (chunk) => hash.update(chunk));
     input.on("error", reject);
     input.on("end", resolvePromise);

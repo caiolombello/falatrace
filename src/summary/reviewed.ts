@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { promises as fs } from "node:fs";
+import { type BigIntStats, promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { SUMMARY_LANGUAGES, type AppConfig, type SummaryProvider } from "../config/defaults";
@@ -142,21 +142,39 @@ const snapshotFor = (job: JobRecord, view: ReviewedView): ReviewedSummarySnapsho
   human: { reviewed: view.revision.humanReviewed, notes: [...view.notes], segments: view.segments.map(({ id, humanEdited, humanSpeakerEdited }) => ({ id, humanEdited, humanSpeakerEdited })),
     ...(view.diarization ? { labels: { ...view.diarization.labels }, turns: view.diarization.turns.map(({ id, speaker, label, humanSpeakerEdited }) => ({ id, speaker, label, humanSpeakerEdited })) } : {}) }
 });
-const currentSnapshot = async (job: JobRecord): Promise<ReviewedSummarySnapshot> => {
+/**
+ * The media file a snapshot already hashed: its inode, size and change times as they were before
+ * that hash. Any later write changes the ctime, so an identical fingerprint means unchanged bytes.
+ * A file changed moments before could change again within the same timestamp tick (coarse clocks,
+ * 2 s on FAT): such a fingerprint is never reused.
+ */
+type MediaVerification = { fingerprint?: string };
+const RACY_STAT_MS = 2_000;
+const mediaFingerprint = (stat: BigIntStats): string => [stat.dev, stat.ino, stat.size, stat.mtimeNs, stat.ctimeNs].join(":");
+/** `verified` lets checks under one lease hash the (possibly multi-gigabyte) media once instead of each time. */
+const currentSnapshot = async (job: JobRecord, verified?: MediaVerification): Promise<ReviewedSummarySnapshot> => {
   const current = await new JobStore().get(validateJobId(job.id));
   if (sourceIdentity(current) !== sourceIdentity(job)) throw new RevisionConflictError("Summary job/source settings changed");
   // Either the original media, unchanged, or a finished retention removal of exactly this
   // media whose verified transcript is the one this view reads (summaries need only text).
-  const media = await fs.lstat(current.sourcePath).catch((error: NodeJS.ErrnoException) => { if (error.code === "ENOENT") return undefined; throw error; });
+  const statAt = Date.now();
+  const media = await fs.lstat(current.sourcePath, { bigint: true }).catch((error: NodeJS.ErrnoException) => { if (error.code === "ENOENT") return undefined; throw error; });
   const retired = media ? undefined : await jobMediaTombstone(current);
-  if (media ? !media.isFile() || media.isSymbolicLink() || media.size !== current.source.size || await hashFile(current.sourcePath) !== current.source.sha256 : !retired) throw new RevisionConflictError("Summary media source changed or is unavailable");
+  const fingerprint = media ? mediaFingerprint(media) : undefined;
+  const unchanged = async (): Promise<boolean> => {
+    if (fingerprint && verified?.fingerprint === fingerprint) return true;
+    if (await hashFile(current.sourcePath) !== current.source.sha256) return false;
+    if (verified && media && statAt - Number(media.ctimeMs) > RACY_STAT_MS) verified.fingerprint = fingerprint;
+    return true;
+  };
+  if (media ? !media.isFile() || media.isSymbolicLink() || Number(media.size) !== current.source.size || !await unchanged() : !retired) throw new RevisionConflictError("Summary media source changed or is unavailable");
   const view = await readReviewedView(current);
   if (retired && retired.verified.transcriptArtifactSha256 !== view.original.provenance.transcriptSha256) throw new RevisionConflictError("Summary media source changed or is unavailable");
   if (sourceIdentity(await new JobStore().get(job.id)) !== sourceIdentity(current)) throw new RevisionConflictError("Summary source changed during reading");
   return snapshotFor(current, view);
 };
-const assertCurrent = async (job: JobRecord, plan: ReviewedSummaryPlan): Promise<void> => {
-  if (hash(await currentSnapshot(job)) !== plan.snapshotSha256) throw new RevisionConflictError("Summary reviewed snapshot changed; no summary published");
+const assertCurrent = async (job: JobRecord, plan: ReviewedSummaryPlan, verified?: MediaVerification): Promise<void> => {
+  if (hash(await currentSnapshot(job, verified)) !== plan.snapshotSha256) throw new RevisionConflictError("Summary reviewed snapshot changed; no summary published");
 };
 const loopbackEndpoint = (value: string): string => {
   const url = new URL(value);
@@ -220,7 +238,9 @@ export const planReviewedSummary = async (job: JobRecord, input: { requestId: st
   const provider = validateProvider(input.provider || reviewedSummaryProviderForConfig(input.config)), maxCharacters = input.config.summary.maxInputCharacters, maxRequests = input.maxRequests ?? 1;
   if (!Number.isSafeInteger(maxRequests) || maxRequests < 1 || maxRequests > REVIEWED_SUMMARY_LIMITS.providerRequests) throw Error("Reviewed summary request budget must be explicit and bounded by eight");
   return withRevisionLease(job.id, async () => {
-    const snapshot = await currentSnapshot(job), snapshotSha256 = hash(snapshot), context = job.summary.context ? structuredClone(job.summary.context) : undefined;
+    // Planning answers a 30 s Studio request: the media is hashed once, and the recheck below reuses it.
+    const verified: MediaVerification = {};
+    const snapshot = await currentSnapshot(job, verified), snapshotSha256 = hash(snapshot), context = job.summary.context ? structuredClone(job.summary.context) : undefined;
     // The request is built from the reviewed transcript, so notes align to the reviewed segments.
     const request = await resolveSummaryV2Request({ config: input.config, job: { id: job.id, sourcePath: job.sourcePath }, summary: job.summary, transcript: snapshot.transcript, choices }, sources);
     input.signal?.throwIfAborted();
@@ -236,7 +256,7 @@ export const planReviewedSummary = async (job: JobRecord, input: { requestId: st
     const inputScope: ReviewedInputScope = request.spec.notesIncluded && request.notes.length ? "reviewed-transcript-and-notes" : "reviewed-transcript-only";
     const fields = { version: 2 as const, jobId: job.id, requestId: input.requestId, createdAt: new Date().toISOString(), snapshot, snapshotSha256, provider, ...(context ? { context } : {}), maxCharacters, maxRequests, chunkCount: chunks.length, specId: request.spec.id, request, inputIdentity: identity, requiresConsent: true as const, inputScope };
     let plan: ReviewedSummaryPlan = { ...fields, consentKey: hash(fields) };
-    input.signal?.throwIfAborted(); await assertCurrent(job, plan);
+    input.signal?.throwIfAborted(); await assertCurrent(job, plan, verified);
     await directory(getReviewedSummaryRoot(), true); await directory(getReviewedSummaryJobDir(job.id), true);
     // Recover a complete immutable plan left by an index CAS failure, preserving its consent/timestamp.
     const orphan = await readPrivate(planPath(job.id, input.requestId), REVIEWED_SUMMARY_LIMITS.planBytes).catch(error => { if (missing(error)) return undefined; throw error; });
@@ -300,10 +320,12 @@ export const readReviewedSummary = async (job: JobRecord): Promise<ReviewedSumma
   try {
     const { index } = await readIndex(job.id), candidates = index.requests.filter(item => item.status === "completed").sort((a, b) => b.sequence! - a.sequence!);
     if (!candidates.length) return undefined;
-    const before = await currentSnapshot(job), currentHash = hash(before);
+    // The drift recheck reuses the first hash of the media unless the file changed since (Studio reads are bounded).
+    const verified: MediaVerification = {};
+    const before = await currentSnapshot(job, verified), currentHash = hash(before);
     for (const state of candidates) {
       const plan = await readPlan(job.id, state.requestId, state); if (plan.snapshotSha256 !== currentHash) continue;
-      const result = await readResult(job.id, state, plan), after = await currentSnapshot(job);
+      const result = await readResult(job.id, state, plan), after = await currentSnapshot(job, verified);
       if (hash(after) !== currentHash) return undefined;
       const latest = await readIndex(job.id), latestState = latest.index.requests.find(item => item.requestId === state.requestId);
       if (latestState?.status !== "completed" || latestState.resultSha256 !== state.resultSha256 || latest.index.sequence !== index.sequence) return undefined;

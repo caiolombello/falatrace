@@ -152,9 +152,10 @@ class Bridge(QObject):
         epoch = self._generation
         timer = QTimer(self)
         timer.setSingleShot(True)
-        # Capture may wait on a device, and planning or queueing a recording reads the whole file to bind the
-        # consent to its hash: those get longer than the 30 s every other request has.
-        reads_recording = op in ('recording-process-plan', 'recording-process')
+        # Capture may wait on a device, and planning or queueing a recording (or planning its notes again)
+        # reads the whole file to bind the consent to its hash: those get longer than the 30 s every other
+        # request has.
+        reads_recording = op in ('recording-process-plan', 'recording-process', 'summary-plan')
         timer.setInterval(120000 if op.startswith('capture-') else 900000 if reads_recording else 30000)
 
         def expired():
