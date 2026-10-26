@@ -9,7 +9,7 @@ You write short notes during the meeting. After it, the AI turns them into struc
 - Simple prefixes give a line a kind: `# Heading`, `- item` or `* item`, `[ ] to do` or `- [ ] to do`, `[x] done`. Anything else is plain text.
 - Limits: 500 lines, 2,000 characters per line, 64 KiB in total.
 - Two windows cannot overwrite each other: a save based on an older version is refused with "As notas mudaram em outra janela; recarregue antes de salvar."
-- Notes are private files on this computer (see [privacy](PRIVACY.md)). They are sent only with the summary request, to the summary provider, and with a question to the assistant when that meeting is in scope.
+- Notes are private files on this computer (see [privacy](PRIVACY.md)). They are sent only with the summary request (to the summary provider), with a question to the assistant when that meeting is in scope, and in a share that includes them.
 
 From the terminal:
 

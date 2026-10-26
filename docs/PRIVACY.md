@@ -71,7 +71,7 @@ ACP agents and CLI tools keep their own history in their own folders (see [assis
 
 ## What leaves the computer
 
-Nothing leaves unless a setting or an action of yours says so. Before processing, asking or sharing, the destination is named and, when it is outside this computer, you are asked to consent.
+Nothing leaves unless a setting or an action of yours says so. When you start processing, a question or a share yourself, the destination is named first and, when it is outside this computer, you are asked to consent. A setting that picks an external provider for automatic work (automatic processing, the live transcript) is that consent: it applies to every recording until you change it.
 
 | Feature | On this computer | Leaves when | What is sent |
 | --- | --- | --- | --- |
@@ -87,7 +87,7 @@ Nothing leaves unless a setting or an action of yours says so. Before processing
 | Google Calendar titles | | When connected | The recording's time window |
 | Archive, Proton Drive, S3 | | When enabled | Media and results, to those destinations |
 | Agents (MCP or CLI) | | When you grant access | Bounded context and frames of the granted recordings |
-| Key tests | | When you press Test | A request for the model list; no audio or text |
+| Key tests | | When you press Test | One read-only request (a model list or key check); no audio or text |
 
 A cloud-backed agent or AI app may send what it receives to its own provider. Deleting a recording cannot recall data a provider, destination or agent already received.
 

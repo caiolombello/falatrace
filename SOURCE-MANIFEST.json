@@ -35,8 +35,8 @@
     },
     {
       "path": "README.md",
-      "sha256": "b7559d497a0427963beb3746aab03af537942c2343a2e71299b0d815f89fb4d9",
-      "bytes": 6360
+      "sha256": "da5e126048ccfda81e4d4bc7bd58265852a38790fcd21c995b85b06bb5da8c0a",
+      "bytes": 6459
     },
     {
       "path": "SECURITY.md",
@@ -240,8 +240,8 @@
     },
     {
       "path": "docs/NOTES-AND-TEMPLATES.md",
-      "sha256": "412954b89e48537ec416f29160167bbfb6616717a8dcf6607aab5407fa246680",
-      "bytes": 10088
+      "sha256": "e5d759ca2c104392351f31aa3fcb6408dd2cfd32ced63c1f2493f576178b0c57",
+      "bytes": 10120
     },
     {
       "path": "docs/ONBOARDING.md",
@@ -260,8 +260,8 @@
     },
     {
       "path": "docs/PRIVACY.md",
-      "sha256": "6dc30918491ec3e6f828d15f3ad602546d08663b92893818da2309bd45e20e5a",
-      "bytes": 10781
+      "sha256": "e5579a6d824dd2203178546f2989e40e13d916db4446a04c5f17b31da8893323",
+      "bytes": 11002
     },
     {
       "path": "docs/QUICKSTART.md",
@@ -290,8 +290,8 @@
     },
     {
       "path": "docs/SHARING.md",
-      "sha256": "d2148faf24b15b3c1b0f938af0b1d485d83376aa43011b01650d51d0407b6a43",
-      "bytes": 5833
+      "sha256": "2cbfadbe14e271c4de7f084cefbfccfda638d5ecc77752edad4f52d70693d023",
+      "bytes": 5880
     },
     {
       "path": "docs/TIMESHEETS.md",
@@ -435,8 +435,8 @@
     },
     {
       "path": "docs/en/index.html",
-      "sha256": "5140a587ce4285199f1121e9474af25e08eded31eacba4a4b80e7abfe77c239d",
-      "bytes": 42319
+      "sha256": "6d5b3482aa14cec5927b312c88a1ddbd1edbfc4725c6ea52185508cd2f94a454",
+      "bytes": 42462
     },
     {
       "path": "docs/en/privacy/index.html",
@@ -445,8 +445,8 @@
     },
     {
       "path": "docs/index.html",
-      "sha256": "0461eaea23857971b6be1bd54e095b14721b3bd8f4bf09518b467d8f383944a2",
-      "bytes": 42974
+      "sha256": "5b5121702a648797872a142f6e86c82671f79dfc7137405076230013d564072c",
+      "bytes": 43115
     },
     {
       "path": "docs/privacidade/index.html",

@@ -8,7 +8,7 @@ A Markdown note built from the meeting:
 
 - title, date, people and client, and the template used;
 - the overview and the notes by section (your items and the AI items, as plain text);
-- decisions, and the open and done actions as `- [ ]` and `- [x]` (dismissed actions stay out);
+- decisions, and the open and done actions as `- [ ]` and `- [x]` (dismissed actions, and actions no longer in the current summary, stay out);
 - with `summary+notes` (the default), your notes as you typed them;
 - with `full`, also the transcript, one line per segment with time and speaker;
 - a `falatrace://recording/<job-id>` link back to the recording.

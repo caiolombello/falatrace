@@ -42,7 +42,7 @@ Details: [notes and templates](docs/NOTES-AND-TEMPLATES.md), [assistant](docs/AS
 ## Privacy
 
 - **Local by default.** A new configuration transcribes with Whisper.cpp and writes notes with Ollama on this computer. Nothing is processed automatically until you turn it on.
-- **You see every destination first.** Processing, questions and sharing name the destination before anything leaves the computer, and ask for your consent when it does.
+- **You see every destination first.** Processing, questions and shares you start name the destination before anything leaves the computer, and ask for your consent when it does. A setting that picks an external provider applies to every recording until you change it.
 - **Your data stays in private files.** Notes, conversations, people and action states are files only your user can read. Deleting a recording does not yet remove all of them; see [privacy and data](docs/PRIVACY.md).
 - **Record with permission.** Confirm that the people in the call agree. Automatic call detection is opt-in and does not establish consent.
 
