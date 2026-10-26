@@ -120,7 +120,7 @@ The three **presets** fill these fields: everything on this computer (Whisper.cp
 | --- | --- | --- | --- |
 | `notes.enabled` | true, false | true | Shows the notepad while a capture runs; when off, summaries also leave the notes out. Notes stay on this computer, next to the recording's other private data. They are sent only with the summary request (to the summary provider), with a question whose scope includes that meeting (to the assistant provider), and in a share that includes them. |
 
-Built-in templates: general, 1:1, daily/stand-up, planning, retrospective, sales discovery, incident postmortem, hiring interview and user research. Custom templates are JSON files in `templates/` next to the configuration, created with `falatrace templates init` or in **Settings › Notes and templates** <!-- studio-check --> ([format](NOTES-AND-TEMPLATES.md#custom-templates)). A template is chosen per meeting in this order: your choice on the recording, the default above, the calendar title, keywords in the transcript, then (with `ai`) the summary request itself. The Studio shows which one was used and why.
+Built-in templates: general, 1:1, daily/stand-up, planning, retrospective, sales discovery, incident postmortem, hiring interview and user research. Custom templates are JSON files in `templates/` next to the configuration, created with `falatrace templates init` or in the template editor under **Settings › Notes and summaries** ([format](NOTES-AND-TEMPLATES.md#custom-templates)). A template is chosen per meeting in this order: your choice on the recording, the default above, the calendar title, keywords in the transcript, then (with `ai`) the summary request itself. The Studio shows which one was used and why.
 
 ### Assistant
 
@@ -286,6 +286,6 @@ falatrace google disconnect
 | `recording-cli-sync.timer` | Processes the queue in the background. | Turn on or reapply, or turn off. | `falatrace jobs install-timer` / `uninstall-timer` |
 | `recording-cli-archive.timer` | Retries original media copies. | Same. | `falatrace archive install-timer` / `uninstall-timer` |
 | `recording-cli-proton-backup.timer` | Backs up results to Proton Drive. | Same. | `falatrace backup install-timer` / `uninstall-timer` |
-| `recording-cli-reminders.service` | Reminders before calendar meetings, with briefs. | Apply or disable. <!-- studio-check --> | `falatrace reminders install-service` / `uninstall-service` |
+| `recording-cli-reminders.service` | Reminders before calendar meetings, with briefs. | Apply or disable (also under Calendar and reminders). | `falatrace reminders install-service` / `uninstall-service` |
 
 Service actions are refused while a capture is active and never start a recording. Turning a timer off keeps the queue.

@@ -25,12 +25,12 @@ O `make install-studio` compila o Studio, instala em `~/.local/share/falatrace/s
 
 Abra o **FalaTrace Studio** pelo menu de aplicativos ou rode `recording-studio`. Sem configuração, o Studio abre o assistente. Nada é salvo nem instalado até você concluir, inclusive a chave da OpenAI. O teste de áudio e os downloads de modelos só rodam pelos próprios botões.
 
-1. **Boas-vindas.** Escolha o idioma (automático, português ou inglês) e confirme que vai gravar só com permissão. **Usar os padrões recomendados** vai direto para a revisão com só áudio, processamento local, notas geradas assim que a gravação para e gravação automática desligada. <!-- studio-check -->
+1. **Boas-vindas.** Escolha o idioma (automático, português ou inglês) e confirme que vai gravar só com permissão. **Começar rápido (recomendado)** vai direto para a revisão com só áudio, processamento local, notas geradas assim que a gravação para e gravação automática desligada.
 2. **Captura.** Escolha **Só áudio** (recomendado) ou **Tela e áudio**, e depois o microfone e o áudio do sistema. **Testar áudio** grava 5 segundos, mostra o nível de cada faixa e apaga o arquivo.
-3. **Processamento.** Escolha onde transcrever e gerar as notas: tudo neste computador, transcrição local com resumo pela OpenAI, ou tudo pela OpenAI. O assistente mostra o que falta, oferece baixar o modelo recomendado do Whisper ou o modelo do Ollama e pede a chave da OpenAI quando ela é necessária. Os downloads só começam pelos próprios botões.
+3. **Processamento.** Escolha onde transcrever e gerar as notas: tudo neste computador, transcrição local com resumo pela OpenAI, ou tudo pela OpenAI. O assistente mostra o que falta, oferece baixar o modelo recomendado do Whisper e o modelo do Ollama (**Baixar o que falta** começa os dois, com o tamanho e uma estimativa de tempo) e pede a chave da OpenAI quando ela é necessária. Os downloads só começam pelos próprios botões e continuam enquanto você passa pelas outras etapas.
 4. **Gravação automática.** Deixe desligada, só avise quando uma chamada começar ou grave sozinho as chamadas detectadas.
-5. **Revisão.** Confira o resumo e escolha quais serviços iniciar agora: o monitor de chamadas, o processamento em segundo plano e o indicador na bandeja. Depois, conclua.
-6. **Pronto.** Veja o que foi configurado e o que ainda falta. Em seguida, grave uma conversa de teste de um minuto: digite algumas notas enquanto grava, pare, e suas primeiras notas abrem alguns minutos depois, processadas neste computador. <!-- studio-check -->
+5. **Revisão.** Confira o resumo e escolha quais serviços iniciar agora: o monitor de chamadas, o processamento em segundo plano e o indicador na bandeja. Depois, conclua. Se um modelo ainda está baixando, concluir espera por ele; **Concluir sozinho quando o download terminar** salva a configuração assim que ele acabar.
+6. **Pronto.** Veja o que foi configurado e o que ainda falta. Em seguida, **Gravar 1 minuto de teste**: depois de confirmar, digite algumas notas enquanto grava. A gravação para sozinha depois de um minuto e abre a reunião; com o início rápido, suas primeiras notas aparecem ali alguns minutos depois, processadas neste computador.
 
 Dá para mudar tudo depois em **Configurações**. A lista completa de opções está na [referência de configuração](CONFIGURATION.md) (em inglês).
 
@@ -39,7 +39,7 @@ Dá para mudar tudo depois em **Configurações**. A lista completa de opções 
 - Inicie uma gravação manual pelo Studio depois de uma confirmação e pare quando a reunião acabar. Com a gravação automática ligada, as chamadas detectadas começam e terminam sozinhas.
 - Enquanto grava, digite notas curtas no bloco de notas: uma decisão, um nome, uma tarefa (`[ ] enviar a proposta`). Cada linha guarda o momento em que foi digitada. <!-- studio-check -->
 - Quando a gravação para, ela é processada:
-  - na hora, quando o processamento é local e `processing.fastPath` está ligado (os padrões recomendados ligam); <!-- studio-check -->
+  - na hora, quando o processamento é local e `processing.fastPath` está ligado (o início rápido liga);
   - em segundo plano, quando o processamento automático está ligado;
   - se não, quando você abre a gravação e escolhe **Gerar notas…**, que mostra para onde vão o áudio e a transcrição, marca o que sai do computador e pede consentimento antes de enfileirar.
 - Uma notificação avisa quando as notas ficam prontas; clicar nela abre a reunião no Studio.

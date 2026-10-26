@@ -25,12 +25,12 @@ make install-studio
 
 Open **FalaTrace Studio** from the application menu or run `recording-studio`. With no configuration yet, the Studio opens the setup assistant. Nothing is saved or installed until you finish it, the OpenAI key included. The audio test and model downloads run only from their own buttons.
 
-1. **Welcome.** Pick the language (automatic, Portuguese or English) and confirm you will only record with permission. **Use the recommended defaults** jumps to the review with audio only, local processing, notes processed as soon as a recording stops, and automatic recording off. <!-- studio-check -->
+1. **Welcome.** Pick the language (automatic, Portuguese or English) and confirm you will only record with permission. **Quick start (recommended)** jumps to the review with audio only, local processing, notes processed as soon as a recording stops, and automatic recording off.
 2. **Capture.** Choose **Audio only** (recommended) or **Screen and audio**, then the microphone and system audio. **Test audio** records five seconds, shows the level of each track and deletes the file.
-3. **Processing.** Choose where transcription and notes run: everything on this computer, local transcription with an OpenAI summary, or everything through OpenAI. The assistant shows what is missing, offers to download the recommended Whisper model or pull the Ollama model, and takes the OpenAI key when it is needed. Downloads only start from their own buttons.
+3. **Processing.** Choose where transcription and notes run: everything on this computer, local transcription with an OpenAI summary, or everything through OpenAI. The assistant shows what is missing, offers to download the recommended Whisper model and pull the Ollama model (**Download what is missing** starts both, with their size and an estimated time), and takes the OpenAI key when it is needed. Downloads only start from their own buttons and keep running while you go through the other steps.
 4. **Automatic recording.** Leave it off, only notify when a call starts, or record detected calls automatically.
-5. **Review.** Check the summary and choose which services to start now: the call monitor, background processing and the tray indicator. Then finish.
-6. **Ready.** See what was set up and anything still missing. Then record a one-minute test conversation: type a few notes while it records, stop it, and your first notes open a few minutes later, processed on this computer. <!-- studio-check -->
+5. **Review.** Check the summary and choose which services to start now: the call monitor, background processing and the tray indicator. Then finish. While a model is still downloading, finishing waits for it; **Finish by itself when the download ends** saves the setup as soon as it is done.
+6. **Ready.** See what was set up and anything still missing. Then **Record a 1-minute test**: after you confirm, type a few notes while it records. It stops by itself after a minute and opens the meeting; with the quick start, your first notes appear there a few minutes later, processed on this computer.
 
 Every choice can be changed later in **Settings**. The full list of options is in the [configuration reference](CONFIGURATION.md).
 
@@ -39,7 +39,7 @@ Every choice can be changed later in **Settings**. The full list of options is i
 - Start a manual recording from the Studio after a confirmation, and stop it when the meeting ends. With automatic recording on, detected calls start and stop on their own.
 - While it records, type short notes in the notepad: a decision, a name, a to-do (`[ ] send the proposal`). Each line keeps the moment you typed it. <!-- studio-check -->
 - When it stops, the recording is processed:
-  - right away, when processing is local and `processing.fastPath` is on (the recommended defaults turn it on); <!-- studio-check -->
+  - right away, when processing is local and `processing.fastPath` is on (the quick start turns it on);
   - in the background, when automatic processing is on;
   - otherwise when you open it and choose **Generate notes…**, which shows where the audio and the transcript go, marks anything that leaves the computer and asks for consent before queueing.
 - A desktop notification says when the notes are ready; clicking it opens the meeting in the Studio.

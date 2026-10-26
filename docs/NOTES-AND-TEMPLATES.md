@@ -93,7 +93,7 @@ falatrace templates init one-on-one "Comitê de riscos"
 falatrace templates delete custom:comite-de-riscos
 ```
 
-Custom templates live next to the configuration, in `templates/<slug>.json` (at most 100 files of 64 KiB each). The Studio has an editor for them too. <!-- studio-check --> The file format:
+Custom templates live next to the configuration, in `templates/<slug>.json` (at most 100 files of 64 KiB each). The Studio has an editor for them too, in Settings › Notes and summaries: duplicate a template or start a new one, then edit its name, description, title keywords and three to eight sections (title, instruction, order). The file format:
 
 ```json
 {

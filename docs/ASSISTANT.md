@@ -61,7 +61,7 @@ It uses the Ollama address in `summary.ollamaUrl`. An address on another compute
 
 ### API: your own key
 
-Set `assistant.provider` to `api`, choose `assistant.apiPreset`, and save the preset's key in the Studio's key section <!-- studio-check --> or with `printf '%s' "$KEY" | falatrace keys set <NAME>`. `assistant.apiModel` empty uses the preset's default model; `falatrace assistant models` shows it.
+Set `assistant.provider` to `api`, choose `assistant.apiPreset`, and save the preset's key in the Studio (Settings › Ask and recipes shows the chosen preset's key; the API keys section lists them all) or with `printf '%s' "$KEY" | falatrace keys set <NAME>`. `assistant.apiModel` empty uses the preset's default model; `falatrace assistant models` shows it.
 
 | Preset | Endpoint | Key |
 | --- | --- | --- |
@@ -76,7 +76,7 @@ Set `assistant.provider` to `api`, choose `assistant.apiPreset`, and save the pr
 | `together` | `https://api.together.ai/v1` | `TOGETHER_API_KEY` |
 | `custom` | `assistant.apiBaseUrl` (any OpenAI-compatible API; HTTPS, or HTTP on this computer) | `CUSTOM_API_KEY`; `assistant.apiModel` is required |
 
-API usage is billed by the provider; a chat subscription does not include API credit. The Studio's key section can test a key with one read-only request. <!-- studio-check -->
+API usage is billed by the provider; a chat subscription does not include API credit. The Studio's key fields can test a key with one read-only request.
 
 ### ACP agents
 
@@ -164,7 +164,7 @@ Meeting recipes need `--meeting`. In the Studio, typing `/` at the start of a qu
 
 ### Custom recipes
 
-Custom recipes are JSON files next to the configuration, in `recipes/<slug>.json` (at most 100 files of 64 KiB each). The Studio has an editor for them. <!-- studio-check --> The format:
+Custom recipes are JSON files next to the configuration, in `recipes/<slug>.json` (at most 100 files of 64 KiB each). The Studio has an editor for them, in Settings › Ask and recipes: name, description, scope (a meeting or the library) and the request, with buttons that insert the variables. The format:
 
 ```json
 {

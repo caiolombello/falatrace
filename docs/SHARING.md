@@ -51,7 +51,7 @@ Each share writes `<vault>/<folder>/<YYYY-MM-DD HH-mm — title>.md` (names up t
 1. In Notion, create an internal integration and copy its token.
 2. Open the page that will hold the notes and connect the integration to it.
 3. Set `destinations.notionParentId` to that page's id (the 32 hexadecimal characters at the end of its link).
-4. Save the token as `NOTION_TOKEN`: in the Studio's key section <!-- studio-check -->, or `printf '%s' "$TOKEN" | falatrace keys set NOTION_TOKEN`.
+4. Save the token as `NOTION_TOKEN`: in the Studio's Settings › Sharing (or the API keys section), or `printf '%s' "$TOKEN" | falatrace keys set NOTION_TOKEN`.
 
 Each share creates a new page under the parent and prints its link. Long notes are sent in batches. In the Studio a share has 24 seconds; a very large note can stop partway, leaving a partial page in Notion that you can delete.
 

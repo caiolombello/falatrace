@@ -44,7 +44,7 @@ falatrace reminders install-service     # installs and starts recording-cli-remi
 falatrace reminders uninstall-service
 ```
 
-The Studio's services section can apply and disable it too. <!-- studio-check --> The service checks the calendar every 5 minutes for the next 3 hours. It reads the configuration when it starts, so apply it again after changing reminder or calendar settings. It runs sandboxed: your home is read-only to it except FalaTrace's state folder. Calendar event ids are stored only as hashes with a salt unique to this installation (`~/.local/state/recording-cli/calendar-salt`); sent reminders are recorded in `reminders-sent.json` next to it.
+The Studio can apply and disable it too, in Settings › Calendar and reminders or in the services section. The service checks the calendar every 5 minutes for the next 3 hours. It reads the configuration when it starts, so apply it again after changing reminder or calendar settings. It runs sandboxed: your home is read-only to it except FalaTrace's state folder. Calendar event ids are stored only as hashes with a salt unique to this installation (`~/.local/state/recording-cli/calendar-salt`); sent reminders are recorded in `reminders-sent.json` next to it.
 
 ### The brief
 
