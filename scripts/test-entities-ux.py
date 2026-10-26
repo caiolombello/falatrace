@@ -103,7 +103,7 @@ for line in sys.stdin:
         v = {'jobId': r['key'], 'clients': assigned, 'manual': p.get('automatic') is not True}
     elif op == 'recipes-list': v = {'recipes': [], 'problems': []}
     elif op == 'assistant-plan':
-        v = {'ready': False, 'problem': 'unreachable', 'message': 'O Ollama não respondeu.', 'destination': {'label': 'Ollama · qwen3.5:9b', 'kind': 'local', 'external': False}, 'consentKey': 'c' * 64, 'contextCharacters': 0, 'meetings': 0, 'truncated': False}
+        v = {'ready': False, 'problem': 'unreachable', 'message': 'O Ollama não respondeu.', 'destination': {'label': 'Ollama · qwen3.5:9b', 'kind': 'local', 'external': False}, 'consentKey': 'c' * 64, 'contextCharacters': 0, 'meetings': [], 'truncated': False}
     else:
         refuse(r, 'Operação recusada no fixture.'); continue
     print(json.dumps({'id': r['id'], 'ok': True, 'result': v}), flush=True)

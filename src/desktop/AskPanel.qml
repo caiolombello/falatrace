@@ -277,6 +277,11 @@ Rectangle {
         if (provider === "chatgpt") return "ChatGPT"
         return ""
     }
+    // The plan lists the meetings whose excerpts go (a Qt sequence, not a number).
+    function planMeetingCount() {
+        const meetings = plan.meetings
+        return typeof meetings === "number" ? meetings : asList(meetings).length
+    }
     function destinationExternal() {
         if (plan.destination) return plan.destination.external !== false
         const provider = studioSettings["assistant.provider"]
@@ -561,8 +566,8 @@ Rectangle {
                         Label {
                             objectName: "askConsentText"
                             Layout.fillWidth: true
-                            text: askPanel.waiting ? (Number(askPanel.plan.meetings) === 1 ? tf("Para responder, vou enviar trechos de 1 reunião (≈ %1 mil caracteres) para %2.", Math.max(1, Math.round(Number(askPanel.plan.contextCharacters || 0) / 1000)), askPanel.destinationLabel())
-                                : tf("Para responder, vou enviar trechos de %1 reuniões (≈ %2 mil caracteres) para %3.", Number(askPanel.plan.meetings || 0), Math.max(1, Math.round(Number(askPanel.plan.contextCharacters || 0) / 1000)), askPanel.destinationLabel())) + " " + t("Você confirma uma vez por conversa.") : ""
+                            text: askPanel.waiting ? (askPanel.planMeetingCount() === 1 ? tf("Para responder, vou enviar trechos de 1 reunião (≈ %1 mil caracteres) para %2.", Math.max(1, Math.round(Number(askPanel.plan.contextCharacters || 0) / 1000)), askPanel.destinationLabel())
+                                : tf("Para responder, vou enviar trechos de %1 reuniões (≈ %2 mil caracteres) para %3.", askPanel.planMeetingCount(), Math.max(1, Math.round(Number(askPanel.plan.contextCharacters || 0) / 1000)), askPanel.destinationLabel())) + " " + t("Você confirma uma vez por conversa.") : ""
                             textFormat: Text.PlainText; wrapMode: Text.WordWrap; color: ink; font.pixelSize: 13
                         }
                         RowLayout {

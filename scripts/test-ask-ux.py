@@ -50,6 +50,9 @@ destination = {'label': 'OpenRouter · deepseek/deepseek-v4.1-flash-1017', 'kind
 if cloud: destination = {'label': 'Ollama · gpt-oss:120b-cloud', 'kind': 'local', 'external': True}
 if mode == 'unsaid': destination = {'label': 'Ollama · qwen3.5:9b', 'kind': 'local'}
 consent_key = os.environ['ASK_EXTERNAL_KEY'] if external else os.environ['ASK_LOCAL_KEY']
+# Like the runner: the meetings whose excerpts go, one entry each (the panel counts them).
+def planned_meetings(n):
+    return [{'jobId': JOB if i == 0 else OTHER, 'title': 'Daily do time' if i == 0 else '1:1 com Ana', 'date': '2026-10-2%dT14:00:00Z' % i} for i in range(n)]
 runs = {}; counter = 0
 recipes = [{'id': 'follow-up-email', 'name': 'E-mail de follow-up', 'description': 'A follow-up email.', 'scope': 'meeting', 'builtIn': True, 'prompt': 'x', 'version': 1},
            {'id': 'risks', 'name': 'Riscos e mitigações', 'description': 'Risks.', 'scope': 'meeting', 'builtIn': True, 'prompt': 'x', 'version': 1},
@@ -81,9 +84,9 @@ for line in sys.stdin:
     elif op == 'recipes-list' and features['recipes']: v = {'recipes': recipes, 'problems': []}
     elif op == 'assistant-plan' and features['assistant']:
         if mode == 'not-configured':
-            v = {'ready': False, 'problem': 'missing-key', 'message': 'Falta a chave da API. Salve-a em Configurações › Perguntar.', 'destination': destination, 'consentKey': consent_key, 'contextCharacters': 0, 'meetings': 0, 'truncated': False}
+            v = {'ready': False, 'problem': 'missing-key', 'message': 'Falta a chave da API. Salve-a em Configurações › Perguntar.', 'destination': destination, 'consentKey': consent_key, 'contextCharacters': 0, 'meetings': [], 'truncated': False}
         else:
-            v = {'ready': True, 'destination': destination, 'consentKey': consent_key, 'contextCharacters': 18200 if external else 5200, 'meetings': 4 if external else 1, 'truncated': False}
+            v = {'ready': True, 'destination': destination, 'consentKey': consent_key, 'contextCharacters': 18200 if external else 5200, 'meetings': planned_meetings(1 if cloud or not external else 4), 'truncated': False}
     elif op == 'assistant-start' and features['assistant']:
         # Like the runner: outside this computer only with the consent key the plan gave.
         if external and p.get('consentKey') != consent_key: refuse(r, 'Confirme o envio para este destino antes de perguntar.'); continue
@@ -156,6 +159,7 @@ PLANS = {
         ('consent card', '!!askPanel.waiting', '''
     const card = uxFind(askPanel, "askConsentCard")
     check("a destination outside this computer asks first", card.visible && uxFind(askPanel, "askConsentText").text.indexOf("4 reuniões") >= 0 && uxFind(askPanel, "askConsentText").text.indexOf("OpenRouter") >= 0)
+    check("the meetings of the plan are counted", askPanel.planMeetingCount() === 4 && uxFind(askPanel, "askConsentText").text.indexOf("NaN") < 0)
     check("nothing starts before the consent", !hasPending("assistant-start") && !askPanel.live && askPanel.messages.length === 0)
     uxFind(askPanel, "askConsentAccept").clicked()'''),
         ('answer done', ANSWERED, '''
@@ -206,6 +210,7 @@ PLANS = {
     askPanel.input.text = "O que eu prometi?"; askPanel.submit()'''),
         ('consent card', '!!askPanel.waiting', '''
     check("the cloud model asks first", uxFind(askPanel, "askConsentCard").visible && uxFind(askPanel, "askConsentText").text.indexOf("gpt-oss:120b-cloud") >= 0)
+    check("one meeting is named as one", uxFind(askPanel, "askConsentText").text.indexOf("trechos de 1 reunião (") >= 0 && uxFind(askPanel, "askConsentText").text.indexOf("NaN") < 0)
     check("nothing starts before the consent", !hasPending("assistant-start") && !askPanel.live && askPanel.messages.length === 0)''')]),
     'stop-compact-en': ('900x640', True, [MEETING_OPEN,
         ('drawer open', 'askPanel.shown && uiLanguage === "en"', '''
