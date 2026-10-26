@@ -33,7 +33,8 @@ ColumnLayout {
         Layout.maximumWidth: empty.width
         Layout.topMargin: 4
         spacing: 8
-        visible: primaryButton.visible || secondaryButton.visible
+        // From the texts, not the buttons: a hidden parent makes its children report invisible, which would never undo itself.
+        visible: empty.primaryText !== "" || empty.secondaryText !== ""
         FtButton { id: primaryButton; visible: empty.primaryText !== ""; enabled: empty.primaryEnabled; variant: "primary"; iconName: empty.primaryIcon; text: empty.primaryText; onClicked: empty.primaryClicked() }
         FtButton { id: secondaryButton; visible: empty.secondaryText !== ""; variant: "outline"; text: empty.secondaryText; onClicked: empty.secondaryClicked() }
     }
