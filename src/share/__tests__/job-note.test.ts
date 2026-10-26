@@ -4,7 +4,7 @@ import type { JobRecord, RecordingSummary } from "../../jobs/types";
 import type { MeetingSource } from "../../library-index/build";
 import type { JobFacts } from "../../library-index/types";
 import { buildShareNote, buildShareNoteWithLanguage, shareLanguageOf } from "../job-note";
-import { renderShare } from "../render";
+import { renderShare, SHARE_LIMITS } from "../render";
 
 const JOB = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const job = { id: JOB, sourcePath: "/recordings/meeting.mkv", source: { sha256: "d".repeat(64) } } as JobRecord;
@@ -52,6 +52,25 @@ test("a share note gathers the summary, the notes, people, client, action states
   const markdown = renderShare(note, { frontmatter: true, language: "pt-BR", include: "full" }).markdown;
   expect(markdown).toContain("- [x] Mandar proposta");
   expect(markdown).toContain("Vamos lançar em março.");
+});
+
+test("actions the person dismissed stay out even when all of them were dismissed", async () => {
+  const note = await buildShareNote(job, {
+    readSource: async () => source(),
+    actions: async () => [listed("Mandar proposta", "dismissed"), listed("Revisar contrato", "dismissed"), listed("Antiga", "done", "orphaned")]
+  });
+  expect(note.actions).toEqual([]);
+  expect(renderShare(note, { frontmatter: false, language: "pt-BR", include: "summary" }).markdown).not.toContain("Mandar proposta");
+});
+
+test("a summary merged from many parts, with an overview past the share limit, still shares (cut to the limit)", async () => {
+  const paragraph = `${"Parte da reunião com decisões e próximos passos. ".repeat(40).trim()}`;
+  const overview = Array.from({ length: 30 }, () => paragraph).join("\n\n");
+  expect(overview.length).toBeGreaterThan(SHARE_LIMITS.overview * 2);
+  const note = await buildShareNote(job, { readSource: async () => source({ summary: { ...summary, overview } }) });
+  expect(note.overview.length).toBeGreaterThan(0);
+  expect(note.overview.length).toBeLessThanOrEqual(SHARE_LIMITS.overview);
+  expect(note.overview.startsWith("Parte da reunião")).toBe(true);
 });
 
 test("without index facts or action states, the note falls back to what the recording itself says", async () => {

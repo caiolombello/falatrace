@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { DEFAULT_CONFIG } from "../../config/defaults";
 import type { DeliverShareInput, DeliveryReceipt, DestinationStatus } from "../../destinations";
-import { SHARE_MESSAGES, type ShareNote } from "../../share/render";
+import { SHARE_MESSAGES, ShareError, type ShareNote } from "../../share/render";
 import { runShareCli, type ShareCliDeps } from "../share";
 import { CLI_MESSAGES, CLI_USAGE } from "../shared";
 import { captureIO, fakeJobs } from "./cli-helpers";
@@ -88,4 +88,18 @@ test("share refuses an unready destination with its own message, and checks its 
   await expect(runShareCli(["share", JOB, "--to", "slack", "--include", "all"], deps)).rejects.toThrow(CLI_MESSAGES.shareIncludeInvalid);
   await expect(runShareCli(["share", "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", "--to", "slack"], deps)).rejects.toThrow(CLI_MESSAGES.jobNotFound);
   await expect(runShareCli(["share", JOB, "--to", "slack", "--force"], deps)).rejects.toThrow("--force");
+});
+
+test("a recording without a usable transcript is refused in Portuguese, never with a raw file error", async () => {
+  const missing = shareDeps();
+  const enoent = Object.assign(new Error("ENOENT: no such file or directory, lstat '/home/ana/Vídeos/x.recording/transcript.json'"), { code: "ENOENT" });
+  missing.deps.buildNote = async () => { throw enoent; };
+  await expect(runShareCli(["share", JOB, "--to", "clipboard", "--dry-run"], missing.deps)).rejects.toThrow(CLI_MESSAGES.shareUnreadable);
+  await expect(runShareCli(["share", JOB, "--to", "slack", "--yes"], missing.deps)).rejects.toThrow(CLI_MESSAGES.shareUnreadable);
+  expect(missing.delivered).toEqual([]);
+  expect(missing.capture.out()).toBe("");
+  // The share module's own (Portuguese) messages pass through unchanged.
+  const invalid = shareDeps();
+  invalid.deps.buildNote = async () => { throw new ShareError(SHARE_MESSAGES.invalidNote, "invalid"); };
+  await expect(runShareCli(["share", JOB, "--to", "clipboard", "--dry-run"], invalid.deps)).rejects.toThrow(SHARE_MESSAGES.invalidNote);
 });

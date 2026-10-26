@@ -8,7 +8,7 @@ import {
 import { JobStore } from "../jobs/store";
 import type { JobRecord } from "../jobs/types";
 import { buildShareNoteWithLanguage } from "../share/job-note";
-import { renderShare, type ShareInclude, type ShareLanguage, type ShareNote } from "../share/render";
+import { renderShare, ShareError, type ShareInclude, type ShareLanguage, type ShareNote } from "../share/render";
 import { SHARE_HELP } from "./help";
 import { CLI_MESSAGES, CLI_USAGE, type CliIO, defaultLoadConfig, notice, parseArgs, printJson, processIO, readJob } from "./shared";
 
@@ -76,7 +76,12 @@ export const runShareCli = async (args: string[], deps: ShareCliDeps = defaultSh
   const include = includeRaw as ShareInclude;
   const config = await deps.loadConfig();
   const job = await readJob(deps.jobs(), jobId);
-  const { note, language } = await deps.buildNote(config, job);
+  const { note, language } = await deps.buildNote(config, job).catch((error: unknown) => {
+    // The share module's messages are Portuguese already; a missing or unusable transcript (a raw
+    // file error with its path, or the index's own text) becomes the CLI's message.
+    if (error instanceof ShareError) throw error;
+    throw new Error(CLI_MESSAGES.shareUnreadable);
+  });
   // Obsidian keeps files, so its notes carry the frontmatter; chat-like destinations get the body.
   const share = renderShare(note, { frontmatter: target === "obsidian", language, include });
   if (parsed.flags.has("--dry-run")) {

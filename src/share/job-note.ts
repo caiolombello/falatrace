@@ -43,9 +43,12 @@ export const shareLanguageOf = (source: Pick<MeetingSource, "summary" | "languag
 
 const shareActions = (source: MeetingSource, listed: ListedAction[] | undefined): ShareAction[] => {
   // Listed actions carry the person's done/dismissed choices; orphaned ones left the current summary.
-  const current = (listed ?? []).filter((action) => action.matchState === "current" && action.status !== "dismissed");
-  if (listed && current.length) return current.map((action) => ({ text: action.text, owner: action.owner, dueDate: action.dueDate, done: action.status === "done" }));
-  return (source.summary?.actionItems ?? []).map((item) => ({ text: item.description, owner: item.owner, dueDate: item.dueDate, done: false }));
+  const current = (listed ?? []).filter((action) => action.matchState === "current");
+  // The summary's own list only stands in when nothing was listed (not indexed yet): actions the
+  // person dismissed, even all of them, never come back as open ones.
+  if (!current.length) return (source.summary?.actionItems ?? []).map((item) => ({ text: item.description, owner: item.owner, dueDate: item.dueDate, done: false }));
+  return current.filter((action) => action.status !== "dismissed")
+    .map((action) => ({ text: action.text, owner: action.owner, dueDate: action.dueDate, done: action.status === "done" }));
 };
 
 /** Everything a share can include; the render options decide what is shown (notes, transcript). */
@@ -64,7 +67,9 @@ export const buildShareNote = async (job: JobRecord, sources: ShareNoteSources =
     people: meetingPeople(facts),
     ...(client ? { client } : {}),
     ...(template ? { template } : {}),
-    overview: summary?.overview ?? "",
+    // Summaries merged from many parts can outgrow what a share note accepts; the renderer cuts the
+    // overview to SHARE_LIMITS.overview anyway, so the excess is dropped here instead of failing.
+    overview: (summary?.overview ?? "").slice(0, SHARE_LIMITS.overview * 2),
     ...(summary?.sections?.length
       ? {
         sections: summary.sections.filter((section) => section.heading.trim()).slice(0, SHARE_LIMITS.sections).map((section) => ({
