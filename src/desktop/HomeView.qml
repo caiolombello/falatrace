@@ -7,7 +7,7 @@ Flickable {
     id: homeView
     objectName: "homeView"
     anchors.fill: parent
-    visible: !selected.key
+    visible: currentView === "home"
     clip: true
     contentWidth: width
     contentHeight: homeColumn.implicitHeight + 2 * homeColumn.y
@@ -132,8 +132,8 @@ Flickable {
                             spacing: 6
                             FtChip { kind: statusKind(modelData.status); text: statusText(modelData.status) }
                             Repeater {
-                                model: artifactParts(modelData.artifactStatus)
-                                FtChip { required property string modelData; kind: modelData.indexOf("pront") >= 0 ? "accent" : "neutral"; iconName: modelData.indexOf("pront") >= 0 ? "check" : ""; text: modelData }
+                                model: artifactChips(modelData.artifactStatus)
+                                FtChip { required property var modelData; kind: modelData.ready ? "accent" : "neutral"; iconName: modelData.ready ? "check" : ""; text: modelData.text }
                             }
                         }
                         Item { Layout.fillHeight: true }

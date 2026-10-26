@@ -70,7 +70,13 @@ ApplicationWindow {
     readonly property int docMaxWidth: 720
     property double statusNow: Date.now()
     property var items: []
-    property var filtered: items.filter(item => (item.title + " " + item.fileName).toLocaleLowerCase().includes(search.text.toLocaleLowerCase()))
+    // The sidebar list: newest first, filtered by title, file name, people and client.
+    property var filtered: {
+        const query = search.text.trim().toLocaleLowerCase()
+        return items.filter(item => !query || meetingSearchText(item).includes(query))
+            .map(item => ({item: item, at: timeValue(item.modifiedAt)})).sort((a, b) => b.at - a.at).map(entry => entry.item)
+    }
+    function meetingSearchText(item) { return [item.title || "", item.fileName || "", (item.people || []).join(" "), item.client || ""].join(" ").toLocaleLowerCase() }
     property var selected: ({})
     property var detail: ({transcript: {segments: [], text: "", timing: "none"}, diarization: {state: "idle"}})
     property var pending: ({})
@@ -288,6 +294,51 @@ ApplicationWindow {
     // Generated titles ("Gravação — date") are translated; meeting titles are user data and never are.
     function recordingTitle(item) { return !item ? "" : item.hasMeetingTitle === false ? t(item.title || "") : (item.title || "") }
     function artifactParts(value) { return String(value || "").split(" · ").filter(part => part.length > 0).map(part => t(part)) }
+    // The same parts as chips. "Ready" is decided on the bridge's Portuguese part, before translation,
+    // so "Transcript ready" keeps its accent in English.
+    function artifactChips(value) { return String(value || "").split(" · ").filter(part => part.length > 0).map(part => ({text: t(part), ready: part.indexOf("pront") >= 0})) }
+    // Sidebar groups: Hoje, Ontem, the weekday within the last week, then the date.
+    property double clockDay: Date.now()
+    Timer { interval: 60000; running: true; repeat: true; onTriggered: clockDay = Date.now() }
+    readonly property var weekdayNames: [t("Domingo"), t("Segunda-feira"), t("Terça-feira"), t("Quarta-feira"), t("Quinta-feira"), t("Sexta-feira"), t("Sábado")]
+    function dayGroup(value) {
+        const at = timeValue(value)
+        if (!at) return t("Sem data")
+        const today = new Date(clockDay); today.setHours(0, 0, 0, 0)
+        const day = new Date(at); day.setHours(0, 0, 0, 0)
+        const days = Math.round((today.getTime() - day.getTime()) / 86400000)
+        if (days <= 0) return t("Hoje")
+        if (days === 1) return t("Ontem")
+        if (days < 7) return weekdayNames[day.getDay()]
+        return Qt.formatDate(day, day.getFullYear() === today.getFullYear() ? t("dd/MM") : t("dd/MM/yyyy"))
+    }
+    function durationText(seconds) {
+        const total = Math.round(Number(seconds) || 0)
+        if (total <= 0) return ""
+        const minutes = Math.max(1, Math.round(total / 60))
+        return minutes < 60 ? tf("%1 min", minutes) : tf("%1 h %2", Math.floor(minutes / 60), String(minutes % 60).padStart(2, "0"))
+    }
+    // "14:00 · 47 min · Ana, Bruno +1 · ACME"; recordings not indexed yet fall back to the origin.
+    function meetingMeta(item) {
+        if (!item) return ""
+        const at = timeValue(item.modifiedAt)
+        const parts = at ? [Qt.formatDateTime(new Date(at), "HH:mm")] : []
+        const length = durationText(item.durationSeconds)
+        if (length) parts.push(length)
+        const people = asList(item.people)
+        if (people.length) parts.push(people.slice(0, 2).join(", ") + (people.length > 2 ? " +" + (people.length - 2) : ""))
+        if (item.client) parts.push(item.client)
+        if (parts.length < 2 || item.location === "missing" || item.location === "transcript-only") parts.push(origin(item.location))
+        return parts.filter(part => !!part).join(" · ")
+    }
+    // Bridge lists arrive as Qt sequences (Array.isArray is false for them): copy into a JS array, anything else is empty.
+    function asList(value) { return value && typeof value === "object" && typeof value.length === "number" ? Array.prototype.slice.call(value) : [] }
+    function captureClock() { return clock(Math.max(0, (statusNow - Date.parse(captureStatus.session && captureStatus.session.startedAt || new Date(statusNow).toISOString())) / 1000)) }
+    function keyboardHint() {
+        if (currentView === "meeting") return t("Espaço: reproduzir/pausar · Setas: ±5 s · Esc: voltar · Ctrl+K: buscar")
+        if (currentView === "live") return t("Enter: nova linha com horário · Ctrl+S: salvar agora · # título · [ ] ação")
+        return t("Ctrl+K: buscar reuniões · Ctrl+Shift+R: gravar · F5: atualizar a lista")
+    }
     function audioLabel() {
         const configured = captureStatus.audio && captureStatus.audio.configured
         if (!configured) return t("Áudio não validado")
@@ -947,6 +998,35 @@ ApplicationWindow {
     property alias reviewNoteButton: detailView.reviewNoteButton
     property alias speakerSuggestButton: detailView.speakerSuggestButton
     Shortcut { sequence: "Escape"; enabled: !!selected.key && !uxModal; onActivated: backToLibrary() }
+    // The sidebar lives in Sidebar.qml; dialogs return focus to these ids and journeys use search.
+    property alias search: sidebar.search
+    property alias libraryView: sidebar.libraryView
+    property alias onboardingButton: sidebar.onboardingButton
+    property alias aboutButton: sidebar.aboutButton
+    property alias recordingControlsButton: sidebar.recordingControlsButton
+    Shortcut { sequence: "Ctrl+K"; enabled: !uxModal; onActivated: { search.forceActiveFocus(Qt.ShortcutFocusReason); search.selectAll() } }
+    Shortcut { sequence: "Ctrl+1"; enabled: !uxModal; onActivated: navigate("home") }
+    Shortcut { sequence: "Ctrl+2"; enabled: !uxModal && viewAvailable("actions"); onActivated: navigate("actions") }
+    Shortcut { sequence: "Ctrl+3"; enabled: !uxModal && viewAvailable("people"); onActivated: navigate("people") }
+    Shortcut { sequence: "Ctrl+4"; enabled: !uxModal && viewAvailable("clients"); onActivated: navigate("clients") }
+    Shortcut { sequence: "F5"; enabled: backend.available; onActivated: refreshLibrary() }
+    // Idle: ask before recording. Recording: open its notes (stopping always takes a click or Enter on Parar).
+    Shortcut { sequence: "Ctrl+Shift+R"; enabled: !uxModal && captureKnown; onActivated: { if (captureStatus.active) openLive(); else if (backend.available && !captureBusy) { captureConsent.intent = "capture"; captureConsent.open() } } }
+    function refreshLibrary() { if (backend.available && !hasPending("list")) send("list", "") }
+    function openLive() { if (captureStatus.active) navigate("live") }
+    function stopCapture() {
+        if (!backend.available || !captureKnown || captureBusy) return
+        captureBusy = true
+        if (send("capture-stop", "") < 0) captureBusy = false
+    }
+    // A job that finished (or a new one) changes the library: the sidebar refreshes by itself.
+    function jobsTransitioned(before, after) {
+        if (!jobsLoaded) return false
+        const previous = ({})
+        for (const job of before) previous[job.id] = job.state
+        return after.some(function(job){ return previous[job.id] === undefined || (previous[job.id] !== job.state && ["completed", "failed"].indexOf(job.state) >= 0) })
+    }
+    property bool jobsLoaded: false
     Timer { interval: processingWait || summaryRunning || hasPending("frames-preview") || hasPending("frames-confirm") ? 500 : 2000; running: backend.available; repeat: true; onTriggered: { if (!hasPending("processing-status")) send("processing-status", "") } }
     Label { z: 100; anchors.bottom: parent.bottom; anchors.bottomMargin: 48; anchors.horizontalCenter: parent.horizontalCenter; width: Math.min(parent.width - 32, implicitWidth); visible: !!processingWait; text: t(processingWait); textFormat: Text.PlainText; wrapMode: Text.WordWrap; color: warningColor; padding: 10; leftPadding: 14; rightPadding: 14; background: Rectangle { color: surface; radius: 10; border.width: 1; border.color: warningColor } }
     // Actionable notices ("Desfazer", "Abrir") from the new features; errorText and notice stay in the status bar.
@@ -1028,10 +1108,14 @@ ApplicationWindow {
                 captureStatus = result
                 captureKnown = true
                 if (request.op !== "capture-status" || !["capture-start", "capture-stop", "capture-recover", "audio-defaults", "automation-pause", "automation-resume"].some(op => hasPending(op))) captureBusy = false
+                if (request.op === "capture-stop") refreshLibrary()
                 if (request.op !== "capture-status") notice = request.op === "automation-pause" ? t("Novas gravações automáticas pausadas. A captura atual continua até Parar.") : request.op === "automation-resume" ? t("Automação retomada para futuras chamadas; confira suas regras.") : request.op === "capture-start" ? t("Captura iniciada.") : request.op === "capture-stop" ? (result.stopWarning ? t("Captura parada, com aviso: ") + t(result.stopWarning) : t("Captura finalizada e enfileirada.")) : request.op === "capture-recover" ? t("Recuperação solicitada.") : t("Áudio padrão atualizado.")
             } else if (request.op === "jobs-list") {
+                const previousJobs = jobs
                 jobs = result.items || []
                 if (selectedJob.id) selectedJob = jobs.find(job => job.id === selectedJob.id) || ({})
+                if (jobsTransitioned(previousJobs, jobs)) refreshLibrary()
+                jobsLoaded = true
             } else if (request.op === "job-process" || request.op === "job-retry") {
                 notice = result.warning || (result.status === "completed" ? t("Este job já está concluído.") : result.status === "active" ? t("Este job já está em processamento.") : t("Job enviado para processamento."))
                 send("jobs-list", "")
@@ -1118,7 +1202,7 @@ ApplicationWindow {
         }
     }
 
-    // ── Window layout: top bar · library sidebar · home or recording · status bar ──
+    // ── Window layout: top bar · sidebar · home, meeting or live capture · status bar ──
     ColumnLayout {
         anchors.fill: parent
         spacing: 0
@@ -1126,38 +1210,41 @@ ApplicationWindow {
         Rectangle {
             id: topBar
             Layout.fillWidth: true
-            Layout.preferredHeight: 60
+            Layout.preferredHeight: 52
             color: chrome
             Rectangle { anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom; height: 1; color: divider }
             RowLayout {
                 anchors.fill: parent
-                anchors.leftMargin: 18
-                anchors.rightMargin: 14
-                spacing: 10
-                BrandMark { size: 26 }
-                ColumnLayout {
-                    spacing: 0
-                    Label { text: "FalaTrace Studio"; color: ink; font.pixelSize: 16; font.weight: Font.DemiBold }
-                    Label { visible: !compactLayout; text: Qt.application.version + t(" · experimental"); color: muted; font.pixelSize: 11 }
-                }
+                anchors.leftMargin: 16
+                anchors.rightMargin: 12
+                spacing: 8
+                BrandMark { size: 24 }
+                Label { text: "FalaTrace"; color: ink; font.pixelSize: 16; font.weight: Font.DemiBold; Accessible.name: "FalaTrace Studio " + Qt.application.version }
                 Item { Layout.fillWidth: true }
                 FtChip { visible: !backend.available; kind: "danger"; iconName: "plug"; text: t("Serviço desconectado") }
                 FtButton { text: t("Reconectar"); visible: !backend.available; enabled: !backend.available; compact: true; onClicked: backend.reconnect() }
                 Rectangle {
                     id: capturePill
                     objectName: "capturePill"
-                    Layout.preferredHeight: 42
-                    implicitWidth: captureRow.implicitWidth + 18
+                    Layout.preferredHeight: 40
+                    implicitWidth: captureRow.implicitWidth + 16
                     radius: 10
                     color: captureStatus.active ? recordingSoft : surface
                     border.width: 1
                     border.color: captureStatus.active ? recordingColor : divider
+                    // While recording, the pill body opens the notes of the capture (the buttons stay on top).
+                    MouseArea {
+                        anchors.fill: parent
+                        enabled: captureStatus.active
+                        cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                        onClicked: openLive()
+                    }
                     RowLayout {
                         id: captureRow
                         anchors.left: parent.left
                         anchors.leftMargin: 12
                         anchors.verticalCenter: parent.verticalCenter
-                        spacing: 9
+                        spacing: 8
                         // Shape and text carry the state: square + REC while recording, ring otherwise.
                         Rectangle {
                             implicitWidth: 10; implicitHeight: 10
@@ -1170,7 +1257,7 @@ ApplicationWindow {
                             spacing: 0
                             Label {
                                 objectName: "captureStateLabel"
-                                text: !captureKnown ? t("Captura: estado desconhecido") : captureStatus.active ? t("REC ") + clock(Math.max(0, (statusNow - Date.parse(captureStatus.session && captureStatus.session.startedAt || new Date(statusNow).toISOString())) / 1000)) : t("Captura parada")
+                                text: !captureKnown ? t("Captura: estado desconhecido") : captureStatus.active ? t("REC ") + captureClock() : t("Captura parada")
                                 color: captureStatus.active ? recordingColor : ink
                                 font.pixelSize: 13
                                 font.weight: Font.DemiBold
@@ -1185,7 +1272,8 @@ ApplicationWindow {
                                 ToolTip.text: t(captureStatus.warning || (captureStatus.audio && captureStatus.audio.error) || "") || audioSummary()
                             }
                         }
-                        FtButton { id:headerStop; objectName:"headerStop"; Keys.onReturnPressed:clicked(); Keys.onEnterPressed:clicked(); visible:captureStatus.active; variant:"danger"; compact:true; iconName:"stop"; text:t("Parar captura"); enabled:backend.available&&captureKnown&&!captureBusy; onClicked:{captureBusy=true;if(send("capture-stop","")<0)captureBusy=false} }
+                        FtButton { id: openLiveButton; objectName: "openLiveButton"; visible: captureStatus.active && currentView !== "live"; compact: true; variant: "outline"; iconName: "note"; text: t("Notas"); Accessible.name: t("Abrir as notas desta gravação"); onClicked: openLive() }
+                        FtButton { id:headerStop; objectName:"headerStop"; Keys.onReturnPressed:clicked(); Keys.onEnterPressed:clicked(); visible:captureStatus.active; variant:"danger"; compact:true; iconName:"stop"; text:t("Parar captura"); enabled:backend.available&&captureKnown&&!captureBusy; onClicked:stopCapture() }
                         FtButton { id:captureStartButton; objectName:"captureStartButton"; visible:!captureStatus.active; compact:true; iconName:"record"; iconTint:recordingColor; text:t("Gravar…"); Accessible.name:t("Iniciar uma gravação manual após confirmação"); enabled:backend.available&&captureKnown&&!captureBusy&&!captureStatus.active; onClicked:{captureConsent.intent="capture";captureConsent.open()} }
                     }
                 }
@@ -1193,7 +1281,7 @@ ApplicationWindow {
                     id: automationButton
                     objectName: "automationButton"
                     visible: backend.available
-                    compact: true
+                    iconOnly: true
                     variant: "ghost"
                     iconName: captureStatus.paused ? "automation-play" : "automation-pause"
                     text: captureStatus.paused ? t("Retomar automação…") : t("Pausar novas gravações")
@@ -1201,7 +1289,6 @@ ApplicationWindow {
                     enabled: backend.available && !captureBusy
                     onClicked: { if (captureStatus.paused) { captureConsent.intent = "resume"; captureConsent.open() } else { captureBusy = true; if (send("automation-pause", "") < 0) captureBusy = false } }
                 }
-                FtButton { iconOnly: true; variant: "ghost"; iconName: "refresh"; text: t("Atualizar biblioteca"); Accessible.name: t("Atualizar biblioteca"); enabled: backend.available && !loading && !libraryRefreshing; onClicked: { loading = true; send("list", "") } }
                 FtButton { iconOnly: true; variant: "ghost"; iconName: lightTheme ? "moon" : "sun"; text: lightTheme ? t("Tema escuro") : t("Tema claro"); Accessible.name: text; onClicked: lightTheme = !lightTheme }
             }
         }
@@ -1211,76 +1298,10 @@ ApplicationWindow {
             Layout.fillHeight: true
             spacing: 0
 
-            Rectangle {
+            Sidebar {
                 id: sidebar
-                Layout.preferredWidth: compactLayout ? 252 : 288
+                Layout.preferredWidth: compactLayout ? 232 : 264
                 Layout.fillHeight: true
-                color: chrome
-                Rectangle { anchors.top: parent.top; anchors.bottom: parent.bottom; anchors.right: parent.right; width: 1; color: divider }
-                ColumnLayout {
-                    anchors.fill: parent
-                    anchors.margins: 14
-                    anchors.rightMargin: 15
-                    spacing: 10
-                    RowLayout {
-                        Layout.fillWidth: true
-                        Label { text: t("Biblioteca"); color: ink; font.pixelSize: 15; font.weight: Font.DemiBold; Layout.fillWidth: true }
-                        FtChip { visible: !loading; text: (items.length === 1 ? t("1 gravação") : items.length + t(" gravações")) + (libraryRefreshing ? t(" · atualizando…") : "") }
-                    }
-                    FtTextField { id: search; Layout.fillWidth: true; leadingIcon: "search"; placeholderText: t("Buscar gravação…"); Accessible.name: t("Buscar gravação") }
-                    BusyIndicator { Layout.alignment: Qt.AlignHCenter; running: loading && backend.available; visible: running }
-                    Label { visible: !loading && !filtered.length; text: items.length ? t("Nenhuma gravação corresponde à busca.") : t("Nenhuma gravação encontrada."); color: muted; wrapMode: Text.WordWrap; Layout.fillWidth: true; font.pixelSize: 13 }
-                    ListView {
-                        id: libraryView
-                        function followSelection() { currentIndex = Qt.binding(() => filtered.findIndex(item => item.key === selected.key)) }
-                        function openCurrent() { const item = filtered[currentIndex]; if (item && backend.available) selectRecording(item); followSelection() }
-                        currentIndex: filtered.findIndex(item => item.key === selected.key)
-                        Layout.fillWidth: true; Layout.fillHeight: true; clip: true; spacing: 4; model: filtered
-                        // Keyboard: Tab enters the list, arrows move, Enter or Space opens the recording.
-                        activeFocusOnTab: count > 0
-                        keyNavigationEnabled: true
-                        Accessible.role: Accessible.List
-                        Accessible.name: t("Gravações da biblioteca")
-                        Keys.onReturnPressed: openCurrent()
-                        Keys.onEnterPressed: openCurrent()
-                        Keys.onSpacePressed: openCurrent()
-                        onActiveFocusChanged: { if (activeFocus && currentIndex < 0 && count > 0) currentIndex = 0; else if (!activeFocus) followSelection() }
-                        ScrollBar.vertical: ScrollBar {}
-                        delegate: ItemDelegate {
-                            id: libraryItem
-                            required property var modelData
-                            readonly property bool current: selected.key === modelData.key
-                            width: ListView.view.width
-                            enabled: backend.available
-                            hoverEnabled: true
-                            leftPadding: 14; rightPadding: 12; topPadding: 10; bottomPadding: 10
-                            Accessible.name: recordingTitle(modelData) + ", " + origin(modelData.location) + ", " + statusText(modelData.status)
-                            background: Rectangle {
-                                radius: 10
-                                color: libraryItem.current ? selectedSurface : libraryItem.hovered ? hoverSurface : "transparent"
-                                border.width: libraryItem.visualFocus || (libraryItem.ListView.isCurrentItem && libraryView.activeFocus) ? 2 : 0
-                                border.color: accent
-                                Rectangle { visible: libraryItem.current; width: 3; radius: 1.5; color: accent; anchors.left: parent.left; anchors.top: parent.top; anchors.bottom: parent.bottom; anchors.topMargin: 10; anchors.bottomMargin: 10 }
-                            }
-                            contentItem: ColumnLayout {
-                                spacing: 4
-                                Label { text: recordingTitle(modelData); textFormat: Text.PlainText; color: ink; font.pixelSize: 14; font.weight: libraryItem.current ? Font.DemiBold : Font.Medium; wrapMode: Text.Wrap; maximumLineCount: 2; elide: Text.ElideRight; Layout.fillWidth: true }
-                                Label { text: shortDate(modelData.modifiedAt) + " · " + origin(modelData.location); textFormat: Text.PlainText; color: modelData.location === "missing" ? warningColor : muted; font.pixelSize: 12; elide: Text.ElideRight; Layout.fillWidth: true }
-                                RowLayout {
-                                    spacing: 6
-                                    Rectangle { implicitWidth: 7; implicitHeight: 7; radius: 3.5; color: kindColor(statusKind(modelData.status)) }
-                                    Label { text: statusText(modelData.status); textFormat: Text.PlainText; color: muted; font.pixelSize: 12 }
-                                }
-                                Label { visible: modelData.hasMeetingTitle === false; text: artifactParts(modelData.artifactStatus).join(" · "); textFormat: Text.PlainText; color: muted; font.pixelSize: 11; wrapMode: Text.WordWrap; Layout.fillWidth: true }
-                            }
-                            onClicked: selectRecording(modelData)
-                        }
-                    }
-                    Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: divider }
-                    FtNavButton { objectName: "recordingControlsButton"; iconName: "tools"; text: t("Gravação e tarefas…"); onClicked: recordingTools.open() }
-                    FtNavButton { id: onboardingButton; objectName: "onboardingButton"; iconName: "settings"; text: t("Configurações…"); enabled: backend.available; onClicked: settingsDialog.open() }
-                    FtNavButton { id: aboutButton; objectName: "aboutButton"; iconName: "info"; text: t("Sobre o FalaTrace"); onClicked: aboutDialog.open() }
-                }
             }
 
             Rectangle {
@@ -1294,20 +1315,20 @@ ApplicationWindow {
             }
         }
 
+        // Status bar: errors and notices first, then the keys that work where you are.
         Rectangle {
             id: statusBar
             Layout.fillWidth: true
-            Layout.preferredHeight: Math.max(34, statusRow.implicitHeight + 14)
+            Layout.preferredHeight: Math.max(28, statusRow.implicitHeight + 8)
             color: chrome
             Rectangle { anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; height: 1; color: divider }
             RowLayout {
                 id: statusRow
                 anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
-                anchors.leftMargin: 16; anchors.rightMargin: 16
-                spacing: 10
-                FtIcon { name: errorText ? "alert" : notice ? "info" : "keyboard"; tint: errorText ? errorColor : notice ? accent : muted; size: 15 }
-                Label { objectName: "keyboardHelp"; textFormat: Text.PlainText; text: t(errorText || notice || "") || (captionHasFocus() ? t("Legendas: setas, Page Up/Down ou Espaço percorrem o texto · Tab sai") : t("Espaço: reproduzir/pausar · Setas: ±5 s · Esc: biblioteca · Trechos: navegar à origem")); color: errorText ? errorColor : notice ? ink : muted; font.pixelSize: 12; wrapMode: Text.WordWrap; Layout.fillWidth: true }
-                Label { text: window.width < 1180 ? t("Serviços continuam ao fechar a janela") : t("Captura, processamento e backups continuam nos serviços ao fechar esta janela."); color: muted; font.pixelSize: 11; horizontalAlignment: Text.AlignRight; Layout.maximumWidth: window.width * 0.42; elide: Text.ElideRight }
+                anchors.leftMargin: 14; anchors.rightMargin: 14
+                spacing: 8
+                FtIcon { name: errorText ? "alert" : notice ? "info" : "keyboard"; tint: errorText ? errorColor : notice ? accent : muted; size: 14 }
+                Label { objectName: "keyboardHelp"; textFormat: Text.PlainText; text: t(errorText || notice || "") || (captionHasFocus() ? t("Legendas: setas, Page Up/Down ou Espaço percorrem o texto · Tab sai") : keyboardHint()); color: errorText ? errorColor : notice ? ink : muted; font.pixelSize: 12; wrapMode: Text.WordWrap; Layout.fillWidth: true }
             }
         }
     }

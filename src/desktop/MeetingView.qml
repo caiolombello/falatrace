@@ -48,8 +48,8 @@ ColumnLayout {
                 FtChip { kind: selected.location === "missing" ? "warning" : mediaReady && location ? "accent" : "neutral"; iconName: mediaReady && location ? "play" : ""; text: mediaReady && location ? t("Reproduzindo · ") + origin(location) : origin(selected.location) }
                 FtChip { visible: !!selected.status; kind: statusKind(selected.status); text: statusText(selected.status) || "" }
                 Repeater {
-                    model: artifactParts(selected.artifactStatus)
-                    FtChip { required property string modelData; kind: modelData.indexOf("pront") >= 0 ? "accent" : "neutral"; iconName: modelData.indexOf("pront") >= 0 ? "check" : ""; text: modelData }
+                    model: artifactChips(selected.artifactStatus)
+                    FtChip { required property var modelData; kind: modelData.ready ? "accent" : "neutral"; iconName: modelData.ready ? "check" : ""; text: modelData.text }
                 }
                 FtChip { visible: !!selected.backup && selected.backup !== "none"; text: t("Cópias: ") + String(selected.backup || "").replace("+", " + ").toUpperCase() }
             }
