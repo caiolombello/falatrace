@@ -440,7 +440,7 @@ ApplicationWindow {
     function closeAgentAccess() { cancelProvider(); if (activeGrant.id && hasPending("agent-frames")) send("agent-cancel", selected.key, {grantId:activeGrant.id}); agentDialog.close() }
     property string cliVersion: ""
     property var releaseInfo: ({})
-    property bool uxModal: settingsDialog.visible || setupWizard.visible || processDialog.visible || aboutDialog.visible || captureConsent.visible || framesDialog.visible || onboardingDialog.visible || agentDialog.visible || recordingTools.visible || reviewDialog.visible || exportDialog.visible || summaryDialog.visible || speakerSuggestDialog.visible
+    property bool uxModal: settingsDialog.visible || setupWizard.visible || processDialog.visible || aboutDialog.visible || captureConsent.visible || framesDialog.visible || onboardingDialog.visible || agentDialog.visible || recordingTools.visible || reviewDialog.visible || exportDialog.visible || summaryDialog.visible || speakerSuggestDialog.visible || detailView.menuOpen
     function summaryBusy() { return summaryRunning || hasPending("summary-plan") || hasPending("summary-run") }
     function summaryPlanText() {
         const p=summaryPlan
@@ -729,7 +729,7 @@ ApplicationWindow {
         if(onboardingDialog.visible)revealFocusedControl(onboardingScroll)
         if(recordingTools.visible)revealFocusedControl(toolsScroll)
         if(framesDialog.visible)revealFocusedControl(frameScroll)
-        revealFocusedListControl(revisionSegmentsList);revealFocusedListControl(revisionSpeakersList);revealFocusedListControl(revisionTurnsList)
+        revealFocusedListControl(revisionSegmentsList);revealFocusedListControl(revisionSpeakersList);revealFocusedListControl(revisionTurnsList);revealFocusedListControl(detailView.notesDocument)
     })
     onClosing:event=>{if(revisionPending()||hasPending("export-save")){event.accepted=false;notice=t("Aguarde a confirmação da operação local antes de fechar.")}}
 
@@ -903,7 +903,8 @@ ApplicationWindow {
     readonly property var familyPrefixes: ["notes-", "live-", "templates-", "assistant-", "recipes-", "share-", "actions-", "action-", "people-", "person-", "clients-", "client-", "meeting-client-", "meeting-override", "home-", "inbox-", "first-run-", "media-", "library-search", "summary-prefs-"]
     function isFamilyOp(op) { return familyPrefixes.some(function(prefix){ return op.indexOf(prefix) === 0 }) }
     function familyOwner(origin) {
-        return ({})[origin] || null
+        return origin === "meetingNotes" ? detailView.notesEditor : origin === "notesDocument" ? detailView.notesDocument : origin === "librarySearch" ? sidebar
+            : origin === "liveNotes" ? liveView.notesEditor : origin === "live" ? liveView.transcriptPanel : null
     }
     function routeFamilyResponse(request, message) {
         const owner = familyOwner(request.origin || "")
@@ -911,12 +912,15 @@ ApplicationWindow {
     }
     // The bridge went away: pending family requests are gone; each owner resets what it was waiting for.
     function familiesConnectionLost() {
+        sidebar.connectionLost(); detailView.notesEditor.connectionLost(); detailView.notesDocument.connectionLost(); liveView.notesEditor.connectionLost(); liveView.transcriptPanel.connectionLost()
     }
     function selectRecording(item) { showVisualSummary=false;
         if(revisionPending() || hasPending("export-save"))return
         summaryDialog.close(); reviewDialog.close(); exportDialog.close(); processDialog.close(); speakerSuggestDialog.close(); reviewGeneration+=1; exportGeneration+=1
         closeAgentAccess(); framesDialog.close(); cancelFramePreview()
         generation += 1; sourceReferenceSeconds = -1; pendingSeek = -1
+        // A meeting opens on its notes (the speakers smoke test opens on Falantes).
+        tabs.currentIndex = smokeDiarization ? 2 : 1; detailView.notesMode.currentIndex = 0
         selected = item
         detail = {transcript: {segments: [], text: "", timing: "none"}, diarization: {state: "idle"}}
         detailLoading = true; errorText = ""; notice = ""; subtitleQueued = false
@@ -958,7 +962,7 @@ ApplicationWindow {
         contextLoading = true; contextText = ""; contextCopyText = ""; tabs.currentIndex = 3
         if (send("context-meeting", id, {maxCharacters: 10000}) < 0) contextLoading = false
     }
-    Shortcut { sequence: "Space"; enabled: mediaReady && !textHasFocus && !uxModal && !captionToggle.activeFocus && !captionHasFocus(); onActivated: togglePlay() }
+    Shortcut { sequence: "Space"; enabled: mediaReady && !textHasFocus && !uxModal && !captionToggle.activeFocus && !captionHasFocus() && !checkableHasFocus(); onActivated: togglePlay() }
     Shortcut { sequence: "Right"; enabled: mediaReady && !textHasFocus && !uxModal && !captionHasFocus(); onActivated: seek(position + 5) }
     Shortcut { sequence: "Left"; enabled: mediaReady && !textHasFocus && !uxModal && !captionHasFocus(); onActivated: seek(position - 5) }
     SummaryDialog { id: summaryDialog }
@@ -997,7 +1001,15 @@ ApplicationWindow {
     property alias openRecordingButton: detailView.openRecordingButton
     property alias reviewNoteButton: detailView.reviewNoteButton
     property alias speakerSuggestButton: detailView.speakerSuggestButton
-    Shortcut { sequence: "Escape"; enabled: !!selected.key && !uxModal; onActivated: backToLibrary() }
+    Shortcut { sequence: "Escape"; enabled: !!selected.key && !uxModal && !notesTextFocused(); onActivated: backToLibrary() }
+    // A focused checkbox (an action) keeps Space; Esc in the notepad only leaves the notepad.
+    function checkableHasFocus() { return !!activeFocusItem && activeFocusItem.checkable === true }
+    function notesTextFocused() { return !!activeFocusItem && activeFocusItem.objectName === "notesEditorText" }
+    Shortcut { sequence: "V"; enabled: currentView === "meeting" && !textHasFocus && !uxModal; onActivated: detailView.playerStrip.toggleVideo() }
+    Shortcut { sequence: "Alt+1"; enabled: currentView === "meeting" && !uxModal; onActivated: tabs.currentIndex = 1 }
+    Shortcut { sequence: "Alt+2"; enabled: currentView === "meeting" && !uxModal; onActivated: tabs.currentIndex = 0 }
+    Shortcut { sequence: "Alt+3"; enabled: currentView === "meeting" && !uxModal; onActivated: tabs.currentIndex = 2 }
+    Shortcut { sequence: "Alt+4"; enabled: currentView === "meeting" && !uxModal; onActivated: tabs.currentIndex = 3 }
     // The sidebar lives in Sidebar.qml; dialogs return focus to these ids and journeys use search.
     property alias search: sidebar.search
     property alias libraryView: sidebar.libraryView
@@ -1013,9 +1025,12 @@ ApplicationWindow {
     // Idle: ask before recording. Recording: open its notes (stopping always takes a click or Enter on Parar).
     Shortcut { sequence: "Ctrl+Shift+R"; enabled: !uxModal && captureKnown; onActivated: { if (captureStatus.active) openLive(); else if (backend.available && !captureBusy) { captureConsent.intent = "capture"; captureConsent.open() } } }
     function refreshLibrary() { if (backend.available && !hasPending("list")) send("list", "") }
-    function openLive() { if (captureStatus.active) navigate("live") }
+    // The notes of the capture in progress (captures without a managed session, from legacy backends, have none).
+    function liveAvailable() { return captureStatus.active && !!captureStatus.session && !!captureStatus.session.id }
+    function openLive() { if (liveAvailable()) navigate("live") }
     function stopCapture() {
         if (!backend.available || !captureKnown || captureBusy) return
+        liveView.prepareStop()
         captureBusy = true
         if (send("capture-stop", "") < 0) captureBusy = false
     }
@@ -1030,7 +1045,7 @@ ApplicationWindow {
     Timer { interval: processingWait || summaryRunning || hasPending("frames-preview") || hasPending("frames-confirm") ? 500 : 2000; running: backend.available; repeat: true; onTriggered: { if (!hasPending("processing-status")) send("processing-status", "") } }
     Label { z: 100; anchors.bottom: parent.bottom; anchors.bottomMargin: 48; anchors.horizontalCenter: parent.horizontalCenter; width: Math.min(parent.width - 32, implicitWidth); visible: !!processingWait; text: t(processingWait); textFormat: Text.PlainText; wrapMode: Text.WordWrap; color: warningColor; padding: 10; leftPadding: 14; rightPadding: 14; background: Rectangle { color: surface; radius: 10; border.width: 1; border.color: warningColor } }
     // Actionable notices ("Desfazer", "Abrir") from the new features; errorText and notice stay in the status bar.
-    FtToast { id: toast; anchors.bottom: parent.bottom; anchors.bottomMargin: 44; anchors.horizontalCenter: parent.horizontalCenter }
+    FtToast { id: toast; anchors.bottom: parent.bottom; anchors.bottomMargin: currentView === "meeting" ? 96 : 44; anchors.horizontalCenter: parent.horizontalCenter }
     Timer { interval: 1000; running: captureStatus.active; repeat: true; onTriggered: statusNow = Date.now() }
     Timer { interval: 1000; running: summaryPolling && backend.available; repeat: true; onTriggered: { if (!hasPending("summary-status")) send("summary-status", summaryJobId, { requestId: summaryRequestId }) } }
     Component.onCompleted: if (backend.available) { send("list-cached", ""); send("list", ""); send("capture-status", ""); send("jobs-list", ""); send("ux-capabilities", ""); send("settings-read", "") }
@@ -1104,11 +1119,13 @@ ApplicationWindow {
                     const target = items.find(item => item.key === smokeKey)
                     if (target) selectRecording(target); else errorText = t("Gravação de verificação ausente.")
                 }
+                liveView.libraryUpdated()
             } else if (request.op === "automation-pause" || request.op === "automation-resume" || request.op === "capture-status" || request.op === "capture-start" || request.op === "capture-stop" || request.op === "capture-recover" || request.op === "audio-defaults") {
                 captureStatus = result
                 captureKnown = true
                 if (request.op !== "capture-status" || !["capture-start", "capture-stop", "capture-recover", "audio-defaults", "automation-pause", "automation-resume"].some(op => hasPending(op))) captureBusy = false
-                if (request.op === "capture-stop") refreshLibrary()
+                if (request.op === "capture-start") liveView.captureStarted()
+                if (request.op === "capture-stop") { liveView.captureStopped(result); refreshLibrary() }
                 if (request.op !== "capture-status") notice = request.op === "automation-pause" ? t("Novas gravações automáticas pausadas. A captura atual continua até Parar.") : request.op === "automation-resume" ? t("Automação retomada para futuras chamadas; confira suas regras.") : request.op === "capture-start" ? t("Captura iniciada.") : request.op === "capture-stop" ? (result.stopWarning ? t("Captura parada, com aviso: ") + t(result.stopWarning) : t("Captura finalizada e enfileirada.")) : request.op === "capture-recover" ? t("Recuperação solicitada.") : t("Áudio padrão atualizado.")
             } else if (request.op === "jobs-list") {
                 const previousJobs = jobs
@@ -1235,7 +1252,7 @@ ApplicationWindow {
                     // While recording, the pill body opens the notes of the capture (the buttons stay on top).
                     MouseArea {
                         anchors.fill: parent
-                        enabled: captureStatus.active
+                        enabled: liveAvailable()
                         cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
                         onClicked: openLive()
                     }
@@ -1272,7 +1289,7 @@ ApplicationWindow {
                                 ToolTip.text: t(captureStatus.warning || (captureStatus.audio && captureStatus.audio.error) || "") || audioSummary()
                             }
                         }
-                        FtButton { id: openLiveButton; objectName: "openLiveButton"; visible: captureStatus.active && currentView !== "live"; compact: true; variant: "outline"; iconName: "note"; text: t("Notas"); Accessible.name: t("Abrir as notas desta gravação"); onClicked: openLive() }
+                        FtButton { id: openLiveButton; objectName: "openLiveButton"; visible: liveAvailable() && currentView !== "live"; compact: true; variant: "outline"; iconName: "note"; text: t("Notas"); Accessible.name: t("Abrir as notas desta gravação"); onClicked: openLive() }
                         FtButton { id:headerStop; objectName:"headerStop"; Keys.onReturnPressed:clicked(); Keys.onEnterPressed:clicked(); visible:captureStatus.active; variant:"danger"; compact:true; iconName:"stop"; text:t("Parar captura"); enabled:backend.available&&captureKnown&&!captureBusy; onClicked:stopCapture() }
                         FtButton { id:captureStartButton; objectName:"captureStartButton"; visible:!captureStatus.active; compact:true; iconName:"record"; iconTint:recordingColor; text:t("Gravar…"); Accessible.name:t("Iniciar uma gravação manual após confirmação"); enabled:backend.available&&captureKnown&&!captureBusy&&!captureStatus.active; onClicked:{captureConsent.intent="capture";captureConsent.open()} }
                     }
@@ -1312,6 +1329,7 @@ ApplicationWindow {
 
                 HomeView { id: homeView }
                 MeetingView { id: detailView }
+                LiveView { id: liveView }
             }
         }
 

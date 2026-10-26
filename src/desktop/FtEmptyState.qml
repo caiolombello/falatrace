@@ -12,6 +12,7 @@ ColumnLayout {
     property string primaryIcon: ""
     property string secondaryText: ""
     property bool busy: false
+    property bool primaryEnabled: true
     property alias primaryButton: primaryButton
     property alias secondaryButton: secondaryButton
     signal primaryClicked()
@@ -33,7 +34,7 @@ ColumnLayout {
         Layout.topMargin: 4
         spacing: 8
         visible: primaryButton.visible || secondaryButton.visible
-        FtButton { id: primaryButton; visible: empty.primaryText !== ""; variant: "primary"; iconName: empty.primaryIcon; text: empty.primaryText; onClicked: empty.primaryClicked() }
+        FtButton { id: primaryButton; visible: empty.primaryText !== ""; enabled: empty.primaryEnabled; variant: "primary"; iconName: empty.primaryIcon; text: empty.primaryText; onClicked: empty.primaryClicked() }
         FtButton { id: secondaryButton; visible: empty.secondaryText !== ""; variant: "outline"; text: empty.secondaryText; onClicked: empty.secondaryClicked() }
     }
 }

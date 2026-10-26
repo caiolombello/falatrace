@@ -81,7 +81,7 @@ Rectangle {
         ItemDelegate {
             id: liveRow
             objectName: "sidebarLiveRow"
-            visible: captureStatus.active
+            visible: liveAvailable()
             Layout.fillWidth: true
             hoverEnabled: true
             leftPadding: 12; rightPadding: 10; topPadding: 8; bottomPadding: 8
@@ -161,14 +161,14 @@ Rectangle {
                     contentItem: RowLayout {
                         spacing: 8
                         FtIcon { name: "transcript"; tint: accent; size: 15 }
-                        Label { text: tf("Buscar “%1” nas transcrições", sidebar.query); textFormat: Text.PlainText; color: ink; font.pixelSize: 13; elide: Text.ElideRight; Layout.fillWidth: true }
+                        Label { text: tf("Buscar “%1” nas transcrições", sidebar.query); textFormat: Text.PlainText; color: ink; font.pixelSize: 13; wrapMode: Text.Wrap; maximumLineCount: 2; elide: Text.ElideRight; Layout.fillWidth: true }
                     }
                     onClicked: sidebar.runLibrarySearch()
                 }
                 BusyIndicator { Layout.alignment: Qt.AlignHCenter; visible: sidebar.searchBusy; running: visible; implicitWidth: 28; implicitHeight: 28 }
                 Label { visible: !!sidebar.searchError; text: sidebar.searchError; textFormat: Text.PlainText; color: muted; font.pixelSize: 12; wrapMode: Text.WordWrap; Layout.fillWidth: true; leftPadding: 12 }
                 Label { visible: !sidebar.searchBusy && !sidebar.searchError && sidebar.searchQuery !== "" && sidebar.searchQuery === sidebar.query && !sidebar.searchHits.length; text: t("Nenhum trecho encontrado."); textFormat: Text.PlainText; color: muted; font.pixelSize: 12; leftPadding: 12 }
-                FtOverline { visible: sidebar.searchHits.length > 0; text: tf("%1 trechos", sidebar.searchHits.length); leftPadding: 12; topPadding: 4 }
+                FtOverline { visible: sidebar.searchHits.length > 0; text: sidebar.searchHits.length === 1 ? t("1 trecho") : tf("%1 trechos", sidebar.searchHits.length); leftPadding: 12; topPadding: 4 }
                 Repeater {
                     model: sidebar.searchHits
                     delegate: ItemDelegate {
