@@ -38,6 +38,9 @@ FocusScope {
     property bool conflict: false
     property string saveError: ""
     property string loadError: ""
+    // Text typed while a save was on its way when the notepad switched to other notes: it is sent
+    // for the previous notes as soon as that save answers (with the revision it returns).
+    property var flush: null
     readonly property bool dirty: loaded && (area.text !== savedText || (sendTitle && title !== savedTitle))
     readonly property bool available: feature("notes") && !!notesKey
     signal savedNow()
@@ -81,6 +84,16 @@ FocusScope {
         updatedAt = result.updatedAt || null
     }
     function handleResponse(request, message) {
+        if (request.op === "notes-save" && flush && request.key === flush.key && request.notesGeneration === flush.notesGeneration) {
+            const last = flush
+            flush = null
+            if (message.ok) {
+                const payload = {text: last.text, expectedRev: Number(message.result.rev) || 0}
+                if (last.sendTitle) payload.title = last.title
+                send("notes-save", last.key, payload, {origin: origin, notesGeneration: -1})
+            }
+            return
+        }
         if (request.notesGeneration !== notesGeneration) return
         if (request.op === "notes-read") {
             loading = false
@@ -107,6 +120,7 @@ FocusScope {
         if (saveQueued || dirty) saveSoon(true)
     }
     function connectionLost() {
+        flush = null
         if (loading) { loading = false; loadError = t("Sem conexão com o FalaTrace.") }
         if (saving) { saving = false; saveError = t("Não deu para confirmar se salvou. Recarregue e confira."); retryTimer.restart() }
     }
@@ -175,8 +189,12 @@ FocusScope {
     }
 
     onNotesKeyChanged: {
-        // Typed text of the previous meeting is saved before the notepad switches.
-        if (dirty && activeKey && activeKey !== notesKey) save()
+        // Typed text of the previous meeting is saved before the notepad switches; while a save of it
+        // is still on its way, the rest follows that save (handleResponse).
+        if (dirty && activeKey && activeKey !== notesKey && loaded && !conflict) {
+            if (saving) flush = {key: activeKey, text: area.text, title: title, sendTitle: sendTitle, notesGeneration: notesGeneration}
+            else save()
+        }
         load()
     }
     Component.onCompleted: load()
