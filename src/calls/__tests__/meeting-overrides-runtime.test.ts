@@ -6,7 +6,7 @@ import { type CallDetectionMode, DEFAULT_CONFIG } from "../../config/defaults";
 import { runCommand } from "../../jobs/command";
 import type { JobRecord } from "../../jobs/types";
 import { readFirstRun } from "../../metrics/first-run";
-import { type MeetingOverride, setMeetingOverride } from "../../reminders/overrides";
+import { clearMeetingOverride, type MeetingOverride, setMeetingOverride } from "../../reminders/overrides";
 import { setAutomationPaused } from "../control";
 import { CallMonitorRuntime } from "../runtime";
 import { readCallStatus } from "../status";
@@ -192,6 +192,61 @@ test("a damaged decision file falls back to the configured mode", async () => {
   } finally { await f.close(); }
 }, 15_000);
 
+test("a record decision made while an earlier call is still going on waits for the meeting's own call", async () => {
+  let decision: MeetingOverride | undefined;
+  const f = await fixture({ mode: "notify-only", decision: () => decision });
+  try {
+    await f.emit(nodes); await f.emit(nodes);
+    expect(f.runtime.machine.getSnapshot().state).toBe("IN_CALL");
+    // The call began an hour ago (the previous meeting running over); the next meeting starts in two minutes.
+    f.runtime.sessionStartedAt = new Date(Date.now() - 60 * 60_000).toISOString();
+    const now = Date.now();
+    decision = {
+      ...override("record", "Planejamento"), startAt: new Date(now + 120_000).toISOString(),
+      endAt: new Date(now + 62 * 60_000).toISOString(), expiresAt: new Date(now + 77 * 60_000).toISOString()
+    };
+    await f.runtime.refreshMeetingOverride();
+    await f.runtime.startFromMeetingOverride();
+    expect(f.starts).toHaveLength(0);
+    // The earlier call ends; the meeting's own call starts and is recorded under its title.
+    await f.emit([]); await f.emit([]);
+    expect(f.runtime.machine.getSnapshot().state).toBe("IDLE");
+    await f.emit(nodes); await f.emit(nodes);
+    expect(f.starts).toHaveLength(1);
+    expect(basename(dirname(f.starts[0]))).toMatch(/_Planejamento-[0-9a-f]{8}$/);
+  } finally { await f.close(); }
+}, 15_000);
+
+test("withdrawing a record decision stops the recording it started, and only when the mode would not record", async () => {
+  let decision: MeetingOverride | undefined = override("record");
+  const f = await fixture({ mode: "notify-only", decision: () => decision });
+  try {
+    await f.emit(nodes); await f.emit(nodes);
+    expect(f.starts).toHaveLength(1);
+    expect(f.runtime.recorder.ownsRecording()).toBe(true);
+    // "Desfazer": the decision is gone from the file (this fixture never writes one).
+    decision = undefined;
+    await f.runtime.stopWithdrawnOverrideRecording();
+    expect(f.runtime.recorder.ownsRecording()).toBe(false);
+    expect(f.runtime.machine.getSnapshot().state).toBe("IN_CALL");
+    // Choosing "record" again in the same call does not reuse (and overwrite) the withdrawn recording.
+    decision = { ...override("record"), createdAt: new Date().toISOString() };
+    await f.runtime.refreshMeetingOverride();
+    await f.runtime.startFromMeetingOverride();
+    expect(f.starts).toHaveLength(1);
+  } finally { await f.close(); }
+  let recordDecision: MeetingOverride | undefined = override("record");
+  const record = await fixture({ mode: "record", decision: () => recordDecision });
+  try {
+    await record.emit(nodes); await record.emit(nodes);
+    expect(record.starts).toHaveLength(1);
+    // In record mode the call would be recorded anyway: withdrawing the decision keeps it.
+    recordDecision = undefined;
+    await record.runtime.stopWithdrawnOverrideRecording();
+    expect(record.runtime.recorder.ownsRecording()).toBe(true);
+  } finally { await record.close(); }
+}, 20_000);
+
 test("a record decision saved while the call is already going on starts the recording (watched file)", async () => {
   const root = await fs.mkdtemp(join(tmpdir(), "meeting-override-watch-"));
   const previous = { state: process.env.XDG_STATE_HOME, data: process.env.XDG_DATA_HOME };
@@ -244,6 +299,11 @@ test("a record decision saved while the call is already going on starts the reco
     await until(async () => (await readCallStatus())?.recordingOwned === true);
     expect((await readCallStatus())?.meetingDecision).toBe("record");
     expect(basename(dirname(runtime.recorder.getSession().outputPath))).toMatch(/_Planejamento-[0-9a-f]{8}$/);
+    // "Desfazer" clears the decision: the recording it started stops, while the call goes on.
+    await clearMeetingOverride(HASH);
+    await until(() => !runtime.recorder.ownsRecording());
+    expect(active).toBe(false);
+    expect(runtime.machine.getSnapshot().state).toBe("IN_CALL");
   } finally {
     abort.abort();
     await running?.catch(() => undefined);

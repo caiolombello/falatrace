@@ -6,7 +6,9 @@ import { runCommand } from "../jobs/command";
 import { enqueueRecording, fastPathActive } from "../jobs/enqueue";
 import { queueSelectedJob } from "../jobs/queue";
 import { markFirstRun } from "../metrics/first-run";
-import { activeOverride, MEETING_OVERRIDES_FILE, type MeetingOverride } from "../reminders/overrides";
+import {
+  activeOverride, MEETING_OVERRIDES_FILE, type MeetingOverride, OVERRIDE_WINDOW, readMeetingOverrides
+} from "../reminders/overrides";
 import { acquireSingleton } from "../runtime/singleton";
 import { TimeEntryStore } from "../timesheet/store";
 import { classifyCall } from "./classifier";
@@ -104,6 +106,10 @@ export class CallMonitorRuntime {
   private meetingOverride?: MeetingOverride;
   /** The "record" decision a mid-call start was already tried for, so a failure is not retried in a loop. */
   private overrideStartTried?: string;
+  /** The recording a "record" decision started, so withdrawing that decision ("Desfazer") can stop it. */
+  private overrideRecording?: { eventIdHash: string; sessionId: string; expiresAt: string };
+  /** The call whose decision-started recording was withdrawn: a later decision does not reuse its recording id. */
+  private withdrawnSession?: string;
   private automationWatcher?: FSWatcher;
   private automationQueue: Promise<void> = Promise.resolve();
   private statusQueue: Promise<void> = Promise.resolve();
@@ -139,6 +145,11 @@ export class CallMonitorRuntime {
           // A "record" decision made while a call is already going on (a late click on a reminder).
           if (name !== basename(automationPath) && this.meetingOverride?.decision === "record") {
             this.evaluationQueue = this.evaluationQueue.then(() => this.startFromMeetingOverride())
+              .catch((err) => logCallEvent("recording.override-error", { error: sanitizeError(err) }));
+          }
+          // A "record" decision withdrawn ("Desfazer") while the recording it started is running.
+          if (name !== basename(automationPath) && this.overrideRecording) {
+            this.evaluationQueue = this.evaluationQueue.then(() => this.stopWithdrawnOverrideRecording())
               .catch((err) => logCallEvent("recording.override-error", { error: sanitizeError(err) }));
           }
         }).catch((err) => logCallEvent("automation.status-error", { error: sanitizeError(err) }));
@@ -395,7 +406,8 @@ export class CallMonitorRuntime {
     let inactiveDuringStart = false;
     let blocked: RecordingBlock | undefined;
     // A meeting marked "record" names the recording folder after the meeting.
-    const title = this.meetingOverride?.decision === "record" ? this.meetingOverride.title : undefined;
+    const decided = this.meetingOverride?.decision === "record" ? this.meetingOverride : undefined;
+    const title = decided?.title;
     try {
       const result = await this.recorder.start({
         sessionId: this.sessionId || undefined,
@@ -416,6 +428,8 @@ export class CallMonitorRuntime {
       }
       logCallEvent(result === "started" ? "recording.started" : "recording.already-recording");
       if (result === "started") {
+        this.overrideRecording = decided && this.sessionId
+          ? { eventIdHash: decided.eventIdHash, sessionId: this.sessionId, expiresAt: decided.expiresAt } : undefined;
         // First-run milestone in the state directory; it never affects the recording.
         await markFirstRun("firstRecording").catch(() => undefined);
         await (this.services.notifications || defaultNotifications).recordingStarted(app).catch((err) =>
@@ -671,7 +685,12 @@ export class CallMonitorRuntime {
     return this.automationPaused ? "automation-paused" : undefined;
   }
 
-  /** A "record" decision written while a call is already going on starts its recording, once per decision. */
+  /**
+   * A "record" decision written while a call is already going on starts its recording, once per
+   * decision, but only for a call that began inside the meeting's window: a call that was already
+   * going on before then (the previous meeting running over) is not this meeting. That decision
+   * still records the meeting's own call once it starts.
+   */
   private async startFromMeetingOverride(): Promise<void> {
     if (this.stopped || this.dryRun || this.runSignal?.aborted || !this.sessionId) return;
     if (this.machine.getSnapshot().state !== "IN_CALL" || !this.observation.active || this.recorder.ownsRecording()) return;
@@ -679,10 +698,50 @@ export class CallMonitorRuntime {
     if (override?.decision !== "record" || await this.recordingBlock()) return;
     const key = `${override.eventIdHash}:${override.createdAt}:${this.sessionId}`;
     if (this.overrideStartTried === key) return;
+    const began = Date.parse(this.sessionStartedAt ?? "");
+    if (!Number.isFinite(began) || began < Date.parse(override.startAt) - OVERRIDE_WINDOW.beforeStartMs) {
+      this.overrideStartTried = key;
+      logCallEvent("recording.override-deferred", { reason: "call-began-before-meeting" });
+      return;
+    }
+    // Its recording id was already used by the recording that was withdrawn; a new one would overwrite it.
+    if (this.withdrawnSession === this.sessionId) {
+      this.overrideStartTried = key;
+      logCallEvent("recording.override-deferred", { reason: "withdrawn-in-this-call" });
+      return;
+    }
     this.overrideStartTried = key;
     logCallEvent("recording.start-from-meeting-decision", { decision: "record" });
     this.cancelledStartRecovery = false;
     await this.startOwnedRecording(this.machine.getSnapshot().app);
+    await this.persistStatus();
+  }
+
+  /**
+   * "Desfazer" (or "Pular") on a "record" decision stops the recording that decision started, when
+   * the configured mode would not record this call by itself. A decision that simply expired is not
+   * withdrawn, and a damaged file withdraws nothing. The media captured so far is kept as usual.
+   */
+  private async stopWithdrawnOverrideRecording(): Promise<void> {
+    const started = this.overrideRecording;
+    if (!started || this.stopped || this.dryRun) return;
+    if (!this.recorder.ownsRecording() || this.sessionId !== started.sessionId) {
+      this.overrideRecording = undefined;
+      return;
+    }
+    if (Date.now() > Date.parse(started.expiresAt)) return;
+    let current: MeetingOverride | undefined;
+    try {
+      current = (await readMeetingOverrides()).entries.find((entry) => entry.eventIdHash === started.eventIdHash);
+    } catch (err) {
+      logCallEvent("meeting-override.invalid-state", { error: sanitizeError(err) });
+      return;
+    }
+    if (current?.decision === "record" || !await this.recordingBlock()) return;
+    this.overrideRecording = undefined;
+    this.withdrawnSession = started.sessionId;
+    logCallEvent("recording.override-withdrawn", { decision: current?.decision ?? "cleared" });
+    await this.stopOwnedRecording(this.recorder.getSession()?.app);
     await this.persistStatus();
   }
 }
