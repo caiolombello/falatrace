@@ -35,7 +35,7 @@ falatrace share <job-id> --to clipboard --include full
 | Slack | Yes: Slack's servers | `--yes`, or the consent step in the Studio |
 | AI app | Yes: the app sends the note to its own AI provider | `--yes`, or the consent step in the Studio |
 
-The CLI prints the destination (`Destino: … (fora deste computador)`) and stops without `--yes`. In the Studio, sharing goes preview, then consent, then send; the button names what it will do, and a share is refused if the destination changed after the preview. <!-- studio-check --> A vault on a synced folder (for example Obsidian Sync or a cloud drive) is synced by that tool, not by FalaTrace.
+The CLI prints the destination (`Destino: … (fora deste computador)`) and stops without `--yes`. In the Studio, **Send** on a meeting (or on an Ask answer) shows the destinations, what to include and a preview with its size and where it goes; a destination outside this computer adds a consent box naming it, and the button says what it will do ("Send to Notion", "Copy and open ChatGPT"). A share is refused if the destination changed after the preview. A destination that is not set up yet offers **Set up…**, which opens its Settings section. A vault on a synced folder (for example Obsidian Sync or a cloud drive) is synced by that tool, not by FalaTrace.
 
 ## Destinations
 
@@ -44,7 +44,7 @@ The CLI prints the destination (`Destino: … (fora deste computador)`) and stop
 1. Set `destinations.obsidianVault` to your vault folder (an existing, real folder; not a link).
 2. Optionally change `destinations.obsidianFolder` (default `FalaTrace`), a folder inside the vault.
 
-Each share writes `<vault>/<folder>/<YYYY-MM-DD HH-mm — title>.md` (names up to 120 characters). FalaTrace never overwrites your edits: sharing the same content again reuses the file; a file you did not change since FalaTrace wrote it is replaced; otherwise a new `… (2).md` is created. Vault files are ordinary files (readable by others like the rest of your vault). The Studio can open the note in Obsidian afterwards; the CLI does not. <!-- studio-check -->
+Each share writes `<vault>/<folder>/<YYYY-MM-DD HH-mm — title>.md` (names up to 120 characters). FalaTrace never overwrites your edits: sharing the same content again reuses the file; a file you did not change since FalaTrace wrote it is replaced; otherwise a new `… (2).md` is created. Vault files are ordinary files (readable by others like the rest of your vault). After a share, **Open** in the Studio opens the note in Obsidian through an `obsidian://open` link; the CLI does not open it.
 
 ### Notion
 

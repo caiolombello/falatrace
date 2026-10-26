@@ -7,10 +7,9 @@
 
 Meeting notes for Linux that point back to the recording. You type short notes during the meeting. After it, the AI completes them with what was said, and every line it adds cites the moment of the recording it came from. Recording, transcription and notes run on your computer by default. FalaTrace is an experimental source alpha (0.2.0-alpha.14); see [evidence and limits](docs/EVIDENCE-AND-LIMITS.md).
 
-<!-- studio-check: replace with a screenshot of the notes-first meeting page once the redesigned Studio lands -->
-![FalaTrace Studio with a synthetic recording: library on the left, player in the middle, transcript on the right](docs/assets/studio-light.png)
+![FalaTrace Studio with a synthetic meeting: the sidebar with Home, Actions, People, Clients and the meetings by day; the meeting's notes in the middle, with your lines, the lines the AI completed and a citation to the moment of each](docs/assets/studio-notes-en.png)
 
-*The current Studio, with synthetic data. A notes-first redesign is in progress.*
+*The Studio's meeting page, with synthetic data: your notes and the AI's, each AI line citing its moment.*
 
 ## Install
 
@@ -24,7 +23,7 @@ sudo apt install qt6-base-dev qt6-base-dev-tools qt6-declarative-dev libmpvqt-de
 make install-studio
 ```
 
-Open **FalaTrace Studio** from the application menu, or run `recording-studio`. The setup assistant takes you to your first notes in a few minutes. <!-- studio-check --> Nothing records, uploads or downloads until you ask. Step by step: [quickstart](docs/QUICKSTART.md) ([português](docs/QUICKSTART.pt-BR.md)).
+Open **FalaTrace Studio** from the application menu, or run `recording-studio`. The setup assistant's quick start picks local processing in one step and offers a one-minute test recording at the end; your first notes arrive a few minutes after it. Nothing records, uploads or downloads until you ask. Step by step: [quickstart](docs/QUICKSTART.md) ([português](docs/QUICKSTART.pt-BR.md)).
 
 ## What it does
 

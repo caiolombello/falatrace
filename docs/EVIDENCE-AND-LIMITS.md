@@ -57,7 +57,7 @@ These are covered by unit tests, production-bridge tests and CLI contract tests 
 - **Live transcript.** A preview with chunk-level timing. Its accuracy and real-time factor depend on the CPU and model; the final transcript is still made after the meeting.
 - **Sharing.** Notion, Slack and the AI apps were tested against fake endpoints and launchers.
 - **Media retention.** Eligibility, removal and resumption are tested with synthetic files and an injected FFmpeg runner.
-- **The redesigned Studio.** Under construction; its journeys arrive with it. <!-- studio-check -->
+- **The redesigned Studio.** The real QML of every new page runs offscreen in the Studio journeys, against synthetic bridges, through a PySide6 port of the Studio's native shell; see [UX verification](UX-VERIFICATION.md). The compiled `recording-studio` binary, MpvQt playback, a real capture, screen readers and the look on a physical desktop were not exercised.
 
 ## Not yet demonstrated
 

@@ -31,7 +31,9 @@ They depend on how recordings start:
 - **Pular esta gravação** saves a "skip" decision: the call monitor will not record that meeting.
 - A decision applies from 10 minutes before the start to 15 minutes after the end. It only starts or blocks new recordings, with one exception: withdrawing a "record" decision (**Desfazer**, or switching to **Pular**) stops the recording that decision started when the configured mode would not have recorded the call; the media captured so far is kept.
 
-Decisions are kept in `~/.local/state/recording-cli/meeting-overrides.json` and pruned when they expire. The Studio's Home lists upcoming meetings with the same record and skip choices. <!-- studio-check -->
+Decisions are kept in `~/.local/state/recording-cli/meeting-overrides.json` and pruned when they expire.
+
+The Studio's Home lists the next meetings under **Up next**, each with what will happen (recorded, notify only, skipped) and the same choices: **Record this meeting** or **Skip this recording**, then **Undo the choice**. **See what was left from last time** opens the brief. From 10 minutes before the start until the end, **Record now** starts a manual capture named after the meeting, after the usual confirmation. When the call monitor cannot record (call detection off, or no backend that records on its own), no decision is saved: **Record this meeting** starts that capture only inside the same window, and otherwise says to use **Record now** when the meeting begins.
 
 ### The service
 
@@ -56,7 +58,7 @@ The brief is built only from local data: the library index, your action states a
 
 An optional preview of the transcript while you record. The final transcript is still made after the meeting by your transcription settings, and the notes are built from that one.
 
-- `live.enabled` is off by default. **When it is on, every capture starts the live transcript**: with a provider outside this computer (Groq, OpenAI), the audio of every capture goes to it while you record, and the setting is that consent. While a capture runs, the Studio can turn the live transcript off and on again; turning it back on with a provider outside this computer asks for consent first, for that provider. <!-- studio-check -->
+- `live.enabled` is off by default. **When it is on, every capture starts the live transcript**: with a provider outside this computer (Groq, OpenAI), the audio of every capture goes to it while you record, and the setting is that consent. In the Studio, **Live transcript** beside the notepad shows the lines while a capture runs, and can turn the live transcript off and on for that capture. Turned off, it lists where the audio would go and what each provider costs; turning it on with a provider outside this computer asks for consent first, naming that provider, and a consent given for one provider does not cover another. A live line can be copied into your notes.
 - A separate FFmpeg process listens to the same microphone and system audio as the capture, in chunks of `live.chunkSeconds` (5 to 60 seconds, default 15). Silent chunks are skipped.
 - Each chunk is transcribed and appended as a line to `~/.local/state/recording-cli/live/<session>/live.jsonl`. Chunk audio files are deleted once transcribed. The transcript lines stay for 30 days after the capture stops (each new capture removes older ones) or until the recording is deleted, whichever comes first.
 - It runs as a temporary user unit (`recording-cli-live-<session>.service`) at low priority (Nice 10, CPU weight 20, at most 1 GiB of memory), so the capture comes first. Its status says when it falls behind.

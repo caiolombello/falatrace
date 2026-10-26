@@ -4,7 +4,7 @@ You write short notes during the meeting. After it, the AI turns them into struc
 
 ## The notepad
 
-- In the Studio, the notepad sits next to the capture while you record, and on the meeting page afterwards. It saves shortly after you stop typing and when you press Enter. <!-- studio-check -->
+- In the Studio, the notepad is the page while you record: it opens when you start a recording from the Studio, and **Notes** next to the recording status opens it for a recording that started on its own. Afterwards it is **My notes** on the meeting page. A time gutter shows when each line was written. It saves shortly after you stop typing, when you press Enter or leave it, and before the recording stops.
 - Each line remembers when you typed it, measured from the start of the recording. Editing a line in place keeps its time; a new line gets the current time. Lines typed more than two minutes after the capture stopped are kept without a time.
 - Simple prefixes give a line a kind: `# Heading`, `- item` or `* item`, `[ ] to do` or `- [ ] to do`, `[x] done`. Anything else is plain text.
 - Limits: 500 lines, 2,000 characters per line, 64 KiB in total.
@@ -43,7 +43,7 @@ FalaTrace then checks every note ID and segment ID against what was sent; an unk
 
 ### Your lines and AI lines
 
-In `summary.md`, your items start with `✎ ` and every item ends with the `[m:ss]` of the first segment it cites. In the Studio, your lines and AI lines look different, each AI line has a citation that jumps to that moment, and a toggle shows only your own notes. <!-- studio-check -->
+In `summary.md`, your items start with `✎ ` and every item ends with the `[m:ss]` of the first segment it cites. In the Studio, your lines and AI lines look different, uncertain lines are marked, and each AI line has a citation: a click plays that moment, Shift+click shows it in the transcript. **Full** shows the notes, **My notes** your notepad as typed. **About these notes**, at the end, names the template, the language, the model and whether it ran on this computer, which transcript the notes were made from, the limits of the recording and the notes the model did not use.
 
 Long meetings are summarized in parts; each note goes to the part that holds its moment. See [evidence and limits](EVIDENCE-AND-LIMITS.md#long-meetings).
 
@@ -69,14 +69,14 @@ Section headings are written in the summary's language (Portuguese, English or S
 
 For each recording, the first rule that decides wins:
 
-1. **Your choice for this recording**, made in the Studio when you regenerate. <!-- studio-check -->
+1. **Your choice for this recording**, made in the Studio with the template chip on its notes. It is saved when you pick it (**Use for the next notes**, or **Generate again with this template** when the notes can be regenerated now).
 2. **The default** in `summary.template`, unless it is `auto` (the default value).
 3. **The calendar title.** Words such as "1:1", "daily", "retro" or "postmortem" in the event title decide when the match is strong and clearly ahead of the next template. A recurring event adds weight to recurring meeting types.
 4. **Keywords in the transcript and your note headings.** They decide only with a clear winner: at least three hits and at least twice the runner-up.
 5. **The model**, when `summary.templateDetection` is `ai` (the default): the summary request offers the templates and the model picks one, defaulting to `general`. This adds no extra request.
 6. Otherwise, `general`.
 
-The summary records which template was used and why (for example "O título da agenda indica 1:1 (1:1)."), and the Studio shows it. <!-- studio-check -->
+The summary records which template was used and why (for example "O título da agenda indica 1:1 (1:1)."). The Studio shows the template on the notes with where the choice came from: your choice, the calendar, the words of the conversation, the AI or the default.
 
 ```sh
 falatrace templates list           # built-in and custom templates (JSON), plus files that were skipped
@@ -138,7 +138,7 @@ A custom template with the same keywords as a built-in one wins the keyword matc
 
 ## Regenerating
 
-- In the Studio you can regenerate a meeting's notes with another template or language. Your notes stay as they are; the AI notes are rewritten. It first shows the plan (model, parts and limits) and runs after you confirm. The choices are saved for that recording. <!-- studio-check -->
+- In the Studio, **Generate again…** on a meeting's notes offers another language, and the template chip another template. A bar first asks whether to rewrite the AI notes (yours stay as they are), then the plan (model, parts and limits) is shown and the notes are made after you confirm. The choices are saved for that recording.
 - Regeneration runs only with Ollama on this computer: `summary.provider` set to `ollama` with a loopback `summary.ollamaUrl`. With OpenAI, or an Ollama on another computer, it is refused before anything is sent; the notes made when the recording was processed stay as they are.
 - Regeneration uses the reviewed transcript, so your corrections are included.
 - From the terminal, `falatrace summary-review plan|run <job-id>` regenerates from the reviewed transcript with the recording's saved choices, after an explicit plan and consent, with the same local-only rule; see `falatrace help summary-review`.

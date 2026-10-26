@@ -1,6 +1,6 @@
 # People, clients and actions
 
-FalaTrace gathers who you meet, which client each meeting belongs to, and what was agreed, from recordings you already processed. Everything here is built from local data and stored on this computer. The Studio has a page for each, with the meetings, decisions and open actions behind every entry. <!-- studio-check -->
+FalaTrace gathers who you meet, which client each meeting belongs to, and what was agreed, from recordings you already processed. Everything here is built from local data and stored on this computer. The Studio has a page for each in its sidebar (**People**, **Clients** and **Actions**): a person or a client opens with their meetings, recent decisions and open actions, and recipe buttons ("What did I promise?" or "What did we promise?", and "Prepare the next meeting") that ask the assistant about them. People can be renamed, given aliases, merged and hidden there, and clients added, renamed, given aliases and deleted.
 
 The pages read the local library index (see [assistant](ASSISTANT.md#what-is-sent)). The CLI listing commands bring it up to date first; on a large library the first run can take a while.
 
@@ -72,7 +72,7 @@ falatrace actions reopen <media>:<id>
 falatrace actions dismiss <media>:<id>
 ```
 
-Listing never writes a status. Dismissed actions stay out of shared notes. In the Studio, the Actions page groups and filters them, and ticking one can be undone. <!-- studio-check -->
+Listing never writes a status. Dismissed actions stay out of shared notes. In the Studio, the Actions page shows open, done or all actions, filters them by person, client, text or only your own, and groups them by meeting, client or owner. Ticking or dismissing one can be undone from the notice that follows; the same check boxes are on Home, on a meeting's notes and on the person and client pages.
 
 ## Before your next meeting
 

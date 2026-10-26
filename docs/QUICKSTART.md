@@ -37,7 +37,7 @@ Every choice can be changed later in **Settings**. The full list of options is i
 ## 3. Record and take notes
 
 - Start a manual recording from the Studio after a confirmation, and stop it when the meeting ends. With automatic recording on, detected calls start and stop on their own.
-- While it records, type short notes in the notepad: a decision, a name, a to-do (`[ ] send the proposal`). Each line keeps the moment you typed it. <!-- studio-check -->
+- While it records, the Studio shows a notepad: type short notes, such as a decision, a name or a to-do (`[ ] send the proposal`). Each line keeps the moment you typed it. For a recording that started on its own, **Notes** next to the recording status opens the notepad.
 - When it stops, the recording is processed:
   - right away, when processing is local and `processing.fastPath` is on (the quick start turns it on);
   - in the background, when automatic processing is on;
@@ -50,16 +50,16 @@ From the terminal: `falatrace record start`, `falatrace record stop` (ends the c
 
 ## 4. Read and use the notes
 
-- The meeting opens on its notes: your lines as you wrote them, completed by the AI with what was said. Each AI line cites the moment it came from; follow it to hear that moment. Uncertain lines are marked. <!-- studio-check -->
+- The meeting opens on its notes: your lines as you wrote them, completed by the AI with what was said. Each AI line cites the moment it came from; click the citation to hear that moment. Uncertain lines are marked. **My notes** shows your notepad, which you can keep editing.
 - The template (1:1, stand-up, postmortem…) was picked for this meeting; with Ollama on this computer, you can regenerate the notes with another template or language without losing yours. See [notes and templates](NOTES-AND-TEMPLATES.md).
 - The **Transcript** and **Speakers** tabs show the source. Corrections are saved as human revisions; the original is kept.
 - **Ask** about this meeting, a person, a client or the whole library; answers cite their sources. Local Ollama is the default; any other provider shows where your question goes and asks first. See [assistant](ASSISTANT.md).
-- **Share** the notes to Obsidian, Notion, Slack or an AI app after a preview; see [sharing](SHARING.md). **Export** writes JSON, Markdown, SRT or WebVTT files on this computer.
+- **Send** shares the notes to Obsidian, Notion, Slack, the clipboard or an AI app after a preview; see [sharing](SHARING.md). **Export**, on the **Transcript** tab, writes JSON, Markdown, SRT or WebVTT files on this computer.
 - **Agent access…**, on the **Agents** tab, authorizes a local agent (Claude Code, Codex or Gemini CLI) to read this recording, and shows the command to connect it. You copy and run it yourself; pausing or revoking applies on the next query.
 
 ## 5. Keep track over time
 
-- **People, Clients and Actions** collect who you met, which client each meeting belongs to, and every action item, which you can tick off. See [people, clients and actions](PEOPLE-CLIENTS-ACTIONS.md). <!-- studio-check -->
+- **Home** lists the next calendar meetings and the open actions. **People**, **Clients** and **Actions**, in the sidebar, collect who you met, which client each meeting belongs to, and every action item, which you can tick off. See [people, clients and actions](PEOPLE-CLIENTS-ACTIONS.md).
 - **Reminders** notify you shortly before a calendar meeting, with what is still open from earlier meetings and a button to record or skip it: `falatrace reminders install-service`. See [reminders and live transcript](REMINDERS-AND-LIVE.md).
 - **Privacy and retention** settings decide how long media is kept. See [privacy and data](PRIVACY.md).
 

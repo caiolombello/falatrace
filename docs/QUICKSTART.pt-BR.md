@@ -37,7 +37,7 @@ Dá para mudar tudo depois em **Configurações**. A lista completa de opções 
 ## 3. Gravar e anotar
 
 - Inicie uma gravação manual pelo Studio depois de uma confirmação e pare quando a reunião acabar. Com a gravação automática ligada, as chamadas detectadas começam e terminam sozinhas.
-- Enquanto grava, digite notas curtas no bloco de notas: uma decisão, um nome, uma tarefa (`[ ] enviar a proposta`). Cada linha guarda o momento em que foi digitada. <!-- studio-check -->
+- Enquanto grava, o Studio mostra um bloco de notas: digite notas curtas, como uma decisão, um nome ou uma tarefa (`[ ] enviar a proposta`). Cada linha guarda o momento em que foi digitada. Numa gravação que começou sozinha, **Notas**, ao lado do estado da gravação, abre o bloco de notas.
 - Quando a gravação para, ela é processada:
   - na hora, quando o processamento é local e `processing.fastPath` está ligado (o início rápido liga);
   - em segundo plano, quando o processamento automático está ligado;
@@ -50,16 +50,16 @@ Pelo terminal: `falatrace record start`, `falatrace record stop` (encerra a capt
 
 ## 4. Ler e usar as notas
 
-- A reunião abre nas notas: suas linhas como você escreveu, completadas pela IA com o que foi dito. Cada linha da IA cita o momento de onde veio; siga a citação para ouvir esse trecho. Linhas incertas aparecem marcadas. <!-- studio-check -->
+- A reunião abre nas notas: suas linhas como você escreveu, completadas pela IA com o que foi dito. Cada linha da IA cita o momento de onde veio; clique na citação para ouvir esse trecho. Linhas incertas aparecem marcadas. **Minhas notas** mostra o seu bloco de notas, que você pode continuar editando.
 - O modelo (1:1, daily, postmortem…) foi escolhido para esta reunião; com o Ollama neste computador, dá para gerar as notas de novo com outro modelo ou idioma sem perder as suas. Veja [notas e modelos](NOTES-AND-TEMPLATES.md) (em inglês).
 - As abas **Transcrição** e **Falantes** mostram a fonte. Correções viram revisões humanas; o original é preservado.
 - **Pergunte** sobre esta reunião, uma pessoa, um cliente ou a biblioteca inteira; as respostas citam as fontes. O padrão é o Ollama local; qualquer outro provedor mostra para onde vai a pergunta e pede confirmação antes. Veja [assistente](ASSISTANT.md) (em inglês).
-- **Compartilhe** as notas no Obsidian, no Notion, no Slack ou num app de IA depois de uma prévia; veja [compartilhamento](SHARING.md) (em inglês). **Exportar** grava arquivos JSON, Markdown, SRT ou WebVTT neste computador.
+- **Enviar** compartilha as notas no Obsidian, no Notion, no Slack, na área de transferência ou num app de IA depois de uma prévia; veja [compartilhamento](SHARING.md) (em inglês). **Exportar**, na aba **Transcrição**, grava arquivos JSON, Markdown, SRT ou WebVTT neste computador.
 - **Acesso para agentes…**, na aba **Agentes**, autoriza um agente local (Claude Code, Codex ou Gemini CLI) a ler esta gravação e mostra o comando para conectá-lo. Você copia e roda no seu terminal; pausar ou revogar vale na próxima consulta.
 
 ## 5. Acompanhar com o tempo
 
-- **Pessoas, Clientes e Ações** reúnem com quem você se reuniu, a que cliente cada reunião pertence e cada ação combinada, que você pode marcar como feita. Veja [pessoas, clientes e ações](PEOPLE-CLIENTS-ACTIONS.md) (em inglês). <!-- studio-check -->
+- O **Início** mostra as próximas reuniões da agenda e as ações em aberto. **Pessoas**, **Clientes** e **Ações**, na barra lateral, reúnem com quem você se reuniu, a que cliente cada reunião pertence e cada ação combinada, que você pode marcar como feita. Veja [pessoas, clientes e ações](PEOPLE-CLIENTS-ACTIONS.md) (em inglês).
 - **Lembretes** avisam pouco antes de uma reunião da agenda, com o que ficou aberto das reuniões anteriores e um botão para gravar ou pular: `falatrace reminders install-service`. Veja [lembretes e transcrição ao vivo](REMINDERS-AND-LIVE.md) (em inglês).
 - As opções de **privacidade e retenção** decidem por quanto tempo a mídia fica guardada. Veja [privacidade e dados](PRIVACY.md) (em inglês).
 

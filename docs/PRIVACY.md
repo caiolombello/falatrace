@@ -121,7 +121,7 @@ falatrace media retention --apply [--limit N]   # apply it now; also finishes in
 falatrace media remove <job-id> [--keep-audio] --yes   # remove one recording's media now
 ```
 
-When the policy is not `keep`, the background `jobs sync` timer applies it after each sync, hashing at most five recordings per run and waiting for the next run during a capture or a call. The Studio shows removed and audio-only recordings as such and offers removal per recording. <!-- studio-check -->
+When the policy is not `keep`, the background `jobs sync` timer applies it after each sync, hashing at most five recordings per run and waiting for the next run during a capture or a call. In the Studio the policy is in Settings › Privacy and retention. A recording without its video or media is marked **Audio only** or **Transcript only**, and actions that need the removed media are turned off with the reason. **Remove media now…**, in a meeting's menu, first checks what can go, then removes only the video or all the media after you confirm it cannot be undone.
 
 Separate older settings remove only processing work data: `retention.localCompletedWorkDays` (preview with `falatrace jobs cleanup --dry-run`) and the remote worker's `retention.remote*` days. Expired failed folders are cleaned only when they hold recognized disposable metadata and no media, unknown files, subfolders or links; cleanup is conservative and can keep data for manual review.
 

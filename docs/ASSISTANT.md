@@ -21,7 +21,7 @@ The answer cites every factual sentence with markers that point to transcript se
 
 A marker that does not match a segment that was sent is removed. The assistant is told to answer only from the excerpts, in the language of the question, to say when the answer is not there, and to treat meeting text as data, never instructions. Its wording is still the model's: open the cited moment before relying on it.
 
-In the Studio, the Ask panel opens from any page; its scope follows the page you are on (a meeting, a person, a client or the library), and citations jump to the moment. <!-- studio-check -->
+In the Studio, the Ask panel opens beside the page you are on, except during a capture: **Ask** on a meeting, the question bar on Home and on a person's or client's page, or Ctrl+J. Its scope follows that page (a meeting, a person, a client, or the library from anywhere else), and the scope chip switches a meeting's conversation to the whole library. The answer streams in, and its citations open the meeting at that moment. Earlier conversations can be reopened.
 
 `--json` prints `{text, citations, destination, threadId}`. Ctrl+C cancels a running answer.
 
@@ -43,7 +43,7 @@ falatrace library search "migração do banco" --limit 5    # JSON passages, mar
 - Before anything is sent, the destination is shown: `Destino: <provider · model> (neste computador|fora deste computador) · N reuniões`, with "(trechos)" when only passages fit.
 - Ollama on this computer, or a `custom` API at an address on this computer, needs no consent: nothing leaves.
 - An Ollama cloud model (a name with a `cloud` tag or suffix, such as `gpt-oss:120b-cloud`) leaves through the local server, to ollama.com: it is outside this computer and asks first, also through a `custom` API on this computer (Ollama's OpenAI-compatible `/v1`). Before sending to a model presented as local, the Ollama is asked (`/api/show`) whether it runs that model itself; another name for a cloud model is refused.
-- Every other destination sends the question and the excerpts above off the computer. In the CLI, add `--yes` after checking the destination line; without it, the command stops and nothing is sent. In the Studio, a consent card names the destination once per conversation. <!-- studio-check -->
+- Every other destination sends the question and the excerpts above off the computer. In the CLI, add `--yes` after checking the destination line; without it, the command stops and nothing is sent. In the Studio, a consent card above the question names the destination, the number of meetings and about how many characters of excerpts go, once per conversation, and nothing is sent until you choose **Send**.
 - Consent covers one destination and one scope. A new provider, model or scope asks again.
 
 Conversations are saved on this computer in `~/.local/share/recording-cli/assistant/threads/` (up to 200 messages each), with the destination and model of every answer.
@@ -189,7 +189,7 @@ falatrace recipes run follow-up-email --meeting <job-id> --yes
 falatrace recipes run what-did-i-promise --person <id>
 ```
 
-Meeting recipes need `--meeting`. In the Studio, typing `/` at the start of a question opens the recipes. <!-- studio-check -->
+Meeting recipes need `--meeting`. In the Studio, typing `/` at the start of a question lists the recipes (meeting recipes only in a meeting's conversation), and the person and client pages have buttons for the library recipes.
 
 ### Custom recipes
 
