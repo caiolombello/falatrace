@@ -56,7 +56,7 @@ test("share --dry-run prints the Markdown the destination would get and sends no
   expect(brief.capture.out()).not.toContain("# Pauta");
 });
 
-test("Notion and Slack need --yes after the destination is shown; local destinations send at once", async () => {
+test("Notion, Slack and AI apps need --yes after the destination is shown; local destinations send at once", async () => {
   const refused = shareDeps();
   await expect(runShareCli(["share", JOB, "--to", "slack"], refused.deps)).rejects.toThrow(CLI_MESSAGES.consentRequired);
   expect(refused.capture.err()).toBe("Destino: slack → hooks.slack.com/services/T…/B…/*** (fora deste computador)\n");
@@ -72,9 +72,13 @@ test("Notion and Slack need --yes after the destination is shown; local destinat
   await runShareCli(["share", JOB, "--to", "clipboard"], clipboard.deps);
   expect(clipboard.delivered[0]).toMatchObject({ request: { destination: "clipboard", mode: "system" } });
   expect(clipboard.delivered[0]!.consent).toBeUndefined();
+  const appRefused = shareDeps();
+  await expect(runShareCli(["share", JOB, "--to", "ai-app"], appRefused.deps)).rejects.toThrow(CLI_MESSAGES.consentRequired);
+  expect(appRefused.capture.err()).toBe("Destino: ai-app → ai-app:chatgpt-web (fora deste computador)\n");
+  expect(appRefused.delivered).toEqual([]);
   const app = shareDeps();
-  await runShareCli(["share", JOB, "--to", "ai-app"], app.deps);
-  expect(app.delivered[0]!.request).toEqual({ destination: "ai-app", clipboard: "system", open: true });
+  await runShareCli(["share", JOB, "--to", "ai-app", "--yes"], app.deps);
+  expect(app.delivered[0]).toMatchObject({ request: { destination: "ai-app", clipboard: "system", open: true }, consent: true });
 });
 
 test("share refuses an unready destination with its own message, and checks its arguments", async () => {

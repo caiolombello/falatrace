@@ -2,7 +2,7 @@ import { listActions } from "../actions/list";
 import { createLibraryIndex } from "../app/context";
 import type { AppConfig } from "../config/defaults";
 import {
-  type DeliverShareInput, type DeliveryReceipt, type DestinationKind, type DestinationStatus, deliverShare, describeDestinations, EXTERNAL_DESTINATIONS,
+  type DeliverShareInput, type DeliveryReceipt, type DestinationKind, type DestinationStatus, deliverShare, describeDestinations, SHARE_CONSENT_DESTINATIONS,
   type ShareDestinationRequest
 } from "../destinations";
 import { JobStore } from "../jobs/store";
@@ -58,7 +58,8 @@ const requestFor = (target: ShareTarget): ShareDestinationRequest => {
   }
 };
 
-export const isExternalShare = (target: ShareTarget): boolean => EXTERNAL_DESTINATIONS.includes(target as DestinationKind);
+/** Destinations that need `--yes`: the content leaves this computer (Notion, Slack, or the AI app's provider). */
+export const isExternalShare = (target: ShareTarget): boolean => SHARE_CONSENT_DESTINATIONS.includes(target as DestinationKind);
 
 /** `share <job-id> --to <destination> [--include …] [--yes] [--dry-run]` */
 export const runShareCli = async (args: string[], deps: ShareCliDeps = defaultShareCliDeps()): Promise<void> => {

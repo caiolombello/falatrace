@@ -41,6 +41,13 @@ export type ShareDestinationRequest =
 /** Destinations whose content leaves this computer through FalaTrace itself. */
 export const EXTERNAL_DESTINATIONS: readonly DestinationKind[] = Object.freeze(["notion", "slack"]);
 
+/**
+ * Destinations sent only with the person's consent: Notion and Slack, where FalaTrace sends the
+ * content, and the AI app, whose command-line tools read the note and send it to their provider at
+ * once. The CLI (`--yes`) and the Studio (consent dialog) use the same list.
+ */
+export const SHARE_CONSENT_DESTINATIONS: readonly DestinationKind[] = Object.freeze([...EXTERNAL_DESTINATIONS, "ai-app"]);
+
 export type DeliverShareInput = {
   share: RenderedShare;
   config: Pick<AppConfig, "destinations">;

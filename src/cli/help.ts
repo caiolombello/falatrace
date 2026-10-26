@@ -46,8 +46,8 @@ export const RECIPES_HELP = `Receitas (tarefas prontas para o assistente: e-mail
 export const SHARE_HELP = `Compartilhar as notas de uma reunião:
   share <job-id> --to clipboard|obsidian|notion|slack|ai-app
         [--include summary|summary+notes|full] [--dry-run] [--yes]
-                                 --dry-run mostra o Markdown e não envia nada. Notion e Slack levam o
-                                 conteúdo para fora deste computador e exigem --yes. Os destinos ficam
+                                 --dry-run mostra o Markdown e não envia nada. Notion, Slack e ai-app
+                                 levam o conteúdo para fora deste computador e exigem --yes. Os destinos ficam
                                  em destinations.* (e NOTION_TOKEN / SLACK_WEBHOOK_URL em keys)
 `;
 

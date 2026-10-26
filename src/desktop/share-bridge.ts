@@ -4,7 +4,7 @@
 import { randomUUID } from "node:crypto";
 import type { AiAppTarget } from "../config/defaults";
 import {
-  AI_APP_LABELS, deliverShare, describeDestinations, DESTINATION_KINDS, EXTERNAL_DESTINATIONS, type DestinationKind, type ShareDestinationRequest
+  AI_APP_LABELS, deliverShare, describeDestinations, DESTINATION_KINDS, type DestinationKind, SHARE_CONSENT_DESTINATIONS, type ShareDestinationRequest
 } from "../destinations";
 import { AI_WEB_URLS, isAiAppTarget } from "../destinations/ai-app";
 import { JobStore } from "../jobs/store";
@@ -35,12 +35,8 @@ export const SHARE_PREVIEW_LIMITS = Object.freeze({ kept: 32, maxAgeMs: 10 * 60_
  * whole send stops here, inside the bridge's 30 s request limit, instead of the Studio killing the bridge.
  */
 export const SHARE_SEND_DEADLINE_MS = 24_000;
-/**
- * Destinations the Studio sends only with the person's consent (DESIGN-STUDIO §2.12): Notion and
- * Slack, where FalaTrace sends the content, and the AI app, whose command-line tools this bridge
- * starts with the note (they read it and send it to their provider at once).
- */
-export const SHARE_CONSENT_DESTINATIONS: readonly DestinationKind[] = Object.freeze([...EXTERNAL_DESTINATIONS, "ai-app"]);
+/** Destinations the Studio sends only with the person's consent (DESIGN-STUDIO §2.12). */
+export { SHARE_CONSENT_DESTINATIONS };
 
 const ALLOWED: Record<(typeof SHARE_BRIDGE_OPERATIONS)[number], readonly string[]> = {
   "share-preview": ["destination", "include", "jobId", "text", "frontmatter", "title", "recipeId"],
