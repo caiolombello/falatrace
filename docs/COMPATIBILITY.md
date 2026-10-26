@@ -4,6 +4,10 @@ Documentation update, reviewed 2026-10-01. Application baseline: `v0.2.0-alpha.7
 
 Caio Barbieri reports using the recording and context-recovery core continuously and successfully. That is real-use evidence from its author. The exact browser/service/desktop/backend/version tuple was not collected here. It is neither a quantified reliability benchmark nor evidence for every environment. No private config, call, browser history, recording or transcription was inspected in this review.
 
+## Migration and identifiers
+
+The executable is `falatrace`. The older `recording-cli` repository and installed executable are not renamed or removed, and `recording-cli`/`recording-studio` may remain compatibility aliases for `falatrace`/`falatrace-studio`. Configuration, state, data and service identifiers stay `recording-cli` (for example `~/.config/recording-cli/` and `recording-cli-calls.service`), and legacy archive schema keys are kept. Do not run both applications against the same active job or capture state. Installing FalaTrace does not replace the old executable or change existing provider and remote choices; use the CLI to inspect the configured providers and paths.
+
 ## What “compatible” must mean
 
 Record these independently: calling service runs in the app; FalaTrace recognizes the local app signal; configured capture starts visibly with permission; selected screen is captured when video is configured, and the intended configured audio sources/tracks are captured; stop finalizes usable media; context preserves source/timing; pause, interruption and recovery preserve data. An installed package or vendor-supported browser proves none of the remaining steps.

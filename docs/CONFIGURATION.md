@@ -120,7 +120,7 @@ The three **presets** fill these fields: everything on this computer (Whisper.cp
 | --- | --- | --- | --- |
 | `notes.enabled` | true, false | true | Shows the notepad while a capture runs. Notes stay on this computer, next to the recording's other private data, and are sent only with the summary request, to the summary provider. |
 
-Built-in templates: general, 1:1, daily/stand-up, planning, retrospective, sales discovery, incident postmortem, hiring interview and user research. Custom templates are JSON files in `templates/` next to the configuration, created and edited in **Settings › Notes and templates**. A template is chosen per meeting in this order: your choice on the recording, the default above, the calendar title, keywords in the transcript, then (with `ai`) the summary request itself. The Studio shows which one was used and why.
+Built-in templates: general, 1:1, daily/stand-up, planning, retrospective, sales discovery, incident postmortem, hiring interview and user research. Custom templates are JSON files in `templates/` next to the configuration, created with `falatrace templates init` or in **Settings › Notes and templates** <!-- studio-check --> ([format](NOTES-AND-TEMPLATES.md#custom-templates)). A template is chosen per meeting in this order: your choice on the recording, the default above, the calendar title, keywords in the transcript, then (with `ai`) the summary request itself. The Studio shows which one was used and why.
 
 ### Assistant
 
@@ -168,9 +168,9 @@ Built-in templates: general, 1:1, daily/stand-up, planning, retrospective, sales
 | `destinations.obsidianVault` | absolute path | empty | Obsidian vault that receives notes as Markdown files. |
 | `destinations.obsidianFolder` | relative folder | `FalaTrace` | Folder inside the vault. |
 | `destinations.notionParentId` | 32 hexadecimal characters | empty | Notion page that receives new pages. Needs `NOTION_TOKEN`. |
-| `destinations.aiApp` | `chatgpt-web`, `claude-web`, `claude-desktop`, `gemini-web`, `claude-cli`, `codex-cli`, `gemini-cli`, `opencode-cli` | `chatgpt-web` | App used by **Open in my AI**: the note is copied, and the app or a terminal with the tool opens. Nothing is sent until you send it there. |
+| `destinations.aiApp` | `chatgpt-web`, `claude-web`, `claude-desktop`, `gemini-web`, `claude-cli`, `codex-cli`, `gemini-cli`, `opencode-cli` | `chatgpt-web` | App used by **Open in my AI**: the note is copied, and the app or a terminal with the tool opens. A web or desktop app receives the note when you send it there; a terminal tool starts by reading the note and sends it to its provider right away. Either way the app's provider receives it, so sharing asks for consent. |
 
-Slack uses `SLACK_WEBHOOK_URL`. Every share shows the destination and the content before sending.
+Slack uses `SLACK_WEBHOOK_URL`. Every share shows the destination and the content before sending. Setup steps and what each destination receives: [sharing](SHARING.md).
 
 ### Models
 
@@ -286,5 +286,6 @@ falatrace google disconnect
 | `recording-cli-sync.timer` | Processes the queue in the background. | Turn on or reapply, or turn off. | `falatrace jobs install-timer` / `uninstall-timer` |
 | `recording-cli-archive.timer` | Retries original media copies. | Same. | `falatrace archive install-timer` / `uninstall-timer` |
 | `recording-cli-proton-backup.timer` | Backs up results to Proton Drive. | Same. | `falatrace backup install-timer` / `uninstall-timer` |
+| `recording-cli-reminders.service` | Reminders before calendar meetings, with briefs. | Apply or disable. <!-- studio-check --> | `falatrace reminders install-service` / `uninstall-service` |
 
 Service actions are refused while a capture is active and never start a recording. Turning a timer off keeps the queue.

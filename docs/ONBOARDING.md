@@ -4,20 +4,26 @@
 
 On a computer without a configuration file the Studio opens a six-step setup assistant: language and consent, capture (with a five-second audio test), processing (three presets, model downloads and the OpenAI key when needed), automatic recording, review, and the services to start. Nothing is saved or installed until **Concluir**/**Finish**, the OpenAI key included; closing the assistant discards it. The audio test and model downloads run only from their own buttons. The first save writes every explicit choice, so a later default change cannot alter it. Step-by-step instructions: [quickstart](QUICKSTART.md).
 
-Afterwards, **Configurações…**/**Settings…** in the sidebar edits every option in ten sections. The full field list, values and defaults are in the [configuration reference](CONFIGURATION.md).
+Afterwards, **Configurações…**/**Settings…** edits every option in sixteen sections: the ten below, plus six for the notes, assistant, calendar, live transcript, sharing and privacy features. The six new sections arrive with the redesigned Studio; until then, edit their fields in the configuration file (`falatrace config` prints its path) and save keys with `falatrace keys set`. <!-- studio-check --> The full field list, values and defaults are in the [configuration reference](CONFIGURATION.md).
 
 | Section | What you can change |
 | --- | --- |
 | Gravação automática | Call detection on/off, notify-only, record or OBS, queue on call end, entry/exit timing, one switch per app (browsers; Slack, Zoom, Teams for Linux; Discord, Signal, Telegram and Element are opt-in). |
 | Captura e áudio | Backend (audio only, GPU Screen Recorder, OBS), audio sources and devices (listed from PipeWire/PulseAudio), a five-second audio test, encoder, profile, frame rate, recordings folder. |
 | Processamento e IA | Presets, transcription (Whisper.cpp command/model/threads, OpenAI or Gemini model, language, expected languages, vocabulary), summary (Ollama URL/model/limit or OpenAI model), local/remote execution, automatic processing and completion notifications. External destinations are flagged. |
-| Chaves de API | Save, test and remove `OPENAI_API_KEY`, `GEMINI_API_KEY` and the OBS WebSocket password. Write-only. |
+| Chaves de API | Save, test and remove `OPENAI_API_KEY`, `GEMINI_API_KEY`, the OBS WebSocket password, the Google client secret, the assistant API keys, `NOTION_TOKEN` and `SLACK_WEBHOOK_URL`. Write-only. <!-- studio-check --> |
 | Modelos | Download and verify official Whisper models; pull the Ollama model on this computer. Explicit consent per download. |
 | Integrações | OBS, remote worker (with an SSH connection test), originals archive, Proton Drive backup and legacy S3. |
 | Recursos opcionais | Timesheet, per-client AI context and the GNOME Calendar title. |
 | Avançado | Studio language, detection sampling and test mode, capture timeout, folder naming, legacy GNOME options, visual review limits, retention and the background check interval. |
 | Serviços e diagnóstico | Read-only checks with a link to the section that fixes each problem; apply, restart or disable the call monitor, tray and the processing, archive and backup timers. |
 | Backups e transferência | List and restore configuration backups; export without keys; import into the draft. |
+| Notas e resumos | The notepad during captures, using notes in summaries, the summary language, the default template, how a template is chosen, and custom templates. See [notes and templates](NOTES-AND-TEMPLATES.md). |
+| Perguntar e receitas | The assistant provider (local Ollama, API, ACP agent, subscription CLI or Sign in with ChatGPT), its model, the context limit, meaning-based search, and custom recipes. See [assistant](ASSISTANT.md). |
+| Agenda e lembretes | Reminder mode, how many minutes before, the brief, and the reminders service. See [reminders](REMINDERS-AND-LIVE.md). |
+| Transcrição ao vivo | Live transcript on or off, provider with its cost, chunk length and the local model. See [live transcript](REMINDERS-AND-LIVE.md#live-transcript). |
+| Compartilhar | Obsidian vault and folder, Notion parent page, the AI app used by sharing, and the Notion and Slack secrets. See [sharing](SHARING.md). |
+| Privacidade e retenção | Media retention mode and grace days, with what each mode keeps and stops. See [privacy](PRIVACY.md#media-retention). |
 
 Saving sends only the fields you changed. The bridge accepts an explicit allowlist of fields and values; anything else (secrets and unknown keys) is preserved. The same revision check, private exact-byte backup and non-overwriting publication described below apply.
 

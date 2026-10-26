@@ -138,7 +138,15 @@ local, content-addressed bundles in the product's XDG data export directory.
 Repeated identical saves reuse verified bytes; an existing divergent bundle is
 preserved and refused. Each bundle includes the output, full snapshot and JSON
 manifest with hashes and format limitations. No arbitrary destination or silent
-overwrite is accepted; nothing is sent to another app.
+overwrite is accepted, and export itself sends nothing to another app.
+
+Sending notes elsewhere is a separate **Share** action (unreleased). It renders
+the meeting's notes as Markdown, shows that preview, and then sends it to the
+clipboard, an Obsidian vault, Notion, Slack or an AI app. Notion, Slack and AI
+apps receive the content outside this computer, so each share needs explicit
+consent: `--yes` in the CLI, a consent step in the Studio bound to the previewed
+destination. A delivery log records the destination and the content hash, never
+the content. See [sharing](SHARING.md).
 
 Copies already exported remain separate snapshots and are not refreshed by a
 later edit. A new removal planner inventories managed snapshots and reports what

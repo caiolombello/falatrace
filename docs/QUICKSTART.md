@@ -1,6 +1,6 @@
 # Quickstart
 
-From a source checkout to a first processed recording. FalaTrace is an experimental Linux alpha: check the providers and destinations before you record anything real, and record only with the permission of the people involved. [Português](QUICKSTART.pt-BR.md)
+From a source checkout to your first meeting notes. FalaTrace is an experimental Linux alpha: check the providers and destinations before you record anything real, and record only with the permission of the people involved. [Português](QUICKSTART.pt-BR.md)
 
 ## 1. Install
 
@@ -23,30 +23,47 @@ make install-studio
 
 ## 2. First use
 
-Open **FalaTrace Studio** from the application menu or run `recording-studio`. With no configuration yet, the Studio opens the setup assistant. Nothing is saved or installed until you click **Finish**, the OpenAI key included. The audio test and model downloads run only from their own buttons.
+Open **FalaTrace Studio** from the application menu or run `recording-studio`. With no configuration yet, the Studio opens the setup assistant. Nothing is saved or installed until you finish it, the OpenAI key included. The audio test and model downloads run only from their own buttons.
 
-1. **Welcome.** Pick the language (automatic, Portuguese or English) and confirm you will only record with permission. **Use the recommended defaults** jumps to the review with audio only, local processing and automatic recording off.
+1. **Welcome.** Pick the language (automatic, Portuguese or English) and confirm you will only record with permission. **Use the recommended defaults** jumps to the review with audio only, local processing, notes processed as soon as a recording stops, and automatic recording off. <!-- studio-check -->
 2. **Capture.** Choose **Audio only** (recommended) or **Screen and audio**, then the microphone and system audio. **Test audio** records five seconds, shows the level of each track and deletes the file.
-3. **Processing.** Choose where transcription and summaries run: everything on this computer, local transcription with an OpenAI summary, or everything through OpenAI. The assistant shows what is missing, offers to download the recommended Whisper model or pull the Ollama model, and takes the OpenAI key when it is needed. Downloads only start from their own buttons.
+3. **Processing.** Choose where transcription and notes run: everything on this computer, local transcription with an OpenAI summary, or everything through OpenAI. The assistant shows what is missing, offers to download the recommended Whisper model or pull the Ollama model, and takes the OpenAI key when it is needed. Downloads only start from their own buttons.
 4. **Automatic recording.** Leave it off, only notify when a call starts, or record detected calls automatically.
-5. **Review.** Check the summary and choose which services to start now: the call monitor, background processing and the tray indicator.
+5. **Review.** Check the summary and choose which services to start now: the call monitor, background processing and the tray indicator. Then finish.
+6. **Ready.** See what was set up and anything still missing. Then record a one-minute test conversation: type a few notes while it records, stop it, and your first notes open a few minutes later, processed on this computer. <!-- studio-check -->
 
 Every choice can be changed later in **Settings**. The full list of options is in the [configuration reference](CONFIGURATION.md).
 
-## 3. Record and process
+## 3. Record and take notes
 
-- **Record…** in the header starts a manual recording after a confirmation; **Stop capture** ends it. With automatic recording on, detected calls start and stop on their own.
-- New recordings appear in the library. With automatic processing on, they are transcribed and summarized in the background.
-- Otherwise open a recording and click **Process…**. The dialog shows where the audio and the transcript will go, marks anything that leaves the computer, and asks for consent before queueing.
-- With notifications on, a desktop notification tells you when processing finishes or fails.
+- Start a manual recording from the Studio after a confirmation, and stop it when the meeting ends. With automatic recording on, detected calls start and stop on their own.
+- While it records, type short notes in the notepad: a decision, a name, a to-do (`[ ] send the proposal`). Each line keeps the moment you typed it. <!-- studio-check -->
+- When it stops, the recording is processed:
+  - right away, when processing is local and `processing.fastPath` is on (the recommended defaults turn it on); <!-- studio-check -->
+  - in the background, when automatic processing is on;
+  - otherwise when you open it and choose **Process…**, which shows where the audio and the transcript go, marks anything that leaves the computer and asks for consent before queueing.
+- A desktop notification says when the notes are ready; clicking it opens the meeting in the Studio.
 
-## 4. Review and use the results
+Stopping ends the current capture; pausing new recordings affects only future automatic captures. Closing the Studio window keeps the configured background services running. No install or init command starts a capture.
 
-- **Transcript**, **Summary** and **Speakers** tabs show the results with links back to the source time. Corrections are saved as human revisions; the original is kept.
-- **Export** writes JSON, Markdown, SRT or WebVTT files on this computer.
-- **AI access…** authorizes a local assistant to read this recording. **Connect my assistant…** then shows the command for Claude Code, Codex or Gemini CLI. You copy and run it yourself; pausing or revoking applies on the next query.
+From the terminal: `falatrace record start`, `falatrace record stop` (ends the current capture), `falatrace calls pause` (suspends future automatic recordings), `falatrace calls status`, and `printf '%s\n' "- my note" | falatrace notes edit <job-id>`.
 
-## 5. When something does not work
+## 4. Read and use the notes
+
+- The meeting opens on its notes: your lines as you wrote them, completed by the AI with what was said. Each AI line cites the moment it came from; follow it to hear that moment. Uncertain lines are marked. <!-- studio-check -->
+- The template (1:1, stand-up, postmortem…) was picked for this meeting; you can regenerate the notes with another template or language without losing yours. See [notes and templates](NOTES-AND-TEMPLATES.md).
+- The **Transcript** and **Speakers** tabs show the source. Corrections are saved as human revisions; the original is kept.
+- **Ask** about this meeting, a person, a client or the whole library; answers cite their sources. Local Ollama is the default; any other provider shows where your question goes and asks first. See [assistant](ASSISTANT.md).
+- **Share** the notes to Obsidian, Notion, Slack or an AI app after a preview; see [sharing](SHARING.md). **Export** writes JSON, Markdown, SRT or WebVTT files on this computer.
+- **AI access…** authorizes a local agent (Claude Code, Codex or Gemini CLI) to read this recording, and shows the command to connect it. You copy and run it yourself; pausing or revoking applies on the next query.
+
+## 5. Keep track over time
+
+- **People, Clients and Actions** collect who you met, which client each meeting belongs to, and every action item, which you can tick off. See [people, clients and actions](PEOPLE-CLIENTS-ACTIONS.md). <!-- studio-check -->
+- **Reminders** notify you shortly before a calendar meeting, with what is still open from earlier meetings and a button to record or skip it: `falatrace reminders install-service`. See [reminders and live transcript](REMINDERS-AND-LIVE.md).
+- **Privacy and retention** settings decide how long media is kept. See [privacy and data](PRIVACY.md).
+
+## 6. When something does not work
 
 - **Settings → Services and diagnostics → Check now** checks FFmpeg, Whisper.cpp and its model, Ollama and its model, API keys and the recording backend, without recording or contacting external services. Each problem links to the section that fixes it.
 - **Settings → API keys → Test key** asks the provider whether a key is accepted, without sending audio or text.
@@ -55,6 +72,7 @@ Every choice can be changed later in **Settings**. The full list of options is i
   ```sh
   falatrace record doctor
   falatrace keys status
+  falatrace assistant status
   journalctl --user -u recording-cli-calls -n 50
   ```
 
@@ -65,4 +83,4 @@ make uninstall-studio
 make uninstall
 ```
 
-Both remove only the installed programs. Your configuration, keys, recordings and backups stay where they are.
+Both remove only the installed programs. Your configuration, keys, recordings, notes and backups stay where they are.

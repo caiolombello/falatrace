@@ -1,6 +1,6 @@
 # Início rápido
 
-Do código-fonte até a primeira gravação processada. O FalaTrace é uma versão alpha experimental para Linux: confira os provedores e destinos antes de gravar algo real e grave só com a permissão das pessoas envolvidas. [English](QUICKSTART.md)
+Do código-fonte até as primeiras notas de reunião. O FalaTrace é uma versão alpha experimental para Linux: confira os provedores e destinos antes de gravar algo real e grave só com a permissão das pessoas envolvidas. [English](QUICKSTART.md)
 
 ## 1. Instalar
 
@@ -23,30 +23,47 @@ O `make install-studio` compila o Studio, instala em `~/.local/share/falatrace/s
 
 ## 2. Primeiro uso
 
-Abra o **FalaTrace Studio** pelo menu de aplicativos ou rode `recording-studio`. Sem configuração, o Studio abre o assistente. Nada é salvo nem instalado até você clicar em **Concluir**, inclusive a chave da OpenAI. O teste de áudio e os downloads de modelos só rodam pelos próprios botões.
+Abra o **FalaTrace Studio** pelo menu de aplicativos ou rode `recording-studio`. Sem configuração, o Studio abre o assistente. Nada é salvo nem instalado até você concluir, inclusive a chave da OpenAI. O teste de áudio e os downloads de modelos só rodam pelos próprios botões.
 
-1. **Boas-vindas.** Escolha o idioma (automático, português ou inglês) e confirme que vai gravar só com permissão. **Usar os padrões recomendados** vai direto para a revisão com só áudio, processamento local e gravação automática desligada.
+1. **Boas-vindas.** Escolha o idioma (automático, português ou inglês) e confirme que vai gravar só com permissão. **Usar os padrões recomendados** vai direto para a revisão com só áudio, processamento local, notas geradas assim que a gravação para e gravação automática desligada. <!-- studio-check -->
 2. **Captura.** Escolha **Só áudio** (recomendado) ou **Tela e áudio**, e depois o microfone e o áudio do sistema. **Testar áudio** grava 5 segundos, mostra o nível de cada faixa e apaga o arquivo.
-3. **Processamento.** Escolha onde transcrever e resumir: tudo neste computador, transcrição local com resumo pela OpenAI, ou tudo pela OpenAI. O assistente mostra o que falta, oferece baixar o modelo recomendado do Whisper ou o modelo do Ollama e pede a chave da OpenAI quando ela é necessária. Os downloads só começam pelos próprios botões.
+3. **Processamento.** Escolha onde transcrever e gerar as notas: tudo neste computador, transcrição local com resumo pela OpenAI, ou tudo pela OpenAI. O assistente mostra o que falta, oferece baixar o modelo recomendado do Whisper ou o modelo do Ollama e pede a chave da OpenAI quando ela é necessária. Os downloads só começam pelos próprios botões.
 4. **Gravação automática.** Deixe desligada, só avise quando uma chamada começar ou grave sozinho as chamadas detectadas.
-5. **Revisão.** Confira o resumo e escolha quais serviços iniciar agora: o monitor de chamadas, o processamento em segundo plano e o indicador na bandeja.
+5. **Revisão.** Confira o resumo e escolha quais serviços iniciar agora: o monitor de chamadas, o processamento em segundo plano e o indicador na bandeja. Depois, conclua.
+6. **Pronto.** Veja o que foi configurado e o que ainda falta. Em seguida, grave uma conversa de teste de um minuto: digite algumas notas enquanto grava, pare, e suas primeiras notas abrem alguns minutos depois, processadas neste computador. <!-- studio-check -->
 
 Dá para mudar tudo depois em **Configurações**. A lista completa de opções está na [referência de configuração](CONFIGURATION.md) (em inglês).
 
-## 3. Gravar e processar
+## 3. Gravar e anotar
 
-- **Gravar…** no topo inicia uma gravação manual depois de uma confirmação; **Parar captura** encerra. Com a gravação automática ligada, as chamadas detectadas começam e terminam sozinhas.
-- As gravações novas aparecem na biblioteca. Com o processamento automático ligado, elas são transcritas e resumidas em segundo plano.
-- Se não, abra a gravação e clique em **Processar…**. A janela mostra para onde vão o áudio e a transcrição, marca o que sai do computador e pede consentimento antes de enfileirar.
-- Com os avisos ligados, uma notificação aparece quando o processamento termina ou falha.
+- Inicie uma gravação manual pelo Studio depois de uma confirmação e pare quando a reunião acabar. Com a gravação automática ligada, as chamadas detectadas começam e terminam sozinhas.
+- Enquanto grava, digite notas curtas no bloco de notas: uma decisão, um nome, uma tarefa (`[ ] enviar a proposta`). Cada linha guarda o momento em que foi digitada. <!-- studio-check -->
+- Quando a gravação para, ela é processada:
+  - na hora, quando o processamento é local e `processing.fastPath` está ligado (os padrões recomendados ligam); <!-- studio-check -->
+  - em segundo plano, quando o processamento automático está ligado;
+  - se não, quando você abre a gravação e escolhe **Processar…**, que mostra para onde vão o áudio e a transcrição, marca o que sai do computador e pede consentimento antes de enfileirar.
+- Uma notificação avisa quando as notas ficam prontas; clicar nela abre a reunião no Studio.
 
-## 4. Revisar e usar os resultados
+Parar encerra a captura atual; pausar novas gravações vale só para as próximas gravações automáticas. Fechar a janela do Studio mantém rodando os serviços em segundo plano configurados. Nenhum comando de instalação ou de init inicia uma captura.
 
-- As abas **Transcrição**, **Resumo** e **Falantes** mostram os resultados com atalhos para o trecho original. Correções viram revisões humanas; o original é preservado.
-- **Exportar** grava arquivos JSON, Markdown, SRT ou WebVTT neste computador.
-- **Acesso para IA…** autoriza um assistente local a ler esta gravação. Depois, **Conectar meu assistente…** mostra o comando para o Claude Code, o Codex ou o Gemini CLI. Você copia e roda no seu terminal; pausar ou revogar vale na próxima consulta.
+Pelo terminal: `falatrace record start`, `falatrace record stop` (encerra a captura atual), `falatrace calls pause` (suspende as próximas gravações automáticas), `falatrace calls status` e `printf '%s\n' "- minha nota" | falatrace notes edit <job-id>`.
 
-## 5. Quando algo não funciona
+## 4. Ler e usar as notas
+
+- A reunião abre nas notas: suas linhas como você escreveu, completadas pela IA com o que foi dito. Cada linha da IA cita o momento de onde veio; siga a citação para ouvir esse trecho. Linhas incertas aparecem marcadas. <!-- studio-check -->
+- O modelo (1:1, daily, postmortem…) foi escolhido para esta reunião; dá para gerar as notas de novo com outro modelo ou idioma sem perder as suas. Veja [notas e modelos](NOTES-AND-TEMPLATES.md) (em inglês).
+- As abas **Transcrição** e **Falantes** mostram a fonte. Correções viram revisões humanas; o original é preservado.
+- **Pergunte** sobre esta reunião, uma pessoa, um cliente ou a biblioteca inteira; as respostas citam as fontes. O padrão é o Ollama local; qualquer outro provedor mostra para onde vai a pergunta e pede confirmação antes. Veja [assistente](ASSISTANT.md) (em inglês).
+- **Compartilhe** as notas no Obsidian, no Notion, no Slack ou num app de IA depois de uma prévia; veja [compartilhamento](SHARING.md) (em inglês). **Exportar** grava arquivos JSON, Markdown, SRT ou WebVTT neste computador.
+- **Acesso para IA…** autoriza um agente local (Claude Code, Codex ou Gemini CLI) a ler esta gravação e mostra o comando para conectá-lo. Você copia e roda no seu terminal; pausar ou revogar vale na próxima consulta.
+
+## 5. Acompanhar com o tempo
+
+- **Pessoas, Clientes e Ações** reúnem com quem você se reuniu, a que cliente cada reunião pertence e cada ação combinada, que você pode marcar como feita. Veja [pessoas, clientes e ações](PEOPLE-CLIENTS-ACTIONS.md) (em inglês). <!-- studio-check -->
+- **Lembretes** avisam pouco antes de uma reunião da agenda, com o que ficou aberto das reuniões anteriores e um botão para gravar ou pular: `falatrace reminders install-service`. Veja [lembretes e transcrição ao vivo](REMINDERS-AND-LIVE.md) (em inglês).
+- As opções de **privacidade e retenção** decidem por quanto tempo a mídia fica guardada. Veja [privacidade e dados](PRIVACY.md) (em inglês).
+
+## 6. Quando algo não funciona
 
 - **Configurações → Serviços e diagnóstico → Verificar agora** confere o FFmpeg, o Whisper.cpp e o modelo, o Ollama e o modelo, as chaves de API e o backend de gravação, sem gravar nem contatar serviços externos. Cada problema leva à seção que resolve.
 - **Configurações → Chaves de API → Testar chave** pergunta ao provedor se a chave é aceita, sem enviar áudio nem texto.
@@ -55,6 +72,7 @@ Dá para mudar tudo depois em **Configurações**. A lista completa de opções 
   ```sh
   falatrace record doctor
   falatrace keys status
+  falatrace assistant status
   journalctl --user -u recording-cli-calls -n 50
   ```
 
@@ -65,4 +83,4 @@ make uninstall-studio
 make uninstall
 ```
 
-Os dois removem só os programas instalados. A configuração, as chaves, as gravações e os backups continuam onde estão.
+Os dois removem só os programas instalados. A configuração, as chaves, as gravações, as notas e os backups continuam onde estão.
