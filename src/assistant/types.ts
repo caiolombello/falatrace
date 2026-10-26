@@ -25,6 +25,11 @@ export type ProviderDestination = {
   external: boolean;
   /** Plan whose limits the request uses, when it is a subscription (ChatGPT Plus/Pro, Claude, Gemini…). */
   subscription?: string;
+  /**
+   * Hash of what decides the destination but is never shown or stored as it is: the whole command
+   * line of a custom ACP agent, whose arguments may name a backend or hold a token.
+   */
+  fingerprint?: string;
 };
 
 export type ChatRequest = {
@@ -65,10 +70,16 @@ export class ProviderError extends Error {
   }
 }
 
-/** Binds consent to the destination: a different provider, endpoint or model asks again. */
+/**
+ * Binds consent to the destination: a different provider, endpoint or model asks again, and so
+ * does any change to what the fingerprint covers (the arguments of a custom agent).
+ */
 export const destinationKey = (destination: ProviderDestination): string =>
   createHash("sha256")
-    .update(JSON.stringify(["falatrace:assistant:destination:v1", destination.kind, destination.id, destination.endpoint, destination.model]))
+    .update(JSON.stringify([
+      "falatrace:assistant:destination:v1", destination.kind, destination.id, destination.endpoint, destination.model,
+      ...(destination.fingerprint ? [destination.fingerprint] : [])
+    ]))
     .digest("hex");
 
 /** Where a question looks: one meeting, the whole library, or the meetings of a person or client. */

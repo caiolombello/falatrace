@@ -202,7 +202,8 @@ describe("ACP client", () => {
       const log = join(dir, "custom.log");
       const config = configWith({ provider: "acp", acpAgent: "custom", acpCommand: `'${BUN}' '${AGENT}' --mode normal --log '${log}' --token "s3cr3t value"` });
       const provider = createAcpProvider(config, { env: { PATH: "/usr/bin:/bin", HOME: process.env.HOME }, workspaceRoot: f.root, timeouts: fast });
-      expect(provider.destination).toEqual({ kind: "acp", id: "acp:custom", label: "ACP personalizado (ACP)", endpoint: BUN, model: "", external: true });
+      // The arguments only reach the destination as a hash, so a change to them asks for consent again.
+      expect(provider.destination).toEqual({ kind: "acp", id: "acp:custom", label: "ACP personalizado (ACP)", endpoint: BUN, model: "", external: true, fingerprint: expect.stringMatching(/^[0-9a-f]{64}$/) });
       expect(JSON.stringify(provider.destination)).not.toContain("s3cr3t");
       expect(await provider.check()).toEqual({ ready: true });
       expect((await provider.run(chatRequest())).text).toBe("Olá, mundo.");

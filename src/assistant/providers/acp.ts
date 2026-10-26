@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { isAbsolute } from "node:path";
 import { version as productVersion } from "../../../package.json";
 import type { AppConfig, AssistantAcpAgent } from "../../config/defaults";
@@ -354,7 +355,11 @@ export const createAcpProvider = (config: AppConfig, deps: AcpDeps = {}): ChatPr
     endpoint: "error" in resolved ? "" : (resolved.argv[0] as string),
     model: "",
     external: true,
-    ...(preset?.subscription ? { subscription: preset.subscription } : {})
+    ...(preset?.subscription ? { subscription: preset.subscription } : {}),
+    // The arguments still decide where a custom agent sends the text: a change asks again, through a hash only.
+    ...(!("error" in resolved) && !preset
+      ? { fingerprint: createHash("sha256").update(JSON.stringify(["falatrace:acp:argv:v1", ...resolved.argv])).digest("hex") }
+      : {})
   };
 
   const notFound = (): string => (preset ? acpNotFoundMessage(preset) : ACP_MESSAGES.customNotFound);

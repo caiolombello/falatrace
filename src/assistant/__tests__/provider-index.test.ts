@@ -83,6 +83,19 @@ describe("createChatProvider", () => {
     expect(destinationKey(a)).not.toBe(destinationKey(b));
   });
 
+  test("a change to the arguments of a custom agent asks again, without the arguments in the destination", () => {
+    const custom = (acpCommand: string) => createChatProvider(configWith({ provider: "acp", acpAgent: "custom", acpCommand })).destination;
+    const local = custom("my-agent --backend local");
+    const remote = custom(`my-agent --backend https://other.example --token ${SECRET}`);
+    expect(local.endpoint).toBe(remote.endpoint);
+    expect(destinationKey(local)).not.toBe(destinationKey(remote));
+    expect(destinationKey(local)).toBe(destinationKey(custom("my-agent --backend local")));
+    expect(JSON.stringify(remote).includes(SECRET)).toBe(false);
+    expect(remote.fingerprint).toMatch(/^[0-9a-f]{64}$/);
+    // Presets have no fingerprint: their command is fixed.
+    expect(createChatProvider(configWith({ provider: "acp", acpAgent: "codex" })).destination.fingerprint).toBeUndefined();
+  });
+
   test("everything but a loopback Ollama or loopback custom API is external", () => {
     for (const [name, config] of everyConfig()) {
       const destination = createChatProvider(config).destination;
