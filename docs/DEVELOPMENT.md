@@ -62,7 +62,8 @@ FALATRACE_QML_PYTHON=/tmp/qt/bin/python bash scripts/test-studio-journeys.sh /tm
 
 - Each journey is `scripts/test-<name>.py` and must be listed in `scripts/test-studio-journeys.sh`; a missing file is skipped silently.
 - Journeys patch `src/desktop/Main.qml` by removing its final `}` and appending timers, so `Main.qml` must end with the root `}`. QML files must stay flat in `src/desktop/`.
-- A step that depends on a bridge reply waits for that state with a bounded condition ("wait until X or N ms"), never a fixed delay.
+- A step that depends on a bridge reply waits for that state with a bounded condition ("wait until X or N ms"), never a fixed delay. Build the steps with `qml_steps()` from `scripts/studio_fixture.py`: it runs them in order, each once its condition holds, and tells the PySide6 runner when to take the snapshot. Check the output with `require_assertion_lines()`, so a run that ended before its last step fails.
+- While a smoke recording is selected, `Main.qml` rereads its detail every 5 seconds. A journey's stub answers `detail` with everything the real bridge would return at that point, such as a visual review that has finished. Otherwise a slow run loses that state partway through.
 - Unknown operations in journey stubs answer `ok: false`. Every new bridge operation also goes into `OPERATIONS` in `src/desktop/bridge.ts`, and every new fixed Portuguese message into its module's `*_KNOWN_ERRORS` and an English entry in `src/desktop/i18n.js`.
 
 Optional native check with the built shell: `bun run desktop:build`, then `python3 scripts/test-desktop-ui.py /tmp/falatrace-ui-review`. It uses a synthetic backend and refuses capture operations. Earlier native renders covered light and dark themes, the compact 900×640 layout, summary, consent, empty, loading, error, REC and paused states; real keyboard input, Orca, portal capture and video decoding were not verified. See [UX verification](UX-VERIFICATION.md).
