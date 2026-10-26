@@ -2,6 +2,7 @@
 // event and series ids keyed with the installation salt (never the calendar's own ids) and the
 // names of the people invited (never their e-mails). The library index reads these files for
 // people, series and pre-meeting briefs; the job manifest keeps only its MeetingContext.
+import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { JobRecord, MeetingContext } from "../jobs/types";
@@ -101,4 +102,20 @@ export const writeCalendarLink = async (
   const path = join(dir, `${link.jobId}.json`);
   const written = await createPrivateFile(path, `${JSON.stringify(link, null, 2)}\n`, CALENDAR_LINK_LIMITS.maxBytes);
   return { path, written };
+};
+
+/**
+ * Delete a job's link when the job is deleted: the meeting title and the invited names leave with
+ * the recording. A link that is already gone is fine; a symlink is removed itself (never followed)
+ * and anything that is not a file is left alone. Returns whether a file was removed.
+ */
+export const removeCalendarLink = async (jobId: string, options: { dir?: string } = {}): Promise<boolean> => {
+  const path = join(options.dir ?? calendarLinksDir(), `${validateJobId(jobId)}.json`);
+  const stat = await fs.lstat(path).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === "ENOENT" || error.code === "ENOTDIR") return undefined;
+    throw error;
+  });
+  if (!stat || (!stat.isFile() && !stat.isSymbolicLink())) return false;
+  await fs.unlink(path);
+  return true;
 };

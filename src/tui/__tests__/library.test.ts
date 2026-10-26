@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { DEFAULT_CONFIG } from "../../config/defaults";
 import { mergeConfig } from "../../config/load";
 import { JobStore } from "../../jobs/store";
+import { calendarLinksDir } from "../../calendar/links";
 import {
   buildLibrary,
   deleteJobArtifacts,
@@ -242,6 +243,35 @@ describe("Trash operations", () => {
     await expect(fs.stat(mediaPath)).rejects.toMatchObject({ code: "ENOENT" });
     await expect(fs.stat(join(recordingsDir, "meeting.recording"))).rejects.toMatchObject({ code: "ENOENT" });
     expect(await store.list()).toEqual([]);
+  });
+
+  test("deleting jobs also deletes their calendar links (meeting title and invited names)", async () => {
+    const root = await makeTemporaryDirectory();
+    const recordingsDir = join(root, "recordings");
+    const mediaPath = join(recordingsDir, "meeting.mkv");
+    await fs.mkdir(recordingsDir);
+    await fs.writeFile(mediaPath, "video");
+    const config = mergeConfig(DEFAULT_CONFIG, { recordingsDir });
+    const store = new JobStore(join(root, "state"), join(root, "data"));
+    const first = await store.enqueue(config, mediaPath);
+    const second = await store.enqueue(config, mediaPath);
+    const links = calendarLinksDir();
+    await fs.mkdir(links, { recursive: true, mode: 0o700 });
+    const unrelated = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+    for (const id of [first.id, second.id, unrelated]) await fs.writeFile(join(links, `${id}.json`), "{}", { mode: 0o600 });
+    for (const job of [first, second]) await fs.mkdir(job.artifactDir, { recursive: true });
+    try {
+      const [entry] = await buildLibrary(config, store);
+      await deleteJobArtifacts(config, entry, second, store, join(root, "trash"));
+      await expect(fs.stat(join(links, `${second.id}.json`))).rejects.toMatchObject({ code: "ENOENT" });
+      expect((await fs.stat(join(links, `${first.id}.json`))).isFile()).toBe(true);
+      const [remaining] = await buildLibrary(config, store);
+      await deleteRecording(config, remaining, store, join(root, "trash"));
+      await expect(fs.stat(join(links, `${first.id}.json`))).rejects.toMatchObject({ code: "ENOENT" });
+      expect((await fs.stat(join(links, `${unrelated}.json`))).isFile()).toBe(true);
+    } finally {
+      await fs.rm(join(links, `${unrelated}.json`), { force: true });
+    }
   });
 
   test("preserves jobs for a recording with the same basename", async () => {

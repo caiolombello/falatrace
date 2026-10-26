@@ -9,7 +9,7 @@ import { JobStore } from "../../jobs/store";
 import type { JobRecord, MeetingContext } from "../../jobs/types";
 import { validateCalendarLink } from "../../library-index/build";
 import { findGnomeCalendarMatch, findGnomeCalendarMeeting } from "../gnome";
-import { buildCalendarLink, type CalendarMatch, calendarLinksDir, writeCalendarLink } from "../links";
+import { buildCalendarLink, type CalendarMatch, calendarLinksDir, removeCalendarLink, writeCalendarLink } from "../links";
 import { clearCalendarSaltCache, hashCalendarIdWithSalt, listUpcomingEvents } from "../upcoming";
 
 const SALT = "c".repeat(64);
@@ -122,4 +122,23 @@ test("a queued call recording gets its calendar link; the manifest keeps only th
   await fs.writeFile(third, "third media");
   await enqueueRecording(config, third, {}, store, { lookups: { google: async () => undefined, gnome: async () => match }, writeLink: async (created, value) => { written.push([created.id, value]); } });
   expect(written).toEqual([]);
+});
+
+test("deleting a job removes its link file: a symlink itself, never its target, and never a folder", async () => {
+  const dir = await tempDir();
+  const match: CalendarMatch = { meeting: meeting(), event: { id: "evt_1", attendees: [{ name: "Ana Souza", self: false }] } };
+  const { path } = await writeCalendarLink(JOB, match, { dir, hash });
+  expect(await removeCalendarLink(JOB.id, { dir })).toBe(true);
+  await expect(fs.lstat(path)).rejects.toMatchObject({ code: "ENOENT" });
+  expect(await removeCalendarLink(JOB.id, { dir })).toBe(false);
+  const target = join(dir, "elsewhere.json");
+  await fs.writeFile(target, "{}");
+  await fs.symlink(target, path);
+  expect(await removeCalendarLink(JOB.id, { dir })).toBe(true);
+  expect(await fs.readFile(target, "utf8")).toBe("{}");
+  await fs.mkdir(path);
+  expect(await removeCalendarLink(JOB.id, { dir })).toBe(false);
+  expect((await fs.lstat(path)).isDirectory()).toBe(true);
+  expect(await removeCalendarLink(JOB.id, { dir: join(dir, "missing") })).toBe(false);
+  await expect(removeCalendarLink("../x", { dir })).rejects.toThrow();
 });

@@ -497,6 +497,15 @@ export const moveToTrash = async (
 const pathsOverlap = (left: string, right: string): boolean =>
   resolve(left) === resolve(right) || isPathInside(left, right) || isPathInside(right, left);
 
+/**
+ * Files kept beside a deleted job under the data directory: its calendar link (meeting title and
+ * invited names). Best effort: the recording is already deleted, so a failure here never undoes it.
+ */
+const removeJobSidecars = async (jobIds: string[]): Promise<void> => {
+  const { removeCalendarLink } = await import("../calendar/links");
+  for (const jobId of jobIds) await removeCalendarLink(jobId).catch(() => undefined);
+};
+
 export const deleteJobArtifacts = async (
   config: AppConfig,
   entry: LibraryEntry,
@@ -530,6 +539,7 @@ export const deleteJobArtifacts = async (
     if (destination) trashedPaths.push(destination);
   }
   await store.remove(job.id);
+  await removeJobSidecars([job.id]);
   return { trashedPaths, removedJobs: 1, keptSharedArtifacts: overlapsAnotherJob, removalPlans, scope };
 };
 
@@ -580,5 +590,6 @@ export const deleteRecording = async (
     }
   }
   for (const job of entry.jobs) await store.remove(job.id);
+  await removeJobSidecars(entry.jobs.map((job) => job.id));
   return { trashedPaths, removedJobs: entry.jobs.length, keptSharedArtifacts, removalPlans, scope };
 };
