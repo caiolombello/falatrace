@@ -17,6 +17,7 @@ import { findNotesForJob, formatNoteOffset, notesDigest, notesText, type Meeting
 import { factParticipants, PeopleStore, personKey } from "../people/store";
 import { recordingLink, type ShareInclude, type ShareNote } from "../share";
 import { SUMMARY_LABELS } from "../summary/language";
+import { isOllamaCloudModel } from "../summary/ollama-locality";
 import { getTemplate, templateName } from "../templates";
 import type { LibraryEntry } from "../tui/library";
 import { clockOf } from "./bridge-family";
@@ -134,7 +135,8 @@ export const buildNotesDoc = async (input: {
   return {
     version: 2 as const,
     generatedAt: input.generatedAt ?? job.updatedAt,
-    model: { label: `${summary.provider} · ${summary.model}`, local: summary.provider === "ollama" && loopback(config.summary.ollamaUrl) },
+    // An Ollama cloud model ("…-cloud") ran on ollama.com, even through the local server.
+    model: { label: `${summary.provider} · ${summary.model}`, local: summary.provider === "ollama" && loopback(config.summary.ollamaUrl) && !isOllamaCloudModel(summary.model) },
     template: {
       id: meta.template.id, name: template ? templateName(template, meta.language) : meta.template.id, source: meta.template.source,
       reason: meta.template.reason, confidence: meta.template.confidence

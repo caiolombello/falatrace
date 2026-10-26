@@ -579,6 +579,16 @@ describe("list and detail fields from the index", () => {
     expect(((await detailExtras({ job: f.job, config: f.config, studio: f.studio, summaryReady: true })) as any).notesDoc.stale).toBe("notes");
   });
 
+  test("notes made by an Ollama cloud model are not labelled as made on this computer", async () => {
+    const { detailExtras } = await import("../meeting-view");
+    const local = await setup();
+    expect(((await detailExtras({ job: local.job, config: local.config, studio: local.studio, summaryReady: true })) as any).notesDoc.model.local).toBe(true);
+    // The local server forwards a cloud model ("…-cloud") to ollama.com.
+    const cloud = await setup({ config: (config) => { config.summary.ollamaModel = "gpt-oss:120b-cloud"; } });
+    const doc = ((await detailExtras({ job: cloud.job, config: cloud.config, studio: cloud.studio, summaryReady: true })) as any).notesDoc;
+    expect(doc.model).toEqual({ label: "ollama · gpt-oss:120b-cloud", local: false });
+  });
+
   test("list items get people, client, duration, notes and open actions from the snapshot only", async () => {
     const f = await setup();
     const { listItemExtras } = await import("../meeting-view");
