@@ -28,8 +28,11 @@ Flickable {
     readonly property var legacyBlocks: docState === "legacy" || docState === "visual" ? summaryBlocks(visualShown ? detail.visualReview.summaryMarkdown : detail.summary) : []
     property bool aboutOpen: false
     property bool orphansOpen: false
-    // Optimistic action state: actionId → {status, rev, pending}.
+    // Optimistic action state: actionId → {status, rev, pending, sha}.
     property var actionState: ({})
+    // The actions of one recording share one revision (its actions file): the newest one this page
+    // saved, per mediaSha256, so a second action is saved against the file as it is now.
+    property var fileRevs: ({})
     contentWidth: width
     contentHeight: column.implicitHeight + 56
     clip: true
@@ -38,8 +41,9 @@ Flickable {
 
     Connections {
         target: window
-        function onSelectedChanged() { doc.contentY = 0 }
-        function onGenerationChanged() { doc.actionState = ({}); doc.aboutOpen = false; doc.orphansOpen = false }
+        // Another meeting (or none): back to the top with a clean state. A refresh of the same meeting
+        // (the list after a job finishes, a detail reread) keeps the place in the notes.
+        function onGenerationChanged() { doc.actionState = ({}); doc.fileRevs = ({}); doc.aboutOpen = false; doc.orphansOpen = false; doc.contentY = 0 }
     }
 
     function templateLabel(template) { return !template ? "" : template.id === "auto" ? t("Automático") : (template.name || template.id || "") }
@@ -55,21 +59,32 @@ Flickable {
         const model = notesDoc.model && notesDoc.model.label ? notesDoc.model.label : ""
         return when ? tf("Notas de %1", when) + (model ? " · " + model : "") : model
     }
-    function effectiveStatus(action) { const state = action ? actionState[action.actionId] : null; return state ? state.status : action ? action.status : "open" }
-    function effectiveRev(action) { const state = action ? actionState[action.actionId] : null; return state ? state.rev : action ? action.rev : 0 }
-    function actionEditable(action) { return !!action && !!action.actionId && feature("actions") && backend.available && !(actionState[action.actionId] && actionState[action.actionId].pending) }
+    // What this page did to an action, unless a newer read of the meeting (another window changed the
+    // file after this page's save) says otherwise.
+    function stateFor(action) {
+        const state = action && action.actionId ? actionState[action.actionId] : null
+        return state && (state.pending || !(Number(action.rev) > state.rev)) ? state : null
+    }
+    function effectiveStatus(action) { const state = stateFor(action); return state ? state.status : action && action.status ? action.status : "open" }
+    function effectiveRev(action) { return !action ? 0 : Math.max(Number(action.rev) || 0, Number(fileRevs[action.mediaSha256]) || 0) }
+    // One save at a time per recording: a second one sent meanwhile would carry a revision the first changes.
+    function filePending(sha) {
+        for (const id in actionState) if (actionState[id].pending && actionState[id].sha === sha) return true
+        return false
+    }
+    function actionEditable(action) { return !!action && !!action.actionId && feature("actions") && backend.available && !filePending(action.mediaSha256) }
     function setAction(action, status, undo) {
         if (!actionEditable(action)) return
         const previousStatus = effectiveStatus(action), previousRev = effectiveRev(action)
         const next = Object.assign({}, actionState)
-        next[action.actionId] = {status: status, rev: previousRev, pending: true}
+        next[action.actionId] = {status: status, rev: previousRev, pending: true, sha: action.mediaSha256}
         actionState = next
-        const meta = {origin: "notesDocument", actionId: action.actionId, requestedStatus: status, previousStatus: previousStatus, previousRev: previousRev, undo: !!undo}
+        const meta = {origin: "notesDocument", actionId: action.actionId, sha: action.mediaSha256, requestedStatus: status, previousStatus: previousStatus, previousRev: previousRev, undo: !!undo}
         if (send("action-set", "", {mediaSha256: action.mediaSha256, actionId: action.actionId, status: status, expectedRev: previousRev}, meta) < 0) rollback(meta, t("Sem conexão com o FalaTrace."))
     }
     function rollback(request, message) {
         const next = Object.assign({}, actionState)
-        next[request.actionId] = {status: request.previousStatus, rev: request.previousRev, pending: false}
+        next[request.actionId] = {status: request.previousStatus, rev: request.previousRev, pending: false, sha: request.sha}
         actionState = next
         toast.show(message, "", null, {kind: "warning"})
     }
@@ -81,9 +96,13 @@ Flickable {
             if (changed && selected.key && !detailLoading) { detailLoading = true; send("detail", selected.key) }
             return
         }
+        const rev = Number(message.result.rev) || request.previousRev + 1
         const next = Object.assign({}, actionState)
-        next[request.actionId] = {status: request.requestedStatus, rev: Number(message.result.rev) || request.previousRev + 1, pending: false}
+        next[request.actionId] = {status: request.requestedStatus, rev: rev, pending: false, sha: request.sha}
         actionState = next
+        const revs = Object.assign({}, fileRevs)
+        revs[request.sha] = Math.max(rev, Number(revs[request.sha]) || 0)
+        fileRevs = revs
         if (request.requestedStatus === "done" && !request.undo) {
             const actionId = request.actionId
             toast.show(t("Ação concluída"), t("Desfazer"), function() { doc.setAction(doc.findAction(actionId), "open", true) })
