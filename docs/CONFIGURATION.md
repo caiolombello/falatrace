@@ -106,7 +106,7 @@ The **audio test** records five seconds with the saved sources, reports the leve
 | `processing.defaultTarget` | `local`, `remote` | `local` | `remote` needs a configured worker. |
 | `processing.autoEnqueue` | true, false | false | Process every new recording. Automatic recordings also need the background timer. |
 | `processing.notifyOnCompletion` | true, false | true | Desktop notification when a job finishes or fails; clicking it opens the recording in the Studio. |
-| `processing.fastPath` | true, false | false | Process a recording as soon as it stops, instead of waiting for the timer. Only with local providers (Whisper.cpp and Ollama on this computer). |
+| `processing.fastPath` | true, false | false | Process a recording as soon as it stops, instead of waiting for the timer. Only with local providers (Whisper.cpp and Ollama on this computer, with a model it runs itself: not an Ollama cloud model such as `gpt-oss:120b-cloud`). |
 | `summary.language` | `auto`, `pt-BR`, `en`, `es` | `auto` | Language of new summaries; `auto` follows the predominant language of the conversation. Existing summaries keep theirs until regenerated. |
 | `summary.template` | `auto`, a template id or `custom:<slug>` | `auto` | Default structure of the notes. `auto` picks one per meeting (see Notes and templates). |
 | `summary.templateDetection` | `ai`, `keywords` | `ai` | When the calendar title and keywords do not decide, `ai` lets the summary request pick the template; `keywords` falls back to the general template. No extra request is made either way. |

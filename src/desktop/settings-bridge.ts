@@ -188,6 +188,7 @@ export const SETTINGS_KNOWN_ERRORS = [
   "Escolha ao menos um destino antes de ativar o arquivo de originais.",
   "Informe o bucket antes de ativar o envio para o S3.",
   "O processamento imediato usa só provedores locais: escolha Whisper.cpp e Ollama neste computador.",
+  "O processamento imediato usa só modelos deste computador: os modelos “cloud” do Ollama rodam na nuvem do Ollama.",
   "Informe o endereço da API compatível antes de escolhê-la.",
   "Informe o comando do agente ACP antes de escolhê-lo.",
   "Ative o arquivo de originais e escolha um destino antes de instalar o timer.",

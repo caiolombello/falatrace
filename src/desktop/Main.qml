@@ -778,6 +778,8 @@ ApplicationWindow {
         settingsError="";settingsNotice="";send("settings-save","",{revision:settingsData.revision,changes:changes})
     }
     function settingsLoopback(url) { return /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d+)?\/?$/.test(String(url||"")) }
+    // Ollama's cloud models ("gpt-oss:120b-cloud", "glm-4.6:cloud") leave this computer even through a local server.
+    function ollamaCloudModel(name) { return /(?:[:-]cloud)(?:$|[:-])/i.test(String(name||"")) }
     function settingsCredentialText(source) { return source==="secrets.env"?t("salva pelo Studio"):source==="environment"?t("definida no ambiente"):source==="worker.env"?t("definida em worker.env"):source==="calls.env"?t("definida em calls.env"):source==="config"?t("definida na configuração"):source==="missing"?t("não encontrada"):"—" }
     function settingsDeviceOptions(monitor) {
         const audio=settingsDiag.audio||({}), field=monitor?"capture.desktop":"capture.microphone", current=settingsDraft[field]

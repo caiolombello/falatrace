@@ -4,6 +4,7 @@ import type { AppConfig } from "../config/defaults";
 import { isPlaceholderRemoteHost } from "../config/settings";
 import { notesDigest } from "../notes/align";
 import { findNotesForJob, type MeetingNotes } from "../notes/store";
+import { isOllamaCloudModel, OLLAMA_CLOUD_WHERE } from "../summary/ollama-locality";
 import { probeMedia } from "./media";
 import { queueSelectedJob, type QueueSelectedJobResult } from "./queue";
 import { getSshDestination } from "./remote";
@@ -69,12 +70,15 @@ export const describeDestinations = (
     : transcription.provider === "openai" ? "OpenAI, serviço externo" : "Google Gemini, serviço externo";
   // A remote job runs with the worker's own configuration: its Ollama address is not known here.
   const host = ollamaHost(config.summary.ollamaUrl);
+  // A cloud model of the Ollama ("…-cloud") goes to ollama.com even through a server on this computer.
+  const cloud = summary.provider === "ollama" && isOllamaCloudModel(summary.model);
   const summaryWhere = summary.provider === "openai" ? "OpenAI, serviço externo"
     : remote ? "Ollama configurado no worker remoto, em endereço não verificado daqui"
-      : isLoopbackUrl(config.summary.ollamaUrl) ? "Ollama neste computador" : host ? `Ollama em ${host}` : "Endereço do Ollama inválido";
+      : cloud ? OLLAMA_CLOUD_WHERE
+        : isLoopbackUrl(config.summary.ollamaUrl) ? "Ollama neste computador" : host ? `Ollama em ${host}` : "Endereço do Ollama inválido";
   return {
     transcription: { ...transcription, where: transcriptionWhere, external: transcription.provider !== "whisper-cpp" || remote },
-    summary: { ...summary, where: summaryWhere, external: summary.provider === "openai" || remote || !isLoopbackUrl(config.summary.ollamaUrl) }
+    summary: { ...summary, where: summaryWhere, external: summary.provider === "openai" || remote || cloud || !isLoopbackUrl(config.summary.ollamaUrl) }
   };
 };
 

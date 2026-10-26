@@ -216,6 +216,23 @@ test("an integration that could never run is refused, but older files are not bl
   });
 });
 
+test("the fast path refuses an Ollama cloud model, which leaves this computer through the local server", async () => {
+  await withRoot(async (root) => {
+    const path = join(root, "config.json");
+    const draft = await readSettings(path, {});
+    const local = { "transcription.provider": "whisper-cpp", "summary.provider": "ollama", "summary.ollamaUrl": "http://127.0.0.1:11434" };
+    await expect(saveSettings(draft.revision, { ...local, "summary.ollamaModel": "gpt-oss:120b-cloud", "processing.fastPath": true }, path))
+      .rejects.toThrow("os modelos “cloud” do Ollama rodam na nuvem do Ollama");
+    await saveSettings(draft.revision, { ...local, "summary.ollamaModel": "qwen3.5:9b", "processing.fastPath": true }, path);
+    const saved = await readSettings(path, {});
+    expect(saved.readOnly.summaryLocal).toBe(true);
+    // Choosing a cloud model later is refused too while the fast path is on.
+    await expect(saveSettings(saved.revision, { "summary.ollamaModel": "glm-4.6:cloud" }, path)).rejects.toThrow("modelos “cloud”");
+    await saveSettings(saved.revision, { "processing.fastPath": false, "summary.ollamaModel": "glm-4.6:cloud" }, path);
+    expect((await readSettings(path, {})).readOnly.summaryLocal).toBe(false);
+  });
+});
+
 test("visual limits are written as a complete lifetime policy and optional keys can be removed", async () => {
   await withRoot(async (root) => {
     const path = join(root, "config.json");

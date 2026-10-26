@@ -6,6 +6,7 @@ import { findGnomeCalendarMatch, findGnomeCalendarMeeting } from "../calendar/gn
 import { type CalendarMatch, writeCalendarLink } from "../calendar/links";
 import type { AppConfig } from "../config/defaults";
 import { localProcessing } from "../config/settings";
+import { type OllamaLocality, probeOllamaLocality } from "../summary/ollama-locality";
 import { JobStore } from "./store";
 import type { JobRecord } from "./types";
 import { ArchiveStore } from "../archive/store";
@@ -73,6 +74,8 @@ export type EnqueueRecordingDeps = {
   lookups?: CalendarLookups<CalendarMatch>;
   /** Saves the calendar link beside the job; defaults to `calendar-links/<jobId>.json`. */
   writeLink?: (job: JobRecord, match: CalendarMatch) => Promise<unknown>;
+  /** Asks the Ollama whether it runs the summary model itself; defaults to its /api/show. */
+  ollamaLocality?: (url: string, model: string) => Promise<OllamaLocality>;
 };
 
 export const enqueueRecording = async (
@@ -82,7 +85,15 @@ export const enqueueRecording = async (
   store = new JobStore(),
   deps: EnqueueRecordingDeps = {}
 ): Promise<JobRecord | null> => {
-  const queue = config.processing.autoEnqueue || fastPathActive(config);
+  // Queued only for the fast path, nobody confirms where the recording goes: the Ollama must say
+  // it runs the summary model itself (another name for a cloud model is not sent).
+  const fast = !config.processing.autoEnqueue && fastPathActive(config) &&
+    await (deps.ollamaLocality ?? ((url: string, model: string) => probeOllamaLocality(url, model)))(config.summary.ollamaUrl, config.summary.ollamaModel)
+      .then((locality) => {
+        if (locality !== "local") console.warn(`Fast path skipped: the Ollama did not confirm the summary model runs on this computer (${locality}).`);
+        return locality === "local";
+      }, () => false);
+  const queue = config.processing.autoEnqueue || fast;
   if (!queue && !config.archive.enabled) return null;
   await waitForStableFile(filePath);
   if (config.archive.enabled) {

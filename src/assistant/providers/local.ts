@@ -1,5 +1,6 @@
 import type { AppConfig } from "../../config/defaults";
 import { validateOllamaUrl } from "../../summary/ollama";
+import { isOllamaCloudModel, probeOllamaLocality } from "../../summary/ollama-locality";
 import { type ChatProvider, type ChatRequest, type ChatResult, type ChatStopReason, ProviderError, type ProviderDestination, type ProviderReadiness } from "../types";
 import {
   COMMON_PROVIDER_MESSAGES,
@@ -22,7 +23,8 @@ export const LOCAL_MESSAGES = {
   unreachable: "Não foi possível falar com o Ollama. Confira se ele está rodando e o endereço em Configurações.",
   modelMissing: "O modelo do assistente não está instalado no Ollama. Baixe-o em Configurações › Modelos ou escolha outro.",
   rejected: "O Ollama recusou o pedido. Confira o modelo do assistente em Configurações.",
-  failed: "O Ollama interrompeu a resposta. Tente de novo."
+  failed: "O Ollama interrompeu a resposta. Tente de novo.",
+  cloudModel: "Esse modelo roda na nuvem do Ollama, não neste computador. Escolha um modelo baixado em Configurações."
 } as const;
 
 export type LocalProviderDeps = { fetch?: typeof fetch; timeouts?: ProviderTimeouts };
@@ -54,7 +56,21 @@ export const createLocalProvider = (config: AppConfig, deps: LocalProviderDeps =
     label: `Ollama · ${model}`,
     endpoint: chatUrl ? publicEndpoint(chatUrl) : "",
     model,
-    external: base ? !isLoopbackHost(base.hostname) : true
+    // A cloud model ("…-cloud") goes to ollama.com even through a loopback server.
+    external: base ? !isLoopbackHost(base.hostname) || isOllamaCloudModel(model) : true
+  };
+
+  /**
+   * A destination presented as this computer is confirmed with the server before anything is sent:
+   * a copy of a cloud model under another name is refused, never sent without the consent.
+   */
+  const confirmLocal = async (signal: AbortSignal): Promise<ProviderReadiness> => {
+    if (destination.external || !base) return { ready: true };
+    const locality = await probeOllamaLocality(base, model, { fetch: fetchImpl, signal });
+    if (locality === "local") return { ready: true };
+    if (locality === "missing") return { ready: false, problem: "misconfigured", message: LOCAL_MESSAGES.modelMissing };
+    if (locality === "cloud") return { ready: false, problem: "misconfigured", message: LOCAL_MESSAGES.cloudModel };
+    return { ready: false, problem: "unreachable", message: LOCAL_MESSAGES.unreachable };
   };
 
   const check = async (signal?: AbortSignal): Promise<ProviderReadiness> => {
@@ -72,7 +88,7 @@ export const createLocalProvider = (config: AppConfig, deps: LocalProviderDeps =
       const models = isRecord(body) && Array.isArray(body.models) ? body.models : [];
       const names = models.slice(0, 2000).flatMap((entry) => (isRecord(entry) ? [entry.name, entry.model] : [])).filter((name): name is string => typeof name === "string");
       if (!names.some((name) => sameModel(name, model))) return { ready: false, problem: "misconfigured", message: LOCAL_MESSAGES.modelMissing };
-      return { ready: true };
+      return await confirmLocal(deadline.signal);
     } catch {
       if (deadline.fired === "cancelled") throw new ProviderError(COMMON_PROVIDER_MESSAGES.cancelled, "cancelled");
       return { ready: false, problem: "unreachable", message: LOCAL_MESSAGES.unreachable };
@@ -86,6 +102,8 @@ export const createLocalProvider = (config: AppConfig, deps: LocalProviderDeps =
     if (!chatUrl) throw new ProviderError(LOCAL_MESSAGES.invalidUrl, "bad-request");
     const deadline = new Deadline(request.signal, { totalMs: timeouts.totalMs, idleMs: timeouts.idleMs });
     try {
+      const local = await confirmLocal(deadline.signal);
+      if (!local.ready) throw new ProviderError(local.message, local.problem === "unreachable" ? "unavailable" : "bad-request");
       let response: Response;
       try {
         response = await fetchImpl(chatUrl, {

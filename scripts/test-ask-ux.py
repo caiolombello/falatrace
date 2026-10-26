@@ -6,7 +6,8 @@ waits, bounded, for the state the previous reply produces, never a fixed delay):
 the open meeting answered on this computer (no consent, a streamed answer whose paragraphs cite
 moments that open the meeting there), a question to the whole library sent outside this computer
 (the consent card comes first, once per conversation, and nothing starts before it), recipes with
-"/" and sending an answer, an assistant that is not set up, stopping an answer in the compact
+"/" and sending an answer, an assistant that is not set up, an Ollama cloud model (outside this
+computer although the server is local: consent first), stopping an answer in the compact
 English layout, a question left by "Nova conversa" (its run is stopped), an earlier conversation
 reopened and asked again, a plan that does not say where it goes (consent first), and a bridge
 without the assistant. Exit 77 means no Studio runtime is available.
@@ -42,8 +43,11 @@ def detail(job):
     return {'transcript': {'segments': segments, 'text': ' '.join(s['text'] for s in segments), 'timing': 'segment'}, 'diarization': {'state': 'idle', 'turns': []},
             'summary': '# Daily\n\n- Lançamento mantido no dia 30', 'status': 'completed', 'backup': 'none', 'jobId': job,
             'review': {'revision': {'revision': 0, 'base': {'jobId': job}}, 'canUndo': False, 'notes': [], 'derivedStale': False}}
-external = mode == 'library-consent'
+cloud = mode == 'local-cloud-model'
+external = mode == 'library-consent' or cloud
 destination = {'label': 'OpenRouter · deepseek/deepseek-v4.1-flash-1017', 'kind': 'api', 'external': True} if external else {'label': 'Ollama · qwen3.5:9b', 'kind': 'local', 'external': False}
+# The runner marks an Ollama cloud model external even when the server is this computer's.
+if cloud: destination = {'label': 'Ollama · gpt-oss:120b-cloud', 'kind': 'local', 'external': True}
 if mode == 'unsaid': destination = {'label': 'Ollama · qwen3.5:9b', 'kind': 'local'}
 consent_key = os.environ['ASK_EXTERNAL_KEY'] if external else os.environ['ASK_LOCAL_KEY']
 runs = {}; counter = 0
@@ -68,7 +72,7 @@ for line in sys.stdin:
     elif op == 'processing-status': v = {'waiting': []}
     elif op == 'ux-capabilities': v = {'mockFrames': False, 'realFrames': False, 'features': features, 'firstRun': {}}
     elif op == 'settings-read':
-        values = {'studio.language': 'en' if english else 'pt-BR', 'assistant.provider': 'api' if external else 'local', 'assistant.localModel': 'qwen3.5:9b', 'assistant.apiPreset': 'openrouter',
+        values = {'studio.language': 'en' if english else 'pt-BR', 'assistant.provider': 'api' if external and not cloud else 'local', 'assistant.localModel': 'gpt-oss:120b-cloud' if cloud else 'qwen3.5:9b', 'assistant.apiPreset': 'openrouter',
                   'summary.ollamaUrl': 'http://gpu-box.lan:11434' if mode == 'not-configured' else 'http://127.0.0.1:11434'}
         v = {'revision': 'a' * 64, 'exists': True, 'values': values, 'apps': [], 'nullable': [], 'readOnly': {}, 'credentials': {'details': []}}
     elif op == 'detail': v = detail(OTHER if r['key'].endswith('one.mkv') else JOB)
@@ -194,6 +198,15 @@ PLANS = {
     check("the question stays in the input to send again", askPanel.input.text === "O que eu prometi?")
     uxFind(askPanel, "askConfigure").clicked()'''),
         ('settings open', 'settingsDialog.visible', 'check("Configurar opens Settings on Perguntar e receitas", settingsTabs.currentIndex === 11 && errorText === "")')]),
+    'local-cloud-model': ('1320x820', False, [
+        ('library loaded', 'items.length === 2 && features.assistant === true && homeView.visible && studioSettings["assistant.localModel"] === "gpt-oss:120b-cloud"', '''
+    uxFind(homeView, "askBar").clicked()
+    check("an Ollama cloud model is outside this computer before anything is sent, though the server is local", askPanel.shown && askPanel.ollamaOnThisComputer() && askPanel.destinationExternal() && uxFind(askPanel, "askDestinationChip").iconName === "cloud")
+    check("an ordinary model of that server stays here", !ollamaCloudModel("qwen3.5:9b") && ollamaCloudModel("glm-4.6:cloud"))
+    askPanel.input.text = "O que eu prometi?"; askPanel.submit()'''),
+        ('consent card', '!!askPanel.waiting', '''
+    check("the cloud model asks first", uxFind(askPanel, "askConsentCard").visible && uxFind(askPanel, "askConsentText").text.indexOf("gpt-oss:120b-cloud") >= 0)
+    check("nothing starts before the consent", !hasPending("assistant-start") && !askPanel.live && askPanel.messages.length === 0)''')]),
     'stop-compact-en': ('900x640', True, [MEETING_OPEN,
         ('drawer open', 'askPanel.shown && uiLanguage === "en"', '''
     check("English interface", askPanel.scopeText() === "This meeting")
@@ -270,6 +283,7 @@ preview = sent('recipes', 'share-preview')
 checks.append({'name': 'recipes: the answer is previewed as text, not as the meeting',
                'pass': len(preview) == 1 and preview[0]['payload']['destination'] == 'clipboard' and 'jobId' not in preview[0]['payload'] and preview[0]['payload']['title'] == 'E-mail de follow-up'})
 checks.append({'name': 'not-configured: nothing is started', 'pass': not sent('not-configured', 'assistant-start')})
+checks.append({'name': 'local-cloud-model: nothing is started without the consent', 'pass': len(sent('local-cloud-model', 'assistant-plan')) == 1 and not sent('local-cloud-model', 'assistant-start')})
 cancels = sent('stop-compact-en', 'assistant-cancel')
 checks.append({'name': 'stop-compact-en: Parar cancels the run', 'pass': len(cancels) == 1 and cancels[0]['payload']['runId'].startswith('6666666')})
 thread_starts = sent('threads', 'assistant-start')

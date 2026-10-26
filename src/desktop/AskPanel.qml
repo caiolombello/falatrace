@@ -281,7 +281,7 @@ Rectangle {
         if (plan.destination) return plan.destination.external !== false
         const provider = studioSettings["assistant.provider"]
         if (provider === undefined) return false
-        return provider !== "local" || !ollamaOnThisComputer()
+        return provider !== "local" || !ollamaOnThisComputer() || ollamaCloudModel(studioSettings["assistant.localModel"])
     }
     // The local assistant talks to the Ollama address of the settings; only a loopback host stays here.
     function ollamaOnThisComputer() {

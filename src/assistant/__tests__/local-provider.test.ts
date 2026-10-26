@@ -4,10 +4,11 @@ import { createLocalProvider, LOCAL_MESSAGES } from "../providers/local";
 import { ProviderError } from "../types";
 import { chatRequest, configWith } from "./provider-helpers";
 
-type Behaviour = { status?: number; lines?: string[]; delayMs?: number; hang?: boolean; tags?: unknown; tagsStatus?: number };
+type Behaviour = { status?: number; lines?: string[]; delayMs?: number; hang?: boolean; tags?: unknown; tagsStatus?: number; show?: unknown; showStatus?: number };
 
 let behaviour: Behaviour = {};
 const bodies: Array<Record<string, unknown>> = [];
+const shown: string[] = [];
 let server: ReturnType<typeof Bun.serve>;
 let base = "";
 
@@ -18,6 +19,10 @@ beforeAll(() => {
     async fetch(request) {
       const url = new URL(request.url);
       if (url.pathname === "/api/tags") return Response.json(behaviour.tags ?? { models: [] }, { status: behaviour.tagsStatus ?? 200 });
+      if (url.pathname === "/api/show" && request.method === "POST") {
+        shown.push(String(((await request.json()) as { model?: unknown }).model));
+        return Response.json(behaviour.show ?? { model_info: { "general.architecture": "synthetic" } }, { status: behaviour.showStatus ?? 200 });
+      }
       if (url.pathname !== "/api/chat" || request.method !== "POST") return new Response("not found", { status: 404 });
       bodies.push((await request.json()) as Record<string, unknown>);
       if (behaviour.status && behaviour.status !== 200) return Response.json({ error: "model 'x' not found" }, { status: behaviour.status });
@@ -156,6 +161,36 @@ describe("local Ollama provider", () => {
     expect(remote.destination.endpoint).toBe("https://ollama.example.com/api/chat");
     expect(JSON.stringify(remote.destination)).not.toContain("segredo");
     expect(JSON.stringify(remote.destination)).not.toContain("abc");
+  });
+
+  test("a cloud model is external even through a loopback server, and a renamed cloud copy is refused before sending", async () => {
+    // Named as a cloud model: the destination says it leaves, so the runner asks for consent.
+    const cloud = createLocalProvider(configWith({ provider: "local", localModel: "gpt-oss:120b-cloud" }, { ollamaUrl: base }));
+    expect(cloud.destination.external).toBe(true);
+    for (const name of ["glm-4.6:cloud", "qwen3-coder:480b-cloud", "deepseek-v3.1:671b-cloud-preview"]) {
+      expect(createLocalProvider(configWith({ provider: "local", localModel: name }, { ollamaUrl: base })).destination.external).toBe(true);
+    }
+    behaviour = { tags: { models: [{ name: "gpt-oss:120b-cloud" }] }, lines: [ndjson({ message: { content: "ok" }, done: true })] };
+    shown.length = 0;
+    expect(await cloud.check()).toEqual({ ready: true });
+    expect(await cloud.run(chatRequest())).toMatchObject({ text: "ok" });
+    expect(shown).toEqual([]);
+
+    // Another name for a cloud model: the server says it forwards it, so nothing is sent.
+    const renamed = createLocalProvider(configWith({ provider: "local", localModel: "meu-modelo" }, { ollamaUrl: base }));
+    expect(renamed.destination.external).toBe(false);
+    behaviour = { tags: { models: [{ name: "meu-modelo:latest" }] }, show: { remote_host: "https://ollama.com:443", remote_model: "gpt-oss:120b", model_info: {} } };
+    expect(await renamed.check()).toEqual({ ready: false, problem: "misconfigured", message: LOCAL_MESSAGES.cloudModel });
+    const before = bodies.length;
+    await expectProviderError(renamed.run(chatRequest()), LOCAL_MESSAGES.cloudModel, "bad-request");
+    // Details the server does not give are not proof of a local model either.
+    behaviour = { tags: { models: [{ name: "meu-modelo:latest" }] }, show: { capabilities: ["completion"] } };
+    expect(await renamed.check()).toEqual({ ready: false, problem: "misconfigured", message: LOCAL_MESSAGES.cloudModel });
+    await expectProviderError(renamed.run(chatRequest()), LOCAL_MESSAGES.cloudModel, "bad-request");
+    behaviour = { tags: { models: [{ name: "meu-modelo:latest" }] }, showStatus: 404, show: { error: "not found" } };
+    await expectProviderError(renamed.run(chatRequest()), LOCAL_MESSAGES.modelMissing, "bad-request");
+    expect(bodies.length).toBe(before);
+    expect(shown.every((name) => name === "meu-modelo")).toBe(true);
   });
 
   test("an unsafe Ollama address is refused before any request", async () => {

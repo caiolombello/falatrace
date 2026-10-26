@@ -111,6 +111,7 @@ SettingsPage {
         heading: t("Neste computador")
         detail: t("O Ollama deste computador responde. Nada sai daqui. Grátis.")
         SettingsText { field: "assistant.localModel"; label: t("Modelo do Ollama"); placeholder: "qwen3.5:9b" }
+        SettingsHint { objectName: "assistantCloudModel"; visible: ollamaCloudModel(settingsDraft["assistant.localModel"]); color: warningColor; text: t("Esse é um modelo na nuvem do Ollama: os trechos saem deste computador, com confirmação antes do primeiro envio de cada conversa.") }
     }
     SettingsRadioCard {
         objectName: "assistantApi"; field: "assistant.provider"; value: "api"; iconName: "cloud"

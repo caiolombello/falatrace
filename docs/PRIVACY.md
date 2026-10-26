@@ -77,12 +77,12 @@ Nothing leaves unless a setting or an action of yours says so. When you start pr
 | --- | --- | --- | --- |
 | Capture | Always | Never | |
 | Transcription | Whisper.cpp | `transcription.provider` is OpenAI or Gemini | The audio |
-| Notes and summaries | Ollama on loopback | OpenAI, or an Ollama on another computer | Transcript, your notes, the template, the calendar title and client names |
+| Notes and summaries | Ollama on loopback | OpenAI, an Ollama on another computer, or an Ollama cloud model (`…-cloud`) | Transcript, your notes, the template, the calendar title and client names |
 | Remote worker | | `processing.defaultTarget` is `remote` | The media and the job manifest; never your notes |
-| Asking and recipes | Ollama on loopback, or a `custom` API at an address on this computer | Any other assistant provider | The question, earlier messages of the conversation, and meeting excerpts: title, date, people, summary, notes, transcript lines with speakers |
+| Asking and recipes | Ollama on loopback, or a `custom` API at an address on this computer | Any other assistant provider, or an Ollama cloud model | The question, earlier messages of the conversation, and meeting excerpts: title, date, people, summary, notes, transcript lines with speakers |
 | Live transcript | Whisper.cpp | `live.provider` is OpenAI or Groq | The audio, in chunks, for every capture while `live.enabled` is on |
 | Sharing | Clipboard, Obsidian | Notion, Slack, an AI app | The shared note (see [sharing](SHARING.md#what-is-sent)) |
-| Speaker names from the conversation | Ollama on loopback | When you ask for suggestions and the summary provider is OpenAI or an Ollama on another computer | The transcript as speaker turns (only the turns that may carry a name when it does not fit) and the calendar guest names |
+| Speaker names from the conversation | Ollama on loopback | When you ask for suggestions and the summary provider is OpenAI, an Ollama on another computer or an Ollama cloud model | The transcript as speaker turns (only the turns that may carry a name when it does not fit) and the calendar guest names |
 | Reminders and briefs | Always | Never; only the calendar is read | Google receives only the time window it is asked about |
 | Google Calendar titles | | When connected | The recording's time window |
 | Archive, Proton Drive, S3 | | When enabled | Media and results, to those destinations |

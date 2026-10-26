@@ -89,6 +89,8 @@
 			"src/summary/prefs.ts",
 			"src/summary/prompt.ts",
 			"src/summary/v2.ts",
+			"src/summary/ollama-locality.ts",
+			"src/summary/__tests__/ollama-locality.test.ts",
 			"src/summary/__tests__/prefs.test.ts",
 			"src/summary/__tests__/v2.test.ts",
 			"src/summary/__tests__/v2-reply.ts",

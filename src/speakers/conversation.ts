@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { AppConfig } from "../config/defaults";
 import { readSecret } from "../config/secrets";
 import { validSpeakerLabel } from "../diarization/store";
+import { isOllamaCloudModel } from "../summary/ollama-locality";
 
 // Names that the people in the meeting say out loud: introductions and direct
 // address. The model only proposes; every suggestion must quote the turn where the
@@ -65,7 +66,8 @@ const LOOPBACK = ["127.0.0.1", "localhost", "[::1]"];
 export const conversationDestination = (config: AppConfig): ConversationDestination => {
   if (config.summary.provider === "openai") return { provider: "openai", model: config.summary.openaiModel, endpoint: "https://api.openai.com", external: true };
   const url = new URL(config.summary.ollamaUrl);
-  return { provider: "ollama", model: config.summary.ollamaModel, endpoint: url.origin, external: !LOOPBACK.includes(url.hostname) };
+  // A cloud model ("…-cloud") goes to ollama.com even through a server on this computer.
+  return { provider: "ollama", model: config.summary.ollamaModel, endpoint: url.origin, external: !LOOPBACK.includes(url.hostname) || isOllamaCloudModel(config.summary.ollamaModel) };
 };
 
 /** Binds a consent shown in the Studio to the destination that will receive the text. */

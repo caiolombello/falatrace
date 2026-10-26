@@ -4,6 +4,7 @@ import { validateJobId, type JobRecord } from "../jobs/types";
 import { RevisionConflictError } from "../revisions";
 import { templateName } from "../templates/catalog";
 import { SUMMARY_LABELS, type ContentLanguage } from "./language";
+import { isOllamaCloudModel, OLLAMA_CLOUD_WHERE, type OllamaLocality, probeOllamaLocality } from "./ollama-locality";
 import {
   cancelReviewedSummary, planReviewedSummary, regenerateReviewedSummary,
   reviewedSummaryProviderForConfig, REVIEWED_SUMMARY_LIMITS,
@@ -42,6 +43,8 @@ export type StudioSummaryRunStatus = {
   /** The reviewed transcript or its source changed under the run (a new plan is needed). */
   conflict?: boolean;
 };
+/** Whether the Ollama at `endpoint` runs `model` itself (see probeOllamaLocality). */
+export type StudioSummaryLocality = (endpoint: string, model: string, signal: AbortSignal) => Promise<OllamaLocality>;
 export type StudioSummaryCancellation = { jobId: string; requestId: string; status: "cancelled" | "completed"; persisted: boolean };
 type Item = {
   job: JobRecord; requestId: string; controller: AbortController; stage: "planning" | "planned" | "running" | "cancelling";
@@ -60,11 +63,16 @@ const providerPresentation = (provider: ReviewedSummaryPlan["provider"]): Provid
 const loopback = (endpoint: string | undefined): boolean => {
   try { return endpoint !== undefined && ["127.0.0.1", "localhost", "[::1]"].includes(new URL(endpoint).hostname); } catch { return false; }
 };
-const destinationOf = (provider: ReviewedSummaryPlan["provider"]): { external: boolean; destination: StudioSummaryDestination } => {
-  const external = provider.provider === "openai" || !loopback(provider.endpoint);
+/**
+ * `locality` is what the Ollama server said about the model; without it, only the address and the
+ * model name decide. A model the server did not confirm as its own is never presented as local.
+ */
+const destinationOf = (provider: ReviewedSummaryPlan["provider"], locality?: OllamaLocality): { external: boolean; destination: StudioSummaryDestination } => {
+  const cloud = provider.provider === "ollama" && (isOllamaCloudModel(provider.model) || locality === "cloud");
+  const external = provider.provider === "openai" || !loopback(provider.endpoint) || cloud || (locality !== undefined && locality !== "local");
   let host = "";
   try { host = provider.endpoint ? new URL(provider.endpoint).host : ""; } catch { host = ""; }
-  const where = provider.provider === "openai" ? "OpenAI, serviço externo" : !external ? "Ollama neste computador" : host ? `Ollama em ${host}` : "Endereço do Ollama inválido";
+  const where = provider.provider === "openai" ? "OpenAI, serviço externo" : cloud ? OLLAMA_CLOUD_WHERE : !external ? "Ollama neste computador" : host ? `Ollama em ${host}` : "Endereço do Ollama inválido";
   return { external, destination: { provider: provider.provider, model: provider.model, where } };
 };
 const templateOf = (plan: ReviewedSummaryPlan): StudioSummaryTemplate | null => {
@@ -74,7 +82,7 @@ const templateOf = (plan: ReviewedSummaryPlan): StudioSummaryTemplate | null => 
     ? { id: selection.template.id, name: templateName(selection.template, language), mode: "fixed", source: selection.source, confidence: selection.confidence }
     : { id: "auto", name: SUMMARY_LABELS[language].autoTemplate, mode: "model-choice", source: "ai", confidence: selection.confidence };
 };
-const presentPlan = (plan: ReviewedSummaryPlan): StudioSummaryPlan => ({
+const presentPlan = (plan: ReviewedSummaryPlan, locality?: OllamaLocality): StudioSummaryPlan => ({
   status: "planned", jobId: plan.jobId, requestId: plan.requestId, consentKey: plan.consentKey,
   snapshotSha256: plan.snapshotSha256, revision: plan.snapshot.revision.revision,
   provider: providerPresentation(plan.provider), chunkCount: plan.chunkCount, maxRequests: plan.maxRequests,
@@ -82,7 +90,7 @@ const presentPlan = (plan: ReviewedSummaryPlan): StudioSummaryPlan => ({
   inputScope: plan.inputScope, requiresConsent: true,
   contextIncluded: plan.context !== undefined, notesUsed: plan.inputScope === "reviewed-transcript-and-notes",
   notesCount: plan.version === 2 && plan.inputScope === "reviewed-transcript-and-notes" ? plan.request.notes.length : 0, acousticLabelsUsed: false,
-  ...destinationOf(plan.provider), template: templateOf(plan), language: plan.version === 2 ? plan.request.language : "pt-BR",
+  ...destinationOf(plan.provider, locality), template: templateOf(plan), language: plan.version === 2 ? plan.request.language : "pt-BR",
   cost: { state: "unknown", estimatedUsd: null, description: "Local compute usage is not priced; no monetary estimate or financial cap." },
   budget: { scope: "job", period: "lifetime", requestLimit: REVIEWED_SUMMARY_LIMITS.requests, providerRequestsLimit: REVIEWED_SUMMARY_LIMITS.providerRequests },
 });
@@ -116,11 +124,18 @@ export class StudioSummaryFlow {
   private readonly runs = new Map<string, RunRecord>();
   private readonly adapter?: ReviewedSummaryAdapter;
   private readonly sources?: SummaryInputSources;
+  private readonly locality?: StudioSummaryLocality;
   private closed = false;
-  /** `options.sources` (tests) replaces where notes, saved choices and templates are read from. */
-  constructor(adapter?: ReviewedSummaryAdapter, options: { sources?: SummaryInputSources } = {}) {
+  /**
+   * `options.sources` (tests) replaces where notes, saved choices and templates are read from.
+   * `options.locality` asks the Ollama server whether a model presented as local runs there (the
+   * Studio runs such a plan without a consent box); by default the server is asked, except with a
+   * test adapter, which sends nothing.
+   */
+  constructor(adapter?: ReviewedSummaryAdapter, options: { sources?: SummaryInputSources; locality?: StudioSummaryLocality } = {}) {
     this.adapter = adapter ? { identity: structuredClone(adapter.identity), summarize: adapter.summarize } : undefined;
     this.sources = options.sources;
+    this.locality = options.locality ?? (adapter ? undefined : (endpoint, model, signal) => probeOllamaLocality(endpoint, model, { signal }));
   }
   private configIdentity(config: AppConfig): string {
     const provider = reviewedSummaryProviderForConfig(config);
@@ -164,8 +179,12 @@ export class StudioSummaryFlow {
         const plan = await planReviewedSummary(job, { requestId: id, config, maxRequests: input.maxRequests, signal: item.controller.signal, ...choices,
           ...(this.sources ? { sources: this.sources } : {}) });
         item.controller.signal.throwIfAborted();
+        // Only a plan that would otherwise say "this computer" is checked with the server.
+        const locality = this.locality && plan.provider.endpoint && !destinationOf(plan.provider).external
+          ? await this.locality(plan.provider.endpoint, plan.provider.model, item.controller.signal) : undefined;
+        item.controller.signal.throwIfAborted();
         item.stage = "planned";
-        return presentPlan(plan);
+        return presentPlan(plan, locality);
       } catch (error) {
         if (!item.cancelPromise) this.forget(item);
         throw error;

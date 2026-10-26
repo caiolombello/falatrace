@@ -8,6 +8,7 @@ import type { RecordingSummary, Transcript } from "../../jobs/types";
 import { readReviewedView, saveRevision, RevisionConflictError } from "../../revisions";
 import { withHeavyAdmission, readHeavyStatus } from "../../runtime/heavy-admission";
 import { getReviewedSummaryJobDir, readReviewedSummary, reviewedSummaryProviderForConfig } from "../reviewed";
+import { OLLAMA_CLOUD_WHERE } from "../ollama-locality";
 import { StudioSummaryFlow, StudioSummaryCancelledError, STUDIO_SUMMARY_LIMITS } from "../studio";
 import { BUILT_IN_TEMPLATES } from "../../templates/catalog";
 
@@ -265,8 +266,10 @@ test("terminal shutdown rejects an accepted caller delayed before flow registrat
 
 const quietSources = (notes?: unknown) => ({ notes: async () => notes as never, prefs: async () => undefined, templates: async () => [...BUILT_IN_TEMPLATES] });
 
+const localModel = async () => "local" as const;
+
 test("the plan names its destination, template and language, and a template can be chosen for this regeneration", async () => {
-  const f = await fixture(), flow = new StudioSummaryFlow(undefined, { sources: quietSources() });
+  const f = await fixture(), flow = new StudioSummaryFlow(undefined, { sources: quietSources(), locality: localModel });
   const automatic = await flow.plan(f.job, f.config, { requestId: "automatic", maxRequests: 1 });
   expect(automatic).toMatchObject({ external: false, destination: { provider: "ollama", model: f.config.summary.ollamaModel, where: "Ollama neste computador" },
     template: { id: "auto", name: "Automático", mode: "model-choice", source: "ai" }, language: "pt-BR", notesUsed: false, notesCount: 0 });
@@ -278,10 +281,29 @@ test("the plan names its destination, template and language, and a template can 
   await flow.cancel(f.job, chosen.requestId);
   const notes = { version: 1, id: f.job.id, createdAt: "2026-10-25T12:00:00.000Z", updatedAt: "2026-10-25T12:00:00.000Z", rev: 1,
     entries: [{ id: "n000001", createdAt: "2026-10-25T12:00:00.000Z", offsetSeconds: 1, text: "Nota da reunião" }] };
-  const withNotes = await new StudioSummaryFlow(undefined, { sources: quietSources(notes) }).plan(f.job, f.config, { requestId: "with-notes", maxRequests: 1 });
+  const withNotes = await new StudioSummaryFlow(undefined, { sources: quietSources(notes), locality: localModel }).plan(f.job, f.config, { requestId: "with-notes", maxRequests: 1 });
   expect(withNotes).toMatchObject({ inputScope: "reviewed-transcript-and-notes", notesUsed: true, notesCount: 1 });
   expect(JSON.stringify(withNotes)).not.toContain("Nota da reunião");
   await expect(flow.plan(f.job, f.config, { requestId: "bad", maxRequests: 1, templateId: "Not An Id" })).rejects.toThrow("choice");
+});
+
+test("an Ollama cloud model on this computer's server is external: the Studio asks before sending", async () => {
+  // Named as a cloud model: the server is not even asked.
+  const f = await fixture(), asked: string[] = [];
+  const locality = async (_endpoint: string, model: string) => { asked.push(model); return "cloud" as const; };
+  f.config.summary.ollamaModel = "gpt-oss:120b-cloud";
+  const named = await new StudioSummaryFlow(undefined, { sources: quietSources(), locality }).plan(f.job, f.config, { requestId: "cloud-name", maxRequests: 1 });
+  expect(named).toMatchObject({ external: true, destination: { provider: "ollama", model: "gpt-oss:120b-cloud", where: OLLAMA_CLOUD_WHERE } });
+  expect(asked).toEqual([]);
+  // Another name for a cloud model: the server says so.
+  f.config.summary.ollamaModel = "meu-modelo";
+  const renamed = await new StudioSummaryFlow(undefined, { sources: quietSources(), locality }).plan(f.job, f.config, { requestId: "cloud-copy", maxRequests: 1 });
+  expect(renamed).toMatchObject({ external: true, destination: { where: OLLAMA_CLOUD_WHERE } });
+  expect(asked).toEqual(["meu-modelo"]);
+  // A server that does not answer does not confirm a local model either.
+  const unknown = await new StudioSummaryFlow(undefined, { sources: quietSources(), locality: async () => "unreachable" as const })
+    .plan(f.job, f.config, { requestId: "cloud-unknown", maxRequests: 1 });
+  expect(unknown).toMatchObject({ external: true, destination: { where: "Ollama em 127.0.0.1:11434" } });
 });
 
 test("a started regeneration returns at once and its outcome is polled: completed, failed or cancelled", async () => {

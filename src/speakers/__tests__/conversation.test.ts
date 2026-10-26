@@ -66,6 +66,8 @@ test("the destination is the configured summary model and the consent key change
   config.summary.provider = "ollama";
   config.summary.ollamaUrl = "http://127.0.0.1:11434";
   expect(conversationDestination(config)).toMatchObject({ provider: "ollama", endpoint: "http://127.0.0.1:11434", external: false });
+  // An Ollama cloud model leaves this computer through the local server.
+  expect(conversationDestination({ ...config, summary: { ...config.summary, ollamaModel: "gpt-oss:120b-cloud" } }).external).toBe(true);
   config.summary.ollamaUrl = "https://ollama.example.com";
   expect(conversationDestination(config).external).toBe(true);
   expect(destinationKey(openai)).toMatch(/^[a-f0-9]{64}$/);

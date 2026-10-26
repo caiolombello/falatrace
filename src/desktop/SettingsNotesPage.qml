@@ -16,7 +16,7 @@ SettingsPage {
     property string notice: ""
     property string confirmDelete: ""
     property int pageGeneration: 0
-    readonly property bool localDraft: settingsDraft["transcription.provider"] === "whisper-cpp" && settingsDraft["summary.provider"] === "ollama" && settingsLoopback(settingsDraft["summary.ollamaUrl"])
+    readonly property bool localDraft: settingsDraft["transcription.provider"] === "whisper-cpp" && settingsDraft["summary.provider"] === "ollama" && settingsLoopback(settingsDraft["summary.ollamaUrl"]) && !ollamaCloudModel(settingsDraft["summary.ollamaModel"])
     readonly property var templateOptions: [{label: t("Automático: pelo título da agenda ou pela conversa"), value: "auto"}].concat(templates.map(function(item){ return {label: item.name, value: item.id} }))
 
     function reset() { pageGeneration += 1; templates = []; problemCount = 0; loading = false; loaded = false; error = ""; notice = ""; confirmDelete = "" }

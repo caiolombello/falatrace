@@ -18,6 +18,7 @@ import {
   type AppConfig
 } from "./defaults";
 import { getConfigPath, getConfigPathCandidates, mergeConfig, validateConfig } from "./load";
+import { ollamaLocalByName } from "../summary/ollama-locality";
 import { commitConfigChange, configBackupPattern, readConfigRevision } from "./onboarding";
 import { describeCredentials, type SecretFiles } from "./secrets";
 import { isGoogleClientId } from "../google/client-id";
@@ -280,17 +281,12 @@ export const validateSettingsPatch = (patch: unknown, options: { allowEmpty?: bo
   return patch as SettingsPatch;
 };
 
-/** Whisper.cpp plus Ollama on this computer: nothing leaves the machine. */
+/**
+ * Whisper.cpp plus Ollama on this computer: nothing leaves the machine. An Ollama cloud model
+ * ("…-cloud") does not qualify: the local server forwards it to ollama.com.
+ */
 export const localProcessing = (config: AppConfig): boolean =>
-  config.transcription.provider === "whisper-cpp" && config.summary.provider === "ollama" && isLoopback(config.summary.ollamaUrl);
-
-const isLoopback = (url: string): boolean => {
-  try {
-    return ["127.0.0.1", "localhost", "[::1]"].includes(new URL(url).hostname);
-  } catch {
-    return false;
-  }
-};
+  config.transcription.provider === "whisper-cpp" && config.summary.provider === "ollama" && ollamaLocalByName(config.summary.ollamaUrl, config.summary.ollamaModel);
 
 /** The shipped placeholder and reserved example names (RFC 2606/6761) are not a configured worker. */
 export const isPlaceholderRemoteHost = (host: string): boolean =>
@@ -340,7 +336,7 @@ const describeSettings = (value: Record<string, unknown>) => {
       backendExplicit: typeof value.backend === "string",
       obsEnabled: config.obs.enabled,
       remoteConfigured: !isPlaceholderRemoteHost(config.remote.host),
-      summaryLocal: config.summary.provider === "ollama" && isLoopback(config.summary.ollamaUrl),
+      summaryLocal: config.summary.provider === "ollama" && ollamaLocalByName(config.summary.ollamaUrl, config.summary.ollamaModel),
       visualPolicyDeclared: !!value.visualReview,
       legacyApiKeyInConfig: !!config.openai.apiKey,
       obsPasswordInConfig: !!config.obs.password
@@ -389,7 +385,10 @@ export const applySettingsPatch = (previous: JsonObject, fields: SettingsPatch):
     throw new Error("Informe o bucket antes de ativar o envio para o S3.");
   }
   // The fast path runs right after a capture with nobody confirming destinations: only local providers qualify.
-  if (touches("processing.fastPath", "transcription.provider", "summary.provider", "summary.ollamaUrl") && merged.processing.fastPath && !localProcessing(merged)) {
+  if (touches("processing.fastPath", "transcription.provider", "summary.provider", "summary.ollamaUrl", "summary.ollamaModel") && merged.processing.fastPath && !localProcessing(merged)) {
+    if (localProcessing({ ...merged, summary: { ...merged.summary, ollamaModel: "" } })) {
+      throw new Error("O processamento imediato usa só modelos deste computador: os modelos “cloud” do Ollama rodam na nuvem do Ollama.");
+    }
     throw new Error("O processamento imediato usa só provedores locais: escolha Whisper.cpp e Ollama neste computador.");
   }
   if (touches("assistant.provider", "assistant.apiPreset", "assistant.apiBaseUrl") && merged.assistant.provider === "api" && merged.assistant.apiPreset === "custom" && !merged.assistant.apiBaseUrl) {

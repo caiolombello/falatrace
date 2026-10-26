@@ -48,6 +48,18 @@ test("an unprocessed recording is planned with its destinations disclosed", asyn
   });
 });
 
+test("an Ollama cloud model is disclosed as leaving this computer, even through a loopback server", async () => {
+  await withRecording(async (path) => {
+    const config = structuredClone(DEFAULT_CONFIG);
+    config.transcription.provider = "whisper-cpp";
+    config.summary.ollamaUrl = "http://127.0.0.1:11434";
+    config.summary.ollamaModel = "gpt-oss:120b-cloud";
+    const plan = await planRecordingProcessing(config, { sourcePath: path, sourceExists: true, jobs: [] }, fakeDeps().deps);
+    expect(plan.summary).toMatchObject({ provider: "ollama", model: "gpt-oss:120b-cloud", where: "Nuvem do Ollama (ollama.com), serviço externo", external: true });
+    expect(plan.transcription.external).toBe(false);
+  });
+});
+
 test("existing jobs are queued, retried or left alone and keep their recorded providers", async () => {
   await withRecording(async (path) => {
     const config = structuredClone(DEFAULT_CONFIG);

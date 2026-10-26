@@ -42,6 +42,7 @@ falatrace library search "migração do banco" --limit 5    # JSON passages, mar
 
 - Before anything is sent, the destination is shown: `Destino: <provider · model> (neste computador|fora deste computador) · N reuniões`, with "(trechos)" when only passages fit.
 - Ollama on this computer, or a `custom` API at an address on this computer, needs no consent: nothing leaves.
+- An Ollama cloud model (a name with a `cloud` tag or suffix, such as `gpt-oss:120b-cloud`) leaves through the local server, to ollama.com: it is outside this computer and asks first. Before sending to a model presented as local, the Ollama is asked (`/api/show`) whether it runs that model itself; another name for a cloud model is refused.
 - Every other destination sends the question and the excerpts above off the computer. In the CLI, add `--yes` after checking the destination line; without it, the command stops and nothing is sent. In the Studio, a consent card names the destination once per conversation. <!-- studio-check -->
 - Consent covers one destination and one scope. A new provider, model or scope asks again.
 
@@ -128,7 +129,7 @@ Set `assistant.provider` to `chatgpt`; `assistant.chatgptModel` empty uses the a
 
 | Provider | Receives the question and excerpts | Keeps its own history |
 | --- | --- | --- |
-| `local` on loopback | Nobody: stays on this computer | No |
+| `local` on loopback | Nobody: stays on this computer (an Ollama cloud model: ollama.com) | No |
 | `api` | The API provider | Per that provider's API terms |
 | `chatgpt` | OpenAI | Sent with `store: false`; per your ChatGPT plan's terms |
 | `acp` | The agent, and the model provider it is configured for | Agents keep their own session files, outside FalaTrace's control: for example Claude in `~/.claude/projects/`, Codex in `~/.codex/sessions/`, Gemini in `~/.gemini/tmp/`, Kiro in `~/.kiro/sessions/cli/` |
