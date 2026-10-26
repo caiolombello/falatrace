@@ -23,7 +23,7 @@ Paths below are the defaults. `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOM
 | What | Path | Contents |
 | --- | --- | --- |
 | Job work files | `jobs/<job-id>/` | The job's manifest and working copies of its transcript and summary; the published ones are next to the recording (below) |
-| Meeting notes | `notes/<id>.json` | Your notepad lines with the time each was typed |
+| Meeting notes | `notes/<id>.json`, `notes/by-source/` | Your notepad lines with the time each was typed; for each recording file, a hash of its path naming its notes |
 | Template and language per recording | `summary-prefs/<id>.json` | The choices used to regenerate |
 | Assistant conversations | `assistant/threads/<uuid>.json` | Questions, answers, citations, destination and model |
 | People | `people/people.json` | Your renames, aliases, merges and hidden people |

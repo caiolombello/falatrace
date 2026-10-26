@@ -63,6 +63,9 @@ const MAX_TITLE = 200;
 const MAX_PATH = 4096;
 const MAX_LISTED_NAMES = 20_000;
 const MAX_CACHED_ROOTS = 16;
+/** `by-source/<sha256 of the recording path>.json` names the notes last saved for that recording. */
+const SOURCE_LINKS_DIR = "by-source";
+const sourceLinkName = (sourcePath: string): string => `${createHash("sha256").update(resolve(sourcePath)).digest("hex")}.json`;
 
 export const defaultNotesDir = (): string =>
   join(process.env.XDG_DATA_HOME || join(homedir(), ".local", "share"), "recording-cli", "notes");
@@ -215,6 +218,14 @@ const optionalTitle = (value: unknown): string | undefined => {
   return title.trim();
 };
 
+/** The notes id a source link names, or undefined when the link is damaged. */
+const linkedId = (raw: string): string | undefined => {
+  try {
+    const value: unknown = JSON.parse(raw);
+    return object(value) && value.version === 1 && typeof value.id === "string" && UUID.test(value.id) ? value.id : undefined;
+  } catch { return undefined; }
+};
+
 const sameContent = (a: MeetingNotes, b: MeetingNotes): boolean =>
   JSON.stringify([a.mediaStartedAt, a.mediaEndedAt, a.sourcePath, a.title, a.seq, a.entries.map((e) => [e.id, e.createdAt, e.offsetSeconds, e.text])]) ===
   JSON.stringify([b.mediaStartedAt, b.mediaEndedAt, b.sourcePath, b.title, b.seq, b.entries.map((e) => [e.id, e.createdAt, e.offsetSeconds, e.text])]);
@@ -280,6 +291,8 @@ export class NotesStore {
       if (!current && !entries.length && !mediaStartedAt && !mediaEndedAt && !sourcePath && !title) return { ...next, rev: 0 };
       validateMeetingNotes(next, safeId);
       await this.checkRoot(true);
+      // The link first: notes that name a recording are always reachable from it, however old.
+      if (sourcePath) await this.linkSource(sourcePath, safeId);
       await writePrivateJson(join(this.root, `${safeId}.json`), next);
       return next;
     } finally {
@@ -303,6 +316,32 @@ export class NotesStore {
     } finally {
       await lease.release();
     }
+  }
+
+  /**
+   * The notes last saved for this recording file, through its persistent link: no scan and no
+   * recency limit. Undefined when there is no link or the notes it names no longer name the file.
+   */
+  async readLinked(sourcePath: string): Promise<MeetingNotes | undefined> {
+    if (!validSourcePath(sourcePath)) return undefined;
+    const target = resolve(sourcePath);
+    if (!await this.checkRoot(false)) return undefined;
+    const directory = join(this.root, SOURCE_LINKS_DIR);
+    if (!await this.checkDirectory(directory, false)) return undefined;
+    const raw = await readPrivateFile(join(directory, sourceLinkName(target)));
+    if (raw === undefined) return undefined;
+    const id = linkedId(raw);
+    const notes = id ? await this.read(id) : undefined;
+    return notes?.sourcePath === target ? notes : undefined;
+  }
+
+  private async linkSource(sourcePath: string, id: string): Promise<void> {
+    const directory = join(this.root, SOURCE_LINKS_DIR);
+    await this.checkDirectory(directory, true);
+    const path = join(directory, sourceLinkName(sourcePath));
+    const current = await readPrivateFile(path).catch(() => undefined);
+    if (current !== undefined && linkedId(current) === id) return;
+    await writePrivateJson(path, { version: 1, id });
   }
 
   /** Notes files for indexing, newest first, at most `limit`; `key` changes whenever a file is replaced. */
@@ -335,13 +374,17 @@ export class NotesStore {
     };
   }
 
+  private checkRoot(create: boolean): Promise<boolean> {
+    return this.checkDirectory(this.root, create);
+  }
+
   // The folder must be a real private directory owned by this user.
-  private async checkRoot(create: boolean): Promise<boolean> {
+  private async checkDirectory(path: string, create: boolean): Promise<boolean> {
     if (create) {
-      try { await fs.mkdir(this.root, { recursive: true, mode: 0o700 }); }
+      try { await fs.mkdir(path, { recursive: true, mode: 0o700 }); }
       catch (error) { if (["EEXIST", "ENOTDIR"].includes(errorCode(error))) return fail(NOTES_ERRORS.unsafeDir); throw error; }
     }
-    const stat = await fs.lstat(this.root).catch((error): undefined => {
+    const stat = await fs.lstat(path).catch((error): undefined => {
       if (errorCode(error) === "ENOENT" && !create) return undefined;
       if (errorCode(error) === "ENOTDIR") return fail(NOTES_ERRORS.unsafeDir);
       throw error;
@@ -426,7 +469,8 @@ export type FindNotesOptions = {
 
 /**
  * The notes of a job: by job id (capture id == job id), else by the recording file. A job created
- * later with a random id for the same file finds the capture's notes by `sourcePath`; notes of the
+ * later with a random id for the same file finds the capture's notes by `sourcePath` (in the scan of
+ * recent files, else through the recording's link, however old the notes are); notes of the
  * same recording folder match only when they are the folder's only notes, their recorded file is
  * gone (renamed or converted) and the folder is the capture's own (or the name differs only by
  * extension), so notes never jump to another recording in a shared folder.
@@ -449,6 +493,10 @@ export const findNotesForJob = async (
     const notes = await store.read(candidate.id).catch(() => undefined);
     if (notes?.sourcePath === target) return notes;
   }
+  // Older than the scan reaches: the recording's link still names its notes. Without this, a later
+  // edit through the job id would create notes that hide the capture's for good.
+  const linked = await store.readLinked(target).catch(() => undefined);
+  if (linked && linked.id !== jobId) return linked;
   const folder = dirname(target);
   const sameFolder = index.filter((entry) => dirname(entry.sourcePath) === folder);
   if (sameFolder.length !== 1) return undefined;

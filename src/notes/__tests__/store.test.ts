@@ -57,7 +57,13 @@ describe("NotesStore.save and read", () => {
     expect(JSON.parse(await fs.readFile(join(root, `${id}.json`), "utf8")).version).toBe(1);
     expect(await store.read(id)).toEqual(saved);
     expect(notesText(saved)).toBe("# Pauta\n- prazo sexta");
-    expect(await fs.readdir(root)).toEqual([`${id}.json`]);
+    // Notes that name a recording are linked from it: a private folder of private files.
+    expect((await fs.readdir(root)).sort()).toEqual([`${id}.json`, "by-source"].sort());
+    expect(await mode(join(root, "by-source"))).toBe(0o700);
+    const [link = ""] = await fs.readdir(join(root, "by-source"));
+    expect(link).toMatch(/^[a-f0-9]{64}\.json$/);
+    expect(await mode(join(root, "by-source", link))).toBe(0o600);
+    expect(JSON.parse(await fs.readFile(join(root, "by-source", link), "utf8"))).toEqual({ version: 1, id });
   });
 
   test("edits across saves keep each line's id, createdAt and offset", async () => {
@@ -532,8 +538,63 @@ describe("findNotesForJob", () => {
     await store.save(oldest, { text: "antiga", expectedRev: 0, sourcePath: source });
     await fs.utimes(store.pathFor(oldest), new Date(1_000_000), new Date(1_000_000));
     for (let index = 0; index < 3; index++) await store.save(randomUUID(), { text: `n${index}`, expectedRev: 0, sourcePath: join(dir, `r${index}`, "a.mkv") });
+    // Without the recording's link (lost or damaged), only the scan can find the notes.
+    await fs.rm(join(root, "by-source"), { recursive: true });
     expect(await findNotesForJob(job(randomUUID(), source), store, { maxFiles: 3 })).toBeUndefined();
     expect((await findNotesForJob(job(randomUUID(), source), store, { maxFiles: 4 }))?.id).toBe(oldest);
+  });
+
+  test("a capture's notes older than the scan reaches are found through the recording's link and never shadowed", async () => {
+    const source = join(dir, "rec", "recording.mkv");
+    const captureId = randomUUID();
+    await store.save(captureId, { text: "nota da captura", expectedRev: 0, sourcePath: source });
+    await fs.utimes(store.pathFor(captureId), new Date(1_000_000), new Date(1_000_000));
+    for (let index = 0; index < 3; index++) await store.save(randomUUID(), { text: `n${index}`, expectedRev: 0, sourcePath: join(dir, `r${index}`, "a.mkv") });
+    const later = job(randomUUID(), source);
+    const found = await findNotesForJob(later, store, { maxFiles: 3 });
+    expect(found?.id).toBe(captureId);
+    // The editor saves under the id it was shown, so the capture's notes take the edit.
+    await store.save(found?.id ?? later.id, { text: "nota da captura\nadicionada depois", expectedRev: found?.rev ?? 0 });
+    const again = await findNotesForJob(later, store, { maxFiles: 0 });
+    expect(again?.id).toBe(captureId);
+    expect(again?.entries.map((entry) => entry.text)).toEqual(["nota da captura", "adicionada depois"]);
+    expect(await store.read(later.id)).toBeUndefined();
+  });
+
+  test("a link is followed only to notes that still name the recording", async () => {
+    const source = join(dir, "rec", "recording.mkv");
+    const captureId = randomUUID();
+    await store.save(captureId, { text: "nota", expectedRev: 0, sourcePath: source });
+    await store.save(randomUUID(), { text: "outra", expectedRev: 0, sourcePath: join(dir, "r0", "a.mkv") });
+    expect((await store.readLinked(source))?.id).toBe(captureId);
+    expect(await store.readLinked(join(dir, "rec", "other.mkv"))).toBeUndefined();
+    expect(await store.readLinked("relative/path.mkv")).toBeUndefined();
+    // A damaged link reads as no link: the lookup falls back to the scan instead of failing.
+    const links = await fs.readdir(join(root, "by-source"));
+    expect(links).toHaveLength(2);
+    for (const name of links) await fs.writeFile(join(root, "by-source", name), "{broken", { mode: 0o600 });
+    expect(await store.readLinked(source)).toBeUndefined();
+    expect(await findNotesForJob(job(randomUUID(), source), store, { maxFiles: 0 })).toBeUndefined();
+    expect((await findNotesForJob(job(randomUUID(), source), store, { maxFiles: 5 }))?.id).toBe(captureId);
+    // The next save repairs it; deleted notes are never returned through a leftover link.
+    await store.save(captureId, { text: "nota\nde novo", expectedRev: 1 });
+    expect((await findNotesForJob(job(randomUUID(), source), store, { maxFiles: 0 }))?.id).toBe(captureId);
+    await store.remove(captureId);
+    expect(await findNotesForJob(job(randomUUID(), source), store, { maxFiles: 0 })).toBeUndefined();
+  });
+
+  test("a link folder that is not private is refused, never followed", async () => {
+    const source = join(dir, "rec", "recording.mkv");
+    const id = randomUUID();
+    await fs.mkdir(root, { recursive: true, mode: 0o700 });
+    const elsewhere = join(dir, "outro");
+    await fs.mkdir(elsewhere, { mode: 0o700 });
+    await fs.symlink(elsewhere, join(root, "by-source"));
+    await expect(store.save(id, { text: "a", expectedRev: 0, sourcePath: source })).rejects.toThrow(NOTES_ERRORS.unsafeDir);
+    expect(await fs.readdir(elsewhere)).toEqual([]);
+    expect(await store.read(id)).toBeUndefined();
+    await expect(store.readLinked(source)).rejects.toThrow(NOTES_ERRORS.unsafeDir);
+    expect(await findNotesForJob(job(randomUUID(), source), store)).toBeUndefined();
   });
 
   test("uses the default notes folder under XDG_DATA_HOME when no store is given", async () => {
