@@ -11,6 +11,27 @@ import { waitMessage } from "../../runtime/heavy-admission";
 import { GOOGLE_KNOWN_ERRORS, OBS_PASSWORD_UNKNOWN, SETTINGS_KNOWN_ERRORS, settingsErrorMessage, SETTINGS_OPERATIONS } from "../settings-bridge";
 import { SPEAKER_KNOWN_ERRORS } from "../../speakers/messages";
 import { MEDIA_RETENTION_MESSAGES } from "../../media-retention/store";
+import { ASSISTANT_KEY_MISSING, CUSTOM_BASE_URL_MISSING } from "../../config/credential-test";
+import { NOTES_KNOWN_ERRORS } from "../../notes";
+import { TEMPLATE_KNOWN_ERRORS } from "../../templates";
+import { ACP_AGENTS, ASSISTANT_PROVIDER_KNOWN_ERRORS, CLI_TOOLS, createChatProvider } from "../../assistant/providers";
+import { ASSISTANT_KNOWN_ERRORS } from "../../assistant/runner";
+import { PEOPLE_KNOWN_ERRORS } from "../../people";
+import { ACTIONS_KNOWN_ERRORS } from "../../actions";
+import { CLIENTS_MODULE_KNOWN_ERRORS } from "../../clients";
+import { SHARE_KNOWN_ERRORS, SHARE_KNOWN_WARNINGS } from "../../share";
+import { RECIPE_KNOWN_ERRORS } from "../../recipes";
+import { LIVE_KNOWN_ERRORS } from "../../live/store";
+import { MEDIA_RETENTION_KNOWN_ERRORS } from "../../media-retention";
+import { REMINDERS_KNOWN_ERRORS } from "../../reminders";
+import { SUMMARY_PREFS_KNOWN_ERRORS } from "../../summary/prefs";
+import { NOTES_BRIDGE_KNOWN_ERRORS } from "../notes-bridge";
+import { SUMMARY_BRIDGE_KNOWN_ERRORS } from "../summary-bridge";
+import { ASSISTANT_BRIDGE_KNOWN_ERRORS } from "../assistant-bridge";
+import { SHARE_BRIDGE_KNOWN_ERRORS } from "../share-bridge";
+import { ENTITIES_BRIDGE_KNOWN_ERRORS } from "../entities-bridge";
+import { HOME_BRIDGE_KNOWN_ERRORS } from "../home-bridge";
+import { MEDIA_BRIDGE_KNOWN_ERRORS } from "../media-bridge";
 
 /**
  * The Studio's English comes from src/desktop/i18n.js, keyed by the Portuguese text.
@@ -85,6 +106,49 @@ test("media retention messages the Studio can already show are translated", () =
   // diarization failures an analysis of removed media can record (detail.diarization.message).
   for (const message of [MEDIA_RETENTION_MESSAGES.reprocessRefused, MEDIA_RETENTION_MESSAGES.evidenceRemoved,
     MEDIA_RETENTION_MESSAGES.retainedAudioInvalid, MEDIA_RETENTION_MESSAGES.tombstoneInvalid]) english(message);
+});
+
+test("messages of the new Studio operations and the modules behind them are translated", () => {
+  const lists: Record<string, readonly string[]> = {
+    NOTES_BRIDGE_KNOWN_ERRORS, SUMMARY_BRIDGE_KNOWN_ERRORS, ASSISTANT_BRIDGE_KNOWN_ERRORS, SHARE_BRIDGE_KNOWN_ERRORS, ENTITIES_BRIDGE_KNOWN_ERRORS,
+    HOME_BRIDGE_KNOWN_ERRORS, MEDIA_BRIDGE_KNOWN_ERRORS,
+    NOTES_KNOWN_ERRORS, TEMPLATE_KNOWN_ERRORS, ASSISTANT_PROVIDER_KNOWN_ERRORS, ASSISTANT_KNOWN_ERRORS, PEOPLE_KNOWN_ERRORS, ACTIONS_KNOWN_ERRORS,
+    CLIENTS_MODULE_KNOWN_ERRORS, SHARE_KNOWN_ERRORS, SHARE_KNOWN_WARNINGS, RECIPE_KNOWN_ERRORS, LIVE_KNOWN_ERRORS, MEDIA_RETENTION_KNOWN_ERRORS,
+    REMINDERS_KNOWN_ERRORS, SUMMARY_PREFS_KNOWN_ERRORS
+  };
+  for (const [name, list] of Object.entries(lists)) {
+    expect(list.length, name).toBeGreaterThan(0);
+    for (const message of list) {
+      expect(Object.getOwnPropertyDescriptor(i18n.EN, message), `${name}: ${message}`).toBeDefined();
+      english(message);
+    }
+  }
+  english(CUSTOM_BASE_URL_MISSING);
+  english(ASSISTANT_KEY_MISSING);
+});
+
+test("assistant destinations the plan discloses (label and plan used) are translated", () => {
+  // Built as assistant-plan reports them; construction does no I/O.
+  const destination = (change: (config: AppConfig) => void) => {
+    const config = structuredClone(DEFAULT_CONFIG);
+    change(config);
+    return createChatProvider(config).destination;
+  };
+  const shown = [
+    destination((config) => { config.assistant.provider = "api"; config.assistant.apiPreset = "custom"; config.assistant.apiModel = "synthetic-model"; }),
+    destination((config) => { config.assistant.provider = "api"; config.assistant.apiPreset = "custom"; }),
+    destination((config) => { config.assistant.provider = "chatgpt"; config.assistant.chatgptModel = "synthetic-model"; }),
+    destination((config) => { config.assistant.provider = "acp"; config.assistant.acpAgent = "custom"; }),
+    ...Object.keys(ACP_AGENTS).map((agent) => destination((config) => { config.assistant.provider = "acp"; config.assistant.acpAgent = agent as AppConfig["assistant"]["acpAgent"]; })),
+    ...Object.keys(CLI_TOOLS).map((tool) => destination((config) => { config.assistant.provider = "cli"; config.assistant.cliTool = tool as AppConfig["assistant"]["cliTool"]; }))
+  ];
+  for (const item of shown) {
+    english(item.label);
+    if (item.subscription) expect(Object.getOwnPropertyDescriptor(i18n.EN, item.subscription), item.subscription).toBeDefined();
+  }
+  expect(i18n.translate("API compatível · synthetic-model")).toBe("Compatible API · synthetic-model");
+  expect(i18n.translate("ChatGPT (seu plano) · synthetic-model")).toBe("ChatGPT (your plan) · synthetic-model");
+  expect(shown.filter((item) => item.subscription).length).toBeGreaterThan(8);
 });
 
 test("speaker name suggestion messages the bridge can show are translated", () => {
