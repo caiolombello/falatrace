@@ -137,6 +137,7 @@ PLANS = {
     const first = uxFind(askPanel, "askCitation-1-1"), second = uxFind(askPanel, "askCitation-1-2")
     check("each paragraph cites its moment", !!first && !!second && askPanel.citationLabel(askPanel.messages[1].citations[1]) === "2 · 10:10")
     check("the first paragraph cites only [1]", askPanel.citationsIn(askPanel.paragraphs(askPanel.messages[1].text)[0], askPanel.messages[1].citations).length === 1)
+    check("a citation's tooltip names its meeting as plain text: markup in a calendar title never renders", plainToolTips.shared.contentItem.textFormat === Text.PlainText && first.ToolTip.text.indexOf("Daily do time") === 0)
     second.clicked()
     check("a citation of this meeting waits for the media and seeks there", pendingSeek === 610 && selected.key === "/synthetic/Recordings/daily.mkv")
     check("the drawer stays open", askPanel.shown)

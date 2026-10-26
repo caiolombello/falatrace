@@ -1294,6 +1294,15 @@ ApplicationWindow {
     Timer { interval: 1000; running: captureStatus.active; repeat: true; onTriggered: statusNow = Date.now() }
     Timer { interval: 1000; running: summaryPolling && backend.available; repeat: true; onTriggered: { if (!hasPending("summary-status")) send("summary-status", summaryJobId, { requestId: summaryRequestId }) } }
     Component.onCompleted: if (backend.available) { send("list-cached", ""); send("list", ""); send("capture-status", ""); send("jobs-list", ""); send("ux-capabilities", ""); send("settings-read", "") }
+    // Every ToolTip.text in the Studio goes through one shared tooltip, whose Basic-style Text would
+    // render HTML-looking text as rich text: a meeting title or guest name from a calendar invite
+    // could then fetch a remote <img> when hovered. It shows plain text only.
+    Item {
+        id: plainToolTips
+        visible: false
+        readonly property var shared: ToolTip.toolTip
+        Component.onCompleted: { if (shared && shared.contentItem && shared.contentItem.textFormat !== undefined) shared.contentItem.textFormat = Text.PlainText }
+    }
     Connections {
         target: backend
         function onFailed(message) { summaryConnectionLost();revisionConnectionLost();onboardingConnectionLost();settingsConnectionLost();familiesConnectionLost();if(agentDialog.visible)agentError=message; captureKnown = false; pending = {}; errorText = message; loading = false; resolving = false; detailLoading = false; operationPolling = false; captureBusy = false; contextLoading = false }
