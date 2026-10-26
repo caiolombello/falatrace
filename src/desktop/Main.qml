@@ -475,6 +475,47 @@ ApplicationWindow {
         if (stage !== "" && stage !== "failed") abandonSummary()
         summaryDialog.close()
     }
+    // Leaving a meeting whose notes are being made again does not stop them: the run goes on in the
+    // background (followed by its own summary-status poll, which says when it ends) and opening the
+    // meeting again shows its progress in the bar. Only a run summary-run already confirmed is kept.
+    property var detachedSummary: ({})
+    function detachRegenerate() {
+        if (summaryStage !== "running" || !summaryPolling || summaryCompleted || !summaryRequestId || !summaryJobId) return false
+        detachedSummary = {jobId: summaryJobId, requestId: summaryRequestId, templateName: regenerateTemplateName(), key: selected.key || "", title: recordingTitle(selected) || selected.fileName || ""}
+        summaryGeneration+=1;summaryPlan=({});summaryConsent.checked=false;summaryRequestId="";summaryJobId="";summaryRunning=false;summaryPolling=false
+        summaryStage = ""; regenerateRequest = ({}); summaryError = ""
+        return true
+    }
+    // The meeting whose run went on in the background is open again: the bar follows it once more.
+    function reattachRegenerate(review) {
+        const run = detachedSummary
+        if (!run.requestId || summaryStage !== "" || !review || review.revision.base.jobId !== run.jobId) return
+        detachedSummary = ({})
+        summaryGeneration+=1;summaryPlan=({});summaryJobId=run.jobId;summaryRequestId=run.requestId;summaryCompleted=false;summaryRunning=true;summaryPolling=true
+        regenerateRequest = {templateId: "", templateName: run.templateName || "", language: ""}; summaryStage = "running"
+    }
+    function detachedSummaryAnswered(request, message) {
+        const run = detachedSummary
+        if (!run.requestId || request.detachedRequestId !== run.requestId) return
+        if (!message.ok) { detachedSummary = ({}); toast.show(t("Não deu para confirmar se as notas foram geradas. Recarregue a reunião e confira."), "", null, {kind: "warning"}); return }
+        const status = message.result.status
+        if (status === "running") return
+        detachedSummary = ({})
+        if (status === "completed") {
+            refreshLibrary()
+            toast.show(tf("Notas prontas: %1", run.title || t("reunião")), t("Abrir"), function() { const item = items.find(function(entry){ return entry.key === run.key }); if (item) selectRecording(item) })
+        } else if (status === "failed") toast.show(tf("Não deu para gerar as notas de “%1”.", run.title || t("reunião")), "", null, {kind: "warning"})
+    }
+    Timer {
+        interval: 1000; repeat: true
+        running: !!detachedSummary.requestId && backend.available
+        onTriggered: {
+            if (Object.keys(pending).some(function(id){ return pending[id].detachedRequestId !== undefined })) return
+            send("summary-status", detachedSummary.jobId, {requestId: detachedSummary.requestId}, {detachedRequestId: detachedSummary.requestId})
+        }
+    }
+    // Leaving the meeting: a confirmed run goes on in the background; anything before it is cancelled.
+    function leaveRegenerate() { if (!detachRegenerate()) cancelRegenerate() }
     // "Gerar de novo…", the stale banner and the empty notes: the same bar, without a template choice.
     function openSummary() { requestRegenerate("", "", "") }
     function summaryPlanText() {
@@ -496,6 +537,7 @@ ApplicationWindow {
     }
     function summaryConnectionLost() {
         const ran = summaryRunning || summaryPolling
+        if (detachedSummary.requestId) { detachedSummary = ({}); toast.show(t("Não deu para confirmar se as notas foram geradas. Recarregue a reunião e confira."), "", null, {kind: "warning"}) }
         summaryGeneration+=1;summaryPlan=({});summaryConsent.checked=false;summaryRunning=false;summaryPolling=false;summaryNeedsReload=true
         if (summaryStage !== "" && summaryStage !== "confirm") {
             summaryStage = "failed"
@@ -515,10 +557,13 @@ ApplicationWindow {
     }
     function generateSummary() {
         if(!backend.available || summaryBusy() || !summaryPlan.requestId)return
-        // Outside this computer only with the box ticked; here the click on Gerar was the consent.
-        if (summaryPlan.external && !summaryConsent.checked) return
+        // Only a plan that says it stays on this computer runs on the click on Gerar; anything else
+        // (outside, or not said) needs the box ticked in SummaryDialog.
+        if (summaryPlan.external !== false && !summaryConsent.checked) return
         summaryRunning=true;summaryError="";summaryStage="running";summaryDialog.close()
-        if(send("summary-run",summaryJobId,{requestId:summaryPlan.requestId,consent:true,consentKey:summaryPlan.consentKey})<0)summaryConnectionLost()
+        if(send("summary-run",summaryJobId,{requestId:summaryPlan.requestId,consent:true,consentKey:summaryPlan.consentKey})<0){summaryConnectionLost();return}
+        // A template picked for this meeting becomes its choice once the notes are made with it.
+        if (regenerateRequest.templateId) detailView.templatePicker.saveChoice(regenerateRequest.templateId, regenerateRequest.templateName, false)
     }
     function stopRegenerate() {
         if (summaryStage !== "running") return
@@ -944,7 +989,7 @@ ApplicationWindow {
     }
     // Closes the open meeting (dialogs, player, per-recording state); backToLibrary and navigate share it.
     function leaveRecording() {
-        cancelRegenerate(); closeMeetingDialogs(); reviewDialog.close(); exportDialog.close(); processDialog.close(); speakerSuggestDialog.close(); reviewGeneration+=1; exportGeneration+=1
+        leaveRegenerate(); closeMeetingDialogs(); reviewDialog.close(); exportDialog.close(); processDialog.close(); speakerSuggestDialog.close(); reviewGeneration+=1; exportGeneration+=1
         closeAgentAccess(); framesDialog.close(); cancelFramePreview()
         generation += 1; sourceReferenceSeconds = -1; pendingSeek = -1; selected = ({}); detail = {transcript: {segments: [], text: "", timing: "none"}, diarization: {state: "idle"}}
         detailLoading = false; resolving = false; contextLoading = false; contextText = ""; contextCopyText = ""; contextPath = ""; contextCitations = []
@@ -1061,7 +1106,7 @@ ApplicationWindow {
     }
     function selectRecording(item) { showVisualSummary=false;
         if(revisionPending() || hasPending("export-save"))return
-        cancelRegenerate(); closeMeetingDialogs(); reviewDialog.close(); exportDialog.close(); processDialog.close(); speakerSuggestDialog.close(); reviewGeneration+=1; exportGeneration+=1
+        leaveRegenerate(); closeMeetingDialogs(); reviewDialog.close(); exportDialog.close(); processDialog.close(); speakerSuggestDialog.close(); reviewGeneration+=1; exportGeneration+=1
         closeAgentAccess(); framesDialog.close(); cancelFramePreview()
         generation += 1; sourceReferenceSeconds = -1; pendingSeek = -1
         // A meeting opens on its notes (the speakers smoke test opens on Falantes).
@@ -1227,6 +1272,8 @@ ApplicationWindow {
             if (request.op === "list" && request.libraryEpoch !== libraryEpoch) return
             if (request.op === "list") { loading = false; libraryRefreshing = false }
             if (request.op === "detail") detailLoading = false
+            // A regeneration followed in the background after its meeting closed (no meeting generation applies).
+            if (request.detachedRequestId !== undefined) { detachedSummaryAnswered(request, message); return }
             if (request.op.startsWith("frames-") && request.op !== "frames-cancel" && (request.generation !== generation || request.frameGeneration !== frameGeneration)) return
             if((request.op.startsWith("agent-")||request.op.startsWith("provider-")) && (request.generation !== generation || request.agentGeneration !== agentGeneration)) return
             // summary-prefs-* belongs to a new family (its owner guards it), not to the notes generation.
@@ -1246,8 +1293,9 @@ ApplicationWindow {
             if (!message.ok) { errorText = message.error; notice = ""; captureBusy = false; contextLoading = false; if (request.op === "subtitles") subtitleQueued = false; if (request.op === "diarization") diarizationQueued = false; if (request.op === "speakers-suggest") speakersQueued = false; if (request.op === "resolve" || request.op === "playback-status") { resolving = false; playbackOperation = "" } return }
             const result = message.result
             if(request.op === "summary-plan") {summaryPlan=result;summaryConsent.checked=false;summaryError=""
-                // Outside this computer: the plan and a consent box first. Here: the click on Gerar was the consent.
-                if (result.external === true) { summaryStage = "consent"; summaryDialog.open() } else generateSummary()
+                // Only a plan that says it stays on this computer runs at once (the click on Gerar was the
+                // consent); outside it, or a plan that does not say, shows the plan and a consent box first.
+                if (result.external === false) generateSummary(); else { summaryStage = "consent"; summaryDialog.open() }
             } else if((request.op === "summary-run" && result.status !== "running") || (request.op === "summary-status" && result.status === "completed")) {summaryFinished(result)
             } else if(request.op === "summary-run") {summaryPolling=true
             } else if(request.op === "summary-status") {if(result.status === "cancelled"){summaryRunning=false;summaryPolling=false;summaryPlan=({});summaryStage="";regenerateRequest=({})}else if(result.status !== "running"){summaryNeedsReload=true;summaryFailed(result.error||"")}
@@ -1323,6 +1371,7 @@ ApplicationWindow {
                 contextCitations = result.citations || []
             } else if (request.op === "detail") {
                 if(summaryStage === "consent" && summaryPlan.requestId && (!result.review || summaryPlan.revision!==result.review.revision.revision)) {abandonSummary();summaryNeedsReload=true;summaryFailed(t("A transcrição mudou depois do plano. Gere de novo para usar a versão atual."))}
+                reattachRegenerate(result.review)
                 if (!initialTranscriptTiming) initialTranscriptTiming = result.transcript.timing
                 selected = Object.assign({}, selected, {
                     status: result.status, backup: result.backup,

@@ -48,21 +48,35 @@ Popup {
         for (const option of options) if (option.id === id) return option
         return null
     }
+    // A meeting with notes asks first (the regenerate bar) and keeps the choice only once the notes
+    // are made with it (Main's generateSummary calls saveChoice); Cancelar there changes nothing. A
+    // meeting without notes yet keeps the choice for its first notes at once.
+    readonly property bool canApply: !!optionFor(chosen) && (detail.review ? canRegenerate() : !!prefsKey && typeof prefs.rev === "number")
     function apply() {
         const option = optionFor(chosen)
-        if (!option) return
+        if (!option || !backend.available || !canApply) return
         const name = chosen === "auto" ? "" : option.name
         close()
-        if (prefsKey && typeof prefs.rev === "number" && backend.available)
-            send("summary-prefs-save", prefsKey, {expectedRev: prefs.rev, templateId: chosen}, {origin: "templates", pickerGeneration: pickerGeneration, savedName: option.name})
         if (detail.review) requestRegenerate(chosen, name, "")
-        else toast.show(tf("As próximas notas desta reunião usarão “%1”.", option.name), "", null)
+        else saveChoice(chosen, option.name, true)
+    }
+    // The template chosen for this meeting (summary-prefs-save, with the revision read when the picker opened).
+    function saveChoice(templateId, name, announce) {
+        if (!prefsKey || typeof prefs.rev !== "number" || String(detail.jobId || "").toLowerCase() !== String(prefsKey).toLowerCase() || !backend.available) {
+            if (announce) toast.show(t("Não deu para guardar o modelo escolhido para esta reunião."), "", null, {kind: "warning"})
+            return
+        }
+        const label = templateId === "auto" ? t("Automático") : (name || (optionFor(templateId) || {}).name || templateId)
+        if (send("summary-prefs-save", prefsKey, {expectedRev: prefs.rev, templateId: templateId}, {origin: "templates", pickerGeneration: pickerGeneration, savedName: label, announce: announce === true}) < 0 && announce)
+            toast.show(t("Não deu para guardar o modelo escolhido para esta reunião."), "", null, {kind: "warning"})
     }
     function handleResponse(request, message) {
         if (request.op === "summary-prefs-save") {
-            // A choice saved for the meeting stays saved even if the picker moved on; only a refusal is said.
-            if (message.ok) { if (request.key === prefsKey) prefs = message.result }
-            else toast.show(t("Não deu para guardar o modelo escolhido para esta reunião."), "", null, {kind: "warning"})
+            // A choice saved for the meeting stays saved even if the picker moved on; a refusal is said.
+            if (message.ok) {
+                if (request.key === prefsKey) prefs = message.result
+                if (request.announce) toast.show(tf("As próximas notas desta reunião usarão “%1”.", request.savedName), "", null)
+            } else toast.show(t("Não deu para guardar o modelo escolhido para esta reunião."), "", null, {kind: "warning"})
             return
         }
         if (request.pickerGeneration !== pickerGeneration) return
@@ -174,7 +188,7 @@ Popup {
                 objectName: "templateApply"
                 compact: true; variant: "primary"
                 text: detail.review ? t("Gerar de novo com este modelo") : t("Usar nas próximas notas")
-                enabled: backend.available && !!picker.optionFor(picker.chosen) && (!detail.review || canRegenerate())
+                enabled: backend.available && picker.canApply
                 onClicked: picker.apply()
             }
         }

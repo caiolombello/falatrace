@@ -8,7 +8,10 @@ template chosen, saved for the meeting and generated on this computer (the regen
 summary-status polled until the notes are ready, the meeting read again); another language with a
 destination outside this computer in the compact English layout (SummaryDialog with the plan and a
 consent box); the same run through to the end; a run stopped halfway and a failed one (the bar says
-so, errorText and notice untouched); and a bridge without templates. Exit 77 means no Studio runtime
+so, errorText and notice untouched); a choice cancelled in the bar (nothing saved); a meeting left while
+its notes are made again (the run goes on, followed in the background, and reopening the meeting shows
+it in the bar again); a plan that does not say where it goes (consent first); a meeting without notes
+(the choice saved for its first notes); and a bridge without templates. Exit 77 means no Studio runtime
 is available.
 """
 from pathlib import Path
@@ -50,7 +53,7 @@ def plan(p):
     return {'status': 'planned', 'jobId': JOB, 'requestId': p['requestId'], 'consentKey': CONSENT, 'snapshotSha256': 'b' * 64, 'revision': 0,
             'provider': {'provider': 'openai' if external else 'ollama', 'model': 'gpt-5-mini' if external else 'qwen3.5:9b'}, 'chunkCount': 1, 'maxRequests': p['maxRequests'], 'inputCharacters': 96,
             'inputScope': 'reviewed-transcript', 'requiresConsent': True, 'contextIncluded': False, 'notesUsed': False, 'notesCount': 0, 'acousticLabelsUsed': False,
-            'external': external, 'destination': {'provider': 'openai' if external else 'ollama', 'model': 'gpt-5-mini' if external else 'qwen3.5:9b', 'where': where},
+            **({} if mode == 'unsaid' else {'external': external}), 'destination': {'provider': 'openai' if external else 'ollama', 'model': 'gpt-5-mini' if external else 'qwen3.5:9b', 'where': where},
             'template': template, 'language': p.get('language', 'pt-BR'), 'cost': {'state': 'unknown', 'estimatedUsd': None, 'description': ''},
             'budget': {'scope': 'job', 'period': 'lifetime', 'requestLimit': 8, 'providerRequestsLimit': 8}}
 def refuse(r, message): print(json.dumps({'id': r['id'], 'ok': False, 'error': message}), flush=True)
@@ -66,6 +69,7 @@ for line in sys.stdin:
         v = {'transcript': {'segments': segments, 'text': 'Bom dia, vamos revisar o incidente de ontem. O deploy travou por falta de acesso ao bucket.', 'timing': 'segment'}, 'diarization': {'state': 'idle', 'turns': []},
              'summary': '# Daily\n\n- ok', 'notesDoc': doc(), 'status': 'completed', 'backup': 'none', 'jobId': JOB, 'diarizationId': JOB, 'subtitleId': JOB,
              'review': {'revision': {'revision': 0, 'base': {'jobId': JOB}, 'humanReviewed': False}, 'canUndo': False, 'notes': [], 'derivedStale': False, 'segmentEditUnavailable': False}}
+        if mode == 'no-review': del v['review']; del v['notesDoc']; v['summary'] = ''
     elif op == 'resolve': v = {'state': 'completed', 'location': 'local', 'path': os.environ['FALATRACE_SYNTHETIC_MEDIA']}
     elif op == 'templates-list' and features['templates']: v = {'templates': templates, 'default': 'auto', 'problems': []}
     elif op == 'summary-prefs-read' and features['templates']: v = prefs
@@ -80,6 +84,7 @@ for line in sys.stdin:
     elif op == 'summary-status':
         status_polls += 1
         if mode == 'stop-fail' and runs == 1: state = 'running'
+        elif mode in ('leave', 'return') and status_polls < 4: state = 'running'
         elif status_polls < 2: state = 'running'
         elif mode == 'stop-fail': state = 'failed'
         else: state = 'completed'
@@ -130,14 +135,15 @@ PLANS = {
     uxFind(picker.contentItem, "templateOption-postmortem").clicked()
     uxFind(picker.contentItem, "templateApply").clicked()
     check("applying closes the picker and asks first", !picker.visible && summaryStage === "confirm" && !summaryDialog.visible)
-    check("the bar names the template", uxFind(detailView.regenerateBar, "regenerateMessage").text.indexOf("Gerar de novo com “Postmortem”?") === 0)'''),
-        ('choice saved', 'detailView.templatePicker.prefs.rev === 1', '''
-    check("the saved choice reaches the picker even though the regeneration moved on", detailView.templatePicker.prefs.templateId === "postmortem")
+    check("the bar names the template", uxFind(detailView.regenerateBar, "regenerateMessage").text.indexOf("Gerar de novo com “Postmortem”?") === 0)
+    check("nothing is saved before Gerar", !hasPending("summary-prefs-save") && detailView.templatePicker.prefs.rev === 0)
     uxFind(detailView.regenerateBar, "regenerateConfirm").clicked()'''),
         ('running', 'summaryStage === "running" && summaryPolling', '''
     check("on this computer the click on Gerar was the consent: no dialog", !summaryDialog.visible)
     check("the bar shows progress with the template", uxFind(detailView.regenerateBar, "regenerateMessage").text === "Gerando com “Postmortem”…")
     check("the notes stay readable while they are made again", detailView.notesDocument.opacity < 1 && !!detail.notesDoc)'''),
+        ('choice saved', 'detailView.templatePicker.prefs.rev === 1', '''
+    check("the choice is kept for the meeting once the notes are made with it", detailView.templatePicker.prefs.templateId === "postmortem")'''),
         ('finished', 'summaryStage === "" && !detailLoading && detail.notesDoc.template.id === "postmortem"', '''
     check("the notes say they were updated, in a toast", toast.message === "Notas atualizadas com “Postmortem”." && notice === "" && errorText === "")
     check("the chip shows the new template", uxFind(detailView.notesDocument, "templateChip").chipText === "Postmortem · você escolheu")
@@ -175,6 +181,54 @@ PLANS = {
     check("a failure is said in the bar", uxFind(detailView.regenerateBar, "regenerateMessage").text.indexOf("Não deu para gerar as notas.") === 0 && uxFind(detailView.regenerateBar, "regenerateRetry").visible)
     check("errorText and notice stay untouched", errorText === "" && notice === "")
     check("the notes there were stay", !!detail.notesDoc && detail.notesDoc.template.id === "standup")''')]),
+    'cancel-choice': ('1320x820', False, [OPEN[:2] + (OPEN[2] + '''
+    uxFind(detailView.notesDocument, "templateChip").clicked()''',),
+        ('picker open', PICKER, '''
+    const picker = detailView.templatePicker
+    uxFind(picker.contentItem, "templateOption-postmortem").clicked()
+    uxFind(picker.contentItem, "templateApply").clicked()
+    check("the bar asks first", summaryStage === "confirm")
+    uxFind(detailView.regenerateBar, "regenerateCancel").clicked()
+    check("Cancelar closes the bar and nothing runs", summaryStage === "" && !detailView.regenerateBar.visible && !hasPending("summary-plan"))
+    check("Cancelar keeps the template there was", !hasPending("summary-prefs-save") && picker.prefs.rev === 0 && !picker.prefs.templateId)''')]),
+    'leave': ('1320x820', False, [OPEN[:2] + (OPEN[2] + menu('Gerar de novo'),),
+        ('confirm', 'summaryStage === "confirm"', 'uxFind(detailView.regenerateBar, "regenerateConfirm").clicked()'),
+        ('running', 'summaryStage === "running" && summaryPolling', '''
+    backToLibrary()
+    check("leaving the meeting keeps the run going in the background", !selected.key && summaryStage === "" && detachedSummary.requestId !== "" && detachedSummary.title === "Daily do time")
+    check("nothing is cancelled", !hasPending("summary-cancel"))'''),
+        ('ready elsewhere', '!detachedSummary.requestId && toast.message !== ""', '''
+    check("the notes say they are ready, with a way back", toast.message === "Notas prontas: Daily do time" && toast.actionText === "Abrir")
+    check("errorText and notice stay untouched", errorText === "" && notice === "")''')]),
+    'return': ('1320x820', False, [OPEN[:2] + (OPEN[2] + menu('Gerar de novo'),),
+        ('confirm', 'summaryStage === "confirm"', 'uxFind(detailView.regenerateBar, "regenerateConfirm").clicked()'),
+        ('running', 'summaryStage === "running" && summaryPolling', '''
+    backToLibrary()
+    check("the run is followed in the background", !!detachedSummary.requestId && homeView.visible)
+    selectRecording(items[0])'''),
+        ('back in the meeting', 'summaryStage === "running" && !detachedSummary.requestId', '''
+    check("reopening the meeting shows the run in the bar again", detailView.regenerateBar.visible && uxFind(detailView.regenerateBar, "regenerateMessage").text === "Gerando as notas…" && summaryPolling)'''),
+        ('finished', 'summaryStage === "" && toast.message !== "" && !detailLoading', '''
+    check("the notes are updated in the open meeting", toast.message === "Notas atualizadas." && errorText === "")''')]),
+    'unsaid': ('1320x820', False, [OPEN[:2] + (OPEN[2] + menu('Gerar de novo'),),
+        ('confirm', 'summaryStage === "confirm"', 'uxFind(detailView.regenerateBar, "regenerateConfirm").clicked()'),
+        ('planned', 'summaryStage === "consent" || summaryStage === "running"', '''
+    check("a plan that does not say it stays on this computer asks first", summaryStage === "consent" && summaryDialog.visible && !uxFind(summaryDialog.footer, "summaryRunButton").enabled)
+    generateSummary()
+    check("and nothing runs without the box", summaryStage === "consent" && !summaryRunning && !hasPending("summary-run"))
+    summaryDialog.close()''')]),
+    'no-review': ('1320x820', False, [
+        ('meeting open', '!!selected.key && !detailLoading && !!detail.jobId && !detail.review && newBridge && settingsFirstRunChecked', '''
+    check("a meeting without notes has no template chip to pick from", !uxFind(detailView.notesDocument, "templateChip").visible)
+    detailView.templatePicker.openFor(detailView.notesDocument)'''),
+        ('picker open', PICKER, '''
+    const picker = detailView.templatePicker
+    uxFind(picker.contentItem, "templateOption-postmortem").clicked()
+    check("without notes the button keeps the choice for the next notes", uxFind(picker.contentItem, "templateApply").text === "Usar nas próximas notas")
+    uxFind(picker.contentItem, "templateApply").clicked()
+    check("nothing is generated", summaryStage === "" && !hasPending("summary-plan"))'''),
+        ('saved', 'detailView.templatePicker.prefs.rev === 1 && toast.message !== ""', '''
+    check("the choice is said once it is saved", toast.message === "As próximas notas desta reunião usarão “Postmortem”.")''')]),
     'no-templates': ('1320x820', False, [
         ('meeting open', OPEN[1], '''
     const chip = uxFind(detailView.notesDocument, "templateChip")
@@ -222,6 +276,19 @@ checks += [
     {'name': 'stop-fail: stopping cancels that request on the bridge',
      'pass': [p['requestId'] for p in payloads('stop-fail', 'summary-cancel')][:1] == [p['requestId'] for p in payloads('stop-fail', 'summary-run')][:1]
      and len(sent('stop-fail', 'summary-run')) == 2},
+    {'name': 'cancel-choice: a template cancelled in the bar is neither saved nor planned',
+     'pass': not sent('cancel-choice', 'summary-prefs-save') and not sent('cancel-choice', 'summary-plan')},
+    {'name': 'leave: leaving the meeting cancels nothing and keeps polling that request until it ends',
+     'pass': not sent('leave', 'summary-cancel') and len(sent('leave', 'summary-run')) == 1
+     and len(sent('leave', 'summary-status')) >= 4 and all(p == {'requestId': payloads('leave', 'summary-run')[0]['requestId']} for p in payloads('leave', 'summary-status'))
+     if sent('leave', 'summary-run') else False},
+    {'name': 'return: the run is never cancelled and the meeting is read again when it ends',
+     'pass': not sent('return', 'summary-cancel') and len(sent('return', 'summary-run')) == 1 and len(sent('return', 'detail')) >= 3},
+    {'name': 'unsaid: no run without the consent when the plan does not say where it goes',
+     'pass': len(sent('unsaid', 'summary-plan')) == 1 and not sent('unsaid', 'summary-run')},
+    {'name': 'no-review: the choice is saved for the meeting and nothing is planned',
+     'pass': [(q['key'], q['payload']) for q in sent('no-review', 'summary-prefs-save')] == [(JOB, {'expectedRev': 0, 'templateId': 'postmortem'})]
+     and not sent('no-review', 'summary-plan')},
     {'name': 'no-templates: no template op is sent',
      'pass': not any(q['op'] in ('templates-list', 'summary-prefs-read', 'summary-prefs-save') for q in requests['no-templates'])},
 ]

@@ -2443,6 +2443,7 @@ var EN = {
     "Notas atualizadas.": "Notes updated.",
     "Notas prontas.": "Notes ready.",
     "Notas prontas: %1": "Notes ready: %1",
+    "Não deu para gerar as notas de “%1”.": "The notes of “%1” could not be generated.",
     "reunião": "meeting",
     "A transcrição mudou depois do plano. Gere de novo para usar a versão atual.": "The transcript changed after the plan. Generate again to use the current version.",
     "Gerar as notas com “%1”": "Generate the notes with “%1”",
