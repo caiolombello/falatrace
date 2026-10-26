@@ -1993,7 +1993,13 @@ var EN = {
     "plano do Qwen Code": "Qwen Code plan",
     "plano do Grok via Grok Build": "Grok plan through Grok Build",
     "plano do Claude via Claude Code": "Claude plan through Claude Code",
-    "plano do ChatGPT (Plus ou Pro)": "ChatGPT plan (Plus or Pro)"
+    "plano do ChatGPT (Plus ou Pro)": "ChatGPT plan (Plus or Pro)",
+    // Studio redesign: shell, meeting page and live capture.
+    "Ir para %1": "Go to %1",
+    "Ver na transcrição: %1": "Show in the transcript: %1",
+    "Ouvir este momento · Shift: ver na transcrição": "Listen to this moment · Shift: show in the transcript",
+    "Ver este momento na transcrição": "Show this moment in the transcript",
+    "Fechar aviso": "Dismiss"
 };
 
 // [regular expression source, replacement, groups translated before substitution].
