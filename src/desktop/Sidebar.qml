@@ -39,6 +39,8 @@ Rectangle {
         const item = items.find(function(entry){ return entry.key === hit.key })
         if (!item || !backend.available) return
         selectRecording(item)
+        // The meeting may stay closed (a local save still unconfirmed): never seek the one that is open.
+        if (selected.key !== item.key) return
         if (typeof hit.start === "number") openCitation(hit.segmentId || "", hit.start, false)
     }
 

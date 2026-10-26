@@ -218,7 +218,14 @@ PLANS = {
     check("hits show the passage", uxFind(window.contentItem, "searchHit-0").modelData.snippet.indexOf("SSO") >= 0)
     uxFind(window.contentItem, "searchHit-0").clicked()'''),
         ('opened at the passage', 'selected.key === "/synthetic/Recordings/daily.mkv"', '''
-    check("the meeting opens on its notes and the moment waits for the media", currentView === "meeting" && pendingSeek === 42)''')]),
+    check("the meeting opens on its notes and the moment waits for the media", currentView === "meeting" && pendingSeek === 42)
+    selectRecording(items.find(function(item){ return item.key === "/synthetic/Recordings/one.mkv" }))'''),
+        # A meeting cannot close while a transcript correction is unconfirmed: a hit then must not seek the open one.
+        ('other meeting open', 'selected.key === "/synthetic/Recordings/one.mkv" && !detailLoading', '''
+    const held = Object.assign({}, pending); held["999999"] = {op: "revision-save", key: ""}; pending = held
+    uxFind(window.contentItem, "searchHit-0").clicked()
+    check("a hit that cannot open its meeting leaves the open one alone", selected.key === "/synthetic/Recordings/one.mkv" && pendingSeek === -1 && detailView.flashIndex === -1)
+    const released = Object.assign({}, pending); delete released["999999"]; pending = released''')]),
     'no-features': ('1320x820', False, [OPEN,
         ('document without features', '!!uxFind(window.contentItem, "actionCheck-' + ACTION + '")', '''
     check("my notes are not offered", !detailView.notesMode.visible)
