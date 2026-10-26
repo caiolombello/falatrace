@@ -109,7 +109,7 @@ A recording is removed only when all of this holds:
 - its jobs are finished, and nothing is capturing, processing, identifying speakers or reviewing it;
 - it has a verified transcript (a legacy transcript without a receipt is never removed automatically);
 - speaker identification, microphone analysis and voice learning are done, or `media.graceDays` (0 to 3,650, default 1) have passed since processing;
-- configured archive and full Proton backups are complete;
+- configured archive and full Proton backups are complete (with the archive on, a recording missing from its catalog is kept until `falatrace archive backfill` registers it and its copies finish; only a manual removal, which shows that no copy exists, can remove it);
 - the file still has the size and SHA-256 recorded when it was processed, checked before and after hashing.
 
 Removal deletes the media file; it does not go to the Trash. It also removes copies made from it: the Proton restore cache, extracted frames and temporary audio. Remote and backup copies are never touched; archive copies not yet made are cancelled. A record next to the recording keeps the date, mode and hashes, and an interrupted removal resumes on the next run.

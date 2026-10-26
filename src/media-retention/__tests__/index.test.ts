@@ -43,6 +43,14 @@ describe("runMediaRetentionPass", () => {
     expect(held?.waitUntil).toBe(new Date(Date.parse(waiting.job.updatedAt) + DAY).toISOString());
   });
 
+  test("with the archive on, media missing from its catalog is kept and reported", async () => {
+    const fixture = await setup();
+    fixture.config.archive.enabled = true;
+    const [item] = await runMediaRetentionPass(fixture.config, { entries: [fixture.entry], deps: fixture.deps, now: fixture.now });
+    expect(item).toMatchObject({ sourcePath: fixture.sourcePath, outcome: "blocked", blockers: ["backup-unregistered"] });
+    expect((await fs.stat(fixture.sourcePath)).isFile()).toBe(true);
+  });
+
   test("hashes at most `limit` recordings per pass and defers the rest", async () => {
     const fixture = await setup();
     let hashed = 0;

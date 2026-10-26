@@ -69,7 +69,7 @@ export type MediaRetentionBlockerCode =
   | "mode-keep" | "tombstone-invalid" | "already-removed" | "no-jobs" | "jobs-unreadable" | "job-not-settled" | "media-identity-conflict"
   | "capture-active" | "capture-unreadable" | "diarization-running" | "speakers-running" | "summary-running" | "summary-state-unreadable"
   | "visual-running" | "transcript-missing" | "transcript-legacy" | "summary-invalid" | "steps-pending" | "backup-pending" | "backup-mismatch"
-  | "proton-backup-pending" | "media-missing" | "media-unsafe" | "media-size-mismatch" | "media-hash-mismatch" | "media-changed"
+  | "backup-unregistered" | "proton-backup-pending" | "media-missing" | "media-unsafe" | "media-size-mismatch" | "media-hash-mismatch" | "media-changed"
   | "recording-root-unsafe" | "no-video" | "no-audio" | "probe-failed";
 
 const BLOCKER_MESSAGES: Record<MediaRetentionBlockerCode, MediaRetentionMessage> = {
@@ -93,6 +93,7 @@ const BLOCKER_MESSAGES: Record<MediaRetentionBlockerCode, MediaRetentionMessage>
   "steps-pending": MEDIA_RETENTION_MESSAGES.stepsPending,
   "backup-pending": MEDIA_RETENTION_MESSAGES.backupPending,
   "backup-mismatch": MEDIA_RETENTION_MESSAGES.backupMismatch,
+  "backup-unregistered": MEDIA_RETENTION_MESSAGES.backupUnregistered,
   "proton-backup-pending": MEDIA_RETENTION_MESSAGES.protonBackupPending,
   "media-missing": MEDIA_RETENTION_MESSAGES.mediaMissing,
   "media-unsafe": MEDIA_RETENTION_MESSAGES.mediaUnsafe,
@@ -522,9 +523,12 @@ export const planMediaRetention = async (
   // With the archive on, the catalog decides (a caller's entry may be a stale snapshot, and the
   // executor's re-plan must see fresh state); with it off, a record only describes extra copies.
   let found: ArchiveRecord | undefined;
+  let unregistered = false;
   if (config.archive.enabled) {
-    try { found = (await deps.archives.list()).find((record) => resolve(record.sourcePath) === sourcePath); }
-    catch { block("backup-pending"); }
+    try {
+      found = (await deps.archives.list()).find((record) => resolve(record.sourcePath) === sourcePath);
+      unregistered = !found;
+    } catch { block("backup-pending"); }
   } else if (entry.archive && resolve(entry.archive.sourcePath) === sourcePath) {
     found = entry.archive;
   }
@@ -544,6 +548,11 @@ export const planMediaRetention = async (
       if (waiting) block("backup-pending");
       plan.backups.archive = waiting ? "pending" : "completed";
     }
+  } else if (unregistered && reason === "policy" && (config.archive.vaio || config.archive.proton)) {
+    // Media the catalog never registered (recorded before the archive was on, processed from the
+    // library, or a failed registration) has no copy anywhere: the policy never makes its removal
+    // total. A manual removal may, after showing that scope.
+    block("backup-unregistered");
   }
   if (config.proton.enabled && config.proton.policy === "full") {
     for (const job of completed) {

@@ -37,6 +37,7 @@ export const MEDIA_RETENTION_MESSAGES = Object.freeze({
   stepsPending: "Aguardando o prazo para identificar falantes e aprender vozes; a mídia será removida depois.",
   backupPending: "Os backups da mídia ainda não terminaram; a mídia foi mantida.",
   backupMismatch: "O backup registrado não corresponde a esta mídia; ela foi mantida.",
+  backupUnregistered: "Esta mídia não está no catálogo de backup; registre-a com falatrace archive backfill. A mídia foi mantida.",
   protonBackupPending: "O backup completo no Proton ainda não terminou; a mídia foi mantida.",
   mediaMissing: "A mídia original não está neste computador.",
   mediaUnsafe: "A mídia não é um arquivo comum dentro da pasta de gravações; ela foi mantida.",

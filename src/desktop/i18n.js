@@ -1943,6 +1943,7 @@ var EN = {
     "Aguardando o prazo para identificar falantes e aprender vozes; a mídia será removida depois.": "Waiting for the time to identify speakers and learn voices; the media will be removed later.",
     "Os backups da mídia ainda não terminaram; a mídia foi mantida.": "The media backups have not finished yet; the media was kept.",
     "O backup registrado não corresponde a esta mídia; ela foi mantida.": "The recorded backup does not match this media; it was kept.",
+    "Esta mídia não está no catálogo de backup; registre-a com falatrace archive backfill. A mídia foi mantida.": "This media is not in the backup catalog; register it with falatrace archive backfill. The media was kept.",
     "O backup completo no Proton ainda não terminou; a mídia foi mantida.": "The full Proton backup has not finished yet; the media was kept.",
     "A mídia original não está neste computador.": "The original media is not on this computer.",
     "A mídia não é um arquivo comum dentro da pasta de gravações; ela foi mantida.": "The media is not a regular file inside the recordings folder; it was kept.",

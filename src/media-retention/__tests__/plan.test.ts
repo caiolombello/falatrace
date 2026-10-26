@@ -387,10 +387,40 @@ describe("6. backups", () => {
     expect(value.backups.archive).toBe("pending");
     fixture.archives.length = 0;
     // No catalog record: the snapshot does not invent verified copies either.
-    const total = await plan(fixture);
+    await blockedOnlyBy(fixture, "backup-unregistered");
+    const total = await plan(fixture, { reason: "manual" });
     expect(total.eligible).toBe(true);
     expect(total.verified?.backups).toEqual({});
     expect(total.scope.copiesElsewhere).toBe("total");
+  });
+
+  test("with the archive on, the policy never removes media the catalog never registered; a manual removal shows it as total", async () => {
+    const fixture = await setup();
+    fixture.config.archive.enabled = true;
+    const policy = await blockedOnlyBy(fixture, "backup-unregistered");
+    expect(policy.blockers[0]?.message).toBe(MEDIA_RETENTION_MESSAGES.backupUnregistered);
+    expect(policy.backups.archive).toBe("none");
+    expect(policy.scope.copiesElsewhere).toBe("total");
+    const manual = await plan(fixture, { reason: "manual" });
+    expect(manual.eligible).toBe(true);
+    expect(manual.scope.copiesElsewhere).toBe("total");
+    // Registered (and copied), the same recording follows the policy again.
+    fixture.archives.push(archiveRecord(fixture));
+    const registered = await plan(fixture);
+    expect(registered.eligible).toBe(true);
+    expect(registered.scope.copiesElsewhere).toBe("local-only");
+    // An archive with no target configured makes no copies to wait for.
+    fixture.archives.length = 0;
+    fixture.config.archive.vaio = false;
+    fixture.config.archive.proton = false;
+    expect((await plan(fixture)).eligible).toBe(true);
+  });
+
+  test("an unreadable catalog keeps the media as pending, not as unregistered", async () => {
+    const fixture = await setup();
+    fixture.config.archive.enabled = true;
+    fixture.deps.archives = { list: async () => { throw new Error("catalog unreadable"); } };
+    await blockedOnlyBy(fixture, "backup-pending");
   });
 
   test("an archive id that is not a plain id never becomes a purge path", async () => {
