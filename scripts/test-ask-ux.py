@@ -191,7 +191,9 @@ PLANS = {
         ('problem shown', 'askPanel.problem !== ""', '''
     check("an assistant that is not set up says how to fix it", uxFind(askPanel, "askProblem").visible && askPanel.problem.indexOf("chave") >= 0)
     check("nothing is started", !askPanel.live && !askPanel.messages.length && errorText === "")
-    check("the question stays in the input to send again", askPanel.input.text === "O que eu prometi?")''')]),
+    check("the question stays in the input to send again", askPanel.input.text === "O que eu prometi?")
+    uxFind(askPanel, "askConfigure").clicked()'''),
+        ('settings open', 'settingsDialog.visible', 'check("Configurar opens Settings on Perguntar e receitas", settingsTabs.currentIndex === 11 && errorText === "")')]),
     'stop-compact-en': ('900x640', True, [MEETING_OPEN,
         ('drawer open', 'askPanel.shown && uiLanguage === "en"', '''
     check("English interface", askPanel.scopeText() === "This meeting")

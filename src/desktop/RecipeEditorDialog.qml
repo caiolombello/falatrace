@@ -15,6 +15,8 @@ FtDialog {
     property bool saving: false
     property string error: ""
     property int editorGeneration: 0
+    // The button that opened the editor gets the focus back when it closes (when it is still there).
+    property Item opener: null
     readonly property var variables: ["meeting.title", "meeting.date", "meeting.people", "client", "person", "me", "today", "language"]
     readonly property string problem: {
         if (!nameField.text.trim() || nameField.text.trim().length > 80) return t("Dê um nome de até 80 caracteres.")
@@ -41,6 +43,7 @@ FtDialog {
         descriptionField.text = recipe ? String(recipe.description || "") : ""
         scope = recipe && recipe.scope === "library" ? "library" : "meeting"
         promptArea.text = recipe ? String(recipe.prompt || "") : ""
+        opener = window.activeFocusItem
         open()
     }
     function openNew() { begin("new", null) }
@@ -79,7 +82,7 @@ FtDialog {
     function connectionLost() { if (saving) { saving = false; error = t("Não deu para confirmar se a receita foi salva. Recarregue e confira.") } }
 
     onOpened: recipeCancel.forceActiveFocus(Qt.TabFocusReason)
-    onClosed: { editorGeneration += 1; saving = false }
+    onClosed: { editorGeneration += 1; saving = false; const back = opener; opener = null; if (back && back.visible) back.forceActiveFocus(Qt.TabFocusReason) }
 
     contentItem: ScrollView {
         id: recipeScroll

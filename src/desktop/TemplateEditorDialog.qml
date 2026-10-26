@@ -17,6 +17,8 @@ FtDialog {
     property bool saving: false
     property string error: ""
     property int editorGeneration: 0
+    // The button that opened the editor gets the focus back when it closes (when it is still there).
+    property Item opener: null
     readonly property string language: uiLanguage === "en" ? "en" : "pt-BR"
     readonly property var problem: { revision; return validation() }
     title: mode === "edit" ? t("Editar modelo") : t("Novo modelo")
@@ -42,6 +44,7 @@ FtDialog {
         sections = template ? asList(template.sections).map(function(section){ return {id: section.id, title: localizedText(section.title), titles: section.title, instruction: section.instruction || "", edited: false} })
             : [{id: "section-1", title: "", titles: null, instruction: "", edited: true}, {id: "section-2", title: "", titles: null, instruction: "", edited: true}, {id: "section-3", title: "", titles: null, instruction: "", edited: true}]
         revision += 1
+        opener = window.activeFocusItem
         open()
     }
     function openNew() { begin("new", null) }
@@ -118,7 +121,7 @@ FtDialog {
     function connectionLost() { if (saving) { saving = false; error = t("Não deu para confirmar se o modelo foi salvo. Recarregue e confira.") } }
 
     onOpened: templateCancel.forceActiveFocus(Qt.TabFocusReason)
-    onClosed: { editorGeneration += 1; saving = false }
+    onClosed: { editorGeneration += 1; saving = false; const back = opener; opener = null; if (back && back.visible) back.forceActiveFocus(Qt.TabFocusReason) }
 
     contentItem: ScrollView {
         id: editorScroll

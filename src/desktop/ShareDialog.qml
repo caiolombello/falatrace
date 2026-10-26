@@ -237,7 +237,8 @@ FtDialog {
                 spacing: 8
                 FtIcon { name: "settings"; tint: warningColor; size: 15 }
                 Label { objectName: "shareProblem"; Layout.fillWidth: true; text: t(shareDialog.preview.problem || "") || t("Este destino ainda não está configurado."); textFormat: Text.PlainText; color: ink; font.pixelSize: 13; wrapMode: Text.WordWrap }
-                FtButton { compact: true; variant: "outline"; text: t("Configurar…"); onClicked: { shareDialog.close(); settingsDialog.open() } }
+                // The destinations are set in Settings › Compartilhar: open it there.
+                FtButton { objectName: "shareConfigure"; compact: true; variant: "outline"; text: t("Configurar…"); enabled: backend.available; onClicked: { shareDialog.close(); settingsDialog.openSection(14) } }
             }
             WrappedCheck {
                 id: shareConsent

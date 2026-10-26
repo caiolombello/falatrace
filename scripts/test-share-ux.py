@@ -132,7 +132,9 @@ PLANS = {
         ('first preview', PREVIEWED, 'shareDialog.choose("slack")'),
         ('slack preview', destination('slack'), '''
     check("a destination not set up says what is missing", uxFind(shareDialog.contentItem, "shareProblem").visible && uxFind(shareDialog.contentItem, "shareProblem").text.indexOf("Slack") >= 0)
-    check("it cannot be sent", !uxFind(shareDialog.footer, "shareSend").enabled && !uxFind(shareDialog.contentItem, "shareConsent").visible)''')]),
+    check("it cannot be sent", !uxFind(shareDialog.footer, "shareSend").enabled && !uxFind(shareDialog.contentItem, "shareConsent").visible)
+    uxFind(shareDialog.contentItem, "shareConfigure").clicked()'''),
+        ('settings open', 'settingsDialog.visible', 'check("Configurar opens Settings on Compartilhar", !shareDialog.visible && settingsTabs.currentIndex === 14)')]),
     'unsaid': ('1320x820', False, [OPEN,
         ('first preview', PREVIEWED, 'shareDialog.choose("obsidian")'),
         ('obsidian preview', destination('obsidian'), '''

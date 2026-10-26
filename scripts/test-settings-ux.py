@@ -361,10 +361,11 @@ MODES = {
                       'const row = findObject(settingsDialog.contentItem, "templateRow-standup"); check("the templates are listed on Notas e resumos", settingsDialog.notesPage.loaded && !!row && row.visible); '
                       'check("the default template offers the list", settingsDialog.notesPage.templateOptions.some(function(o){ return o.value==="standup" && o.label==="Daily" })); '
                       'const fast = findObject(settingsDialog.contentItem, "settingsFastPath"); check("the fast path needs processing on this computer", !!fast && !fast.enabled); '
-                      'templateEditor.openCopy(settingsDialog.notesPage.templates[0])',
+                      'findObject(settingsDialog.contentItem, "templateNew").forceActiveFocus(); templateEditor.openCopy(settingsDialog.notesPage.templates[0])',
                       'check("the editor opens on a copy, Cancel focused", templateEditor.visible && findObject(templateEditor.footer, "templateCancel").activeFocus && templateEditor.sections.length===3 && templateEditor.problem===""); '
                       'templateEditor.moveSection(2, -1); check("sections can be reordered", templateEditor.sections[1].id==="blockers"); templateEditor.save()',
-                      'check("saved, closed and listed", !templateEditor.visible && settingsDialog.notesPage.notice.indexOf("salvo")>=0 && settingsDialog.notesPage.templates.length===2 && errorText==="" && settingsError==="")'),
+                      'check("saved, closed and listed", !templateEditor.visible && settingsDialog.notesPage.notice.indexOf("salvo")>=0 && settingsDialog.notesPage.templates.length===2 && errorText==="" && settingsError===""); '
+                      'check("the focus is back on the button that opened the editor", findObject(settingsDialog.contentItem, "templateNew").activeFocus)'),
     'assistant-section': ('settingsDialog.open(); settingsDialog.goToSection(11)',
                           'check("detection marks the installed agent", settingsDialog.assistantPage.agentLabel({value:"codex",label:"Codex"})==="Codex · encontrado" && settingsDialog.assistantPage.agentLabel({value:"claude",label:"Claude Agent"})==="Claude Agent · não instalado"); '
                           'const signIn = findObject(settingsDialog.contentItem, "chatgptSignIn"); check("the ChatGPT account shows as connected", settingsDialog.assistantPage.chatgpt.state==="signed-in" && signIn.text==="Sair"); '

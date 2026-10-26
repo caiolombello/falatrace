@@ -585,7 +585,8 @@ Rectangle {
                         anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 10
                         spacing: 8
                         Label { Layout.fillWidth: true; text: askPanel.problem; textFormat: Text.PlainText; wrapMode: Text.WordWrap; color: ink; font.pixelSize: 13 }
-                        FtButton { compact: true; variant: "outline"; iconName: "settings"; text: t("Configurar…"); enabled: backend.available; onClicked: settingsDialog.open() }
+                        // Who answers is set in Settings › Perguntar e receitas: open it there.
+                        FtButton { objectName: "askConfigure"; compact: true; variant: "outline"; iconName: "settings"; text: t("Configurar…"); enabled: backend.available; onClicked: settingsDialog.openSection(11) }
                     }
                 }
                 Label { visible: askPanel.plan.truncated === true && askPanel.messages.length > 0; text: t("Algumas reuniões ficaram de fora por causa do tamanho."); textFormat: Text.PlainText; color: muted; font.pixelSize: 11; wrapMode: Text.WordWrap; Layout.fillWidth: true }
