@@ -25,7 +25,7 @@ apps = [{'id':'slack','label':'Slack','kind':'app','defaultEnabled':True},{'id':
         {'id':'firefox','label':'Firefox','kind':'browser','defaultEnabled':True},{'id':'zoom','label':'Zoom','kind':'app','defaultEnabled':True},
         {'id':'discord','label':'Discord','kind':'app','defaultEnabled':False}]
 first = mode in ('first-run', 'wizard-flow', 'wizard-test-audio', 'wizard-english', 'wizard-key-cancel', 'wizard-key-finish', 'wizard-download-cancel', 'wizard-reload', 'wizard-recommended-review',
-                 'wizard-download-double', 'wizard-use-installed')
+                 'wizard-download-double', 'wizard-use-installed', 'wizard-record-test', 'wizard-download-all', 'wizard-finish-after-download')
 values = {'callDetection.enabled': not first, 'callDetection.mode':'record', 'callDetection.enqueueOnStop':True, 'callDetection.dryRun':False,
           'callDetection.entryDebounceSeconds':5, 'callDetection.exitTimeoutSeconds':15, 'callDetection.networkSampleSeconds':5,
           'callDetection.apps.slack':True,'callDetection.apps.zen':True,'callDetection.apps.helium':True,'callDetection.apps.chromium':True,
@@ -48,7 +48,24 @@ values = {'callDetection.enabled': not first, 'callDetection.mode':'record', 'ca
           'aiContext.maxMeetingsPerClient':12,'aiContext.maxCharactersPerClient':18000,'calendar.enabled':False,
           'gnome.framerate':30,'gnome.drawCursor':True,'gnome.audioSource':'both','visualReview.maxInferences':24,'visualReview.maxPreviews':16,
           'studio.language':'en' if mode in ('english', 'wizard-english') else 'auto',
-          'retention.localCompletedWorkDays':7,'retention.remoteIncomingDays':2,'retention.remoteResultsDays':30,'retention.remoteFailuresDays':30}
+          'retention.localCompletedWorkDays':7,'retention.remoteIncomingDays':2,'retention.remoteResultsDays':30,'retention.remoteFailuresDays':30,
+          # Sections 10–15 (notes, assistant, reminders, live, sharing, privacy).
+          'notes.enabled':True,'summary.useNotes':True,'summary.language':'auto','summary.template':'auto','summary.templateDetection':'ai','processing.fastPath':False,
+          'assistant.provider':'acp','assistant.localModel':'qwen3.5:9b','assistant.apiPreset':'openrouter','assistant.apiBaseUrl':'','assistant.apiModel':'','assistant.acpAgent':'codex',
+          'assistant.acpCommand':'','assistant.cliTool':'claude','assistant.cliModel':'','assistant.chatgptModel':'','assistant.maxContextCharacters':60000,'assistant.embeddingModel':'',
+          'reminders.mode':'auto','reminders.leadMinutes':2,'reminders.brief':True,'live.enabled':False,'live.provider':'whisper-cpp','live.chunkSeconds':15,
+          'live.whisperModelPath':'/home/synthetic/models/ggml-base.bin','live.whisperThreads':2,'live.openaiModel':'gpt-transcribe','live.groqModel':'whisper-large-v3-turbo',
+          'media.retention':'keep','media.graceDays':1,'destinations.obsidianVault':'','destinations.obsidianFolder':'FalaTrace','destinations.notionParentId':'','destinations.aiApp':'chatgpt-web',
+          'google.clientId':'','google.calendar':True}
+# The meeting features only some modes advertise (ux-capabilities); the others see the bridge of before.
+FEATURES = {'notes-section', 'assistant-section', 'template-editor-light', 'recipe-editor-compact'}
+templates = [{'id':'standup','name':'Daily','description':'Short daily check-in.','builtIn':True,'version':1,'sectionTitles':['Ontem','Hoje','Bloqueios'],
+              'template':{'id':'standup','version':1,'builtIn':True,'name':{'pt-BR':'Daily','en':'Stand-up','es':'Daily'},'description':'Short daily check-in.','titleKeywords':['daily'],'transcriptKeywords':[],
+                          'sections':[{'id':'yesterday','title':{'pt-BR':'Ontem','en':'Yesterday','es':'Ayer'},'instruction':'What each person did.'},
+                                      {'id':'today','title':{'pt-BR':'Hoje','en':'Today','es':'Hoy'},'instruction':'What each person will do.'},
+                                      {'id':'blockers','title':{'pt-BR':'Bloqueios','en':'Blockers','es':'Bloqueos'},'instruction':'What is in the way.'}],'guidance':'Keep it short.'}}]
+recipes = [{'id':'follow-up-email','name':'E-mail de follow-up','description':'Writes a follow-up email.','scope':'meeting','builtIn':True,'prompt':'Write a follow-up email for {{meeting.title}}.','version':1,
+            'names':{'pt-BR':'E-mail de follow-up','en':'Follow-up email','es':'Correo de seguimiento'}}]
 revision = 'a' * 64
 # Assistant modes on an existing OpenAI setup that already has its key; wizard-key-required has none.
 key_present = mode in ('wizard-disable-monitor', 'wizard-disable-unknown', 'wizard-download-finish', 'wizard-download-pending', 'wizard-gemini-key', 'wizard-lost', 'wizard-ffmpeg-review', 'wizard-automation-review',
@@ -64,7 +81,8 @@ def settings(): return {'revision':revision,'exists':not first,'values':values,'
     'credentials':credentials()}
 timer = {'installed':False,'enabled':False,'active':False,'outdated':False,'nextRunAt':None,'lastResult':None}
 services = {'calls':{'installed':not first,'enabled':not first,'active':not first and mode != 'wizard-skip-services','outdated':False,'staleConfig':mode == 'services'},
-            'tray':{'installed':True,'enabled':True,'active':True,'outdated':False,'staleConfig':False},'sync':dict(timer),'archive':dict(timer),'backup':dict(timer)}
+            'tray':{'installed':True,'enabled':True,'active':True,'outdated':False,'staleConfig':False},'sync':dict(timer),'archive':dict(timer),'backup':dict(timer),
+            'reminders':{'installed':False,'enabled':False,'active':False,'outdated':False,'staleConfig':False}}
 catalog = {'whisper':{'directory':'/home/synthetic/models','source':'https://huggingface.co/','models':[
     {'id':'tiny','file':'ggml-tiny.bin','bytes':77691713,'sha256':'0'*64,'quality':'Muito rápido.','installed':False,'selected':False,'path':'/home/synthetic/models/ggml-tiny.bin'},
     {'id':'large-v3-turbo-q5_0','file':'ggml-large-v3-turbo-q5_0.bin','bytes':574041195,'sha256':'1'*64,'quality':'Padrão.','recommended':True,'installed':mode == 'wizard-use-installed','selected':False,'path':'/home/synthetic/models/ggml-large-v3-turbo-q5_0.bin'}]},
@@ -110,6 +128,7 @@ for line in sys.stdin:
     elif op == 'settings-service':
         services['calls']['staleConfig'] = False
         if p['action'] == 'sync-apply': services['sync'].update({'installed':True,'enabled':True,'active':True,'nextRunAt':'2026-10-05T12:00:00.000Z'})
+        if p['action'] == 'reminders-apply': services['reminders'].update({'installed':True,'enabled':True,'active':True})
         v = {'action':p['action'],'services':services}
     elif op == 'settings-secret-set' and mode == 'keys-lost': continue
     elif op == 'settings-secret-test' and mode == 'keys-test-lost': continue
@@ -129,6 +148,10 @@ for line in sys.stdin:
     elif op in ('settings-model-download', 'settings-model-status'):
         v = {'kind':p['kind'],'id':p['model'],'state':'running','receivedBytes':1048576,'totalBytes':77691713}
         if cancelled: v.update({'state':'failed','error':'O download foi interrompido. Tente novamente.'})
+        # Both downloads finish on their first status poll; Finish then runs by itself.
+        if mode == 'wizard-finish-after-download' and op == 'settings-model-status':
+            v.update({'state':'completed','receivedBytes':77691713})
+            if p['kind'] == 'whisper': v['path'] = '/home/synthetic/models/ggml-large-v3-turbo-q5_0.bin'
         # The model finishes downloading while transcription still goes to OpenAI.
         if mode == 'models-cloud' and op == 'settings-model-status':
             v.update({'state':'completed','receivedBytes':77691713,'path':'/home/synthetic/models/ggml-tiny.bin'}); catalog['whisper']['models'][0]['installed'] = True
@@ -144,7 +167,21 @@ for line in sys.stdin:
     # The library list sent at startup is still pending when the save commits.
     elif op == 'list' and mode == 'save-list-pending' and [q['op'] for q in log].count('list') == 1: continue
     elif op in ('list','list-cached','jobs-list'): v = {'items':[]}
-    elif op == 'ux-capabilities': v = {'mockFrames':False,'realFrames':False}
+    elif op == 'ux-capabilities':
+        v = {'mockFrames':False,'realFrames':False}
+        if mode in FEATURES: v.update({'features':{name: True for name in ('notes','live','assistant','recipes','share','actions','people','clients','upcoming','openInbox','mediaRemoval','templates','librarySearch')},'firstRun':{}})
+    elif op == 'settings-google-status': v = {'connected':True,'email':'dono@example.com','clientConfigured':True,'flow':'idle'}
+    elif op == 'templates-list' and mode in FEATURES: v = {'templates':templates,'default':'auto','problems':[]}
+    elif op == 'templates-save' and mode in FEATURES:
+        t = p['template']; saved = dict(t, version=1)
+        templates.append({'id':t['id'],'name':t['name']['pt-BR'],'description':t['description'],'builtIn':False,'version':1,'sectionTitles':[s['title']['pt-BR'] for s in t['sections']],'template':saved})
+        v = {'template':templates[-1]}
+    elif op == 'recipes-list' and mode in FEATURES: v = {'recipes':recipes,'problems':[]}
+    elif op == 'recipes-save' and mode in FEATURES:
+        rc = p['recipe']; recipes.append(dict(rc, name=rc['name']['pt-BR'], names=rc['name'], version=1)); v = {'recipe':recipes[-1]}
+    elif op == 'assistant-detect' and mode in FEATURES:
+        v = {'acp':[{'agent':'claude','found':False},{'agent':'codex','found':True}],'cli':[{'tool':'claude','found':True,'signedIn':True},{'tool':'codex','found':False,'signedIn':False}],
+             'chatgpt':{'signedIn':True,'email':'dono@example.com'}}
     else:
         print(json.dumps({'id':r['id'],'ok':False,'error':'Operação recusada no fixture.'}), flush=True); continue
     print(json.dumps({'id':r['id'],'ok':True,'result':v}), flush=True)
@@ -180,7 +217,7 @@ MODES = {
                       'check("a save without values still applies the reviewed services", setupWizard.step===5 && setupWizard.results.some(function(r){return r.label==="Monitor de chamadas" && r.ok}))', ''),
     'wizard-test-audio': ('setupWizard.consentAck=true; setupWizard.step=1; setupWizard.set("capture.microphone","alsa_input.synthetic-mic")', 'setupWizard.request("settings-audio-test",{seconds:5,audioSource:setupWizard.value("capture.audioSource"),microphone:setupWizard.value("capture.microphone"),desktop:setupWizard.value("capture.desktop")})',
                           'check("audio test result is shown", !!setupWizard.audioTest && setupWizard.audioTest.tracks.length===1)', ''),
-    'tab-calls': ('settingsDialog.open()', 'check("settings loaded", !!settingsData.revision && !settingsHasChanges()); check("ten sections", settingsDialog.sections.length===10); check("automatic backend status follows the draft", settingsDialog.automaticBackendText().indexOf("tela e áudio")>=0)', '', ''),
+    'tab-calls': ('settingsDialog.open()', 'check("settings loaded", !!settingsData.revision && !settingsHasChanges()); check("sixteen sections", settingsDialog.sections.length===16); check("automatic backend status follows the draft", settingsDialog.automaticBackendText().indexOf("tela e áudio")>=0)', '', ''),
     'tab-capture': ('settingsDialog.open(); settingsTabs.currentIndex=1', 'check("devices listed from diagnose", settingsDeviceOptions(false).some(function(o){return o.value==="alsa_input.synthetic-mic"}) && settingsDeviceOptions(true).length===2)', '', ''),
     'legacy': ('settingsDialog.open(); settingsTabs.currentIndex=0', 'check("legacy backend explained as OBS for automatic recording", settingsDialog.automaticBackendText().indexOf("OBS")>=0 && !settingsDialog.automaticBackendOk())', '', ''),
     'tab-processing': ('settingsDialog.open(); settingsTabs.currentIndex=2', 'settingsDialog.applyPreset("local"); check("preset changes providers in the draft", settingsChanges()["transcription.provider"]==="whisper-cpp" && settingsChanges()["summary.provider"]==="ollama"); '
@@ -306,6 +343,77 @@ MODES = {
                          'settingsDialog.reject(); check("discarding returns to the saved language", uiLanguage==="pt")', ''),
     'wizard-english': ('', 'check("assistant opens in the saved language", setupWizard.visible && setupWizard.steps[0]==="Welcome"); check("step counter fills its placeholders", tf("Passo %1 de %2 · %3", 1, setupWizard.steps.length, setupWizard.steps[0])==="Step 1 of 6 · Welcome")', '', ''),
     'discard': ('settingsDialog.open()', 'setSettingsField("callDetection.enabled", false); check("unsaved change counted", settingsHasChanges()); settingsDialog.reject(); check("discard closes and clears draft", !settingsDialog.visible && Object.keys(settingsDraft).length===0)', '', ''),
+    # ── Sections 10–15 (DESIGN-STUDIO §2.13): grouped, in display order, each feature on its own page ──
+    'sections-grouped': ('settingsDialog.open(); settingsTabs.currentIndex=0',
+                         'check("the meeting sections come first, then recording and processing, then the system", JSON.stringify(settingsDialog.sectionOrder)==="[10,11,12,13,14,15,0,1,2,4,3,5,6,7,8,9]" && settingsDialog.sectionGroups.length===3 && settingsDialog.sections[10].title==="Notas e resumos" && settingsDialog.sections[15].title==="Privacidade e retenção"); '
+                         'check("every section has its entry in the list", settingsDialog.sectionOrder.every(function(i){ const b = findObject(settingsDialog.contentItem, "settingsSection-"+i); return !!b && b.visible })); '
+                         'settingsTabs.currentIndex=15; settingsDialog.stepSection(1); check("Down follows the display order", settingsTabs.currentIndex===0); settingsDialog.stepSection(-1); check("Up follows it back", settingsTabs.currentIndex===15); '
+                         'check("without the new bridge no feature op is sent from a section", !hasPending("templates-list") && !hasPending("assistant-detect"))',
+                         'settingsDialog.goToSection(15); setSettingsField("media.retention","audio-only"); const warning = findObject(settingsDialog.contentItem, "retentionWarning"); '
+                         'check("keeping only the audio says plainly the video can no longer be watched", !!warning && warning.visible && warning.text.indexOf("não poderão mais ser assistidas")>=0); '
+                         'setSettingsField("media.retention","transcript-only"); check("keeping only the text says it can no longer be watched or listened to", warning.text.indexOf("assistidas nem ouvidas")>=0); '
+                         'check("each choice says what stops working", findObject(settingsDialog.contentItem, "retentionAudio").detail.indexOf("não dá mais para assistir")>=0)',
+                         'settingsDialog.goToSection(13); check("live transcript lists where the audio goes, with cost and delay", findObject(settingsDialog.contentItem, "liveGroq").detail.indexOf("US$ 0,04")>=0 && findObject(settingsDialog.contentItem, "liveWhisper").detail.indexOf("não sai daqui")>=0); '
+                         'setSettingsField("live.provider","groq"); const groq = findObject(findObject(settingsDialog.contentItem, "settingsLive"), "secretInput_GROQ_API_KEY"); check("a cloud live provider shows its key inline", !!groq && groq.visible); settingsDialog.goToSection(15)'),
+    'notes-section': ('settingsDialog.open(); settingsDialog.goToSection(10)',
+                      'const row = findObject(settingsDialog.contentItem, "templateRow-standup"); check("the templates are listed on Notas e resumos", settingsDialog.notesPage.loaded && !!row && row.visible); '
+                      'check("the default template offers the list", settingsDialog.notesPage.templateOptions.some(function(o){ return o.value==="standup" && o.label==="Daily" })); '
+                      'const fast = findObject(settingsDialog.contentItem, "settingsFastPath"); check("the fast path needs processing on this computer", !!fast && !fast.enabled); '
+                      'templateEditor.openCopy(settingsDialog.notesPage.templates[0])',
+                      'check("the editor opens on a copy, Cancel focused", templateEditor.visible && findObject(templateEditor.footer, "templateCancel").activeFocus && templateEditor.sections.length===3 && templateEditor.problem===""); '
+                      'templateEditor.moveSection(2, -1); check("sections can be reordered", templateEditor.sections[1].id==="blockers"); templateEditor.save()',
+                      'check("saved, closed and listed", !templateEditor.visible && settingsDialog.notesPage.notice.indexOf("salvo")>=0 && settingsDialog.notesPage.templates.length===2 && errorText==="" && settingsError==="")'),
+    'assistant-section': ('settingsDialog.open(); settingsDialog.goToSection(11)',
+                          'check("detection marks the installed agent", settingsDialog.assistantPage.agentLabel({value:"codex",label:"Codex"})==="Codex · encontrado" && settingsDialog.assistantPage.agentLabel({value:"claude",label:"Claude Agent"})==="Claude Agent · não instalado"); '
+                          'const signIn = findObject(settingsDialog.contentItem, "chatgptSignIn"); check("the ChatGPT account shows as connected", settingsDialog.assistantPage.chatgpt.state==="signed-in" && signIn.text==="Sair"); '
+                          'check("each choice says what leaves this computer and what it costs", findObject(settingsDialog.contentItem, "assistantApi").detail.indexOf("Cobrado por uso")>=0 && findObject(settingsDialog.contentItem, "assistantLocal").detail.indexOf("Nada sai daqui")>=0); '
+                          'setSettingsField("assistant.provider","api"); setSettingsField("assistant.apiPreset","anthropic"); const key = findObject(findObject(settingsDialog.contentItem, "settingsAssistant"), "secretInput_ANTHROPIC_API_KEY"); check("an API shows its key inline", !!key && key.visible); '
+                          'recipeEditor.openNew()',
+                          'check("the recipe editor opens with Cancel focused", recipeEditor.visible && findObject(recipeEditor.footer, "recipeCancel").activeFocus && recipeEditor.problem!==""); '
+                          'findObject(recipeEditor.contentItem, "recipeName").text = "Resumo para o cliente"; findObject(recipeEditor.contentItem, "recipeDescription").text = "Um resumo curto para mandar ao cliente"; '
+                          'const prompt = findObject(recipeEditor.contentItem, "recipePrompt"); prompt.text = "Resuma para o cliente: "; prompt.cursorPosition = prompt.length; recipeEditor.insertVariable("meeting.title"); check("a variable goes in at the cursor, which stays in the request", prompt.text==="Resuma para o cliente: {{meeting.title}}" && prompt.activeFocus && recipeEditor.problem===""); recipeEditor.save()',
+                          'check("the recipe is saved and listed", !recipeEditor.visible && settingsDialog.assistantPage.recipes.length===2 && settingsDialog.assistantPage.notice.indexOf("salva")>=0)'),
+    'template-editor-light': ('window.lightTheme=true; settingsDialog.open(); settingsDialog.goToSection(10)',
+                              'templateEditor.openCopy(settingsDialog.notesPage.templates[0])',
+                              'check("the template editor fits the window, in the light theme", templateEditor.visible && templateEditor.height <= window.height - 48 && window.lightTheme); '
+                              'templateEditor.addSection(); check("a section can be added, up to eight", templateEditor.sections.length===4 && templateEditor.problem!==""); '
+                              'const added = templateEditor.sections[3]; added.title = "Riscos"; added.instruction = "Riscos e como reduzi-los."; templateEditor.touched(); '
+                              'check("a section with a title and an instruction makes it valid again, its field shown", templateEditor.problem==="" && !!findObject(templateEditor.contentItem, "templateSectionTitle-3"))',
+                              'check("nothing was saved while editing", !hasPending("templates-save") && templateEditor.visible)'),
+    'recipe-editor-compact': ('window.width=900; window.height=640; settingsDialog.open(); settingsDialog.goToSection(11)',
+                              'recipeEditor.openCopy(settingsDialog.assistantPage.recipes[0])',
+                              'check("the recipe editor fits the compact window", recipeEditor.visible && recipeEditor.width <= window.width - 48 && recipeEditor.height <= window.height - 48); '
+                              'check("a copy keeps the request, named as a copy", findObject(recipeEditor.contentItem, "recipeName").text==="E-mail de follow-up (cópia)" && findObject(recipeEditor.contentItem, "recipePrompt").text.indexOf("{{meeting.title}}")>=0 && recipeEditor.problem==="")', ''),
+    'reminders-section': ('settingsDialog.open(); settingsDialog.goToSection(12)',
+                          'const status = findObject(settingsDialog.contentItem, "remindersCalendarStatus"); check("the calendar line says it is connected", !!status && status.text.indexOf("dono@example.com")>=0); '
+                          'check("the service row says it is not installed yet", settingsDiag.services.reminders.installed===false); '
+                          'runSettingsService("reminders-apply")',
+                          'check("applying the reminders is said in Settings, and the service shows as running", settingsNotice.indexOf("Lembretes de reunião aplicados")>=0 && settingsDiag.services.reminders.active===true)', ''),
+    'share-section': ('settingsDialog.open(); settingsDialog.goToSection(14)',
+                      'const sharePage = findObject(settingsDialog.contentItem, "settingsShare"), notion = findObject(sharePage, "secretInput_NOTION_TOKEN"), slack = findObject(sharePage, "secretInput_SLACK_WEBHOOK_URL"); '
+                      'check("the Notion and Slack keys go through the key flow on Compartilhar", !!notion && notion.visible && !!slack && slack.visible); '
+                      'setSettingsField("destinations.aiApp","codex-cli"); check("the AI app is a choice", settingsChanges()["destinations.aiApp"]==="codex-cli")', '', ''),
+    'keys-new': ('settingsDialog.open(); settingsTabs.currentIndex=3',
+                 'check("the key section lists the assistant and sharing keys", ["OPENROUTER_API_KEY","ANTHROPIC_API_KEY","XAI_API_KEY","GROQ_API_KEY","MISTRAL_API_KEY","DEEPSEEK_API_KEY","TOGETHER_API_KEY","CUSTOM_API_KEY","NOTION_TOKEN","SLACK_WEBHOOK_URL"].every(function(name){ const field = findObject(settingsDialog.contentItem, "secretInput_" + name); return !!field && field.visible }))', '', ''),
+    'compact-sections': ('window.width=900; window.height=640; settingsDialog.open(); settingsTabs.currentIndex=0',
+                         'const combo = findObject(settingsDialog.contentItem, "settingsSectionCombo"); check("the compact list follows the display order", !!combo && combo.visible && combo.model[0]==="Notas e resumos" && combo.currentIndex===settingsDialog.sectionOrder.indexOf(0)); '
+                         'combo.activated(4); check("picking an entry opens that section", settingsTabs.currentIndex===14)', '', ''),
+    'shortcuts': ('shortcutsDialog.show(shortcutsButton)',
+                  'check("F1 or ? opens the shortcuts, Close focused", shortcutsDialog.visible && uxModal && findObject(shortcutsDialog.footer, "shortcutsClose").activeFocus && shortcutsDialog.groups.length===3)',
+                  'shortcutsDialog.close(); check("closing returns the focus to the ? button", !shortcutsDialog.visible && shortcutsButton.activeFocus)', 'shortcutsDialog.show(shortcutsButton)'),
+    'wizard-record-test': ('setupWizard.consentAck=true',
+                           'setupWizard.recommend(); check("the quick start turns on the notes as soon as a recording stops", setupWizard.value("processing.fastPath")===true && setupWizard.preset()==="local"); setupWizard.finish()',
+                           'const record = findObject(setupWizard.contentItem, "wizardRecordTest"); check("the last step offers the one-minute test recording", setupWizard.step===5 && !!record && record.visible && record.enabled); if (record) record.clicked()',
+                           'check("it opens the capture consent for the test conversation, in test mode", !setupWizard.visible && captureConsent.visible && captureConsent.captureTitle==="Conversa de teste" && liveView.testMode===true); '
+                           'check("Cancel keeps the focus, and nothing is recorded before consenting", findObject(captureConsent.footer, "captureConsentCancel").activeFocus && !hasPending("capture-start") && !captureStatus.active)'),
+    'wizard-download-all': ('setupWizard.consentAck=true; setupWizard.step=2',
+                            'const all = findObject(setupWizard.contentItem, "wizardDownloadAll"), estimate = findObject(setupWizard.contentItem, "wizardDownloadEstimate"); '
+                            'check("both missing models can start at once, with size and time", !!all && all.visible && setupWizard.missingDownloads().length===2 && estimate.text.indexOf("min a 100 Mb/s")>=0 && estimate.text.indexOf("Ollama")>=0); if (all) all.clicked()',
+                            'check("both downloads run while the setup goes on", setupWizard.modelDownloadRunning() && !!setupWizard.downloadState("whisper","large-v3-turbo-q5_0") && !!setupWizard.downloadState("ollama","qwen3.5:9b") && setupWizard.downloadsText().indexOf("Baixando")===0)', ''),
+    'wizard-finish-after-download': ('setupWizard.consentAck=true', 'setupWizard.recommend()',
+                                     'const start = findObject(setupWizard.contentItem, "wizardReviewDownload"); check("the review offers the downloads too", setupWizard.step===4 && !!start && start.visible && setupWizard.missingDownloads().length===2); if (start) start.clicked(); '
+                                     'const auto = findObject(setupWizard.contentItem, "wizardFinishAfterDownload"); check("while they run, Finish waits and can finish by itself", setupWizard.downloadBlocksFinish() && !!auto && auto.visible); setupWizard.finishWhenDownloaded=true',
+                                     'check("once both finish, the setup is saved by itself", setupWizard.step===5 && setupWizard.results.length>=1 && setupWizard.results[0].ok && !setupWizard.finishWhenDownloaded)'),
 }
 # Requests each mode is expected to send; anything outside the list fails the journey.
 SIDE_EFFECTS = {'save': {'settings-save'}, 'services': {'settings-service'}, 'wizard-flow': {'settings-save'}, 'backups': {'settings-restore'}, 'restore-reload': {'settings-restore'},
@@ -321,8 +429,19 @@ SIDE_EFFECTS = {'save': {'settings-save'}, 'services': {'settings-service'}, 'wi
                 'wizard-skip-services': {'settings-save'}, 'wizard-monitor-stale': {'settings-save'},
                 'wizard-unknown-services': {'settings-save'},
                 'wizard-ollama-pending': {'settings-model-download'}, 'save-list-pending': {'settings-save'},
-                'wizard-download-double': {'settings-model-download'}}
-GUARDED = {'settings-save', 'settings-service', 'settings-secret-set', 'settings-secret-remove', 'settings-model-download', 'settings-restore'}
+                'wizard-download-double': {'settings-model-download'}, 'notes-section': {'templates-save'}, 'assistant-section': {'recipes-save'},
+                'reminders-section': {'settings-service'}, 'wizard-record-test': {'settings-save'}, 'wizard-download-all': {'settings-model-download'},
+                'wizard-finish-after-download': {'settings-model-download', 'settings-save'}}
+GUARDED = {'settings-save', 'settings-service', 'settings-secret-set', 'settings-secret-remove', 'settings-model-download', 'settings-restore',
+           'templates-save', 'templates-delete', 'recipes-save', 'recipes-delete', 'assistant-chatgpt-login', 'assistant-chatgpt-logout', 'capture-start'}
+# Extra state a step waits for (bounded) on top of the settings replies: assertion, follow-up, final.
+READY = {'wizard-record-test': ('', 'setupWizard.step===5 && captureKnown', 'captureConsent.visible'),
+         'wizard-finish-after-download': ('', 'setupWizard.missingDownloads().length===2', 'setupWizard.step===5 && setupWizard.results.length>=1'),
+         'notes-section': ('settingsDialog.notesPage.loaded', '', '!templateEditor.visible'),
+         'assistant-section': ('settingsDialog.assistantPage.recipesLoaded && !!settingsDialog.assistantPage.detected', '', '!recipeEditor.visible'),
+         'template-editor-light': ('settingsDialog.notesPage.loaded', '', ''), 'recipe-editor-compact': ('settingsDialog.assistantPage.recipesLoaded', '', '')}
+# Modes whose steps wait for a download to finish need more time before the snapshot deadline.
+SNAPSHOT_MS = {'wizard-finish-after-download': '16000'}
 # The request the stub leaves unanswered on purpose in these modes; the steps do not wait for it.
 UNANSWERED = {'keys-lost': 'settings-secret-set', 'keys-test-lost': 'settings-secret-test', 'wizard-lost': 'settings-save', 'restore-pending': 'settings-restore'}
 
@@ -341,9 +460,11 @@ with tempfile.TemporaryDirectory(dir='/tmp', prefix='falatrace-settings-fixture-
         helpers = (' function wizardConsentGate() { return setupWizard.step!==0 || setupWizard.consentAck }\n'
                    ' function findObject(item, name) { if (!item) return null; if (item.objectName === name) return item; const kids = item.children || []; for (let i = 0; i < kids.length; i++) { const found = findObject(kids[i], name); if (found) return found } return null }\n')
         # The startup read answered, and no settings request (the assistant's included) is still waiting for its reply.
+        # The settings sections' own families (templates, recipes, assistant detection) count as settings requests.
         quiet = ('settingsFirstRunChecked && !Object.keys(pending).some(function(id){ const op = pending[id].op; '
-                 'return op.indexOf("settings-") === 0 && op !== "%s" })' % UNANSWERED.get(mode, ''))
-        extra = '\n' + helpers + qml_steps([(600, quiet, action), (1500, quiet, timer(assertion)), (2300, quiet, timer(follow)), (3100, quiet, timer(final))], 500)
+                 'return ["settings-", "templates-", "recipes-", "assistant-"].some(function(prefix){ return op.indexOf(prefix) === 0 }) && op !== "%s" })' % UNANSWERED.get(mode, ''))
+        ready = [quiet + (' && (' + extra + ')' if extra else '') for extra in READY.get(mode, ('', '', ''))]
+        extra = '\n' + helpers + qml_steps([(600, quiet, action), (1500, ready[0], timer(assertion)), (2300, ready[1], timer(follow)), (3100, ready[2], timer(final), 10000 if mode in SNAPSHOT_MS else 6000)], 500)
         (qml / 'Main.qml').write_text(base[:-1] + extra + '}\n'); copy_qml_siblings(qml)
         image = out / f'settings-{mode}.png'; receipt_path = root / f'{mode}-requests.json'
         env = {'FALATRACE_QA_ISOLATED': '1', 'FALATRACE_QA_ROOT': str(root), 'FALATRACE_QA_NONCE': nonce,
@@ -351,7 +472,7 @@ with tempfile.TemporaryDirectory(dir='/tmp', prefix='falatrace-settings-fixture-
                'HOME': str(root / 'home'), 'XDG_RUNTIME_DIR': str(root / 'runtime'), 'XDG_CACHE_HOME': str(root / 'cache'),
                'TMPDIR': str(root / 'tmp'), 'LANG': 'C.UTF-8', 'PATH': '/usr/bin:/bin', 'QT_QPA_PLATFORM': 'offscreen',
                'QT_QUICK_BACKEND': 'software', 'RECORDING_DESKTOP_SOFTWARE_SMOKE': '1', 'RECORDING_DESKTOP_SMOKE_KEY': '',
-               'RECORDING_DESKTOP_SNAPSHOT': str(image), 'RECORDING_DESKTOP_SNAPSHOT_MS': '8000',
+               'RECORDING_DESKTOP_SNAPSHOT': str(image), 'RECORDING_DESKTOP_SNAPSHOT_MS': SNAPSHOT_MS.get(mode, '8000'),
                'FALATRACE_TEST_MODE': mode, 'FALATRACE_RECEIPT': str(receipt_path)}
         runpy.run_path(str(repo / 'scripts/qa-run.py'))['require_isolated'](env)
         r = subprocess.run([*command, str(qml), str(stub)], env=env, capture_output=True, text=True, timeout=40)
@@ -369,6 +490,35 @@ with tempfile.TemporaryDirectory(dir='/tmp', prefix='falatrace-settings-fixture-
         if mode == 'wizard-flow':
             saves = [q for q in requests if q['op'] == 'settings-save']
             checks.append({'name': 'wizard-flow: first save initializes with explicit choices', 'pass': len(saves) == 1 and saves[0]['payload'].get('initialize') is True and saves[0]['payload']['changes'].get('backend') == 'audio' and saves[0]['payload']['changes'].get('transcription.provider') == 'whisper-cpp'})
+            checks.append({'name': 'wizard-flow: the quick start saves the fast path for notes', 'pass': len(saves) == 1 and saves[0]['payload']['changes'].get('processing.fastPath') is True})
+        if mode == 'notes-section':
+            saves = [q['payload'] for q in requests if q['op'] == 'templates-save']
+            template = saves[0]['template'] if len(saves) == 1 else {}
+            checks.append({'name': 'notes-section: the copy is saved once as a new custom template, sections in the new order, keeping their translations',
+                           'pass': len(saves) == 1 and 'expectedVersion' not in saves[0] and template.get('id') == 'custom:daily-copia' and template.get('name') == {'pt-BR': 'Daily (cópia)', 'en': 'Daily (cópia)', 'es': 'Daily (cópia)'}
+                           and [section['id'] for section in template.get('sections', [])] == ['yesterday', 'blockers', 'today'] and template['sections'][0]['title'] == {'pt-BR': 'Ontem', 'en': 'Yesterday', 'es': 'Ayer'}})
+        if mode == 'assistant-section':
+            saves = [q['payload'] for q in requests if q['op'] == 'recipes-save']
+            recipe = saves[0]['recipe'] if len(saves) == 1 else {}
+            checks.append({'name': 'assistant-section: the new recipe is saved once with its variable', 'pass': len(saves) == 1 and recipe.get('id') == 'custom:resumo-para-o-cliente' and recipe.get('scope') == 'meeting'
+                           and recipe.get('prompt') == 'Resuma para o cliente: {{meeting.title}}' and 'expectedVersion' not in saves[0]})
+            checks.append({'name': 'assistant-section: opening the section only detects and lists', 'pass': {q['op'] for q in requests if q['op'].startswith(('assistant-', 'recipes-'))} == {'assistant-detect', 'recipes-list', 'recipes-save'}})
+        if mode == 'reminders-section':
+            applied = [q['payload'] for q in requests if q['op'] == 'settings-service']
+            checks.append({'name': 'reminders-section: only the reminders service is applied', 'pass': applied == [{'action': 'reminders-apply'}]})
+        if mode in ('sections-grouped', 'share-section', 'keys-new', 'compact-sections', 'reminders-section'):
+            checks.append({'name': f'{mode}: without the feature flags no section asks for templates, recipes or detection', 'pass': not any(q['op'].startswith(('templates-', 'recipes-', 'assistant-')) for q in requests)})
+        if mode == 'wizard-download-all':
+            downloads = [q['payload'] for q in requests if q['op'] == 'settings-model-download']
+            checks.append({'name': 'wizard-download-all: one click starts both downloads, each with consent', 'pass': downloads == [{'kind': 'whisper', 'model': 'large-v3-turbo-q5_0', 'consent': True},
+                                                                                                                    {'kind': 'ollama', 'model': 'qwen3.5:9b', 'consent': True, 'ollamaUrl': 'http://127.0.0.1:11434'}]})
+        if mode == 'wizard-finish-after-download':
+            ops = [q['op'] for q in requests]
+            saves = [q['payload'] for q in requests if q['op'] == 'settings-save']
+            last_status = max((i for i, op in enumerate(ops) if op == 'settings-model-status'), default=len(ops))
+            checks.append({'name': 'wizard-finish-after-download: saved once, only after both downloads finished, with the new model',
+                           'pass': ops.count('settings-model-download') == 2 and len(saves) == 1 and ops.index('settings-save') > last_status
+                           and saves[0]['changes'].get('transcription.whisperCpp.modelPath') == '/home/synthetic/models/ggml-large-v3-turbo-q5_0.bin' and saves[0]['changes'].get('processing.fastPath') is True})
         if mode == 'keys':
             sets = [q for q in requests if q['op'] == 'settings-secret-set']
             checks.append({'name': 'keys: the key went to the bridge once', 'pass': len(sets) == 1 and sets[0]['payload']['name'] == 'OPENAI_API_KEY' and sets[0]['payload']['value'] == 'sha256:' + hashlib.sha256(b'sk-synthetic-ui-key').hexdigest()})

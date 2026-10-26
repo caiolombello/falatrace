@@ -221,7 +221,9 @@ Rectangle {
         RowLayout {
             Layout.fillWidth: true
             spacing: 2
-            FtNavButton { id: onboardingButton; objectName: "onboardingButton"; iconName: "settings"; text: t("Configurações…"); enabled: backend.available; onClicked: settingsDialog.open() }
+            // Narrow sidebar: icons only, the names in tooltips and for screen readers.
+            FtNavButton { id: onboardingButton; objectName: "onboardingButton"; iconName: "settings"; iconOnly: compactLayout; text: t("Configurações…"); enabled: backend.available; onClicked: settingsDialog.open() }
+            Item { visible: compactLayout; Layout.fillWidth: true }
             FtButton { id: recordingControlsButton; objectName: "recordingControlsButton"; iconOnly: true; variant: "ghost"; iconName: "tools"; text: t("Gravação e tarefas…"); Accessible.name: text; onClicked: recordingTools.open() }
             FtButton { id: aboutButton; objectName: "aboutButton"; iconOnly: true; variant: "ghost"; iconName: "info"; text: t("Sobre o FalaTrace"); Accessible.name: text; onClicked: aboutDialog.open() }
         }

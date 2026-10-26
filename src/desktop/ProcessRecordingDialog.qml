@@ -6,7 +6,7 @@ import QtQuick.Layouts
 // before anything happens; the bridge queues only the exact plan confirmed here (its
 // consent key), so a changed file or configuration asks again.
 FtDialog {
-    id:processDialog; objectName:"processDialog"; title:t("Processar gravação")
+    id:processDialog; objectName:"processDialog"; title:t("Gerar notas")
     anchors.centerIn:parent; width:Math.min(window.width-48,600); modal:true
     closePolicy:busy?Popup.NoAutoClose:Popup.CloseOnEscape
     property alias processConsent: processConsent
@@ -23,7 +23,7 @@ FtDialog {
     function hasProcessPending(op) { return Object.keys(pending).some(function(id){ return pending[id].op === op && pending[id].processGeneration === processDialog.processGeneration }) }
     function load() {
         plan = ({}); error = ""; processConsent.checked = false
-        if (send("recording-process-plan", recordingKey, ({}), { processGeneration: processGeneration }) < 0) error = t("Serviço indisponível. Reconecte e tente de novo.")
+        if (send("recording-process-plan", recordingKey, ({}), { processGeneration: processGeneration }) < 0) error = t("Sem conexão com o FalaTrace.")
     }
     function run() {
         if (!ready || !processConsent.checked || busy) return
@@ -89,13 +89,8 @@ FtDialog {
             }
             Label {
                 visible:processDialog.ready && processDialog.external
-                text:t("O áudio ou o texto desta gravação será enviado aos destinos marcados acima, com as chaves e endereços da configuração atual.")
+                text:t("O áudio ou o texto desta reunião vai para os destinos marcados como fora deste computador.")
                 textFormat:Text.PlainText; wrapMode:Text.WordWrap; color:warningColor; Layout.fillWidth:true
-            }
-            Label {
-                visible:processDialog.ready
-                text:t("O original é preservado. O resumo é gerado por modelo e precisa de revisão da fonte.")
-                textFormat:Text.PlainText; wrapMode:Text.WordWrap; color:muted; Layout.fillWidth:true
             }
         }
         Label { objectName:"processError"; visible:!!processDialog.error; text:t(processDialog.error); textFormat:Text.PlainText; wrapMode:Text.WordWrap; color:errorColor; Layout.fillWidth:true }
@@ -103,7 +98,7 @@ FtDialog {
             id:processConsent; objectName:"processConsent"
             visible:processDialog.ready
             enabled:processDialog.ready && !processDialog.busy
-            text:t("Tenho a permissão das pessoas gravadas e autorizo este processamento com os destinos acima.")
+            text:processDialog.external ? t("Tenho a permissão das pessoas gravadas e autorizo enviar o áudio ou o texto aos destinos acima.") : t("Tenho a permissão das pessoas gravadas.")
             Accessible.name:text
         }
     }

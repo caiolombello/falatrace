@@ -23,7 +23,7 @@ ColumnLayout {
         }
     }
     SettingsHint { visible:!!secretControl.purpose; text:secretControl.purpose }
-    SettingsHint { text:settingsDialog.secretSourceText(secretControl.report) }
+    SettingsHint { visible:text !== ""; text:settingsDialog.secretSourceText(secretControl.report) }
     RowLayout {
         Layout.fillWidth:true; spacing:8
         FtTextField {

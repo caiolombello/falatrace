@@ -91,6 +91,10 @@ ApplicationWindow {
     property bool detailLoading: false
     property bool paused: true
     property bool playerInitialized: false
+    // Whether the open media has a picture, as mpv reports it once loaded (mediaProbed); the player
+    // strip decides from the meeting's data until then.
+    property bool mediaProbed: false
+    property bool mediaHasVideo: false
     property bool captions: true
     property bool subtitleQueued: false
     property string notice: ""
@@ -119,8 +123,7 @@ ApplicationWindow {
             return captions ? label : t("Legendas desativadas · ") + label
         }
         if (detail.subtitleState === "running") return t("Legendas em preparação; ainda não há faixa disponível.")
-        return (captions ? t("Preferência de legendas ativada. ") : t("Legendas desativadas. "))
-            + (t(detail.subtitleMessage || "") || t("Sem faixa temporizada disponível; a transcrição original continua na aba Transcrição."))
+        return (captions ? "" : t("Legendas desativadas. ")) + (t(detail.subtitleMessage || "") || t("Sem legendas para esta gravação."))
     }
     property int diarizationTurns: (detail.diarization.turns || []).length
     property bool diarizationTab: tabs.currentIndex === 2
@@ -274,7 +277,13 @@ ApplicationWindow {
         "share": '<circle cx="6.5" cy="12" r="2.3"/><circle cx="17.5" cy="6" r="2.3"/><circle cx="17.5" cy="18" r="2.3"/><path d="M8.6 10.9l6.8-3.8M8.6 13.1l6.8 3.8"/>',
         "checklist": '<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 12.3l2.7 2.7 5.3-6"/>',
         "heading": '<path d="M6 5v14M18 5v14M6 12h12"/>',
-        "list": '<path d="M9 7h11M9 12h11M9 17h11"/><circle cx="4.8" cy="7" r=".9" fill="%C"/><circle cx="4.8" cy="12" r=".9" fill="%C"/><circle cx="4.8" cy="17" r=".9" fill="%C"/>'
+        "list": '<path d="M9 7h11M9 12h11M9 17h11"/><circle cx="4.8" cy="7" r=".9" fill="%C"/><circle cx="4.8" cy="12" r=".9" fill="%C"/><circle cx="4.8" cy="17" r=".9" fill="%C"/>',
+        "arrow-up": '<path d="M12 19V5M6 11l6-6 6 6"/>',
+        "arrow-down": '<path d="M12 5v14M6 13l6 6 6-6"/>',
+        "fullscreen": '<path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/>',
+        "fullscreen-exit": '<path d="M9 4v5H4M20 9h-5V4M15 20v-5h5M4 15h5v5"/>',
+        "cinema": '<rect x="3" y="5" width="18" height="12" rx="2"/><path d="M8 20h8"/>',
+        "help": '<circle cx="12" cy="12" r="9"/><path d="M9.6 9.4a2.5 2.5 0 0 1 4.8 1c0 1.7-2.4 2.1-2.4 3.6M12 17.2v.1"/>'
     })
     function iconUri(name, tint) {
         const body = iconPaths[name]
@@ -337,9 +346,9 @@ ApplicationWindow {
     function asList(value) { return value && typeof value === "object" && typeof value.length === "number" ? Array.prototype.slice.call(value) : [] }
     function captureClock() { return clock(Math.max(0, (statusNow - Date.parse(captureStatus.session && captureStatus.session.startedAt || new Date(statusNow).toISOString())) / 1000)) }
     function keyboardHint() {
-        if (currentView === "meeting") return t("Espaço: reproduzir/pausar · Setas: ±5 s · Esc: voltar · Ctrl+K: buscar")
+        if (currentView === "meeting") return detailView.playerStrip.hasVideo ? t("Espaço: reproduzir/pausar · Setas: ±5 s · V: vídeo · F: tela cheia · Esc: voltar · F1: atalhos") : t("Espaço: reproduzir/pausar · Setas: ±5 s · Esc: voltar · F1: atalhos")
         if (currentView === "live") return t("Enter: nova linha com horário · Ctrl+S: salvar agora · # título · [ ] ação")
-        return t("Ctrl+K: buscar reuniões · Ctrl+Shift+R: gravar · F5: atualizar a lista")
+        return t("Ctrl+K: buscar reuniões · Ctrl+Shift+R: gravar · F1: atalhos")
     }
     function audioLabel() {
         const configured = captureStatus.audio && captureStatus.audio.configured
@@ -444,6 +453,7 @@ ApplicationWindow {
     property var releaseInfo: ({})
     property bool uxModal: settingsDialog.visible || setupWizard.visible || processDialog.visible || aboutDialog.visible || captureConsent.visible || framesDialog.visible || onboardingDialog.visible || agentDialog.visible || recordingTools.visible || reviewDialog.visible || exportDialog.visible || summaryDialog.visible || speakerSuggestDialog.visible || detailView.menuOpen
         || shareDialog.visible || mediaRemoveDialog.visible || personDialog.visible || clientDialog.visible || detailView.templatePickerOpen
+        || templateEditor.visible || recipeEditor.visible || shortcutsDialog.visible
     // ── Generating the notes again (DESIGN-STUDIO §2.7) ──
     // A template picked, or "Gerar notas de novo", shows regenerateBar first. Gerar plans the run: a
     // destination on this computer runs at once (the click is the consent); one outside it opens
@@ -660,6 +670,10 @@ ApplicationWindow {
     SettingsDialog { id: settingsDialog }
     property alias settingsTabs: settingsDialog.settingsTabs
     SetupWizard { id: setupWizard }
+    // Your own templates and recipes, edited from Settings (Notas e resumos, Perguntar e receitas).
+    TemplateEditorDialog { id: templateEditor }
+    RecipeEditorDialog { id: recipeEditor }
+    ShortcutsDialog { id: shortcutsDialog }
 
     function handleSettingsResponse(request, message) {
         // Reads, saves and restores all carry the saved interface language.
@@ -724,7 +738,7 @@ ApplicationWindow {
     function loadSettings(withDiagnose) {
         if(hasSettingsPending("settings-save")||hasSettingsPending("settings-read"))return
         settingsGeneration+=1;settingsData=({});settingsDraft=({})
-        if(!backend.available){settingsNeedsReload=true;settingsError=t("Serviço indisponível. Reconecte e releia a configuração antes de salvar.");return}
+        if(!backend.available){settingsNeedsReload=true;settingsError=t("Sem conexão com o FalaTrace.");return}
         settingsError="";settingsNeedsReload=false;send("settings-read","")
         if(withDiagnose)send("settings-diagnose","")
     }
@@ -786,7 +800,7 @@ ApplicationWindow {
         if(!settingsDialog.visible)return
         const saving=hasSettingsPending("settings-save")||hasSettingsPending("settings-service")
         settingsGeneration+=1;settingsNeedsReload=true
-        settingsError=saving?t("Conexão perdida durante a operação; o resultado não foi confirmado. Reconecte e releia antes de tentar de novo."):t("Serviço desconectado. Reconecte e releia a configuração antes de salvar.")
+        settingsError=saving?t("Não deu para confirmar se salvou. Recarregue e confira."):t("Sem conexão com o FalaTrace.")
     }
 
     OnboardingDialog { id: onboardingDialog }
@@ -799,7 +813,7 @@ ApplicationWindow {
     function loadOnboarding() {
         if(hasOnboardingPending("onboarding-save-local")||hasOnboardingPending("onboarding-read"))return
         onboardingGeneration+=1;onboardingDraft=({});localChoice.checked=false
-        if(!backend.available){invalidateOnboarding(t("Serviço indisponível. Reconecte e releia a configuração antes de salvar."));return}
+        if(!backend.available){invalidateOnboarding(t("Sem conexão com o FalaTrace."));return}
         onboardingError="";onboardingNeedsReload=false;send("onboarding-read","")
     }
     function invalidateOnboarding(message) {
@@ -808,7 +822,7 @@ ApplicationWindow {
     function onboardingConnectionLost() {
         if(!onboardingDialog.visible)return
         onboardingSaveUncertain=onboardingSaveUncertain||hasOnboardingPending("onboarding-save-local")
-        invalidateOnboarding(onboardingSaveUncertain?t("Conexão perdida durante o salvamento; o resultado ainda não foi confirmado. Reconecte e releia a configuração antes de tentar novamente."):t("Serviço desconectado. Reconecte e releia a configuração antes de salvar."))
+        invalidateOnboarding(onboardingSaveUncertain?t("Não deu para confirmar se salvou. Recarregue e confira."):t("Sem conexão com o FalaTrace."))
     }
 
     function revealFocusedControl(scroll) {
@@ -963,8 +977,8 @@ ApplicationWindow {
         send("revision-undo",diarizationKey(),{expectedRevision:detail.review.revision.revision,base:detail.review.revision.base})
     }
     function revisionConnectionLost() {
-        if(reviewDialog.visible || revisionPending()) { reviewNeedsReload=true; reviewError=t("Conexão perdida; o salvamento pode ter ocorrido. Releia antes de tentar novamente.") }
-        if(exportDialog.visible) { exportError=t("Conexão perdida; confira a exportação após reconectar antes de salvar novamente."); exportResult=({}) }
+        if(reviewDialog.visible || revisionPending()) { reviewNeedsReload=true; reviewError=t("Não deu para confirmar se salvou. Recarregue e confira.") }
+        if(exportDialog.visible) { exportError=t("Não deu para confirmar se salvou. Recarregue e confira."); exportResult=({}) }
         reviewGeneration+=1; exportGeneration+=1; clearDerivedView()
     }
     function previewExport() {
@@ -980,7 +994,8 @@ ApplicationWindow {
     function send(op, key, payload, meta) {
         if (["agent-authorize","provider-authorize","agent-frames","provider-analyze"].includes(op)) agentError=""
         const id = backend.request(op, key || "", payload || ({}))
-        if (id < 0) { if(isFamilyOp(op))return -1; if(op.startsWith("summary-"))summaryConnectionLost();if(op.startsWith("revision-")){reviewNeedsReload=true;reviewError=t("Pedido sem confirmação; reconecte e releia antes de tentar novamente.")}if(op.startsWith("export-")){exportError=t("Pedido sem confirmação; atualize a prévia após reconectar.");exportResult=({})}if(op.startsWith("agent-")||op.startsWith("provider-"))agentError=t("Serviço indisponível; dados preservados. Feche e reconecte para continuar."); if(op.startsWith("frames-"))uxError=t("Serviço indisponível; dados preservados. Reabra após reconectar.");if(op.startsWith("onboarding-"))invalidateOnboarding(t("O serviço não recebeu este pedido. Reconecte e releia a configuração antes de salvar."));if(op.startsWith("settings-")&&settingsDialog.visible){settingsNeedsReload=true;settingsError=t("O serviço não recebeu este pedido. Reconecte e releia a configuração.");return -1} errorText = t("O serviço da biblioteca está indisponível. Reabra esta janela."); return -1 }
+        // Not sent: nothing changed. One message everywhere (DESIGN-STUDIO §2.17); the Reconectar button is in the top bar.
+        if (id < 0) { if(isFamilyOp(op))return -1; const offline=t("Sem conexão com o FalaTrace."); if(op.startsWith("summary-"))summaryConnectionLost();if(op.startsWith("revision-")){reviewNeedsReload=true;reviewError=offline}if(op.startsWith("export-")){exportError=offline;exportResult=({})}if(op.startsWith("agent-")||op.startsWith("provider-"))agentError=offline; if(op.startsWith("frames-"))uxError=offline;if(op.startsWith("onboarding-"))invalidateOnboarding(offline);if(op.startsWith("settings-")&&settingsDialog.visible){settingsNeedsReload=true;settingsError=offline;return -1} errorText = offline; return -1 }
         const next = Object.assign({}, pending)
         next[id] = Object.assign({op: op, key: key, generation: generation, frameGeneration: frameGeneration, onboardingGeneration: onboardingGeneration, settingsGeneration: settingsGeneration, agentGeneration:agentGeneration, reviewGeneration:reviewGeneration,exportGeneration:exportGeneration,summaryGeneration:summaryGeneration,libraryEpoch:libraryEpoch}, meta || ({}))
         pending = next
@@ -1018,7 +1033,9 @@ ApplicationWindow {
         liveNotes: function() { return liveView.notesEditor }, live: function() { return liveView.transcriptPanel }, templates: function() { return detailView.templatePicker },
         meetingClient: function() { return clientDialog }, ask: function() { return askPanel }, share: function() { return shareDialog }, home: function() { return homeView },
         actions: function() { return actionsView }, people: function() { return peopleView }, clients: function() { return clientsView }, personDialog: function() { return personDialog },
-        clientDialog: function() { return clientDialog }, media: function() { return mediaRemoveDialog }, inbox: function() { return inboxPoller }, firstRun: function() { return homeView }
+        clientDialog: function() { return clientDialog }, media: function() { return mediaRemoveDialog }, inbox: function() { return inboxPoller }, firstRun: function() { return homeView },
+        settingsNotes: function() { return settingsDialog.notesPage }, settingsAssistant: function() { return settingsDialog.assistantPage },
+        templateEditor: function() { return templateEditor }, recipeEditor: function() { return recipeEditor }
     })
     function familyOwner(origin) { const owner = familyOwners[origin]; return owner ? owner() : null }
     function routeFamilyResponse(request, message) {
@@ -1030,6 +1047,7 @@ ApplicationWindow {
         sidebar.connectionLost(); detailView.notesEditor.connectionLost(); detailView.notesDocument.connectionLost(); liveView.notesEditor.connectionLost(); liveView.transcriptPanel.connectionLost()
         detailView.templatePicker.connectionLost(); askPanel.connectionLost(); shareDialog.connectionLost(); homeView.connectionLost(); actionsView.connectionLost()
         peopleView.connectionLost(); clientsView.connectionLost(); personDialog.connectionLost(); clientDialog.connectionLost(); mediaRemoveDialog.connectionLost(); inboxPoller.connectionLost()
+        settingsDialog.notesPage.connectionLost(); settingsDialog.assistantPage.connectionLost(); templateEditor.connectionLost(); recipeEditor.connectionLost()
     }
     // Dialogs about the open meeting close with it.
     function closeMeetingDialogs() {
@@ -1208,13 +1226,19 @@ ApplicationWindow {
     property alias reviewNoteButton: detailView.reviewNoteButton
     property alias speakerSuggestButton: detailView.speakerSuggestButton
     // Esc closes the Ask drawer first (or stops an answer coming in), then leaves the meeting.
-    Shortcut { sequence: "Escape"; enabled: (askPanel.shown || !!selected.key) && !uxModal && !notesTextFocused(); onActivated: { if (askPanel.shown) askPanel.handleEscape(); else backToLibrary() } }
+    // Esc leaves full screen first, then closes the Ask drawer (or stops an answer coming in), then leaves the meeting.
+    function escapeKey() { if (detailView.playerStrip.fullScreen) detailView.playerStrip.setFullScreen(false); else if (askPanel.shown) askPanel.handleEscape(); else backToLibrary() }
+    // F: the video in full screen and back (only when there is a video to watch); v: show or collapse it.
+    function fullScreenKey() { if (detailView.playerStrip.hasVideo) detailView.playerStrip.setFullScreen(!detailView.playerStrip.fullScreen) }
+    function videoKey() { detailView.playerStrip.toggleVideo() }
+    Shortcut { sequence: "Escape"; enabled: (detailView.playerStrip.fullScreen || askPanel.shown || !!selected.key) && !uxModal && !notesTextFocused(); onActivated: escapeKey() }
+    Shortcut { sequence: "F"; enabled: currentView === "meeting" && !textHasFocus && !uxModal && detailView.playerStrip.hasVideo; onActivated: fullScreenKey() }
     Shortcut { sequence: "Ctrl+J"; enabled: !uxModal && feature("assistant") && currentView !== "live"; onActivated: askPanel.toggle() }
     Shortcut { sequence: "Ctrl+Shift+E"; enabled: !uxModal && currentView === "meeting" && feature("share") && !!detail.jobId; onActivated: shareDialog.openMeeting() }
     // A focused checkbox (an action) keeps Space; Esc in the notepad only leaves the notepad.
     function checkableHasFocus() { return !!activeFocusItem && activeFocusItem.checkable === true }
     function notesTextFocused() { return !!activeFocusItem && activeFocusItem.objectName === "notesEditorText" }
-    Shortcut { sequence: "V"; enabled: currentView === "meeting" && !textHasFocus && !uxModal; onActivated: detailView.playerStrip.toggleVideo() }
+    Shortcut { sequence: "V"; enabled: currentView === "meeting" && !textHasFocus && !uxModal; onActivated: videoKey() }
     Shortcut { sequence: "Alt+1"; enabled: currentView === "meeting" && !uxModal; onActivated: tabs.currentIndex = 1 }
     Shortcut { sequence: "Alt+2"; enabled: currentView === "meeting" && !uxModal; onActivated: tabs.currentIndex = 0 }
     Shortcut { sequence: "Alt+3"; enabled: currentView === "meeting" && !uxModal; onActivated: tabs.currentIndex = 2 }
@@ -1231,6 +1255,7 @@ ApplicationWindow {
     Shortcut { sequence: "Ctrl+3"; enabled: !uxModal && viewAvailable("people"); onActivated: navigate("people") }
     Shortcut { sequence: "Ctrl+4"; enabled: !uxModal && viewAvailable("clients"); onActivated: navigate("clients") }
     Shortcut { sequence: "F5"; enabled: backend.available; onActivated: refreshLibrary() }
+    Shortcut { sequences: ["F1", "Ctrl+/"]; enabled: !uxModal; onActivated: shortcutsDialog.show(window.activeFocusItem) }
     // Idle: ask before recording. Recording: open its notes (stopping always takes a click or Enter on Parar).
     Shortcut { sequence: "Ctrl+Shift+R"; enabled: !uxModal && captureKnown; onActivated: { if (captureStatus.active) openLive(); else if (backend.available && !captureBusy) { captureConsent.intent = "capture"; captureConsent.open() } } }
     function refreshLibrary() { if (backend.available && !hasPending("list")) send("list", "") }
@@ -1262,7 +1287,7 @@ ApplicationWindow {
         target: backend
         function onFailed(message) { summaryConnectionLost();revisionConnectionLost();onboardingConnectionLost();settingsConnectionLost();familiesConnectionLost();if(agentDialog.visible)agentError=message; captureKnown = false; pending = {}; errorText = message; loading = false; resolving = false; detailLoading = false; operationPolling = false; captureBusy = false; contextLoading = false }
         function onAvailabilityChanged() {
-            if (!backend.available) { summaryConnectionLost();revisionConnectionLost();onboardingConnectionLost();settingsConnectionLost();familiesConnectionLost();if(agentDialog.visible)agentError=t("Serviço desconectado; dados preservados. Feche e reconecte para continuar."); captureKnown = false; pending = {}; loading = false; resolving = false; detailLoading = false; operationPolling = false; captureBusy = false; contextLoading = false; notice = t("Serviço desconectado. Use Reconectar para continuar.") }
+            if (!backend.available) { summaryConnectionLost();revisionConnectionLost();onboardingConnectionLost();settingsConnectionLost();familiesConnectionLost();if(agentDialog.visible)agentError=t("Sem conexão com o FalaTrace."); captureKnown = false; pending = {}; loading = false; resolving = false; detailLoading = false; operationPolling = false; captureBusy = false; contextLoading = false; notice = t("Sem conexão com o FalaTrace.") }
             else { errorText = ""; notice = t("Serviço conectado."); setupWizard.reconnected(); if (!libraryFresh) send("list-cached", ""); send("capture-status", ""); send("jobs-list", ""); send("list", ""); send("ux-capabilities", ""); if (!settingsFirstRunChecked && !hasSettingsPending("settings-read")) send("settings-read", "") }
         }
         function onResponse(message) {
@@ -1344,7 +1369,7 @@ ApplicationWindow {
                 if (request.op !== "capture-status" || !["capture-start", "capture-stop", "capture-recover", "audio-defaults", "automation-pause", "automation-resume"].some(op => hasPending(op))) captureBusy = false
                 if (request.op === "capture-start") liveView.captureStarted()
                 if (request.op === "capture-stop") { liveView.captureStopped(result); refreshLibrary() }
-                if (request.op !== "capture-status") notice = request.op === "automation-pause" ? t("Novas gravações automáticas pausadas. A captura atual continua até Parar.") : request.op === "automation-resume" ? t("Automação retomada para futuras chamadas; confira suas regras.") : request.op === "capture-start" ? t("Captura iniciada.") : request.op === "capture-stop" ? (result.stopWarning ? t("Captura parada, com aviso: ") + t(result.stopWarning) : t("Captura finalizada e enfileirada.")) : request.op === "capture-recover" ? t("Recuperação solicitada.") : t("Áudio padrão atualizado.")
+                if (request.op !== "capture-status") notice = request.op === "automation-pause" ? t("Gravação automática pausada.") + (result.active ? t(" A gravação atual continua.") : "") : request.op === "automation-resume" ? t("Gravação automática ligada.") : request.op === "capture-start" ? t("Captura iniciada.") : request.op === "capture-stop" ? (result.stopWarning ? t("Captura parada, com aviso: ") + t(result.stopWarning) : t("Captura finalizada e enfileirada.")) : request.op === "capture-recover" ? t("Recuperação solicitada.") : t("Áudio padrão atualizado.")
             } else if (request.op === "jobs-list") {
                 const previousJobs = jobs
                 jobs = result.items || []
@@ -1360,7 +1385,7 @@ ApplicationWindow {
                 notice = result.warning || (result.status === "completed" ? t("Este job já está concluído.") : result.status === "active" ? t("Este job já está em processamento.") : t("Job enviado para processamento."))
                 send("jobs-list", "")
             } else if(request.op === "revision-save" || request.op === "revision-undo") {
-                notice=request.op==="revision-undo"?t("Revisão anterior restaurada por uma nova revisão; original preservado."):t("Revisão humana salva; derivados antigos precisam de revisão.")
+                notice=request.op==="revision-undo"?t("Correção desfeita."):t("Correção salva. Gere as notas de novo para incluí-la.")
                 reviewDialog.close();clearDerivedView();detailLoading=true;send("detail",selected.key)
             } else if(request.op === "export-preview") {
                 exportResult=result;exportError=""
@@ -1436,6 +1461,7 @@ ApplicationWindow {
             const length = Number(video.getProperty("duration")) || 0
             duration = length
             mediaReady = length > 0
+            if (mediaReady) { const codec = video.getProperty("video-codec"); mediaHasVideo = !!codec; mediaProbed = true } else mediaProbed = false
             position = Number(video.getProperty("time-pos")) || 0
             paused = video.getProperty("pause") !== false
             const segments = detail.transcript.segments || []
@@ -1530,6 +1556,7 @@ ApplicationWindow {
                     enabled: backend.available && !captureBusy
                     onClicked: { if (captureStatus.paused) { captureConsent.intent = "resume"; captureConsent.open() } else { captureBusy = true; if (send("automation-pause", "") < 0) captureBusy = false } }
                 }
+                FtButton { id: shortcutsButton; objectName: "shortcutsButton"; iconOnly: true; variant: "ghost"; iconName: "help"; text: t("Atalhos de teclado (F1)"); Accessible.name: text; onClicked: shortcutsDialog.show(shortcutsButton) }
                 FtButton { iconOnly: true; variant: "ghost"; iconName: lightTheme ? "moon" : "sun"; text: lightTheme ? t("Tema escuro") : t("Tema claro"); Accessible.name: text; onClicked: lightTheme = !lightTheme }
             }
         }
@@ -1579,5 +1606,17 @@ ApplicationWindow {
                 Label { objectName: "keyboardHelp"; textFormat: Text.PlainText; text: t(errorText || notice || "") || (captionHasFocus() ? t("Legendas: setas, Page Up/Down ou Espaço percorrem o texto · Tab sai") : keyboardHint()); color: errorText ? errorColor : notice ? ink : muted; font.pixelSize: 12; wrapMode: Text.WordWrap; Layout.fillWidth: true }
             }
         }
+    }
+    // The video in full screen covers the whole window (the player strip moves its frame here).
+    Rectangle {
+        id: videoFullScreen
+        objectName: "videoFullScreen"
+        anchors.fill: parent
+        z: 50
+        color: "#000000"
+        visible: detailView.playerStrip.fullScreen
+        focus: visible
+        Accessible.role: Accessible.Pane
+        Accessible.name: t("Vídeo em tela cheia. Esc sai.")
     }
 }

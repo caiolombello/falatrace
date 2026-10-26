@@ -3,7 +3,8 @@
 
 Offline and disposable. Each mode drives the meeting page with studio_fixture.qml_steps (every step
 waits, bounded, for the state the previous reply produces, never a fixed delay): the picker opened
-from the template chip (the current template marked, focus in the list and back on the chip); a
+from the template chip (the current template marked, focus in the list and back on the chip; "Gerenciar
+modelos…" opens Settings on Notas e resumos); a
 template chosen, saved for the meeting and generated on this computer (the regenerate bar, no dialog,
 summary-status polled until the notes are ready, the meeting read again); another language with a
 destination outside this computer in the compact English layout (SummaryDialog with the plan and a
@@ -253,6 +254,13 @@ PLANS = {
     check("nothing is generated", summaryStage === "" && !hasPending("summary-plan"))'''),
         ('saved', 'detailView.templatePicker.prefs.rev === 1 && toast.message !== ""', '''
     check("the choice is said once it is saved", toast.message === "As próximas notas desta reunião usarão “Postmortem”.")''')]),
+    'manage': ('1320x820', False, [OPEN[:2] + (OPEN[2] + '''
+    uxFind(detailView.notesDocument, "templateChip").clicked()''',),
+        ('picker open', PICKER, '''
+    uxFind(detailView.templatePicker.contentItem, "templateManage").clicked()'''),
+        ('settings open', 'settingsDialog.visible && settingsDialog.notesPage.loaded', '''
+    check("Gerenciar modelos opens Settings on Notas e resumos, with the templates listed", !detailView.templatePicker.visible && settingsTabs.currentIndex === 10 && !!uxFind(settingsDialog.contentItem, "templateRow-postmortem"))
+    check("nothing is saved or generated on the way", !hasPending("summary-prefs-save") && summaryStage === "")''')]),
     'no-templates': ('1320x820', False, [
         ('meeting open', OPEN[1], '''
     const chip = uxFind(detailView.notesDocument, "templateChip")

@@ -12,6 +12,8 @@ Flickable {
     property alias summaryRegenerateButton: summaryRegenerateButton
     property alias visualSummaryButton: visualSummaryButton
     readonly property bool regenerateMenuOpen: regenerateMenu.visible
+    // A narrow column (the notes beside the video in cinema mode): the header keeps to its width.
+    readonly property bool narrow: width < 560
     property alias regenerateMenu: regenerateMenu
     property var notesDoc: detail.notesDoc && detail.notesDoc.version === 2 ? detail.notesDoc : null
     readonly property bool visualShown: showVisualSummary && !!detail.visualReview && !!detail.visualReview.summaryMarkdown
@@ -128,7 +130,7 @@ Flickable {
 
     ColumnLayout {
         id: column
-        width: Math.min(docMaxWidth, doc.width - (compactLayout ? 32 : 56))
+        width: Math.min(docMaxWidth, doc.width - (compactLayout || doc.narrow ? 32 : 56))
         x: (doc.width - width) / 2
         y: compactLayout ? 16 : 24
         spacing: 12
@@ -181,7 +183,7 @@ Flickable {
             }
             // "Gerar de novo ▾": the same template, or another language.
             FtButton {
-                id: summaryRegenerateButton; objectName: "summaryRegenerateButton"; compact: true; variant: "ghost"; iconName: "spark"; iconOnly: compactLayout
+                id: summaryRegenerateButton; objectName: "summaryRegenerateButton"; compact: true; variant: "ghost"; iconName: "spark"; iconOnly: compactLayout || doc.narrow
                 text: t("Gerar de novo…"); Accessible.name: t("Gerar as notas de novo")
                 enabled: canRegenerate() && summaryStage !== "running"
                 onClicked: regenerateMenu.popup(summaryRegenerateButton, summaryRegenerateButton.width - regenerateMenu.implicitWidth, summaryRegenerateButton.height + 4)

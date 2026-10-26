@@ -182,7 +182,7 @@ Popup {
         RowLayout {
             Layout.fillWidth: true
             spacing: 8
-            FtButton { compact: true; variant: "ghost"; iconName: "settings"; text: t("Gerenciar modelos…"); enabled: backend.available; onClicked: { picker.close(); settingsDialog.open() } }
+            FtButton { objectName: "templateManage"; compact: true; variant: "ghost"; iconName: "settings"; text: t("Gerenciar modelos…"); enabled: backend.available; onClicked: { picker.close(); settingsDialog.openSection(10) } }
             Item { Layout.fillWidth: true }
             FtButton {
                 objectName: "templateApply"

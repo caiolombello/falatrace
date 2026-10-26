@@ -14,7 +14,7 @@ FtDialog {
     property alias frameColumn: frameColumn
     property alias frameSummaryModel: frameSummaryModel
     property alias frameVisionModel: frameVisionModel
-    title: mockFramesEnabled ? t("Frames · ensaio local com mock") : t("Frames · análise local sob consentimento")
+    title: mockFramesEnabled ? t("Frames · ensaio local com mock") : t("Análise visual")
     anchors.centerIn: parent; width: Math.min(window.width - 64, 560)
     height: Math.min(implicitHeight, window.height - 64)
     modal: true; closePolicy: Popup.CloseOnEscape
@@ -26,6 +26,7 @@ FtDialog {
         id: frameColumn; width: frameScroll.availableWidth; spacing: 12
         Label { objectName: "processingWaitLabel"; visible: !!processingWait; text: t("Fila global · ") + t(processingWait); textFormat: Text.PlainText; wrapMode: Text.WordWrap; color: warningColor; Layout.fillWidth: true }
         Label { text: mockFramesEnabled ? t("Preview: extração local limitada · provider mock-local, nenhuma IA real. Preview baseado no transcript, tempo aproximado. Budget: 8 previews/4 inferências mock por sessão. Abrir esta tela não chama o mock.") : t("Ollama loopback apenas. Verificar modelos consulta metadados; preview extrai localmente. Só Confirmar envia o frame/pergunta à visão e transcrição/observações ao resumo. Budget comum da instalação: limites e período abaixo após verificar modelos. 24/16 são defaults temporários alpha, configuráveis explicitamente; não são orçamento financeiro. Falhas consomem; sem reset por sessão. Nenhuma assinatura/API externa é usada."); textFormat: Text.PlainText; wrapMode: Text.WordWrap; color: muted; Layout.fillWidth: true }
+        Label { visible: !mockFramesEnabled; text: t("Analisa quadros do vídeo com um modelo neste computador. Nada sai daqui."); textFormat: Text.PlainText; wrapMode: Text.WordWrap; color: ink; Layout.fillWidth: true }
         Label { visible: !mockFramesEnabled; text: t("Provider: Ollama local · modelos explícitos (não salva configuração)"); wrapMode: Text.WordWrap; color: ink; Layout.fillWidth: true }
         FtTextField { id: frameVisionModel; objectName: "frameVisionModel"; visible: !mockFramesEnabled; placeholderText: t("Modelo instalado com capability vision"); Accessible.name: t("Modelo local de visão"); Layout.fillWidth: true; maximumLength: 200; onTextEdited: { cancelFramePreview(); frameCapability=({}) } }
         FtTextField { id: frameSummaryModel; objectName: "frameSummaryModel"; visible: !mockFramesEnabled; placeholderText: t("Modelo instalado com capability completion"); Accessible.name: t("Modelo local para resumo"); Layout.fillWidth: true; maximumLength: 200; onTextEdited: { cancelFramePreview(); frameCapability=({}) } }

@@ -37,14 +37,14 @@ FtDialog {
 
     // The review shows what the diagnostic says about exactly the choices it lists.
     onStepChanged:if (step === 4 && visible && backend.available) diagnose()
-    onOpened:{ generation += 1; stale = false; step = 0; data = ({}); draft = ({}); diag = ({}); audioTest = null; catalog = ({}); downloads = ({}); consentAck = false; results = []; pendingKey = ""; error = ""; notice = ""; applyTray = false; load(); wizardNext.forceActiveFocus(Qt.TabFocusReason) }
+    onOpened:{ generation += 1; stale = false; step = 0; data = ({}); draft = ({}); diag = ({}); audioTest = null; catalog = ({}); downloads = ({}); downloadSamples = ({}); finishWhenDownloaded = false; consentAck = false; results = []; pendingKey = ""; error = ""; notice = ""; applyTray = false; load(); wizardNext.forceActiveFocus(Qt.TabFocusReason) }
     onClosed:{ languagePreview = ""; generation += 1; data = ({}); draft = ({}); pendingKey = ""; onboardingButton.forceActiveFocus(Qt.TabFocusReason) }
 
     function connectionLost() {
         if (!visible) return
         const working = busy
         generation += 1; stale = true
-        error = working ? t("Conexão perdida durante a operação; o resultado não foi confirmado. Ao reconectar, o assistente relê a configuração.") : t("Serviço desconectado. Ao reconectar, o assistente relê a configuração.")
+        error = working ? t("Não deu para confirmar se salvou. Ao reconectar, o assistente relê a configuração.") : t("Sem conexão com o FalaTrace. Ao reconectar, o assistente relê a configuração.")
     }
     // Stays stopped until the configuration is read again: nothing runs on the state from before the disconnect.
     function reconnected() {
@@ -56,10 +56,12 @@ FtDialog {
     // One status request in flight per download, so concurrent downloads all progress.
     function statusPending(key) { return Object.keys(pending).some(function(id){ return pending[id].origin === "wizard" && pending[id].op === "settings-model-status" && pending[id].downloadKey === key && pending[id].wizardGeneration === generation }) }
     function hasPending(op) { return Object.keys(pending).some(function(id){ return pending[id].origin === "wizard" && pending[id].op === op && pending[id].wizardGeneration === generation }) }
-    function load() { if (!backend.available) { error = t("Serviço indisponível. Reconecte e abra o assistente de novo."); return } request("settings-read"); diagnose(); request("settings-model-catalog") }
+    function load() { if (!backend.available) { error = t("Sem conexão com o FalaTrace."); return } request("settings-read"); diagnose(); request("settings-model-catalog") }
     // The checks follow the draft: a preset picked here is diagnosed before it is saved.
     function diagnose() { diagSeq += 1; request("settings-diagnose", Object.keys(draft).length ? { changes: changes() } : ({}), { diagSeq: diagSeq }) }
     function value(field) { return Object.prototype.hasOwnProperty.call(draft, field) ? draft[field] : (data.values || ({}))[field] }
+    // What the configuration says once saved (the last page reads it after Finish cleared the draft).
+    function savedValue(field) { return (data.values || ({}))[field] }
     function set(field, newValue) { const next = Object.assign({}, draft); next[field] = newValue; draft = next; if (field === "studio.language") languagePreview = newValue }
     function changes() {
         // On first use every explicit choice is written, even when it equals today's default,
@@ -69,9 +71,11 @@ FtDialog {
         return result
     }
     function recommend() {
-        // Least capture and no external destination: audio only, local processing, detection off.
+        // Least capture and no external destination: audio only, local processing, detection off. The notes
+        // are made as soon as a recording stops (the fast path: local only, no service to apply).
         set("backend", "audio"); set("capture.audioSource", "both"); set("capture.microphone", "default"); set("capture.desktop", "default")
         setPreset("local"); set("callDetection.enabled", false); set("processing.autoEnqueue", false); set("processing.notifyOnCompletion", true)
+        set("processing.fastPath", true)
         if (!value("backend") || ["audio", "gpu-screen-recorder", "obs"].indexOf(value("backend")) < 0) set("backend", "audio")
         diagnose()
         step = 4
@@ -109,6 +113,63 @@ FtDialog {
     // Whisper download sets the model path when it completes, and processing needs a pulled Ollama model.
     function modelDownloadRunning() { return Object.keys(downloads).some(function(key){ return downloads[key].state === "running" }) }
     function downloadBlocksFinish() { return hasPending("settings-model-download") || modelDownloadRunning() }
+    // What local processing still needs to download (the recommended Whisper model, the Ollama model),
+    // so both can start early and run while the rest of the setup goes on.
+    function missingDownloads() {
+        const list = []
+        const model = recommendedModel(), whisperModel = check("whisper-model")
+        if (value("transcription.provider") === "whisper-cpp" && model && !model.installed && !(whisperModel && whisperModel.status === "ok"))
+            list.push({kind: "whisper", id: model.id, bytes: Number(model.bytes) || 0})
+        if (offersOllamaDownload()) list.push({kind: "ollama", id: String(value("summary.ollamaModel") || ""), bytes: 0})
+        return list.filter(function(item){ return !!item.id })
+    }
+    function startMissingDownloads() {
+        if (!backend.available) return
+        for (const item of missingDownloads()) {
+            const state = downloadState(item.kind, item.id)
+            if (state && (state.state === "running" || state.state === "completed")) continue
+            const payload = item.kind === "whisper" ? {kind: "whisper", model: item.id, consent: true} : {kind: "ollama", model: item.id, consent: true, ollamaUrl: String(value("summary.ollamaUrl") || "")}
+            request("settings-model-download", payload)
+        }
+    }
+    // When each download started (bytes then) and its latest progress: the rate gives an honest estimate.
+    property var downloadSamples: ({})
+    function noteDownload(result) {
+        const key = result.kind + ":" + result.id, next = Object.assign({}, downloadSamples), now = Date.now()
+        const first = next[key] && next[key].first ? next[key].first : {at: now, bytes: Number(result.receivedBytes) || 0}
+        next[key] = {first: first, last: {at: now, bytes: Number(result.receivedBytes) || 0}}
+        downloadSamples = next
+    }
+    function sizeText(bytes) {
+        const gb = bytes / 1e9
+        const number = gb >= 1 ? gb.toFixed(1) : String(Math.max(1, Math.round(bytes / 1e6)))
+        return (uiLanguage === "en" ? number : number.replace(".", ",")) + (gb >= 1 ? " GB" : " MB")
+    }
+    // "574 MB · ≈ 1 min a 100 Mb/s" before; "38 % · ≈ 2 min restantes" while running.
+    function downloadsText() {
+        const items = missingDownloads()
+        const running = Object.keys(downloads).filter(function(key){ return downloads[key].state === "running" })
+        if (running.length) {
+            let total = 0, received = 0, rate = 0, unknown = false
+            for (const key of running) {
+                const state = downloads[key], sample = downloadSamples[key]
+                if (!state.totalBytes) unknown = true
+                total += Number(state.totalBytes) || 0; received += Number(state.receivedBytes) || 0
+                if (sample && sample.last.at > sample.first.at) rate += Math.max(0, sample.last.bytes - sample.first.bytes) / ((sample.last.at - sample.first.at) / 1000)
+            }
+            const percent = total ? Math.floor(100 * received / total) : 0
+            if (!total || rate <= 0) return unknown && !total ? t("Baixando…") : tf("Baixando · %1%", percent)
+            const minutes = Math.max(1, Math.round((total - received) / rate / 60))
+            return tf("Baixando · %1% · ≈ %2 min restantes", percent, minutes)
+        }
+        const bytes = items.reduce(function(sum, item){ return sum + item.bytes }, 0)
+        const ollama = items.some(function(item){ return item.kind === "ollama" })
+        if (!bytes) return ollama ? t("O tamanho do modelo do Ollama aparece quando o download começar.") : ""
+        const minutes = Math.max(1, Math.round(bytes * 8 / 100e6 / 60))
+        return tf("%1 · ≈ %2 min a 100 Mb/s", sizeText(bytes), minutes) + (ollama ? t(", mais o modelo do Ollama") : "")
+    }
+    // Finish runs by itself once the downloads it waits for end well (the review step's check box).
+    property bool finishWhenDownloaded: false
     function useKey(text) { pendingKey = String(text || "").trim() }
     function savedKey(name) { const source = credential(name).source; return !!source && source !== "missing" }
     function keyReady() { return pendingKey !== "" || savedKey("OPENAI_API_KEY") }
@@ -223,8 +284,10 @@ FtDialog {
             if (!message.ok) { error = message.error; return }
             request("settings-model-status", { kind: result.kind, model: result.id })
         } else if (req.op === "settings-model-download" || req.op === "settings-model-status") {
-            if (!message.ok) { error = message.error; return }
+            if (!message.ok) { error = message.error; finishWhenDownloaded = false; return }
             const next = Object.assign({}, downloads); next[result.kind + ":" + result.id] = result; downloads = next
+            noteDownload(result)
+            if (result.state === "failed") finishWhenDownloaded = false
             if (result.state === "completed") {
                 if (result.kind === "whisper" && result.path) set("transcription.whisperCpp.modelPath", result.path)
                 request("settings-model-catalog"); diagnose()
@@ -241,6 +304,13 @@ FtDialog {
             addResult(serviceLabel(req.action), message.ok, message.ok ? (req.action === "calls-disable" ? t("Desativado.") : t("Aplicado.")) : message.error)
             nextService()
         }
+    }
+    // "Concluir sozinho quando o download terminar": once nothing downloads any more (and the checks of the
+    // new models came back), Finish runs as if clicked. A failed download clears the choice instead.
+    Timer {
+        interval:500; repeat:true
+        running:setupWizard.visible && setupWizard.finishWhenDownloaded && setupWizard.step === 4
+        onTriggered:{ if (!setupWizard.downloadBlocksFinish() && !setupWizard.hasPending("settings-diagnose") && !setupWizard.hasPending("settings-model-catalog") && !setupWizard.busy) { setupWizard.finishWhenDownloaded = false; setupWizard.finish() } }
     }
     Timer {
         interval:2000; repeat:true
@@ -288,8 +358,8 @@ FtDialog {
         // 0 · Boas-vindas
         ColumnLayout { spacing:12
           Label { text:t("Bem-vindo ao FalaTrace"); color:ink; font.pixelSize:22; font.weight:Font.DemiBold; wrapMode:Text.WordWrap; Layout.fillWidth:true }
-          Label { text:t("O FalaTrace grava chamadas e reuniões que você autorizar, transcreve e resume com rastreio até o trecho original. Em poucos passos você escolhe o que gravar, onde processar e o que roda sozinho."); color:ink; wrapMode:Text.WordWrap; Layout.fillWidth:true }
-          Label { text:t("Nada é gravado, enviado ou instalado até você concluir. O teste de áudio e os downloads só acontecem nos próprios botões."); color:muted; wrapMode:Text.WordWrap; Layout.fillWidth:true }
+          Label { text:t("Anote o que importa durante a reunião. O FalaTrace completa as notas, e cada ponto leva ao momento em que foi dito."); color:ink; wrapMode:Text.WordWrap; Layout.fillWidth:true }
+          Label { text:t("Nada é gravado, enviado ou instalado até você concluir."); color:muted; wrapMode:Text.WordWrap; Layout.fillWidth:true }
           RowLayout {
             Layout.fillWidth:true; spacing:10
             Label { text:t("Idioma do Studio"); color:ink }
@@ -305,8 +375,25 @@ FtDialog {
           }
           WrappedCheck { objectName:"wizardConsent"; text:t("Vou gravar só com a permissão das pessoas envolvidas e conforme as regras que valem para mim."); checked:setupWizard.consentAck; onToggled:setupWizard.consentAck = checked }
           Item { Layout.fillHeight:true }
-          FtButton { objectName:"wizardRecommended"; text:t("Usar os padrões recomendados"); iconName:"shield"; variant:"outline"; enabled:setupWizard.consentAck && !!setupWizard.data.revision; onClicked:setupWizard.recommend() }
-          Label { text:t("Padrões recomendados: só áudio, processamento neste computador com Whisper.cpp e Ollama e gravação automática desligada."); color:muted; font.pixelSize:12; wrapMode:Text.WordWrap; Layout.fillWidth:true }
+          // The quick path: one click to the review with the recommended choices.
+          Button {
+            id:wizardRecommended; objectName:"wizardRecommended"
+            Layout.fillWidth:true; implicitHeight:recommendedRow.implicitHeight + 24; hoverEnabled:true
+            enabled:setupWizard.consentAck && !!setupWizard.data.revision
+            Accessible.role:Accessible.Button; Accessible.name:t("Começar rápido (recomendado)"); Accessible.description:t("Só áudio, tudo neste computador, notas geradas assim que a gravação parar.")
+            onClicked:setupWizard.recommend()
+            contentItem:RowLayout { id:recommendedRow; spacing:12
+              Rectangle { Layout.alignment:Qt.AlignTop; implicitWidth:36; implicitHeight:36; radius:10; color:wizardRecommended.enabled?onAccent:surfaceAlt; opacity:0.95
+                FtIcon { anchors.centerIn:parent; name:"spark"; tint:accent; size:18 } }
+              ColumnLayout { Layout.fillWidth:true; spacing:2
+                Label { text:t("Começar rápido (recomendado)"); textFormat:Text.PlainText; color:wizardRecommended.enabled?onAccent:muted; font.pixelSize:16; font.weight:Font.DemiBold; wrapMode:Text.WordWrap; Layout.fillWidth:true }
+                Label { text:t("Só áudio, tudo neste computador, notas geradas assim que a gravação parar."); textFormat:Text.PlainText; color:wizardRecommended.enabled?onAccent:muted; font.pixelSize:13; wrapMode:Text.WordWrap; Layout.fillWidth:true; opacity:0.92 }
+              }
+            }
+            background:Rectangle { radius:12; color:wizardRecommended.enabled?(wizardRecommended.down?shade(accent,0.16):wizardRecommended.hovered?shade(accent,0.08):accent):surfaceAlt; border.width:wizardRecommended.enabled?0:1; border.color:divider
+              Rectangle { anchors.fill:parent; anchors.margins:-3; radius:15; color:"transparent"; border.width:2; border.color:accent; visible:wizardRecommended.visualFocus } }
+          }
+          Label { visible:!setupWizard.consentAck; text:t("Confirme a permissão acima para continuar."); color:muted; font.pixelSize:12; wrapMode:Text.WordWrap; Layout.fillWidth:true }
         }
 
         // 1 · Captura
@@ -350,6 +437,19 @@ FtDialog {
           Choice { heading:t("Tudo pela OpenAI"); detail:t("O áudio e a transcrição vão para a OpenAI. Não exige modelos locais; precisa de uma chave de API e gera custo na sua conta."); selected:setupWizard.preset()==="cloud"; onClicked:setupWizard.applyPreset("cloud") }
           Label { text:t("O que falta"); color:ink; font.pixelSize:16; font.weight:Font.DemiBold; Layout.topMargin:6 }
           Label { visible:!setupWizard.diag.checks; text:t("Verificando este computador…"); color:muted }
+          // Both downloads at once, started now so they run while you finish the setup.
+          Rectangle {
+            visible:setupWizard.missingDownloads().length > 0 || setupWizard.modelDownloadRunning()
+            Layout.fillWidth:true; implicitHeight:downloadAllRow.implicitHeight + 20; radius:10; color:accentSoft
+            RowLayout { id:downloadAllRow; anchors.left:parent.left; anchors.right:parent.right; anchors.verticalCenter:parent.verticalCenter; anchors.margins:10; spacing:10
+              FtIcon { name:"export"; tint:accent; size:18 }
+              ColumnLayout { Layout.fillWidth:true; spacing:2
+                Label { text:setupWizard.modelDownloadRunning() ? t("Baixando os modelos") : t("Os modelos deste computador ainda não foram baixados"); textFormat:Text.PlainText; color:ink; font.weight:Font.DemiBold; wrapMode:Text.WordWrap; Layout.fillWidth:true }
+                Label { objectName:"wizardDownloadEstimate"; text:setupWizard.downloadsText(); visible:text !== ""; textFormat:Text.PlainText; color:muted; font.pixelSize:12; wrapMode:Text.WordWrap; Layout.fillWidth:true }
+              }
+              FtButton { objectName:"wizardDownloadAll"; visible:!setupWizard.modelDownloadRunning(); compact:true; variant:"primary"; text:t("Baixar o que falta"); enabled:backend.available&&!setupWizard.hasPending("settings-model-download"); onClicked:setupWizard.startMissingDownloads() }
+            }
+          }
           // What this step does not show on its own: FFmpeg missing here, or a remote worker never configured.
           Repeater { model:setupWizard.processingProblems().filter(function(item){ return item.id==="ffmpeg"||item.id==="remote-worker" })
             Status { required property var modelData; objectName:"wizardProblem-"+modelData.id; label:modelData.label; status:modelData.status; detail:modelData.detail } }
@@ -391,7 +491,7 @@ FtDialog {
         // 3 · Gravação automática
         ColumnLayout { spacing:10
           Label { text:t("Gravar chamadas sozinho?"); color:ink; font.pixelSize:16; font.weight:Font.DemiBold }
-          Label { text:t("O FalaTrace percebe quando navegadores e apps como Zoom, Teams e Slack usam o microfone. Ele não sabe qual serviço, aba ou pessoa está na chamada; ditado e teste de câmera também contam."); color:muted; wrapMode:Text.WordWrap; Layout.fillWidth:true }
+          Label { text:t("Quando um app usar o microfone (Zoom, Meet, Teams, Slack…), o FalaTrace pode avisar ou já começar a gravar. Ditado e testes de câmera também contam."); color:muted; wrapMode:Text.WordWrap; Layout.fillWidth:true }
           Choice { heading:t("Não, eu inicio as gravações"); detail:t("Use Gravar… no Studio ou a bandeja."); selected:setupWizard.value("callDetection.enabled")!==true; onClicked:setupWizard.set("callDetection.enabled", false) }
           Choice { heading:t("Avisar quando uma chamada começar"); detail:t("Uma notificação aparece; nada é gravado sozinho. Bom para começar."); selected:setupWizard.value("callDetection.enabled")===true&&setupWizard.value("callDetection.mode")==="notify-only"; onClicked:{ setupWizard.set("callDetection.enabled", true); setupWizard.set("callDetection.mode", "notify-only") } }
           Choice { objectName:"wizardAutoRecord"; heading:t("Gravar automaticamente"); detail:t("Começa a gravar com o backend escolhido e para quando a chamada termina. Confirme a permissão das pessoas antes."); selected:setupWizard.value("callDetection.enabled")===true&&setupWizard.value("callDetection.mode")==="record"; onClicked:{ setupWizard.set("callDetection.enabled", true); setupWizard.set("callDetection.mode", "record") } }
@@ -407,7 +507,11 @@ FtDialog {
           Label { text:t("Revise antes de concluir"); color:ink; font.pixelSize:16; font.weight:Font.DemiBold }
           Status { objectName:"wizardReviewCapture"; label:t("Captura"); status:setupWizard.diag.recording&&setupWizard.diag.recording.blockedReason?"warning":"ok"; detail:(setupWizard.value("backend")==="gpu-screen-recorder"?t("Tela e áudio"):setupWizard.value("backend")==="obs"?"OBS":t("Só áudio"))+" · "+({both:t("microfone e áudio do sistema"),microphone:t("só microfone"),desktop:t("só áudio do sistema"),none:t("sem áudio")})[setupWizard.value("capture.audioSource")||"both"]+(setupWizard.diag.recording&&setupWizard.diag.recording.blockedReason?"\n"+t(setupWizard.diag.recording.blockedReason):"") }
           Status { objectName:"wizardReviewProcessing"; label:t("Processamento"); status:setupWizard.preset()==="local"&&!setupWizard.processingProblems().length?"ok":"warning"; detail:(setupWizard.preset()==="local"?t("Tudo neste computador."):setupWizard.preset()==="hybrid"?t("Transcrição aqui; o texto vai para a OpenAI para resumir."):setupWizard.preset()==="cloud"?t("Áudio e texto vão para a OpenAI."):t("Combinação personalizada; veja Configurações."))+setupWizard.processingProblems().map(function(item){ return "\n" + t(item.detail) }).join("") }
-          FtButton { objectName:"wizardShowMissing"; visible:setupWizard.processingProblems().length>0; text:t("Ver o que falta"); iconName:"back"; compact:true; variant:"outline"; onClicked:setupWizard.step=2 }
+          RowLayout { Layout.fillWidth:true; spacing:8
+            FtButton { objectName:"wizardShowMissing"; visible:setupWizard.processingProblems().length>0; text:t("Ver o que falta"); iconName:"back"; compact:true; variant:"outline"; onClicked:setupWizard.step=2 }
+            FtButton { objectName:"wizardReviewDownload"; visible:setupWizard.missingDownloads().length>0 && !setupWizard.modelDownloadRunning(); text:t("Baixar o que falta"); iconName:"export"; compact:true; variant:"outline"; enabled:backend.available&&!setupWizard.hasPending("settings-model-download"); onClicked:setupWizard.startMissingDownloads() }
+            Label { visible:setupWizard.missingDownloads().length>0 || setupWizard.modelDownloadRunning(); text:setupWizard.downloadsText(); textFormat:Text.PlainText; color:muted; font.pixelSize:12; wrapMode:Text.WordWrap; Layout.fillWidth:true }
+          }
           Status { visible:setupWizard.pendingKey!==""; label:t("Chave da OpenAI"); status:"ok"; detail:t("Salva em arquivo privado ao concluir.") }
           Status { objectName:"wizardReviewAutomation"; label:t("Gravação automática"); status:(setupWizard.value("callDetection.enabled")===true&&setupWizard.value("callDetection.mode")==="record")||setupWizard.automationProblems().some(setupWizard.recordingProblem)?"warning":"ok"; detail:(setupWizard.value("callDetection.enabled")!==true?t("Desligada."):setupWizard.value("callDetection.mode")==="record"?t("Grava sozinho as chamadas detectadas."):t("Só avisa."))+setupWizard.automationProblems().filter(setupWizard.recordingProblem).map(function(item){ return "\n" + t(item.detail) }).join("") }
           Repeater { model:setupWizard.automationProblems().filter(function(item){ return !setupWizard.recordingProblem(item) })
@@ -418,6 +522,7 @@ FtDialog {
           WrappedCheck { text:t("Instalar o indicador na bandeja (REC, pausar, parar)"); checked:setupWizard.applyTray; onToggled:setupWizard.applyTray=checked }
           Label { text:setupWizard.fresh?t("Concluir cria a configuração. Você pode mudar tudo depois em Configurações."):t("Concluir salva só o que você mudou, com cópia de segurança da configuração atual."); color:muted; font.pixelSize:12; wrapMode:Text.WordWrap; Layout.fillWidth:true }
           Label { visible:setupWizard.downloadBlocksFinish(); text:t("O download do modelo ainda está em andamento. Concluir fica disponível quando ele terminar ou for cancelado."); color:warningColor; font.pixelSize:12; wrapMode:Text.WordWrap; Layout.fillWidth:true }
+          WrappedCheck { objectName:"wizardFinishAfterDownload"; visible:setupWizard.downloadBlocksFinish(); enabled:!setupWizard.missingRequiredKey(); text:t("Concluir sozinho quando o download terminar"); checked:setupWizard.finishWhenDownloaded; onToggled:setupWizard.finishWhenDownloaded = checked }
           Label { visible:setupWizard.missingKeys().indexOf("OPENAI_API_KEY")>=0; text:t("Falta a chave da OpenAI que este processamento usa: cole-a no passo Processamento, ou escolha tudo neste computador."); color:warningColor; font.pixelSize:12; wrapMode:Text.WordWrap; Layout.fillWidth:true }
           Label { visible:setupWizard.missingKeys().indexOf("GEMINI_API_KEY")>=0; text:t("Falta a chave do Gemini que esta transcrição usa: salve-a em Configurações, em Chaves de API, ou escolha outra opção no passo Processamento."); color:warningColor; font.pixelSize:12; wrapMode:Text.WordWrap; Layout.fillWidth:true }
          }
@@ -429,7 +534,18 @@ FtDialog {
           Label { objectName:"wizardDoneTitle"; text:setupWizard.pendingIssues().length||setupWizard.results.some(function(result){ return !result.ok })?t("Concluído, com pendências"):t("Tudo pronto"); color:ink; font.pixelSize:22; font.weight:Font.DemiBold }
           Repeater { model:setupWizard.results; Status { required property var modelData; label:modelData.label; status:modelData.ok?"ok":"warning"; detail:modelData.detail } }
           Repeater { model:setupWizard.pendingIssues(); Status { required property var modelData; label:modelData.label; status:"warning"; detail:modelData.detail } }
-          Label { text:t("Para gravar agora, use Gravar… no topo. As gravações aparecem na biblioteca; use Processar… numa gravação para transcrever e resumir."); color:muted; wrapMode:Text.WordWrap; Layout.fillWidth:true }
+          Label { text:t("Grave uma conversa de teste de um minuto para ver suas primeiras notas."); color:ink; wrapMode:Text.WordWrap; Layout.fillWidth:true; Layout.topMargin:6 }
+          // One click: the capture consent ("Conversa de teste"), then the notepad in test mode, which stops
+          // by itself after a minute; with the fast path the notes follow and Início celebrates them.
+          FtButton {
+            id:wizardRecordTest; objectName:"wizardRecordTest"
+            variant:"primary"; iconName:"record"; iconTint:onAccent
+            text:t("Gravar 1 minuto de teste")
+            enabled:backend.available && captureKnown && !captureBusy && !captureStatus.active
+            Accessible.name:t("Gravar 1 minuto de teste: pede confirmação e para sozinho")
+            onClicked:{ setupWizard.close(); startCaptureFor(t("Conversa de teste"), true) }
+          }
+          Label { text:setupWizard.savedValue("processing.fastPath") === true ? t("As notas começam assim que a gravação parar, neste computador.") : setupWizard.savedValue("processing.autoEnqueue") === true ? t("As notas são geradas depois que a gravação parar.") : t("Depois de parar, abra a reunião e gere as notas."); color:muted; font.pixelSize:12; wrapMode:Text.WordWrap; Layout.fillWidth:true }
           Item { Layout.fillHeight:true }
         }
       }
@@ -442,8 +558,9 @@ FtDialog {
       FtButton {
         id:wizardNext; objectName:"wizardNext"
         visible:setupWizard.step<5
-        highlighted:enabled
-        text:setupWizard.step===4?(setupWizard.busy?t("Concluindo…"):t("Concluir")):setupWizard.step===0?t("Configurar passo a passo"):t("Continuar")
+        // On the welcome step the quick start is the primary choice; this one personalizes step by step.
+        variant:setupWizard.step===0?"outline":enabled?"primary":"secondary"
+        text:setupWizard.step===4?(setupWizard.busy?t("Concluindo…"):t("Concluir")):setupWizard.step===0?t("Personalizar"):t("Continuar")
         enabled:backend.available&&!!setupWizard.data.revision&&!setupWizard.busy&&!setupWizard.stale&&(setupWizard.step!==0||setupWizard.consentAck)&&(setupWizard.step!==4||(!setupWizard.downloadBlocksFinish()&&!setupWizard.missingRequiredKey()))
         onClicked:if (setupWizard.step===4) setupWizard.finish(); else setupWizard.step+=1
       }

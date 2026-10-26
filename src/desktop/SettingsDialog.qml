@@ -19,8 +19,24 @@ FtDialog {
         { title: t("Recursos opcionais"), icon: "clock" },
         { title: t("Avançado"), icon: "tools" },
         { title: t("Serviços e diagnóstico"), icon: "shield" },
-        { title: t("Backups e transferência"), icon: "export" }
+        { title: t("Backups e transferência"), icon: "export" },
+        { title: t("Notas e resumos"), icon: "note" },
+        { title: t("Perguntar e receitas"), icon: "chat" },
+        { title: t("Agenda e lembretes"), icon: "calendar" },
+        { title: t("Transcrição ao vivo"), icon: "wave" },
+        { title: t("Compartilhar"), icon: "share" },
+        { title: t("Privacidade e retenção"), icon: "lock" }
     ]
+    // The list shows the sections grouped (DESIGN-STUDIO §2.13); every index above keeps its meaning.
+    readonly property var sectionGroups: [
+        { title: t("Reuniões"), sections: [10, 11, 12, 13, 14, 15] },
+        { title: t("Gravação e processamento"), sections: [0, 1, 2, 4] },
+        { title: t("Sistema"), sections: [3, 5, 6, 7, 8, 9] }
+    ]
+    // Display order: Up/Down and the compact list follow it and map back to section indices.
+    readonly property var sectionOrder: sectionGroups.reduce(function(order, group){ return order.concat(group.sections) }, [])
+    property alias notesPage: notesPage
+    property alias assistantPage: assistantPage
     readonly property int sectionServices: 8
     readonly property bool pickerAvailable: pickerLoader.status === Loader.Ready
     property var keyTests: ({})
@@ -45,18 +61,28 @@ FtDialog {
     property string importSummary: ""
     anchors.centerIn:parent; width:Math.min(window.width-48,980); height:Math.min(window.height-48,780); modal:true
     closePolicy:hasSettingsPending("settings-save")||hasSettingsPending("settings-service")?Popup.NoAutoClose:Popup.CloseOnEscape
-    onOpened:{settingsError="";settingsNotice="";resetExtras();settingsTabs.currentIndex=settingsFirstRun?0:settingsTabs.currentIndex;loadSettings(true);settingsTabs.forceActiveFocus(Qt.TabFocusReason)}
+    // A section asked for before opening (openSection) wins over the one shown last time.
+    property int requestedSection: -1
+    onOpened:{settingsError="";settingsNotice="";resetExtras();settingsTabs.currentIndex=requestedSection>=0?requestedSection:settingsFirstRun?0:settingsTabs.currentIndex;requestedSection=-1;loadSettings(true);settingsTabs.forceActiveFocus(Qt.TabFocusReason)}
     onClosed:{languagePreview="";settingsGeneration+=1;settingsDraft=({});settingsData=({});settingsDiag=({});settingsFirstRun=false;resetExtras();onboardingButton.forceActiveFocus(Qt.TabFocusReason)}
 
-    function resetExtras() { keyTests=({}); remoteCheck=null; obsCheck=null; audioTest=null; confirmDownload=""; confirmRestore=""; importSummary=""; confirmVoiceDelete="" }
+    function resetExtras() { keyTests=({}); remoteCheck=null; obsCheck=null; audioTest=null; confirmDownload=""; confirmRestore=""; importSummary=""; confirmVoiceDelete=""; notesPage.reset(); assistantPage.reset() }
     function draft(field) { return settingsDraft[field] }
+    // Opens Settings on one section (Notas e resumos from the template picker, for example).
+    function openSection(index) { if (visible) { goToSection(index); return } requestedSection = index; open() }
     function goToSection(index) { settingsTabs.currentIndex = index; sectionLoaded(index) }
+    function stepSection(step) {
+        const at = Math.max(0, sectionOrder.indexOf(settingsTabs.currentIndex))
+        goToSection(sectionOrder[Math.max(0, Math.min(sectionOrder.length - 1, at + step))])
+    }
     function sectionLoaded(index) {
         if (!backend.available) return
-        if (index === 4 && !hasSettingsPending("settings-model-catalog")) requestCatalog()
+        if ((index === 4 || index === 13) && !hasSettingsPending("settings-model-catalog")) requestCatalog()
         if (index === 4 && !hasSettingsPending("settings-voices-list")) send("settings-voices-list", "")
-        if (index === 5 && !hasSettingsPending("settings-google-status")) send("settings-google-status", "")
+        if ((index === 5 || index === 12) && !hasSettingsPending("settings-google-status")) send("settings-google-status", "")
         if (index === 9 && !hasSettingsPending("settings-backups")) send("settings-backups", "")
+        if (index === 10) notesPage.load()
+        if (index === 11) assistantPage.load()
     }
     function choosePath(mode, title, start, done) { if (pickerLoader.item) pickerLoader.item.open(mode, title, start, done) }
     function fieldChanged(field) { return Object.prototype.hasOwnProperty.call(settingsChanges(), field) }
@@ -267,39 +293,68 @@ FtDialog {
      Label { objectName:"settingsError"; visible:!!settingsError; text:t(settingsError); textFormat:Text.PlainText; wrapMode:Text.WordWrap; color:errorColor; Layout.fillWidth:true; Accessible.name:text }
      Label { objectName:"settingsNotice"; visible:!!settingsNotice; text:t(settingsNotice); textFormat:Text.PlainText; wrapMode:Text.WordWrap; color:accent; Layout.fillWidth:true; Accessible.name:text }
      FtComboBox {
+        objectName:"settingsSectionCombo"
         visible:compactLayout; Layout.fillWidth:true
-        model:settingsDialog.sections.map(function(section){ return section.title })
-        currentIndex:settingsTabs.currentIndex
-        onActivated:function(index){ settingsDialog.goToSection(index) }
+        model:settingsDialog.sectionOrder.map(function(index){ return settingsDialog.sections[index].title })
+        currentIndex:settingsDialog.sectionOrder.indexOf(settingsTabs.currentIndex)
+        onActivated:function(index){ settingsDialog.goToSection(settingsDialog.sectionOrder[index]) }
         Accessible.name:t("Seção das configurações")
      }
      RowLayout { Layout.fillWidth:true; Layout.fillHeight:true; spacing:14
       ColumnLayout {
         id:settingsTabs; objectName:"settingsTabs"
         property int currentIndex: 0
-        visible:!compactLayout; Layout.preferredWidth:226; Layout.fillHeight:true; Layout.alignment:Qt.AlignTop; spacing:2
+        visible:!compactLayout; Layout.preferredWidth:226; Layout.fillHeight:true; Layout.alignment:Qt.AlignTop; spacing:0
         activeFocusOnTab:true
-        Keys.onDownPressed:settingsDialog.goToSection(Math.min(settingsDialog.sections.length - 1, currentIndex + 1))
-        Keys.onUpPressed:settingsDialog.goToSection(Math.max(0, currentIndex - 1))
+        Keys.onDownPressed:settingsDialog.stepSection(1)
+        Keys.onUpPressed:settingsDialog.stepSection(-1)
         Accessible.role:Accessible.PageTabList; Accessible.name:t("Seções das configurações")
-        Repeater {
-            model:settingsDialog.sections
-            Button {
-                id:sectionButton
+        // Grouped, and scrolling when sixteen sections do not fit the window.
+        Flickable {
+          id:sectionScroll
+          Layout.fillWidth:true; Layout.fillHeight:true
+          contentHeight:sectionColumn.implicitHeight; clip:true; boundsBehavior:Flickable.StopAtBounds
+          ScrollBar.vertical: ScrollBar { policy:sectionScroll.contentHeight>sectionScroll.height?ScrollBar.AsNeeded:ScrollBar.AlwaysOff }
+          // Keeps the chosen section in view when Up/Down or goToSection moves to one out of sight.
+          function reveal(item) {
+            const top = item.mapToItem(sectionColumn, 0, 0).y
+            if (top < contentY) contentY = Math.max(0, top - 24)
+            else if (top + item.height > contentY + height) contentY = Math.min(Math.max(0, contentHeight - height), top + item.height - height + 8)
+          }
+          ColumnLayout {
+            id:sectionColumn
+            width:sectionScroll.width - 8; spacing:1
+            Repeater {
+              model:settingsDialog.sectionGroups
+              ColumnLayout {
+                id:sectionGroup
                 required property var modelData
                 required property int index
-                Layout.fillWidth:true; implicitHeight:36; hoverEnabled:true; focusPolicy:Qt.NoFocus
-                checked:settingsTabs.currentIndex === index
-                onClicked:settingsDialog.goToSection(index)
-                Accessible.role:Accessible.PageTab; Accessible.name:modelData.title
-                contentItem:RowLayout { spacing:8
-                    FtIcon { name:sectionButton.modelData.icon; tint:sectionButton.checked?accent:muted; size:16 }
-                    Label { text:sectionButton.modelData.title; color:sectionButton.checked?ink:muted; font.weight:sectionButton.checked?Font.DemiBold:Font.Normal; elide:Text.ElideRight; Layout.fillWidth:true }
+                Layout.fillWidth:true; spacing:1
+                FtOverline { text:sectionGroup.modelData.title; Layout.fillWidth:true; leftPadding:10; topPadding:sectionGroup.index===0?2:12; bottomPadding:4 }
+                Repeater {
+                  model:sectionGroup.modelData.sections
+                  Button {
+                    id:sectionButton
+                    required property var modelData
+                    readonly property var section: settingsDialog.sections[modelData]
+                    objectName:"settingsSection-"+modelData
+                    Layout.fillWidth:true; implicitHeight:34; hoverEnabled:true; focusPolicy:Qt.NoFocus
+                    checked:settingsTabs.currentIndex === modelData
+                    onClicked:settingsDialog.goToSection(modelData)
+                    onCheckedChanged:if (checked) Qt.callLater(function(){ sectionScroll.reveal(sectionButton) })
+                    Accessible.role:Accessible.PageTab; Accessible.name:section.title
+                    contentItem:RowLayout { spacing:8
+                        FtIcon { name:sectionButton.section.icon; tint:sectionButton.checked?accent:muted; size:16 }
+                        Label { text:sectionButton.section.title; color:sectionButton.checked?ink:muted; font.weight:sectionButton.checked?Font.DemiBold:Font.Normal; elide:Text.ElideRight; Layout.fillWidth:true }
+                    }
+                    background:Rectangle { radius:8; color:sectionButton.checked?selectedSurface:sectionButton.hovered?hoverSurface:"transparent"; border.width:settingsTabs.activeFocus&&sectionButton.checked?2:0; border.color:accent }
+                  }
                 }
-                background:Rectangle { radius:8; color:sectionButton.checked?selectedSurface:sectionButton.hovered?hoverSurface:"transparent"; border.width:settingsTabs.activeFocus&&sectionButton.checked?2:0; border.color:accent }
+              }
             }
+          }
         }
-        Item { Layout.fillHeight:true }
       }
       ColumnLayout { Layout.fillWidth:true; Layout.fillHeight:true; spacing:8
        Label { visible:!settingsData.revision; text:hasSettingsPending("settings-read")?t("Lendo configuração…"):t("Releia a configuração para editar."); color:muted; Layout.fillWidth:true }
@@ -314,7 +369,7 @@ FtDialog {
             FtButton { text:t("Abrir o assistente"); compact:true; variant:"outline"; enabled:backend.available&&!settingsHasChanges(); onClicked:{ settingsDialog.close(); setupWizard.open() } }
           }
           SettingsCheck { objectName:"settingsCallsEnabled"; field:"callDetection.enabled"; text:t("Ativar a gravação automática de chamadas") }
-          SettingsHint { text:t("Detecta quando um app usa o microfone ou a câmera. Não identifica o serviço, a aba nem quem participa; ditado ou teste de câmera também contam. Confirme a permissão das pessoas antes de gravar.") }
+          SettingsHint { text:t("Quando um app usar o microfone (Zoom, Meet, Teams, Slack…), o FalaTrace pode avisar ou já começar a gravar. Ditado e testes de câmera também contam. Avise as pessoas antes de gravar.") }
           SettingsChoice { field:"callDetection.mode"; label:t("Quando detectar uma chamada"); options:[{label:t("Só notificar"),value:"notify-only"},{label:t("Gravar automaticamente"),value:"record"}].concat(settingsDraft["obs.enabled"]===true||settingsDraft["callDetection.mode"]==="obs"?[{label:t("Controlar o OBS"),value:"obs"}]:[]) }
           StatusLine { objectName:"settingsAutomaticBackend"; text:settingsDialog.automaticBackendText(); good:settingsDialog.automaticBackendOk() }
           SettingsCheck { visible:settingsDraft["callDetection.mode"]==="obs"; field:"callDetection.enqueueOnStop"; text:t("No modo OBS, enfileirar a gravação quando a chamada terminar") }
@@ -431,6 +486,21 @@ FtDialog {
           SecretField { name:"GEMINI_API_KEY"; label:"Google Gemini"; testService:"gemini"; purpose:t("Usada para transcrever pelo Gemini.") }
           Rectangle { Layout.fillWidth:true; Layout.preferredHeight:1; color:divider }
           SecretField { name:"RECORDING_CLI_OBS_PASSWORD"; label:t("Senha do WebSocket do OBS"); purpose:t("Usada para controlar o OBS neste computador. Teste a conexão em Integrações.") }
+          SettingsSection { text:t("Perguntar") }
+          SettingsHint { text:t("Só a chave do provedor escolhido em Perguntar e receitas é usada. Cada pergunta é cobrada na sua conta do provedor.") }
+          Repeater {
+           model:[{name:"OPENROUTER_API_KEY",label:"OpenRouter",service:"openrouter"},{name:"ANTHROPIC_API_KEY",label:"Anthropic (Claude)",service:"anthropic"},{name:"XAI_API_KEY",label:"xAI (Grok)",service:"xai"},
+                  {name:"GROQ_API_KEY",label:"Groq",service:"groq"},{name:"MISTRAL_API_KEY",label:"Mistral",service:"mistral"},{name:"DEEPSEEK_API_KEY",label:"DeepSeek",service:"deepseek"},
+                  {name:"TOGETHER_API_KEY",label:"Together AI",service:"together"},{name:"CUSTOM_API_KEY",label:t("API compatível"),service:"custom"}]
+           ColumnLayout { id:assistantKey; required property var modelData; Layout.fillWidth:true; spacing:10
+            Rectangle { Layout.fillWidth:true; Layout.preferredHeight:1; color:divider }
+            SecretField { name:assistantKey.modelData.name; label:assistantKey.modelData.label; testService:assistantKey.modelData.service; purpose:assistantKey.modelData.name==="GROQ_API_KEY"?t("Usada para perguntar pela Groq e para a transcrição ao vivo pela Groq."):"" }
+           }
+          }
+          SettingsSection { text:t("Compartilhar") }
+          SecretField { name:"NOTION_TOKEN"; label:t("Token da integração do Notion"); purpose:t("Usado para criar páginas no Notion quando você envia notas.") }
+          Rectangle { Layout.fillWidth:true; Layout.preferredHeight:1; color:divider }
+          SecretField { name:"SLACK_WEBHOOK_URL"; label:t("Webhook do Slack"); purpose:t("Usado para mandar notas a um canal do Slack.") }
         }
 
         // 4 · Modelos
@@ -690,6 +760,13 @@ FtDialog {
            FtButton { text:t("Ativar ou reaplicar"); variant:"outline"; enabled:backend.available&&!settingsHasChanges()&&!!settingsData.values&&settingsData.values["proton.enabled"]===true&&!hasSettingsPending("settings-service"); onClicked:runSettingsService("backup-apply") }
            FtButton { text:t("Desativar"); variant:"outline"; enabled:backend.available&&!!(settingsDiag.services&&settingsDiag.services.backup&&settingsDiag.services.backup.installed)&&!hasSettingsPending("settings-service"); onClicked:runSettingsService("backup-disable") }
           }
+          SettingsSection { text:t("Lembretes de reunião") }
+          SettingsCheckRow { visible:!!settingsDiag.services; label:t("Serviço recording-cli-reminders"); status:settingsServiceStatus("reminders"); detail:settingsServiceText("reminders") }
+          Flow { Layout.fillWidth:true; spacing:8
+           FtButton { text:t("Aplicar os lembretes"); variant:"outline"; enabled:backend.available&&!settingsHasChanges()&&!hasSettingsPending("settings-service"); onClicked:runSettingsService("reminders-apply") }
+           FtButton { text:t("Desativar"); variant:"outline"; enabled:backend.available&&!!(settingsDiag.services&&settingsDiag.services.reminders&&settingsDiag.services.reminders.installed)&&!hasSettingsPending("settings-service"); onClicked:runSettingsService("reminders-disable") }
+          }
+          SettingsHint { text:t("Avisa antes das reuniões da agenda. Escolha quando em Agenda e lembretes.") }
           SettingsSection { text:t("Bandeja") }
           SettingsCheckRow { visible:!!settingsDiag.services; label:t("Indicador na bandeja (REC, pausar, parar)"); status:settingsServiceStatus("tray"); detail:settingsServiceText("tray") }
           Flow { Layout.fillWidth:true; spacing:8
@@ -728,6 +805,14 @@ FtDialog {
           SettingsHint { visible:!settingsDialog.pickerAvailable; text:t("O seletor de arquivos do sistema não está disponível; use a CLI para exportar.") }
           StatusLine { visible:!!settingsDialog.importSummary; text:settingsDialog.importSummary }
         }
+
+        // 10–15 · the meeting features, one file each, built on SettingsPage
+        SettingsNotesPage { id:notesPage }
+        SettingsAssistantPage { id:assistantPage }
+        SettingsRemindersPage {}
+        SettingsLivePage {}
+        SettingsSharePage {}
+        SettingsPrivacyPage {}
        }
       }
      }

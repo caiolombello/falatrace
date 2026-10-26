@@ -232,325 +232,339 @@ ColumnLayout {
     }
     TemplatePicker { id: templatePicker }
 
-    // ── Video, when expanded (the same frame as the thumbnail in the strip) ──
-    Item {
-        id: videoPane
-        objectName: "videoPane"
-        Layout.fillWidth: true
-        Layout.leftMargin: compactLayout ? 12 : 20; Layout.rightMargin: compactLayout ? 12 : 20
-        Layout.bottomMargin: playerStrip.videoExpanded ? 10 : 0
-        Layout.preferredHeight: playerStrip.videoExpanded ? Math.min(width * 9 / 16, detailView.height * 0.45) : 0
-        visible: playerStrip.videoExpanded
-    }
-
-    // ── Pages ──
-    Rectangle {
-        id: pageArea
+    // ── Video and pages. Expanded, the video sits above the document; in cinema mode it takes most of the
+    // page, with the notes in a column beside it (a wide window) or below it (compact). ──
+    GridLayout {
+        id: stage
+        objectName: "meetingStage"
+        readonly property bool cinema: playerStrip.cinema && playerStrip.videoExpanded && playerStrip.hasVideo
+        readonly property bool side: cinema && window.width >= 1100
         Layout.fillWidth: true
         Layout.fillHeight: true
-        color: pageSurface
-        Rectangle { anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; height: 1; color: divider }
+        columns: side ? 2 : 1
+        rowSpacing: 0; columnSpacing: 0
 
-        // Notas (1): the notes document, or your notepad.
+        // The same frame as the thumbnail in the strip.
         Item {
-            anchors.fill: parent
-            anchors.topMargin: 1
-            visible: tabs.currentIndex === 1
-            NotesDocument {
-                id: notesDocument
-                anchors.fill: parent
-                visible: notesMode.currentIndex === 0 || !feature("notes")
-            }
-            ColumnLayout {
-                visible: notesMode.currentIndex === 1 && feature("notes")
-                width: Math.min(docMaxWidth + 60, parent.width - (compactLayout ? 24 : 48))
-                x: (parent.width - width) / 2
-                anchors.top: parent.top; anchors.bottom: parent.bottom
-                anchors.topMargin: compactLayout ? 10 : 16; anchors.bottomMargin: 8
-                spacing: 8
-                Rectangle {
-                    Layout.fillWidth: true
-                    visible: !!detail.notesDoc && detail.notesDoc.stale === "notes"
-                    implicitHeight: mineStaleRow.implicitHeight + 14
-                    radius: 10; color: accentSoft
-                    RowLayout {
-                        id: mineStaleRow
-                        anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; anchors.margins: 10
-                        spacing: 8
-                        Label { Layout.fillWidth: true; text: t("As notas completas usam estas linhas como base."); textFormat: Text.PlainText; color: ink; font.pixelSize: 13; wrapMode: Text.WordWrap }
-                        FtButton { compact: true; variant: "outline"; text: t("Atualizar notas"); enabled: backend.available && !!detail.review && !summaryBusy(); onClicked: openSummary() }
-                    }
-                }
-                NotesEditor {
-                    id: meetingNotesEditor
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    origin: "meetingNotes"
-                    placeholder: t("Escreva o que quiser lembrar desta reunião. Suas linhas entram nas próximas notas geradas.")
-                    notesKey: notesMode.currentIndex === 1 && feature("notes") && tabs.currentIndex === 1 ? (detail.notes && detail.notes.id ? detail.notes.id : detail.jobId || "") : ""
-                }
-                Label {
-                    visible: !detail.jobId && !(detail.notes && detail.notes.id)
-                    Layout.fillWidth: true
-                    text: t("Gere as notas desta reunião para poder anotar nela.")
-                    textFormat: Text.PlainText; color: muted; font.pixelSize: 13; wrapMode: Text.WordWrap
-                }
-            }
+            id: videoPane
+            objectName: "videoPane"
+            Layout.fillWidth: true
+            Layout.fillHeight: stage.side
+            Layout.leftMargin: compactLayout ? 12 : 20; Layout.rightMargin: stage.side ? 12 : compactLayout ? 12 : 20
+            Layout.bottomMargin: playerStrip.videoExpanded ? 10 : 0
+            Layout.preferredHeight: !playerStrip.videoExpanded ? 0 : stage.side ? -1 : stage.cinema ? Math.round(stage.height * 0.62) : Math.min(width * 9 / 16, detailView.height * (compactLayout ? 0.36 : 0.45))
+            visible: playerStrip.videoExpanded
         }
 
-        // Transcrição (0), Falantes (2) and Agentes (3).
-        ColumnLayout {
-            id: workColumn
-            visible: tabs.currentIndex !== 1
-            width: Math.min(900, parent.width - (compactLayout ? 24 : 48))
-            x: (parent.width - width) / 2
-            anchors.top: parent.top; anchors.bottom: parent.bottom
-            anchors.topMargin: compactLayout ? 10 : 16; anchors.bottomMargin: 10
-            spacing: 10
+        Rectangle {
+            id: pageArea
+            objectName: "meetingPages"
+            Layout.fillWidth: !stage.side
+            Layout.preferredWidth: stage.side ? Math.round(Math.max(360, Math.min(460, stage.width * 0.34))) : -1
+            Layout.fillHeight: true
+            color: pageSurface
+            Rectangle { anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; height: 1; color: divider }
 
-            ColumnLayout {
-                visible: tabs.currentIndex === 3
-                Layout.fillWidth: true
-                spacing: 6
-                RowLayout {
-                    Layout.fillWidth: true
+            // Notas (1): the notes document, or your notepad.
+            Item {
+                anchors.fill: parent
+                anchors.topMargin: 1
+                visible: tabs.currentIndex === 1
+                NotesDocument {
+                    id: notesDocument
+                    anchors.fill: parent
+                    visible: notesMode.currentIndex === 0 || !feature("notes")
+                }
+                ColumnLayout {
+                    visible: notesMode.currentIndex === 1 && feature("notes")
+                    width: Math.min(docMaxWidth + 60, parent.width - (compactLayout ? 24 : 48))
+                    x: (parent.width - width) / 2
+                    anchors.top: parent.top; anchors.bottom: parent.bottom
+                    anchors.topMargin: compactLayout ? 10 : 16; anchors.bottomMargin: 8
                     spacing: 8
-                    Label { text: t("Contexto para agentes"); textFormat: Text.PlainText; color: ink; font.pixelSize: 16; font.weight: Font.DemiBold; Layout.fillWidth: true }
-                    FtButton { id:agentAccessButton; objectName:"agentAccessButton"; compact:true; variant:"outline"; iconName:"key"; iconOnly:compactLayout; text:t("Acesso para agentes…"); enabled:backend.available && !!selected.recordingId; onClicked:openAgentAccess() }
-                    FtButton { compact: true; variant: "ghost"; text: t("Voltar às notas"); onClicked: tabs.currentIndex = 1 }
-                }
-                Flow {
-                    Layout.fillWidth: true
-                    spacing: 6
-                    FtChip { iconName: mediaReady && location ? "play" : ""; kind: selected.location === "missing" ? "warning" : "neutral"; text: mediaReady && location ? t("Reproduzindo · ") + origin(location) : origin(selected.location) }
-                    FtChip { visible: !!selected.backup && selected.backup !== "none"; text: t("Cópias: ") + String(selected.backup || "").replace("+", " + ").toUpperCase() }
-                }
-            }
-            ColumnLayout {
-                visible: !!detail.review && (tabs.currentIndex === 0 || tabs.currentIndex === 2)
-                Layout.fillWidth: true
-                spacing: 6
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 6
                     Rectangle {
-                        implicitHeight: 26
-                        implicitWidth: revisionStateLabel.implicitWidth + 20
-                        Layout.maximumWidth: workColumn.width - 150
-                        radius: 13
-                        color: detail.review && detail.review.derivedStale ? warningSoft : accentSoft
-                        Label {
-                            id: revisionStateLabel; objectName: "revisionState"
-                            anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; anchors.leftMargin: 10; anchors.rightMargin: 10
-                            text: detail.review ? t("Revisão ")+detail.review.revision.revision+(detail.review.derivedStale?t(" · derivados anteriores desatualizados"):t(" · original preservado")) : ""
-                            color: detail.review && detail.review.derivedStale ? warningColor : accent
-                            font.pixelSize: 12; font.weight: Font.Medium; elide: Text.ElideRight
-                        }
-                    }
-                    Item { Layout.fillWidth: true }
-                    FtButton { id:reviewNoteButton; objectName:"reviewNoteButton"; compact:true; variant:"ghost"; iconName:"note"; iconOnly:workColumn.width < 430; text:t("Nota"); Accessible.name:t("Adicionar nota humana sem tempo"); enabled:backend.available&&!revisionPending(); onClicked:openReview("note",({})) }
-                    FtButton { objectName:"revisionUndo"; compact:true; variant:"ghost"; iconName:"undo"; iconOnly:workColumn.width < 430; text:t("Desfazer"); Accessible.name:t("Desfazer última revisão humana"); enabled:backend.available&&!!detail.review&&detail.review.canUndo===true&&!revisionPending(); onClicked:undoRevision() }
-                    FtButton { id:exportButton; objectName:"exportButton"; compact:true; variant:"ghost"; iconName:"export"; iconOnly:workColumn.width < 430; text:t("Exportar"); enabled:backend.available&&!revisionPending(); onClicked:exportDialog.open() }
-                }
-                Label { visible:!!detail.review&&(detail.review.notes||[]).length>0; text:detail.review&&(detail.review.notes||[]).length>0 ? t("Notas humanas sem tempo: ")+detail.review.notes.length+t(". Última prévia: ")+detail.review.notes[detail.review.notes.length-1].slice(0,180)+(detail.review.notes[detail.review.notes.length-1].length>180?"…":"")+t(" · conteúdo completo no JSON/Markdown exportado.") : ""; textFormat:Text.PlainText; color:muted; wrapMode:Text.WordWrap; Layout.fillWidth:true; font.pixelSize:12; maximumLineCount: 3; elide: Text.ElideRight }
-                Label { visible:tabs.currentIndex===0&&!!detail.review&&detail.review.segmentEditUnavailable===true; text:t("Trechos sem correspondência literal no texto original aceitam somente uma nota sem tempo."); color:muted; wrapMode:Text.WordWrap; Layout.fillWidth:true; font.pixelSize:12 }
-            }
-            Label { visible: tabs.currentIndex === 0 && detail.transcript.timing === "block"; text: t("Tempos aproximados por bloco; a revisão não cria alinhamento por palavra."); textFormat: Text.PlainText; color: warningColor; wrapMode: Text.WordWrap; Layout.fillWidth: true; font.pixelSize: 12 }
-
-            ListView {
-                id:revisionSegmentsList; objectName:"revisionSegmentsList"
-                visible: tabs.currentIndex === 0 && (detail.transcript.segments || []).length > 0
-                Layout.fillWidth: true; Layout.fillHeight: true; model: detail.transcript.segments || []; clip: true; spacing: 2
-                ScrollBar.vertical: ScrollBar {}
-                delegate: ItemDelegate {
-                    id: segmentItem
-                    required property var modelData; required property int index
-                    readonly property bool activeLine: activeSegment === index
-                    width: ListView.view.width
-                    hoverEnabled: true
-                    leftPadding: 12; rightPadding: 8; topPadding: 8; bottomPadding: 10
-                    Accessible.name: (modelData.speaker ? modelData.speaker + ", " : "") + clock(modelData.start) + ". " + modelData.text
-                    background: Rectangle {
-                        radius: 8
-                        color: segmentItem.index === detailView.flashIndex ? flashSurface : segmentItem.activeLine ? selectedSurface : segmentItem.hovered ? hoverSurface : "transparent"
-                        border.width: segmentItem.visualFocus ? 2 : 0; border.color: accent
-                        Rectangle { visible: segmentItem.activeLine; width: 3; radius: 1.5; color: accent; anchors.left: parent.left; anchors.top: parent.top; anchors.bottom: parent.bottom; anchors.topMargin: 8; anchors.bottomMargin: 8 }
-                    }
-                    contentItem: ColumnLayout {
-                        id: segmentContent
-                        spacing: 3
+                        Layout.fillWidth: true
+                        visible: !!detail.notesDoc && detail.notesDoc.stale === "notes"
+                        implicitHeight: mineStaleRow.implicitHeight + 14
+                        radius: 10; color: accentSoft
                         RowLayout {
-                            Layout.fillWidth: true
+                            id: mineStaleRow
+                            anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; anchors.margins: 10
                             spacing: 8
-                            Label { text: clock(segmentItem.modelData.start); color: accent; font.pixelSize: 12; font.family: "monospace"; font.weight: Font.DemiBold }
-                            Label { visible: !!segmentItem.modelData.speaker; text: segmentItem.modelData.speaker || ""; textFormat: Text.PlainText; color: ink; font.pixelSize: 12; font.weight: Font.DemiBold; elide: Text.ElideRight; Layout.fillWidth: true }
-                            Item { visible: !segmentItem.modelData.speaker; Layout.fillWidth: true }
-                            FtChip { visible: segmentItem.modelData.humanEdited === true; text: t("Revisado"); kind: "accent"; implicitHeight: 20 }
-                            FtButton { objectName:"segmentReview-"+(segmentItem.modelData.id||segmentItem.index); text:t("Revisar"); Accessible.name: t("Revisar trecho ") + clock(segmentItem.modelData.start); iconName: "edit"; iconOnly: true; compact: true; variant: "ghost"; implicitHeight: 28; visible:!!segmentItem.modelData.id; enabled:backend.available&&!revisionPending()&&!!segmentItem.modelData.textRange; onClicked:openReview("segment-text",segmentItem.modelData) }
+                            Label { Layout.fillWidth: true; text: t("As notas completas usam estas linhas como base."); textFormat: Text.PlainText; color: ink; font.pixelSize: 13; wrapMode: Text.WordWrap }
+                            FtButton { compact: true; variant: "outline"; text: t("Atualizar notas"); enabled: backend.available && !!detail.review && !summaryBusy(); onClicked: openSummary() }
                         }
-                        Label { text: segmentItem.modelData.text; textFormat: Text.PlainText; color: ink; wrapMode: Text.WordWrap; Layout.fillWidth: true; font.pixelSize: 14; lineHeight: 1.12 }
                     }
-                    onClicked: seek(modelData.start)
+                    NotesEditor {
+                        id: meetingNotesEditor
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        origin: "meetingNotes"
+                        placeholder: t("Escreva o que quiser lembrar desta reunião. Suas linhas entram nas próximas notas geradas.")
+                        notesKey: notesMode.currentIndex === 1 && feature("notes") && tabs.currentIndex === 1 ? (detail.notes && detail.notes.id ? detail.notes.id : detail.jobId || "") : ""
+                    }
+                    Label {
+                        visible: !detail.jobId && !(detail.notes && detail.notes.id)
+                        Layout.fillWidth: true
+                        text: t("Gere as notas desta reunião para poder anotar nela.")
+                        textFormat: Text.PlainText; color: muted; font.pixelSize: 13; wrapMode: Text.WordWrap
+                    }
                 }
             }
 
+            // Transcrição (0), Falantes (2) and Agentes (3).
             ColumnLayout {
-                visible: tabs.currentIndex === 2
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                spacing: 8
-                Label { textFormat: Text.PlainText; text: t(detail.diarization.message || "") || t("Identifique os falantes para revisar suas participações nesta gravação."); color: detail.diarization.state === "failed" ? errorColor : muted; font.pixelSize: 12; wrapMode: Text.WordWrap; Layout.fillWidth: true }
-                Label { visible: (detail.diarization.turns || []).length > 0; text: t("Transcrição mostra a vista revisada; o original é preservado. Os horários das falas pertencem ao diarizador."); color: muted; font.pixelSize: 12; wrapMode: Text.WordWrap; Layout.fillWidth: true }
-                FtOverline { text: t("Nomes dos falantes"); visible: speakerRows.length > 0 }
-                RowLayout {
-                    Layout.fillWidth: true; spacing: 8; visible: speakerRows.length > 0
-                    Item { Layout.fillWidth: true }
-                    FtButton { id: speakerApplyButton; objectName: "speakerApplySuggestions"; visible: applicableSuggestions().length > 0; text: t("Aplicar sugestões"); compact: true; variant: "secondary"; iconName: "check"; implicitHeight: 30
-                        Accessible.name: t("Aplicar as sugestões aos falantes ainda sem nome, como revisão humana")
-                        enabled: backend.available && !revisionPending() && !!detail.review; onClicked: applySpeakerSuggestions() }
-                    FtButton { id: speakerSuggestButton; objectName: "speakerSuggestButton"; text: speakersQueued ? t("Procurando nomes…") : t("Sugerir nomes…"); compact: true; variant: "outline"; iconName: "spark"; implicitHeight: 30
-                        Accessible.name: t("Sugerir nomes dos falantes pelo microfone e, se você autorizar, pela conversa")
-                        enabled: backend.available && !speakersQueued && !revisionPending() && !!detail.review && speakerSuggestions.state !== "unavailable"; onClicked: speakerSuggestDialog.open() }
+                id: workColumn
+                visible: tabs.currentIndex !== 1
+                width: Math.min(900, parent.width - (compactLayout ? 24 : 48))
+                x: (parent.width - width) / 2
+                anchors.top: parent.top; anchors.bottom: parent.bottom
+                anchors.topMargin: compactLayout ? 10 : 16; anchors.bottomMargin: 10
+                spacing: 10
+
+                ColumnLayout {
+                    visible: tabs.currentIndex === 3
+                    Layout.fillWidth: true
+                    spacing: 6
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+                        Label { text: t("Contexto para agentes"); textFormat: Text.PlainText; color: ink; font.pixelSize: 16; font.weight: Font.DemiBold; Layout.fillWidth: true }
+                        FtButton { id:agentAccessButton; objectName:"agentAccessButton"; compact:true; variant:"outline"; iconName:"key"; iconOnly:compactLayout; text:t("Acesso para agentes…"); enabled:backend.available && !!selected.recordingId; onClicked:openAgentAccess() }
+                        FtButton { compact: true; variant: "ghost"; text: t("Voltar às notas"); onClicked: tabs.currentIndex = 1 }
+                    }
+                    Flow {
+                        Layout.fillWidth: true
+                        spacing: 6
+                        FtChip { iconName: mediaReady && location ? "play" : ""; kind: selected.location === "missing" ? "warning" : "neutral"; text: mediaReady && location ? t("Reproduzindo · ") + origin(location) : origin(selected.location) }
+                        FtChip { visible: !!selected.backup && selected.backup !== "none"; text: t("Cópias: ") + String(selected.backup || "").replace("+", " + ").toUpperCase() }
+                    }
                 }
-                Label { objectName: "speakerSuggestionStatus"; visible: speakerRows.length > 0 && !!speakerSuggestionStatus(); text: speakerSuggestionStatus(); textFormat: Text.PlainText; color: speakerSuggestions.state === "failed" ? errorColor : muted; font.pixelSize: 12; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                ColumnLayout {
+                    visible: !!detail.review && (tabs.currentIndex === 0 || tabs.currentIndex === 2)
+                    Layout.fillWidth: true
+                    spacing: 6
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 6
+                        Rectangle {
+                            implicitHeight: 26
+                            implicitWidth: revisionStateLabel.implicitWidth + 20
+                            Layout.maximumWidth: workColumn.width - 150
+                            radius: 13
+                            color: detail.review && detail.review.derivedStale ? warningSoft : accentSoft
+                            Label {
+                                id: revisionStateLabel; objectName: "revisionState"
+                                anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; anchors.leftMargin: 10; anchors.rightMargin: 10
+                                text: !detail.review ? "" : (detail.review.revision.revision > 0 ? tf("Editado (%1)", detail.review.revision.revision) : t("Original")) + (detail.review.derivedStale ? t(" · as notas são de antes da correção") : "")
+                                color: detail.review && detail.review.derivedStale ? warningColor : accent
+                                font.pixelSize: 12; font.weight: Font.Medium; elide: Text.ElideRight
+                            }
+                        }
+                        Item { Layout.fillWidth: true }
+                        FtButton { id:reviewNoteButton; objectName:"reviewNoteButton"; compact:true; variant:"ghost"; iconName:"note"; iconOnly:workColumn.width < 430; text:t("Nota"); Accessible.name:t("Adicionar nota humana sem tempo"); enabled:backend.available&&!revisionPending(); onClicked:openReview("note",({})) }
+                        FtButton { objectName:"revisionUndo"; compact:true; variant:"ghost"; iconName:"undo"; iconOnly:workColumn.width < 430; text:t("Desfazer"); Accessible.name:t("Desfazer última revisão humana"); enabled:backend.available&&!!detail.review&&detail.review.canUndo===true&&!revisionPending(); onClicked:undoRevision() }
+                        FtButton { id:exportButton; objectName:"exportButton"; compact:true; variant:"ghost"; iconName:"export"; iconOnly:workColumn.width < 430; text:t("Exportar"); enabled:backend.available&&!revisionPending(); onClicked:exportDialog.open() }
+                    }
+                    Label { visible:!!detail.review&&(detail.review.notes||[]).length>0; text:detail.review&&(detail.review.notes||[]).length>0 ? t("Notas humanas sem tempo: ")+detail.review.notes.length+t(". Última prévia: ")+detail.review.notes[detail.review.notes.length-1].slice(0,180)+(detail.review.notes[detail.review.notes.length-1].length>180?"…":"")+t(" · conteúdo completo no JSON/Markdown exportado.") : ""; textFormat:Text.PlainText; color:muted; wrapMode:Text.WordWrap; Layout.fillWidth:true; font.pixelSize:12; maximumLineCount: 3; elide: Text.ElideRight }
+                    Label { visible:tabs.currentIndex===0&&!!detail.review&&detail.review.segmentEditUnavailable===true; text:t("Trechos sem correspondência literal no texto original aceitam somente uma nota sem tempo."); color:muted; wrapMode:Text.WordWrap; Layout.fillWidth:true; font.pixelSize:12 }
+                }
+                Label { visible: tabs.currentIndex === 0 && detail.transcript.timing === "block"; text: t("Tempos aproximados por bloco; a revisão não cria alinhamento por palavra."); textFormat: Text.PlainText; color: warningColor; wrapMode: Text.WordWrap; Layout.fillWidth: true; font.pixelSize: 12 }
+
                 ListView {
-                    id:revisionSpeakersList; objectName:"revisionSpeakersList"
-                    visible: speakerRows.length > 0
-                    Layout.fillWidth: true; Layout.preferredHeight: Math.min(236, speakerRows.reduce(function(total, row){return total + 44 + suggestionsFor(row.speakerId).length * 30}, 0)); model: speakerRows; clip: true; spacing: 2
+                    id:revisionSegmentsList; objectName:"revisionSegmentsList"
+                    visible: tabs.currentIndex === 0 && (detail.transcript.segments || []).length > 0
+                    Layout.fillWidth: true; Layout.fillHeight: true; model: detail.transcript.segments || []; clip: true; spacing: 2
                     ScrollBar.vertical: ScrollBar {}
                     delegate: ItemDelegate {
-                        id: speakerItem
-                        required property var modelData
-                        property var suggestions: suggestionsFor(modelData.speakerId)
-                        width: ListView.view.width; height: 42 + suggestions.length * 30
-                        enabled: backend.available && !!selected.key
-                        leftPadding: 8; rightPadding: 4
-                        Accessible.name: (modelData.label || t("Falante incerto")) + (suggestions.length ? t(", com sugestão de nome") : "")
-                        background: Rectangle { radius: 8; color: speakerItem.hovered ? hoverSurface : "transparent"; border.width: speakerItem.visualFocus ? 2 : 0; border.color: accent }
+                        id: segmentItem
+                        required property var modelData; required property int index
+                        readonly property bool activeLine: activeSegment === index
+                        width: ListView.view.width
+                        hoverEnabled: true
+                        leftPadding: 12; rightPadding: 8; topPadding: 8; bottomPadding: 10
+                        Accessible.name: (modelData.speaker ? modelData.speaker + ", " : "") + clock(modelData.start) + ". " + modelData.text
+                        background: Rectangle {
+                            radius: 8
+                            color: segmentItem.index === detailView.flashIndex ? flashSurface : segmentItem.activeLine ? selectedSurface : segmentItem.hovered ? hoverSurface : "transparent"
+                            border.width: segmentItem.visualFocus ? 2 : 0; border.color: accent
+                            Rectangle { visible: segmentItem.activeLine; width: 3; radius: 1.5; color: accent; anchors.left: parent.left; anchors.top: parent.top; anchors.bottom: parent.bottom; anchors.topMargin: 8; anchors.bottomMargin: 8 }
+                        }
                         contentItem: ColumnLayout {
-                            spacing: 0
+                            id: segmentContent
+                            spacing: 3
                             RowLayout {
-                                spacing: 8; Layout.fillWidth: true; Layout.preferredHeight: 34
-                                FtChip { text: speakerItem.modelData.speakerId; kind: "accent"; maximumWidth: 90 }
-                                Label { text:speakerItem.modelData.label||t("Falante incerto"); textFormat:Text.PlainText; color:speakerItem.modelData.label ? ink : muted; Layout.fillWidth:true; elide:Text.ElideRight }
-                                FtButton { objectName:"speakerReview-"+speakerItem.modelData.speakerId; text:t("Revisar"); compact:true; variant:"ghost"; iconName:"edit"; implicitHeight: 30; Accessible.name:t("Revisar nome do falante ")+speakerItem.modelData.speakerId; enabled:backend.available&&!revisionPending()&&!!detail.review; onClicked:openReview("speaker-label",speakerItem.modelData) }
+                                Layout.fillWidth: true
+                                spacing: 8
+                                Label { text: clock(segmentItem.modelData.start); color: accent; font.pixelSize: 12; font.family: "monospace"; font.weight: Font.DemiBold }
+                                Label { visible: !!segmentItem.modelData.speaker; text: segmentItem.modelData.speaker || ""; textFormat: Text.PlainText; color: ink; font.pixelSize: 12; font.weight: Font.DemiBold; elide: Text.ElideRight; Layout.fillWidth: true }
+                                Item { visible: !segmentItem.modelData.speaker; Layout.fillWidth: true }
+                                FtChip { visible: segmentItem.modelData.humanEdited === true; text: t("Revisado"); kind: "accent"; implicitHeight: 20 }
+                                FtButton { objectName:"segmentReview-"+(segmentItem.modelData.id||segmentItem.index); text:t("Revisar"); Accessible.name: t("Revisar trecho ") + clock(segmentItem.modelData.start); iconName: "edit"; iconOnly: true; compact: true; variant: "ghost"; implicitHeight: 28; visible:!!segmentItem.modelData.id; enabled:backend.available&&!revisionPending()&&!!segmentItem.modelData.textRange; onClicked:openReview("segment-text",segmentItem.modelData) }
                             }
-                            Repeater {
-                                model: speakerItem.suggestions
-                                delegate: RowLayout {
-                                    id: suggestionRow
-                                    required property var modelData
-                                    Layout.fillWidth: true; Layout.preferredHeight: 30; spacing: 8
-                                    Label { id: suggestionLabel; objectName: "speakerSuggestion-" + speakerItem.modelData.speakerId + "-" + suggestionRow.modelData.source; text: t("Sugestão: ") + suggestionName(suggestionRow.modelData) + " · " + suggestionDetail(suggestionRow.modelData); textFormat: Text.PlainText; color: muted; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight; leftPadding: 4
-                                        HoverHandler { id: suggestionHover }
-                                        ToolTip.visible: suggestionHover.hovered && suggestionLabel.truncated; ToolTip.text: suggestionLabel.text; ToolTip.delay: 400 }
-                                    FtButton { objectName: "speakerUseSuggestion-" + speakerItem.modelData.speakerId + "-" + suggestionRow.modelData.source; text: t("Usar"); compact: true; variant: "ghost"; iconName: "edit"; implicitHeight: 26
-                                        Accessible.name: tf("Revisar o nome sugerido %1 para o falante %2", suggestionName(suggestionRow.modelData), speakerItem.modelData.speakerId)
-                                        enabled: backend.available && !revisionPending() && !!detail.review
-                                        onClicked: openReview("speaker-label", {speakerId: speakerItem.modelData.speakerId, label: suggestionName(suggestionRow.modelData)}) }
+                            Label { text: segmentItem.modelData.text; textFormat: Text.PlainText; color: ink; wrapMode: Text.WordWrap; Layout.fillWidth: true; font.pixelSize: 14; lineHeight: 1.12 }
+                        }
+                        onClicked: seek(modelData.start)
+                    }
+                }
+
+                ColumnLayout {
+                    visible: tabs.currentIndex === 2
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    spacing: 8
+                    Label { textFormat: Text.PlainText; text: t(detail.diarization.message || "") || t("Identifique os falantes para revisar suas participações nesta gravação."); color: detail.diarization.state === "failed" ? errorColor : muted; font.pixelSize: 12; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                    Label { visible: (detail.diarization.turns || []).length > 0; text: t("Os horários das falas vêm da identificação automática."); color: muted; font.pixelSize: 12; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                    FtOverline { text: t("Nomes dos falantes"); visible: speakerRows.length > 0 }
+                    RowLayout {
+                        Layout.fillWidth: true; spacing: 8; visible: speakerRows.length > 0
+                        Item { Layout.fillWidth: true }
+                        FtButton { id: speakerApplyButton; objectName: "speakerApplySuggestions"; visible: applicableSuggestions().length > 0; text: t("Aplicar sugestões"); compact: true; variant: "secondary"; iconName: "check"; implicitHeight: 30
+                            Accessible.name: t("Aplicar as sugestões aos falantes ainda sem nome, como revisão humana")
+                            enabled: backend.available && !revisionPending() && !!detail.review; onClicked: applySpeakerSuggestions() }
+                        FtButton { id: speakerSuggestButton; objectName: "speakerSuggestButton"; text: speakersQueued ? t("Procurando nomes…") : t("Sugerir nomes…"); compact: true; variant: "outline"; iconName: "spark"; implicitHeight: 30
+                            Accessible.name: t("Sugerir nomes dos falantes pelo microfone e, se você autorizar, pela conversa")
+                            enabled: backend.available && !speakersQueued && !revisionPending() && !!detail.review && speakerSuggestions.state !== "unavailable"; onClicked: speakerSuggestDialog.open() }
+                    }
+                    Label { objectName: "speakerSuggestionStatus"; visible: speakerRows.length > 0 && !!speakerSuggestionStatus(); text: speakerSuggestionStatus(); textFormat: Text.PlainText; color: speakerSuggestions.state === "failed" ? errorColor : muted; font.pixelSize: 12; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                    ListView {
+                        id:revisionSpeakersList; objectName:"revisionSpeakersList"
+                        visible: speakerRows.length > 0
+                        Layout.fillWidth: true; Layout.preferredHeight: Math.min(236, speakerRows.reduce(function(total, row){return total + 44 + suggestionsFor(row.speakerId).length * 30}, 0)); model: speakerRows; clip: true; spacing: 2
+                        ScrollBar.vertical: ScrollBar {}
+                        delegate: ItemDelegate {
+                            id: speakerItem
+                            required property var modelData
+                            property var suggestions: suggestionsFor(modelData.speakerId)
+                            width: ListView.view.width; height: 42 + suggestions.length * 30
+                            enabled: backend.available && !!selected.key
+                            leftPadding: 8; rightPadding: 4
+                            Accessible.name: (modelData.label || t("Falante incerto")) + (suggestions.length ? t(", com sugestão de nome") : "")
+                            background: Rectangle { radius: 8; color: speakerItem.hovered ? hoverSurface : "transparent"; border.width: speakerItem.visualFocus ? 2 : 0; border.color: accent }
+                            contentItem: ColumnLayout {
+                                spacing: 0
+                                RowLayout {
+                                    spacing: 8; Layout.fillWidth: true; Layout.preferredHeight: 34
+                                    FtChip { text: speakerItem.modelData.speakerId; kind: "accent"; maximumWidth: 90 }
+                                    Label { text:speakerItem.modelData.label||t("Falante incerto"); textFormat:Text.PlainText; color:speakerItem.modelData.label ? ink : muted; Layout.fillWidth:true; elide:Text.ElideRight }
+                                    FtButton { objectName:"speakerReview-"+speakerItem.modelData.speakerId; text:t("Revisar"); compact:true; variant:"ghost"; iconName:"edit"; implicitHeight: 30; Accessible.name:t("Revisar nome do falante ")+speakerItem.modelData.speakerId; enabled:backend.available&&!revisionPending()&&!!detail.review; onClicked:openReview("speaker-label",speakerItem.modelData) }
+                                }
+                                Repeater {
+                                    model: speakerItem.suggestions
+                                    delegate: RowLayout {
+                                        id: suggestionRow
+                                        required property var modelData
+                                        Layout.fillWidth: true; Layout.preferredHeight: 30; spacing: 8
+                                        Label { id: suggestionLabel; objectName: "speakerSuggestion-" + speakerItem.modelData.speakerId + "-" + suggestionRow.modelData.source; text: t("Sugestão: ") + suggestionName(suggestionRow.modelData) + " · " + suggestionDetail(suggestionRow.modelData); textFormat: Text.PlainText; color: muted; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight; leftPadding: 4
+                                            HoverHandler { id: suggestionHover }
+                                            ToolTip.visible: suggestionHover.hovered && suggestionLabel.truncated; ToolTip.text: suggestionLabel.text; ToolTip.delay: 400 }
+                                        FtButton { objectName: "speakerUseSuggestion-" + speakerItem.modelData.speakerId + "-" + suggestionRow.modelData.source; text: t("Usar"); compact: true; variant: "ghost"; iconName: "edit"; implicitHeight: 26
+                                            Accessible.name: tf("Revisar o nome sugerido %1 para o falante %2", suggestionName(suggestionRow.modelData), speakerItem.modelData.speakerId)
+                                            enabled: backend.available && !revisionPending() && !!detail.review
+                                            onClicked: openReview("speaker-label", {speakerId: speakerItem.modelData.speakerId, label: suggestionName(suggestionRow.modelData)}) }
+                                    }
                                 }
                             }
                         }
                     }
-                }
-                FtOverline { text: t("Falas do diarizador · texto automático, revisar"); Layout.fillWidth: true; wrapMode: Text.WordWrap }
-                Label { visible: !!detail.diarization.textCoverage && detail.diarization.textCoverage.shownTurns < detail.diarization.textCoverage.totalTurns; text: detail.diarization.textCoverage ? t("Texto parcial na interface: ") + detail.diarization.textCoverage.shownTurns + "/" + detail.diarization.textCoverage.totalTurns + t(" falas. Os horários e nomes continuam disponíveis; o resultado local completo foi preservado.") : ""; textFormat: Text.PlainText; color: warningColor; wrapMode: Text.WordWrap; Layout.fillWidth: true; font.pixelSize: 12 }
-                ListView {
-                    id:revisionTurnsList; objectName:"revisionTurnsList"
-                    Layout.fillWidth: true; Layout.fillHeight: true; model: detail.diarization.turns || []; clip: true; spacing: 2
-                    ScrollBar.vertical: ScrollBar {}
-                    delegate: ItemDelegate {
-                        id: turnItem
-                        required property var modelData
-                        width: ListView.view.width; enabled: true
-                        hoverEnabled: true
-                        leftPadding: 10; rightPadding: 8; topPadding: 8; bottomPadding: 10
-                        Accessible.name: (modelData.label || modelData.speaker || t("Falante incerto")) + ", " + preciseClock(modelData.start) + " a " + preciseClock(modelData.end) + ". " + (modelData.text !== undefined ? modelData.text : t("Texto não disponível nesta prévia."))
-                        background: Rectangle { radius: 8; color: turnItem.hovered ? hoverSurface : "transparent"; border.width: turnItem.visualFocus ? 2 : 0; border.color: accent }
-                        contentItem: ColumnLayout {
-                            id: turnContent; spacing: 4
-                            RowLayout {
-                                spacing: 8
-                                Label { text: preciseClock(turnItem.modelData.start) + "–" + preciseClock(turnItem.modelData.end); color: accent; font.family: "monospace"; font.pixelSize: 11 }
-                                Label { text: turnItem.modelData.label || turnItem.modelData.speaker || t("Falante incerto"); textFormat: Text.PlainText; color: ink; font.pixelSize: 12; font.weight: Font.DemiBold; Layout.fillWidth: true; elide: Text.ElideRight }
+                    FtOverline { text: t("Falas identificadas automaticamente"); Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                    Label { visible: !!detail.diarization.textCoverage && detail.diarization.textCoverage.shownTurns < detail.diarization.textCoverage.totalTurns; text: detail.diarization.textCoverage ? t("Texto parcial na interface: ") + detail.diarization.textCoverage.shownTurns + "/" + detail.diarization.textCoverage.totalTurns + t(" falas. Os horários e nomes continuam disponíveis; o resultado local completo foi preservado.") : ""; textFormat: Text.PlainText; color: warningColor; wrapMode: Text.WordWrap; Layout.fillWidth: true; font.pixelSize: 12 }
+                    ListView {
+                        id:revisionTurnsList; objectName:"revisionTurnsList"
+                        Layout.fillWidth: true; Layout.fillHeight: true; model: detail.diarization.turns || []; clip: true; spacing: 2
+                        ScrollBar.vertical: ScrollBar {}
+                        delegate: ItemDelegate {
+                            id: turnItem
+                            required property var modelData
+                            width: ListView.view.width; enabled: true
+                            hoverEnabled: true
+                            leftPadding: 10; rightPadding: 8; topPadding: 8; bottomPadding: 10
+                            Accessible.name: (modelData.label || modelData.speaker || t("Falante incerto")) + ", " + preciseClock(modelData.start) + " a " + preciseClock(modelData.end) + ". " + (modelData.text !== undefined ? modelData.text : t("Texto não disponível nesta prévia."))
+                            background: Rectangle { radius: 8; color: turnItem.hovered ? hoverSurface : "transparent"; border.width: turnItem.visualFocus ? 2 : 0; border.color: accent }
+                            contentItem: ColumnLayout {
+                                id: turnContent; spacing: 4
+                                RowLayout {
+                                    spacing: 8
+                                    Label { text: preciseClock(turnItem.modelData.start) + "–" + preciseClock(turnItem.modelData.end); color: accent; font.family: "monospace"; font.pixelSize: 11 }
+                                    Label { text: turnItem.modelData.label || turnItem.modelData.speaker || t("Falante incerto"); textFormat: Text.PlainText; color: ink; font.pixelSize: 12; font.weight: Font.DemiBold; Layout.fillWidth: true; elide: Text.ElideRight }
+                                }
+                                Label { text: turnItem.modelData.text !== undefined ? turnItem.modelData.text : t("Texto não disponível nesta prévia."); textFormat: Text.PlainText; color: turnItem.modelData.text !== undefined ? ink : muted; wrapMode: Text.WordWrap; Layout.fillWidth: true; font.pixelSize: 13 }
+                                FtButton { objectName:"turnReview-"+(turnItem.modelData.id||""); text:t("Revisar atribuição"); compact:true; variant:"outline"; iconName:"edit"; implicitHeight: 30; visible:!!turnItem.modelData.id; enabled:backend.available&&!revisionPending()&&!!detail.review; onClicked:openReview("turn-speaker",turnItem.modelData) }
                             }
-                            Label { text: turnItem.modelData.text !== undefined ? turnItem.modelData.text : t("Texto não disponível nesta prévia."); textFormat: Text.PlainText; color: turnItem.modelData.text !== undefined ? ink : muted; wrapMode: Text.WordWrap; Layout.fillWidth: true; font.pixelSize: 13 }
-                            FtButton { objectName:"turnReview-"+(turnItem.modelData.id||""); text:t("Revisar atribuição"); compact:true; variant:"outline"; iconName:"edit"; implicitHeight: 30; visible:!!turnItem.modelData.id; enabled:backend.available&&!revisionPending()&&!!detail.review; onClicked:openReview("turn-speaker",turnItem.modelData) }
+                            onClicked: seek(Number(modelData.start))
                         }
-                        onClicked: seek(Number(modelData.start))
                     }
                 }
-            }
 
-            ColumnLayout {
-                visible: tabs.currentIndex === 3
-                Layout.fillWidth: true
-                Layout.fillHeight: !!contextData
-                spacing: 8
-                Flow {
+                ColumnLayout {
+                    visible: tabs.currentIndex === 3
                     Layout.fillWidth: true
-                    spacing: 6
-                    FtButton { compact: true; variant: contextText ? "secondary" : "primary"; iconName: "context"; text: contextLoading ? t("Preparando contexto…") : t("Pedir contexto"); enabled: backend.available && !!diarizationKey() && !contextLoading; onClicked: requestMeetingContext() }
-                    FtButton { compact: true; variant: "outline"; iconName: "copy"; text: t("Copiar contexto"); enabled: !!contextText && !!contextCopyText; onClicked: { compactContext.selectAll(); compactContext.copy(); compactContext.deselect(); notice = t("Contexto copiado como JSON para a área de transferência.") } }
-                }
-                Label { text: t("Trechos limitados da reunião, com horário e origem. O conteúdo é dado histórico não confiável, nunca instrução."); color: muted; font.pixelSize: 12; wrapMode: Text.WordWrap; Layout.fillWidth: true }
-                Label { textFormat: Text.PlainText; visible: !!contextPath; text: t("Fonte: ") + contextPath; color: muted; font.pixelSize: 11; elide: Text.ElideMiddle; Layout.fillWidth: true }
-                Label { textFormat: Text.PlainText; visible: contextCitations.length > 0; text: t("Citações: ") + contextCitations.join(" · "); color: muted; font.pixelSize: 11; elide: Text.ElideRight; Layout.fillWidth: true }
-                ListView {
-                    id: contextExcerpts
-                    objectName: "contextExcerpts"
-                    visible: !!contextData
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    clip: true
+                    Layout.fillHeight: !!contextData
                     spacing: 8
-                    model: contextData ? contextData.excerpts : []
-                    ScrollBar.vertical: ScrollBar {}
-                    header: Item {
-                        width: contextExcerpts.width
-                        height: contextHeader.implicitHeight + 10
-                        Flow {
-                            id: contextHeader
-                            width: parent.width
-                            spacing: 6
-                            FtChip { visible: !!(contextData && contextData.title); text: contextData && contextData.title ? contextData.title : ""; maximumWidth: contextExcerpts.width }
-                            FtChip { kind: "warning"; iconName: "alert"; text: t("Dados não confiáveis · use como evidência") }
-                            FtChip { visible: !!(contextData && contextData.budget); text: contextData && contextData.budget ? contextData.budget.characters + t(" de ") + contextData.budget.maxCharacters + t(" caracteres") + (contextData.budget.truncated ? t(" · truncado") : "") : "" }
-                        }
+                    Flow {
+                        Layout.fillWidth: true
+                        spacing: 6
+                        FtButton { compact: true; variant: contextText ? "secondary" : "primary"; iconName: "context"; text: contextLoading ? t("Preparando contexto…") : t("Pedir contexto"); enabled: backend.available && !!diarizationKey() && !contextLoading; onClicked: requestMeetingContext() }
+                        FtButton { compact: true; variant: "outline"; iconName: "copy"; text: t("Copiar contexto"); enabled: !!contextText && !!contextCopyText; onClicked: { compactContext.selectAll(); compactContext.copy(); compactContext.deselect(); notice = t("Contexto copiado como JSON para a área de transferência.") } }
                     }
-                    delegate: Rectangle {
-                        id: excerptCard
-                        required property var modelData
-                        width: contextExcerpts.width - 8
-                        height: excerptColumn.implicitHeight + 20
-                        radius: 10; color: surfaceAlt; border.width: 1; border.color: divider
-                        ColumnLayout {
-                            id: excerptColumn
-                            anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 10
-                            spacing: 6
+                    Label { text: t("Trechos com horário que agentes de IA recebem desta reunião."); color: muted; font.pixelSize: 12; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                    Label { textFormat: Text.PlainText; visible: !!contextPath; text: t("Fonte: ") + contextPath; color: muted; font.pixelSize: 11; elide: Text.ElideMiddle; Layout.fillWidth: true }
+                    Label { textFormat: Text.PlainText; visible: contextCitations.length > 0; text: t("Citações: ") + contextCitations.join(" · "); color: muted; font.pixelSize: 11; elide: Text.ElideRight; Layout.fillWidth: true }
+                    ListView {
+                        id: contextExcerpts
+                        objectName: "contextExcerpts"
+                        visible: !!contextData
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        clip: true
+                        spacing: 8
+                        model: contextData ? contextData.excerpts : []
+                        ScrollBar.vertical: ScrollBar {}
+                        header: Item {
+                            width: contextExcerpts.width
+                            height: contextHeader.implicitHeight + 10
                             Flow {
-                                Layout.fillWidth: true
+                                id: contextHeader
+                                width: parent.width
                                 spacing: 6
-                                FtButton { visible: !!excerptCard.modelData.timestamps; compact: true; variant: "outline"; implicitHeight: 26; iconName: "play"; text: excerptCard.modelData.timestamps ? clock(excerptCard.modelData.timestamps.start) + "–" + clock(excerptCard.modelData.timestamps.end) : ""; Accessible.name: t("Ir à origem ") + text; enabled: mediaReady; onClicked: seek(excerptCard.modelData.timestamps.start) }
-                                FtChip { kind: excerptCard.modelData.timing === "segment" ? "accent" : "warning"; text: excerptCard.modelData.timing === "segment" ? t("horário do segmento") : excerptCard.modelData.timing === "block" ? t("bloco aproximado") : t("sem horário") }
-                                FtChip { visible: excerptCard.modelData.textOrigin === "human-revision"; text: t("revisão humana") }
+                                FtChip { visible: !!(contextData && contextData.title); text: contextData && contextData.title ? contextData.title : ""; maximumWidth: contextExcerpts.width }
+                                FtChip { visible: !!(contextData && contextData.budget); text: contextData && contextData.budget ? contextData.budget.characters + t(" de ") + contextData.budget.maxCharacters + t(" caracteres") + (contextData.budget.truncated ? t(" · truncado") : "") : "" }
                             }
-                            Label { text: excerptCard.modelData.text || ""; textFormat: Text.PlainText; color: ink; wrapMode: Text.WordWrap; Layout.fillWidth: true; font.pixelSize: 13 }
-                            Label { visible: (excerptCard.modelData.segmentIds || []).length > 0; text: (excerptCard.modelData.segmentIds || []).join(", "); color: muted; font.pixelSize: 11; font.family: "monospace"; elide: Text.ElideRight; Layout.fillWidth: true }
+                        }
+                        delegate: Rectangle {
+                            id: excerptCard
+                            required property var modelData
+                            width: contextExcerpts.width - 8
+                            height: excerptColumn.implicitHeight + 20
+                            radius: 10; color: surfaceAlt; border.width: 1; border.color: divider
+                            ColumnLayout {
+                                id: excerptColumn
+                                anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 10
+                                spacing: 6
+                                Flow {
+                                    Layout.fillWidth: true
+                                    spacing: 6
+                                    FtButton { visible: !!excerptCard.modelData.timestamps; compact: true; variant: "outline"; implicitHeight: 26; iconName: "play"; text: excerptCard.modelData.timestamps ? clock(excerptCard.modelData.timestamps.start) + "–" + clock(excerptCard.modelData.timestamps.end) : ""; Accessible.name: t("Ir à origem ") + text; enabled: mediaReady; onClicked: seek(excerptCard.modelData.timestamps.start) }
+                                    FtChip { kind: excerptCard.modelData.timing === "segment" ? "accent" : "warning"; text: excerptCard.modelData.timing === "segment" ? t("horário do segmento") : excerptCard.modelData.timing === "block" ? t("bloco aproximado") : t("sem horário") }
+                                    FtChip { visible: excerptCard.modelData.textOrigin === "human-revision"; text: t("revisão humana") }
+                                }
+                                Label { text: excerptCard.modelData.text || ""; textFormat: Text.PlainText; color: ink; wrapMode: Text.WordWrap; Layout.fillWidth: true; font.pixelSize: 13 }
+                                Label { visible: (excerptCard.modelData.segmentIds || []).length > 0; text: (excerptCard.modelData.segmentIds || []).join(", "); color: muted; font.pixelSize: 11; font.family: "monospace"; elide: Text.ElideRight; Layout.fillWidth: true }
+                            }
                         }
                     }
                 }
-            }
-            TextEdit { id: compactContext; visible: false; text: contextCopyText; textFormat: TextEdit.PlainText }
+                TextEdit { id: compactContext; visible: false; text: contextCopyText; textFormat: TextEdit.PlainText }
 
-            ScrollView {
-                visible: (tabs.currentIndex === 0 && !(detail.transcript.segments || []).length) || (tabs.currentIndex === 3 && !contextData)
-                Layout.fillWidth: true; Layout.fillHeight: true; clip: true
-                TextArea { id: contextArea; readOnly: true; selectByMouse: true; wrapMode: TextEdit.Wrap; textFormat: TextEdit.PlainText; color: ink; font.pixelSize: 14; text: tabs.currentIndex === 0 ? detail.transcript.text || (detailLoading ? t("Carregando…") : t("Transcrição ainda não disponível.")) : tabs.currentIndex === 1 ? (showVisualSummary && detail.visualReview ? detail.visualReview.summaryMarkdown : detail.summary) || t("Resumo ainda não disponível.") : tabs.currentIndex === 3 ? (contextText || (contextLoading ? t("Preparando contexto sob demanda…") : t("Peça o contexto para esta gravação quando precisar."))) : detail.timesheet || t("Nenhum apontamento vinculado a esta gravação.")
-                    background: Item {} }
+                ScrollView {
+                    visible: (tabs.currentIndex === 0 && !(detail.transcript.segments || []).length) || (tabs.currentIndex === 3 && !contextData)
+                    Layout.fillWidth: true; Layout.fillHeight: true; clip: true
+                    TextArea { id: contextArea; readOnly: true; selectByMouse: true; wrapMode: TextEdit.Wrap; textFormat: TextEdit.PlainText; color: ink; font.pixelSize: 14; text: tabs.currentIndex === 0 ? detail.transcript.text || (detailLoading ? t("Carregando…") : t("Transcrição ainda não disponível.")) : tabs.currentIndex === 1 ? (showVisualSummary && detail.visualReview ? detail.visualReview.summaryMarkdown : detail.summary) || t("Resumo ainda não disponível.") : tabs.currentIndex === 3 ? (contextText || (contextLoading ? t("Preparando contexto sob demanda…") : t("Peça o contexto para esta gravação quando precisar."))) : detail.timesheet || t("Nenhum apontamento vinculado a esta gravação.")
+                        background: Item {} }
+                }
+                FtButton { visible: tabs.currentIndex === 0 && !!detail.subtitleId; Layout.fillWidth: true; variant: "outline"; iconName: "transcript"; text: subtitleQueued ? t("Legendas em preparação…") : t("Gerar legendas no worker configurado"); enabled: backend.available && !subtitleQueued && detail.subtitleState !== "ready"; onClicked: { subtitleQueued = true; if (send("subtitles", detail.subtitleId) < 0) subtitleQueued = false } }
+                FtButton { visible: (tabs.currentIndex === 0 || tabs.currentIndex === 2) && !!detail.diarizationId && !(tabs.currentIndex === 2 && detail.diarization.state === "review"); Layout.fillWidth: true; variant: "outline"; iconName: "users"; text: diarizationQueued ? t("Identificação em preparação…") : detail.diarization.state === "review" ? t("Ver falantes") : t("Identificar falantes"); enabled: backend.available && !diarizationQueued; onClicked: { if (detail.diarization.state === "review") tabs.currentIndex = 2; else { diarizationQueued = true; if (send("diarization", detail.diarizationId) < 0) diarizationQueued = false } } }
             }
-            FtButton { visible: tabs.currentIndex === 0 && !!detail.subtitleId; Layout.fillWidth: true; variant: "outline"; iconName: "transcript"; text: subtitleQueued ? t("Legendas em preparação…") : t("Gerar legendas no worker configurado"); enabled: backend.available && !subtitleQueued && detail.subtitleState !== "ready"; onClicked: { subtitleQueued = true; if (send("subtitles", detail.subtitleId) < 0) subtitleQueued = false } }
-            FtButton { visible: (tabs.currentIndex === 0 || tabs.currentIndex === 2) && !!detail.diarizationId && !(tabs.currentIndex === 2 && detail.diarization.state === "review"); Layout.fillWidth: true; variant: "outline"; iconName: "users"; text: diarizationQueued ? t("Identificação em preparação…") : detail.diarization.state === "review" ? t("Ver falantes") : t("Identificar falantes"); enabled: backend.available && !diarizationQueued; onClicked: { if (detail.diarization.state === "review") tabs.currentIndex = 2; else { diarizationQueued = true; if (send("diarization", detail.diarizationId) < 0) diarizationQueued = false } } }
         }
     }
 
@@ -558,5 +572,6 @@ ColumnLayout {
         id: playerStrip
         Layout.fillWidth: true
         expandedSlot: videoPane
+        fullScreenSlot: videoFullScreen
     }
 }
