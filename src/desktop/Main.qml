@@ -162,6 +162,9 @@ ApplicationWindow {
     property var features: ({})
     property var firstRun: ({})
     function feature(name) { return features[name] === true }
+    // The flags follow the configuration (notes, live, upcoming): asked again whenever it may have changed
+    // (a save or restore, here or in the wizard, a model download, Settings or the wizard closing).
+    function refreshFeatures() { if (backend.available) send("ux-capabilities", "") }
     // Saved settings the shell reads from the startup settings-read (live provider, automatic processing).
     property var studioSettings: ({})
     // Where the main area is: Início, the live capture, Ações, Pessoas or Clientes.
@@ -683,6 +686,7 @@ ApplicationWindow {
         if (message.ok && ["settings-read", "settings-save", "settings-restore"].indexOf(request.op) >= 0) {
             const savedValues = message.result.values || (message.result.settings && message.result.settings.values)
             if (savedValues) { languagePreference = savedValues["studio.language"] || "auto"; studioSettings = savedValues; if (request.op !== "settings-read") languagePreview = "" }
+            if (request.op !== "settings-read") refreshFeatures()
         }
         if (request.origin === "wizard") { setupWizard.handleResponse(request, message); return }
         if (request.settingsGeneration !== settingsGeneration) return

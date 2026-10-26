@@ -38,7 +38,7 @@ FtDialog {
     // The review shows what the diagnostic says about exactly the choices it lists.
     onStepChanged:if (step === 4 && visible && backend.available) diagnose()
     onOpened:{ generation += 1; stale = false; step = 0; data = ({}); draft = ({}); diag = ({}); audioTest = null; catalog = ({}); downloads = ({}); downloadSamples = ({}); finishWhenDownloaded = false; consentAck = false; results = []; pendingKey = ""; error = ""; notice = ""; applyTray = false; load(); wizardNext.forceActiveFocus(Qt.TabFocusReason) }
-    onClosed:{ languagePreview = ""; generation += 1; data = ({}); draft = ({}); pendingKey = ""; onboardingButton.forceActiveFocus(Qt.TabFocusReason) }
+    onClosed:{ languagePreview = ""; generation += 1; data = ({}); draft = ({}); pendingKey = ""; refreshFeatures(); onboardingButton.forceActiveFocus(Qt.TabFocusReason) }
 
     function connectionLost() {
         if (!visible) return
@@ -290,7 +290,7 @@ FtDialog {
             if (result.state === "failed") finishWhenDownloaded = false
             if (result.state === "completed") {
                 if (result.kind === "whisper" && result.path) set("transcription.whisperCpp.modelPath", result.path)
-                request("settings-model-catalog"); diagnose()
+                request("settings-model-catalog"); diagnose(); refreshFeatures()
             }
         } else if (req.op === "settings-save") {
             if (!message.ok) { error = message.error; return }

@@ -64,7 +64,7 @@ FtDialog {
     // A section asked for before opening (openSection) wins over the one shown last time.
     property int requestedSection: -1
     onOpened:{settingsError="";settingsNotice="";resetExtras();settingsTabs.currentIndex=requestedSection>=0?requestedSection:settingsFirstRun?0:settingsTabs.currentIndex;requestedSection=-1;loadSettings(true);settingsTabs.forceActiveFocus(Qt.TabFocusReason)}
-    onClosed:{languagePreview="";settingsGeneration+=1;settingsDraft=({});settingsData=({});settingsDiag=({});settingsFirstRun=false;resetExtras();onboardingButton.forceActiveFocus(Qt.TabFocusReason)}
+    onClosed:{languagePreview="";settingsGeneration+=1;settingsDraft=({});settingsData=({});settingsDiag=({});settingsFirstRun=false;resetExtras();refreshFeatures();onboardingButton.forceActiveFocus(Qt.TabFocusReason)}
 
     function resetExtras() { keyTests=({}); remoteCheck=null; obsCheck=null; audioTest=null; confirmDownload=""; confirmRestore=""; importSummary=""; confirmVoiceDelete=""; notesPage.reset(); assistantPage.reset() }
     function draft(field) { return settingsDraft[field] }
@@ -246,6 +246,8 @@ FtDialog {
             next[downloadKey(result.kind, result.id)] = result
             downloads = next
             if (result.state === "completed" || result.state === "failed") requestCatalog()
+            // A downloaded model can make the live transcript available.
+            if (result.state === "completed") refreshFeatures()
             if (result.state === "completed" && result.kind === "voice") settingsNotice = t("Reconhecimento de voz instalado e conferido. Ligue a opção abaixo e salve para usá-lo.")
             if (result.state === "completed" && result.kind === "whisper" && result.path) {
                 // Only local transcription takes the new model at once; with an external provider the audio

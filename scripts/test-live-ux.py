@@ -7,7 +7,7 @@ never a fixed delay, and prints its own assertion line): a capture started from 
 notepad and autosaves (800 ms after typing, right away on Enter), the live transcript stays off until
 asked and a cloud provider needs consent before live-set (again for another provider, and also when
 the provider is not known), Parar saves the notes first and then opens the new meeting, the compact
-light layout, a bridge with the notepad off, and the one-minute test capture (also when test mode is
+light layout, a bridge with the notepad off (and the notepad turned on in Settings, with no restart), and the one-minute test capture (also when test mode is
 set before the capture starts).
 Exit 77 means no Studio runtime is available.
 """
@@ -31,6 +31,7 @@ ago = {'test-mode': 58}.get(mode, 30)
 active = mode not in ('start', 'no-notes', 'test-start')
 started = (now() - datetime.timedelta(seconds=ago)).isoformat()
 stopped = False; live_on = False; seq = 0
+notes_on = mode not in ('no-notes', 'notes-on')
 notes = {'id': session_id, 'rev': 0, 'text': '', 'entries': [], 'updatedAt': None}
 old = {'key': '/synthetic/Recordings/daily.mkv', 'title': 'Daily do time', 'hasMeetingTitle': True, 'fileName': 'daily.mkv', 'modifiedAt': 1792000000000, 'location': 'local', 'status': 'completed', 'backup': 'none'}
 new = {'key': '/synthetic/Recordings/new.mkv', 'recordingId': session_id, 'jobId': session_id, 'title': 'Gravação — 21/10/2026 14:00', 'hasMeetingTitle': False, 'fileName': 'new.mkv', 'modifiedAt': 1792100000000, 'location': 'local', 'status': 'processing', 'backup': 'none'}
@@ -47,11 +48,17 @@ for line in sys.stdin:
     elif op == 'processing-status': v = {'waiting': []}
     elif op == 'ux-capabilities':
         v = {'mockFrames': False, 'realFrames': False, 'firstRun': {},
-             'features': {name: (name != 'notes' or mode != 'no-notes') for name in ['notes', 'live', 'actions', 'librarySearch', 'assistant', 'recipes', 'share', 'people', 'clients', 'upcoming', 'openInbox', 'mediaRemoval', 'templates']}}
+             'features': {name: (name != 'notes' or notes_on) for name in ['notes', 'live', 'actions', 'librarySearch', 'assistant', 'recipes', 'share', 'people', 'clients', 'upcoming', 'openInbox', 'mediaRemoval', 'templates']}}
     elif op == 'settings-read':
         # compact: settings without the live provider, so the panel cannot know where the audio would go.
         values = {'studio.language': 'pt-BR'} if mode == 'compact' else {'studio.language': 'pt-BR', 'live.provider': 'groq'}
         v = {'revision': 'a' * 64, 'exists': True, 'values': values, 'apps': [], 'nullable': [], 'readOnly': {}, 'credentials': {'details': []}}
+    elif op == 'settings-diagnose': v = {}
+    elif op == 'settings-save':
+        # notes-on: the notepad is turned on in Settings; the bridge offers it from then on.
+        notes_on = notes_on or p.get('changes', {}).get('notes.enabled') is True
+        v = {'revision': 'b' * 64, 'exists': True, 'values': {'studio.language': 'pt-BR', 'live.provider': 'groq', 'notes.enabled': notes_on}, 'changed': sorted(p.get('changes', {})),
+             'apps': [], 'nullable': [], 'readOnly': {}, 'credentials': {'details': []}}
     elif op == 'detail': v = {'transcript': {'segments': [], 'text': '', 'timing': 'none'}, 'diarization': {'state': 'idle', 'turns': []}, 'summary': '', 'status': 'processing', 'backup': 'none', 'jobId': session_id, 'notes': {**notes, 'digest': 'x'}}
     elif op == 'resolve': v = {'state': 'failed', 'message': 'Mídia sintética indisponível.'}
     elif op == 'notes-read': v = notes
@@ -152,6 +159,17 @@ PLANS = {
     'no-notes': ('1320x820', False, [(READY[0], 'captureKnown && features.live === true && features.notes === false', ''), CONSENT,
         ('capture started', 'captureStatus.active && !captureBusy', '''
     check("with the notepad off, the capture does not open the live view", currentView !== "live")''')]),
+    # The notepad turned on in Settings during a capture: the Studio asks for the features again after the
+    # save, so the live view offers the notepad at once, without a restart.
+    'notes-on': ('1320x820', False, [(READY[0], 'captureKnown && features.live === true && features.notes === false', ''),
+        ('open live', 'liveAvailable()', 'openLive()'),
+        ('notes off', 'currentView === "live" && liveView.sessionId !== ""', '''
+    check("with the notepad off, the live view has no notepad", !liveView.notesEditor.visible)
+    settingsDialog.open()'''),
+        ('settings read', 'settingsDialog.visible && settingsEditable && !hasPending("settings-diagnose")', 'setSettingsField("notes.enabled", true); saveSettingsDraft()'),
+        ('saved', 'feature("notes") && liveView.notesEditor.loaded', '''
+    check("saving Settings turns the notepad on at once, without a restart", liveView.notesEditor.visible && settingsNotice.indexOf("Configuração salva") === 0)
+    settingsDialog.close()''')]),
     # The first-steps test recording sets test mode before the capture starts (C6c's wizardRecordTest).
     'test-start': ('1320x820', False, [READY,
         ('test consent', None, 'liveView.testMode = true; captureConsent.intent = "capture"; captureConsent.open(); captureConsent.accept()'),
@@ -214,6 +232,10 @@ with tempfile.TemporaryDirectory(dir='/tmp', prefix='falatrace-live-fixture-') a
             checks.append({'name': 'stop: the list is read again after Parar', 'pass': 'list' in ops[stop_at + 1:]})
         if mode == 'no-notes':
             checks.append({'name': 'no-notes: no notes op without the notes flag', 'pass': not any(op.startswith('notes-') for op in ops) and 'capture-start' in ops})
+        if mode == 'notes-on':
+            save_at = ops.index('settings-save') if 'settings-save' in ops else len(ops)
+            checks.append({'name': 'notes-on: the features are asked again after the save, and the notes read only then',
+                           'pass': 'ux-capabilities' in ops[save_at + 1:] and [q['key'] for q in sent('notes-read')] == [SESSION] and ops.index('notes-read') > save_at})
         if mode == 'test-start':
             checks.append({'name': 'test-start: the test capture starts and is not stopped before its minute', 'pass': 'capture-start' in ops and 'capture-stop' not in ops})
         if mode == 'test-mode':
