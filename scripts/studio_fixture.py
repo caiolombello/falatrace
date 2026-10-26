@@ -123,3 +123,92 @@ def require_assertion_lines(stderr, marker, expected, label):
     count = assertion_lines(stderr, marker)
     if count != expected:
         raise SystemExit(f'{label}: expected {expected} assertion line(s), got {count}; the run ended before every step ran')
+
+
+# Window helpers for journey steps: find an item by objectName under any item, and evaluate a
+# ready condition that may touch an item not built yet (false instead of a TypeError).
+UX_HELPERS = '''
+ function uxFind(item, name) { if (!item) return null; if (item.objectName === name) return item
+  const kids = [].concat(item.children || [], item.contentItem && item.contentItem !== item ? [item.contentItem] : [])
+  for (let i = 0; i < kids.length; i++) { const f = uxFind(kids[i], name); if (f) return f } return null }
+ function uxTry(f) { try { return !!f() } catch (error) { return false } }
+'''
+
+
+def ux_step(mode, name, ready, body, limit=None):
+    """A qml_steps step that waits (bounded) until `ready`, runs `body` and prints its checks as one line.
+
+    `body` calls check(name, pass). A ready condition that never held is a failed check, so a
+    missing reply cannot pass silently; a body that throws is a failed check too.
+    """
+    import json
+    condition = 'uxTry(function(){ return %s })' % ready if ready else 'true'
+    code = ('const a=[]; function check(name,pass){a.push({name:%s+name,pass:!!pass})}; ' % json.dumps(mode + ': ')
+            + ('if (!(%s)) check(%s, false); ' % (condition, json.dumps('timed out waiting for ' + name)) if ready else '')
+            + 'try { %s } catch (error) { check(%s + error, false) }; ' % (body, json.dumps(name + ' threw '))
+            + 'console.log("UX_ASSERTIONS "+JSON.stringify(a))')
+    return (0, condition, code) if limit is None else (0, condition, code, limit)
+
+
+QML_FAILURES = ('ReferenceError', 'TypeError', 'failed to load component', 'Unable to assign', 'is not a type', 'unavailable')
+
+
+def run_journey_modes(command, label, out, stub_source, plans, env_for, snapshot_ms=12000):
+    """Run each mode of a journey against a Python stub and collect its checks and requests.
+
+    `plans` maps a mode to (size "WxH", light theme, [(name, ready, body[, limit]), ...]); each
+    entry becomes one ux_step. `env_for(mode)` adds environment (the stub reads its mode from
+    FALATRACE_TEST_MODE and logs each request line to FALATRACE_REQUEST_LOG). Returns
+    (checks, screens, requests) where requests[mode] is the list of request objects the stub saw.
+    """
+    import hashlib, json, runpy, secrets, tempfile
+    out = Path(out)
+    source = (DESKTOP / 'Main.qml').read_text()
+    checks, screens, requests = [], [], {}
+    with tempfile.TemporaryDirectory(dir='/tmp', prefix=f'falatrace-{label}-fixture-') as scratch:
+        root = Path(scratch); nonce = secrets.token_hex(16)
+        (root / '.falatrace-qa').write_text(nonce); (root / '.falatrace-qa').chmod(0o600)
+        for name in ['home', 'runtime', 'config', 'state', 'data', 'cache', 'tmp']: (root / name).mkdir(mode=0o700)
+        media = root / 'synthetic.mkv'; media.write_bytes(b'')
+        stub = root / 'bridge-stub.py'; stub.write_text(stub_source); stub.chmod(0o700)
+        for mode, (size, light, plan) in plans.items():
+            qml = root / mode; qml.mkdir()
+            width, height = size.split('x')
+            base = source.replace('../../docs/assets/', (REPO / 'docs/assets').as_uri() + '/').rstrip()
+            # The theme and size first (no bridge reply needed), then the steps; the snapshot follows the last one.
+            steps = [(200, 'true', f'window.lightTheme = {"true" if light else "false"}; window.width = {width}; window.height = {height}')]
+            steps += [ux_step(mode, *entry) for entry in plan]
+            (qml / 'Main.qml').write_text(base[:-1] + UX_HELPERS + qml_steps(steps, 400) + '}\n'); copy_qml_siblings(qml)
+            image, log = out / f'{label}-{mode}.png', root / f'{mode}-requests.jsonl'
+            env = {'FALATRACE_QA_ISOLATED': '1', 'FALATRACE_QA_ROOT': str(root), 'FALATRACE_QA_NONCE': nonce,
+                   'HOME': str(root / 'home'), 'XDG_CONFIG_HOME': str(root / 'config'), 'XDG_STATE_HOME': str(root / 'state'), 'XDG_DATA_HOME': str(root / 'data'),
+                   'XDG_RUNTIME_DIR': str(root / 'runtime'), 'XDG_CACHE_HOME': str(root / 'cache'), 'TMPDIR': str(root / 'tmp'),
+                   'LANG': 'C.UTF-8', 'PATH': '/usr/bin:/bin', 'QT_QPA_PLATFORM': 'offscreen', 'QT_QUICK_BACKEND': 'software', 'QT_FORCE_STDERR_LOGGING': '1',
+                   'RECORDING_DESKTOP_SOFTWARE_SMOKE': '1', 'RECORDING_DESKTOP_SMOKE_KEY': '',
+                   # A deadline only: the PySide6 runner snapshots as soon as the last step ran (qaSnapshotReady).
+                   'RECORDING_DESKTOP_SNAPSHOT': str(image), 'RECORDING_DESKTOP_SNAPSHOT_MS': str(snapshot_ms),
+                   'FALATRACE_TEST_MODE': mode, 'FALATRACE_REQUEST_LOG': str(log), 'FALATRACE_SYNTHETIC_MEDIA': str(media)}
+            env.update(env_for(mode))
+            runpy.run_path(str(REPO / 'scripts/qa-run.py'))['require_isolated'](env)
+            r = run_studio(command, qml, stub, env, 60)
+            (out / f'{label}-{mode}.stderr').write_text(r.stderr)
+            # A step that threw is already a failed check on its assertion line; anything else is a QML failure.
+            problems = [line for line in r.stderr.splitlines() if 'UX_ASSERTIONS ' not in line and any(marker in line for marker in QML_FAILURES)]
+            if not image.exists() or problems:
+                raise SystemExit(f'QML failure in {mode}: ' + ('\n'.join(problems) or r.stderr[-4000:]))
+            require_assertion_lines(r.stderr, 'UX_ASSERTIONS ', len(plan), mode)
+            for line in r.stderr.splitlines():
+                if 'UX_ASSERTIONS ' in line: checks.extend(json.loads(line.split('UX_ASSERTIONS ', 1)[1]))
+            requests[mode] = [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
+            screens.append({'mode': mode, 'file': image.name, 'sha256': hashlib.sha256(image.read_bytes()).hexdigest()})
+    return checks, screens, requests
+
+
+def finish_journey(command, label, out, checks, screens):
+    """Write the receipt, print the summary and exit 1 when a check failed (or none ran)."""
+    import json
+    failed = [c for c in checks if not c['pass']]
+    (Path(out) / f'{label}-receipt.json').write_text(json.dumps({'actualQmlSha256': qml_sources_digest(), 'runner': runner_kind(command), 'assertions': checks,
+                                                              'screens': screens, 'platform': 'Qt offscreen software', 'syntheticBackend': True}, indent=2) + '\n')
+    print(json.dumps({'screens': len(screens), 'assertions': len(checks), 'failed': failed, 'output': str(out)}, ensure_ascii=False))
+    if failed or not checks: sys.exit(1)
