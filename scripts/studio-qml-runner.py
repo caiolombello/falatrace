@@ -53,6 +53,12 @@ class RecordingVideo(QQuickItem):
             self._properties['time-pos'] = 0
             self._properties['duration'] = 0
             self._properties.pop('video-codec', None)
+        # A seek moves the position it reports, so a journey can tell a seek happened.
+        elif command and command[0] == 'seek' and len(command) > 1:
+            try:
+                self._properties['time-pos'] = float(command[1])
+            except (TypeError, ValueError):
+                pass
 
     @Slot(str, 'QVariant')
     def setPropertyAsync(self, name, value):

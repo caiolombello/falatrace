@@ -1192,7 +1192,7 @@ ApplicationWindow {
     // The playback keys never take a key from the control that has the focus: Space stays with a
     // checkbox and with a button reached with the keyboard (it clicks it; after a mouse click Space
     // still plays and pauses), and a control that uses a key itself claims it with
-    // Keys.onShortcutOverride (the tab lists' arrows, the meeting list's Space).
+    // Keys.onShortcutOverride (the arrows of a tab list reached with the keyboard, the meeting list's Space).
     Shortcut { sequence: "Space"; enabled: mediaReady && !textHasFocus && !uxModal && !captionToggle.activeFocus && !captionHasFocus() && !checkableHasFocus() && !keyboardButtonHasFocus(); onActivated: togglePlay() }
     Shortcut { sequence: "Right"; enabled: mediaReady && !textHasFocus && !uxModal && !captionHasFocus(); onActivated: seek(position + 5) }
     Shortcut { sequence: "Left"; enabled: mediaReady && !textHasFocus && !uxModal && !captionHasFocus(); onActivated: seek(position - 5) }

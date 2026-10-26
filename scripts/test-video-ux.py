@@ -11,9 +11,11 @@ keep the size. Going from a meeting whose audio was playing to a video meeting d
 meeting, never from what the player still reports about the previous file. The PySide6 runner's
 player is inert, so a step sets the duration and codec it reports to stand in for an open video once
 the meeting's file was loaded. While it plays, real key presses (the runner's qaKeys) show that the
-playback keys leave the focused control its own keys: Right moves the meeting tabs, Space clicks a
+playback keys leave the focused control its own keys: Right moves the meeting tabs reached with the
+keyboard (after a click on a tab it still seeks, which the runner's player reports), Space clicks a
 button reached with the keyboard and opens the meeting focused in the list, Space plays and pauses
-after a mouse click, and Esc in the sidebar search clears it before it leaves the meeting. Every step waits (bounded) for the state the previous reply produces.
+after a mouse click, and Esc in the sidebar search clears it before it leaves the meeting. Every
+step waits (bounded) for the state the previous reply produces.
 Exit 77 means no Studio runtime is available.
 """
 from pathlib import Path
@@ -165,7 +167,12 @@ PLANS = {
     check("the meeting tabs have the keyboard focus on Notas", tabs.activeFocus && tabs.currentIndex === 1 && paused)
     qaKeys = [Qt.Key_Right]'''),
         ('tab moved', 'tabs.currentIndex === 0', '''
-    check("Right on the tab list moves to the next tab instead of seeking", tabs.activeFocus && tabs.currentIndex === 0)
+    check("Right on the tab list moves to the next tab instead of seeking", tabs.activeFocus && tabs.currentIndex === 0 && position === 0)
+    uxFind(detailView, "videoToggle").forceActiveFocus(Qt.TabFocusReason); tabs.forceActiveFocus(Qt.MouseFocusReason)
+    check("a click on a tab gives the tab list the focus without the keyboard ring", tabs.activeFocus && !tabs.visualFocus)
+    qaKeys = [Qt.Key_Right]'''),
+        ('seeked', 'position === 5', '''
+    check("after a click on a tab, Right still seeks 5 s (as the key hint says) and the tab stays", position === 5 && tabs.currentIndex === 0)
     uxFind(detailView, "videoToggle").forceActiveFocus(Qt.TabFocusReason)
     qaKeys = [Qt.Key_Space]'''),
         ('button clicked', '!%(s)s.videoExpanded' % {'s': STRIP}, '''
