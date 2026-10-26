@@ -11,6 +11,8 @@ Flickable {
     objectName: "notesDocument"
     property alias summaryRegenerateButton: summaryRegenerateButton
     property alias visualSummaryButton: visualSummaryButton
+    readonly property bool regenerateMenuOpen: regenerateMenu.visible
+    property alias regenerateMenu: regenerateMenu
     property var notesDoc: detail.notesDoc && detail.notesDoc.version === 2 ? detail.notesDoc : null
     readonly property bool visualShown: showVisualSummary && !!detail.visualReview && !!detail.visualReview.summaryMarkdown
     readonly property string recordingStatus: String(detail.status || selected.status || "")
@@ -37,6 +39,9 @@ Flickable {
     property var fileRevs: ({})
     contentWidth: width
     contentHeight: column.implicitHeight + 56
+    // While the notes are made again, the old ones stay readable but dimmed.
+    opacity: summaryStage === "running" ? 0.6 : 1
+    Behavior on opacity { NumberAnimation { duration: 150 } }
     clip: true
     boundsBehavior: Flickable.StopAtBounds
     ScrollBar.vertical: ScrollBar {}
@@ -133,25 +138,35 @@ Flickable {
             Layout.fillWidth: true
             visible: doc.docState === "v2" || doc.docState === "legacy"
             spacing: 8
-            Rectangle {
+            // The template and why it was chosen; with templates offered it opens the template picker.
+            AbstractButton {
                 id: templateChip
                 objectName: "templateChip"
+                readonly property bool pickable: feature("templates") && backend.available
                 implicitHeight: 28
                 implicitWidth: Math.min(column.width * 0.6, templateRow.implicitWidth + 20)
-                radius: 14
-                color: surfaceAlt
-                border.width: 1; border.color: divider
+                enabled: pickable
+                focusPolicy: pickable ? Qt.StrongFocus : Qt.NoFocus
+                hoverEnabled: true
                 readonly property string chipText: templateName.text + (templateWhy.text ? " · " + templateWhy.text : "")
-                Accessible.role: Accessible.StaticText
-                Accessible.name: chipText
-                RowLayout {
+                Accessible.role: pickable ? Accessible.Button : Accessible.StaticText
+                Accessible.name: chipText + (pickable ? t(", trocar o modelo") : "")
+                ToolTip.visible: hovered && pickable
+                ToolTip.delay: 500
+                ToolTip.text: t("Trocar o modelo das notas")
+                onClicked: { if (!pickable) return; detailView.templatePicker.templateChipItem = templateChip; detailView.templatePicker.openFor(templateChip) }
+                background: Rectangle {
+                    radius: 14
+                    color: templateChip.down ? selectedSurface : templateChip.hovered && templateChip.pickable ? hoverSurface : surfaceAlt
+                    border.width: templateChip.visualFocus ? 2 : 1; border.color: templateChip.visualFocus ? accent : divider
+                }
+                contentItem: RowLayout {
                     id: templateRow
-                    anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
-                    anchors.leftMargin: 10; anchors.rightMargin: 10
                     spacing: 6
-                    FtIcon { name: "template"; tint: accent; size: 14 }
+                    FtIcon { name: "template"; tint: accent; size: 14; Layout.leftMargin: 10 }
                     Label { id: templateName; text: doc.notesDoc ? doc.templateLabel(doc.notesDoc.template) : t("Formato antigo"); textFormat: Text.PlainText; color: ink; font.pixelSize: 12; font.weight: Font.Medium; elide: Text.ElideRight; Layout.maximumWidth: 200 }
                     Label { id: templateWhy; visible: text !== ""; text: doc.notesDoc ? doc.templateReason(doc.notesDoc.template) : t("gere de novo para usar um modelo"); textFormat: Text.PlainText; color: muted; font.pixelSize: 12; elide: Text.ElideRight; Layout.fillWidth: true }
+                    FtIcon { visible: templateChip.pickable; name: "chevron-down"; tint: muted; size: 12; Layout.rightMargin: 8 }
                 }
             }
             Label {
@@ -164,7 +179,22 @@ Flickable {
                 ToolTip.visible: statusHover.hovered && !!doc.notesDoc
                 ToolTip.text: doc.notesDoc && doc.notesDoc.model && doc.notesDoc.model.local ? t("Feitas neste computador") : t("Feitas por um serviço fora deste computador")
             }
-            FtButton { id: summaryRegenerateButton; objectName: "summaryRegenerateButton"; compact: true; variant: "ghost"; iconName: "spark"; iconOnly: compactLayout; text: t("Gerar de novo…"); enabled: backend.available && !!detail.review && !revisionPending() && !detailLoading && !summaryBusy(); onClicked: openSummary(); Accessible.name: t("Gerar as notas de novo") }
+            // "Gerar de novo ▾": the same template, or another language.
+            FtButton {
+                id: summaryRegenerateButton; objectName: "summaryRegenerateButton"; compact: true; variant: "ghost"; iconName: "spark"; iconOnly: compactLayout
+                text: t("Gerar de novo…"); Accessible.name: t("Gerar as notas de novo")
+                enabled: canRegenerate() && summaryStage !== "running"
+                onClicked: regenerateMenu.popup(summaryRegenerateButton, summaryRegenerateButton.width - regenerateMenu.implicitWidth, summaryRegenerateButton.height + 4)
+                FtMenu {
+                    id: regenerateMenu
+                    Action { text: t("Gerar de novo"); onTriggered: openSummary() }
+                    MenuSeparator {}
+                    Action { text: t("Gerar em português"); onTriggered: requestRegenerate("", "", "pt-BR") }
+                    Action { text: t("Gerar em inglês"); onTriggered: requestRegenerate("", "", "en") }
+                    Action { text: t("Gerar em espanhol"); onTriggered: requestRegenerate("", "", "es") }
+                    Action { text: t("Gerar no idioma da conversa"); onTriggered: requestRegenerate("", "", "auto") }
+                }
+            }
         }
 
         // The visual summary someone asked for replaces the notes until they go back.

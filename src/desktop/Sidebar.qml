@@ -149,11 +149,30 @@ Rectangle {
             footer: ColumnLayout {
                 width: libraryView.width
                 spacing: 4
-                visible: sidebar.query.length >= 2 && feature("librarySearch")
+                visible: sidebar.query.length >= 2 && (feature("librarySearch") || feature("assistant"))
                 Item { implicitHeight: 6 }
+                // Ask the whole library what was typed (Ask opens with the question in its input).
+                ItemDelegate {
+                    id: askFromSearch
+                    objectName: "askFromSearch"
+                    visible: feature("assistant")
+                    Layout.fillWidth: true
+                    hoverEnabled: true
+                    enabled: backend.available
+                    leftPadding: 12; rightPadding: 10; topPadding: 8; bottomPadding: 8
+                    Accessible.name: tf("Perguntar à biblioteca: “%1”", sidebar.query)
+                    background: Rectangle { radius: 9; color: askFromSearch.hovered ? hoverSurface : "transparent"; border.width: askFromSearch.visualFocus ? 2 : 1; border.color: askFromSearch.visualFocus ? accent : divider }
+                    contentItem: RowLayout {
+                        spacing: 8
+                        FtIcon { name: "spark"; tint: accent; size: 15 }
+                        Label { text: tf("Perguntar à biblioteca: “%1”", sidebar.query); textFormat: Text.PlainText; color: ink; font.pixelSize: 13; wrapMode: Text.Wrap; maximumLineCount: 2; elide: Text.ElideRight; Layout.fillWidth: true }
+                    }
+                    onClicked: askPanel.openWith({scope: {kind: "library"}, label: ""}, sidebar.query, null)
+                }
                 ItemDelegate {
                     id: searchTranscripts
                     objectName: "librarySearchButton"
+                    visible: feature("librarySearch")
                     Layout.fillWidth: true
                     hoverEnabled: true
                     enabled: backend.available && !sidebar.searchBusy

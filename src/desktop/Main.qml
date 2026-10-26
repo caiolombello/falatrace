@@ -158,12 +158,14 @@ ApplicationWindow {
     function feature(name) { return features[name] === true }
     // Saved settings the shell reads from the startup settings-read (live provider, automatic processing).
     property var studioSettings: ({})
-    // Where the main area is: home or live here; later packages add actions, people and clients.
+    // Where the main area is: Início, the live capture, Ações, Pessoas or Clientes.
     // A selected meeting always wins (currentView "meeting").
     property string view: "home"
     readonly property string currentView: selected.key ? "meeting" : view
     readonly property var viewFeatures: ({actions: "actions", people: "people", clients: "clients"})
-    property var implementedViews: ["home", "live"]
+    property var implementedViews: ["home", "live", "actions", "people", "clients"]
+    // The bridge answered ux-capabilities with the new features (an older bridge, or a journey stub, has none).
+    readonly property bool newBridge: Object.keys(features).length > 0
     function viewAvailable(name) {
         if (implementedViews.indexOf(name) < 0) return false
         const flag = viewFeatures[name]
@@ -441,38 +443,97 @@ ApplicationWindow {
     property string cliVersion: ""
     property var releaseInfo: ({})
     property bool uxModal: settingsDialog.visible || setupWizard.visible || processDialog.visible || aboutDialog.visible || captureConsent.visible || framesDialog.visible || onboardingDialog.visible || agentDialog.visible || recordingTools.visible || reviewDialog.visible || exportDialog.visible || summaryDialog.visible || speakerSuggestDialog.visible || detailView.menuOpen
+        || shareDialog.visible || mediaRemoveDialog.visible || personDialog.visible || clientDialog.visible || detailView.templatePickerOpen
+    // ── Generating the notes again (DESIGN-STUDIO §2.7) ──
+    // A template picked, or "Gerar notas de novo", shows regenerateBar first. Gerar plans the run: a
+    // destination on this computer runs at once (the click is the consent); one outside it opens
+    // SummaryDialog with the plan and a consent box. summary-run returns at once and summary-status is
+    // polled until the notes are ready. Stages: "" · confirm · planning · consent · running · failed.
+    property string summaryStage: ""
+    property var regenerateRequest: ({})
+    // Request limit of the plan; "Detalhes" in SummaryDialog changes it (and plans again).
+    property int summaryMaxRequests: 8
     function summaryBusy() { return summaryRunning || hasPending("summary-plan") || hasPending("summary-run") }
+    function canRegenerate() { return backend.available && !!detail.review && !revisionPending() && !detailLoading && !summaryBusy() }
+    // The template name the notes are being made with ("" when the bridge decides).
+    function regenerateTemplateName() {
+        if (regenerateRequest.templateName) return regenerateRequest.templateName
+        const template = summaryPlan.template
+        return template && template.id !== "auto" && template.name ? template.name : ""
+    }
+    function regenerateLanguageName(code) { return ({"pt-BR": t("português"), en: t("inglês"), es: t("espanhol")})[code] || "" }
+    function requestRegenerate(templateId, templateName, language) {
+        if (!canRegenerate() || summaryStage === "running") return
+        abandonSummary(); summaryDialog.close()
+        summaryError = ""; summaryNeedsReload = false
+        regenerateRequest = {templateId: templateId || "", templateName: templateName || "", language: language || ""}
+        summaryStage = "confirm"
+    }
+    function cancelRegenerate() {
+        const stage = summaryStage
+        summaryStage = ""; regenerateRequest = ({}); summaryError = ""
+        if (stage !== "" && stage !== "failed") abandonSummary()
+        summaryDialog.close()
+    }
+    // "Gerar de novo…", the stale banner and the empty notes: the same bar, without a template choice.
+    function openSummary() { requestRegenerate("", "", "") }
     function summaryPlanText() {
-        const p=summaryPlan
-        if (!p.requestId) return hasPending("summary-plan") ? t("Preparando plano local; nenhum modelo chamado…") : t("Escolha o limite e prepare o plano. Nenhum modelo é chamado nesta etapa.")
-        const provider=p.provider||({}), cost=p.cost||({})
-        return t("Modelo: ")+provider.provider+" / "+provider.model+t("\nDestino: ")+(provider.endpoint||t("Indisponível"))+
-            t("\nRevisão ")+p.revision+" · "+p.inputCharacters+t(" caracteres de transcrição · ")+p.chunkCount+t(" partes · limite ")+p.maxRequests+t(" chamadas")+
-            t("\nContexto do job: ")+(p.contextIncluded?t("incluído"):t("omitido"))+t(". Notas humanas sem tempo e rótulos acústicos não entram no modelo.")+
-            t("\nCusto: ")+(cost.state==="known"?String(cost.estimatedUsd)+t(" USD"):t("desconhecido; processamento local consome recursos, sem estimativa monetária"))+
-            t("\nLimite persistente: 32 pedidos por gravação, até 8 chamadas por plano. Nova sessão não repõe o limite.")
+        const p = summaryPlan
+        if (!p.requestId) return hasPending("summary-plan") ? t("Preparando…") : ""
+        const destination = p.destination || ({})
+        const where = destination.where ? t(destination.where) : ((p.provider || ({})).provider || "")
+        return tf("Vai enviar a transcrição%1 para %2 · %3.", p.notesUsed ? t(" e suas notas") : "", where, destination.model || (p.provider || ({})).model || "")
+    }
+    function summaryDetailsText() {
+        const p = summaryPlan
+        if (!p.requestId) return ""
+        return tf("%1 caracteres de transcrição · %2 parte(s) · até %3 chamadas ao modelo.", p.inputCharacters, p.chunkCount, p.maxRequests)
+            + (p.cost && p.cost.state === "known" ? " " + tf("Custo estimado: US$ %1.", p.cost.estimatedUsd) : "")
     }
     function abandonSummary() {
         if (!summaryCompleted && summaryRequestId && summaryJobId && backend.available) send("summary-cancel",summaryJobId,{requestId:summaryRequestId})
         summaryGeneration+=1;summaryPlan=({});summaryConsent.checked=false;summaryRequestId="";summaryJobId="";summaryRunning=false;summaryPolling=false;summaryCompleted=false
     }
     function summaryConnectionLost() {
+        const ran = summaryRunning || summaryPolling
         summaryGeneration+=1;summaryPlan=({});summaryConsent.checked=false;summaryRunning=false;summaryPolling=false;summaryNeedsReload=true
-        if(summaryDialog.visible)summaryError=t("Conexão perdida; a geração pode ter iniciado. Releia o resumo antes de preparar outro pedido. O original foi preservado.")
+        if (summaryStage !== "" && summaryStage !== "confirm") {
+            summaryStage = "failed"
+            summaryError = ran ? t("Não deu para confirmar se as notas foram geradas. Recarregue a reunião e confira.") : t("Sem conexão com o FalaTrace.")
+            summaryDialog.close()
+        }
     }
-    function openSummary() {
-        if(!backend.available || !detail.review || revisionPending() || summaryBusy())return
-        summaryDialog.open()
-    }
+    // Gerar in the bar (or a new request limit in SummaryDialog): a fresh plan for the meeting as it is now.
     function prepareSummary() {
-        if(!backend.available || !summaryJobId || summaryBusy() || summaryNeedsReload || summaryPlan.requestId)return
-        summaryRequestId=newRequestUUID();summaryError="";summaryConsent.checked=false
-        send("summary-plan",summaryJobId,{requestId:summaryRequestId,maxRequests:Number(summaryBudget.value)})
+        if(!backend.available || !detail.review || summaryBusy())return
+        if (summaryPlan.requestId) abandonSummary()
+        summaryJobId=detail.review.revision.base.jobId;summaryRequestId=newRequestUUID();summaryError="";summaryCompleted=false;summaryConsent.checked=false;summaryStage="planning"
+        const payload = {requestId: summaryRequestId, maxRequests: summaryMaxRequests}
+        if (regenerateRequest.templateId) payload.templateId = regenerateRequest.templateId
+        if (regenerateRequest.language) payload.language = regenerateRequest.language
+        if (send("summary-plan",summaryJobId,payload) < 0) summaryConnectionLost()
     }
     function generateSummary() {
-        if(!backend.available || summaryBusy() || summaryNeedsReload || !summaryConsent.checked || !summaryPlan.requestId)return
-        summaryRunning=true;summaryError=""
+        if(!backend.available || summaryBusy() || !summaryPlan.requestId)return
+        // Outside this computer only with the box ticked; here the click on Gerar was the consent.
+        if (summaryPlan.external && !summaryConsent.checked) return
+        summaryRunning=true;summaryError="";summaryStage="running";summaryDialog.close()
         if(send("summary-run",summaryJobId,{requestId:summaryPlan.requestId,consent:true,consentKey:summaryPlan.consentKey})<0)summaryConnectionLost()
+    }
+    function stopRegenerate() {
+        if (summaryStage !== "running") return
+        abandonSummary(); summaryStage = ""; regenerateRequest = ({})
+        toast.show(t("Geração cancelada. As notas anteriores continuam."), "", null)
+    }
+    function summaryFinished(result) {
+        const name = regenerateTemplateName()
+        summaryRunning=false;summaryPolling=false;summaryCompleted=true;summaryStage="";regenerateRequest=({})
+        toast.show(name ? tf("Notas atualizadas com “%1”.", name) : t("Notas atualizadas."), "", null)
+        clearDerivedView();detailLoading=true;send("detail",selected.key)
+    }
+    function summaryFailed(message) {
+        summaryRunning=false;summaryPolling=false;summaryConsent.checked=false;summaryPlan=({});summaryError=message||"";summaryStage="failed"
+        summaryDialog.close()
     }
     function cancelFramePreview() {
         if (framePlan.id || framePreview.id || hasPending("frames-preview") || hasPending("frames-plan") || hasPending("frames-preview-plan") || hasPending("frames-scope")) send("frames-cancel", selected.key, {previewId: framePreview.id || ""})
@@ -883,7 +944,7 @@ ApplicationWindow {
     }
     // Closes the open meeting (dialogs, player, per-recording state); backToLibrary and navigate share it.
     function leaveRecording() {
-        summaryDialog.close(); reviewDialog.close(); exportDialog.close(); processDialog.close(); speakerSuggestDialog.close(); reviewGeneration+=1; exportGeneration+=1
+        cancelRegenerate(); closeMeetingDialogs(); reviewDialog.close(); exportDialog.close(); processDialog.close(); speakerSuggestDialog.close(); reviewGeneration+=1; exportGeneration+=1
         closeAgentAccess(); framesDialog.close(); cancelFramePreview()
         generation += 1; sourceReferenceSeconds = -1; pendingSeek = -1; selected = ({}); detail = {transcript: {segments: [], text: "", timing: "none"}, diarization: {state: "idle"}}
         detailLoading = false; resolving = false; contextLoading = false; contextText = ""; contextCopyText = ""; contextPath = ""; contextCitations = []
@@ -902,10 +963,14 @@ ApplicationWindow {
     // and failures stay in that component's own state, never in errorText or notice.
     readonly property var familyPrefixes: ["notes-", "live-", "templates-", "assistant-", "recipes-", "share-", "actions-", "action-", "people-", "person-", "clients-", "client-", "meeting-client-", "meeting-override", "home-", "inbox-", "first-run-", "media-", "library-search", "summary-prefs-"]
     function isFamilyOp(op) { return familyPrefixes.some(function(prefix){ return op.indexOf(prefix) === 0 }) }
-    function familyOwner(origin) {
-        return origin === "meetingNotes" ? detailView.notesEditor : origin === "notesDocument" ? detailView.notesDocument : origin === "librarySearch" ? sidebar
-            : origin === "liveNotes" ? liveView.notesEditor : origin === "live" ? liveView.transcriptPanel : null
-    }
+    readonly property var familyOwners: ({
+        meetingNotes: function() { return detailView.notesEditor }, notesDocument: function() { return detailView.notesDocument }, librarySearch: function() { return sidebar },
+        liveNotes: function() { return liveView.notesEditor }, live: function() { return liveView.transcriptPanel }, templates: function() { return detailView.templatePicker },
+        meetingClient: function() { return clientDialog }, ask: function() { return askPanel }, share: function() { return shareDialog }, home: function() { return homeView },
+        actions: function() { return actionsView }, people: function() { return peopleView }, clients: function() { return clientsView }, personDialog: function() { return personDialog },
+        clientDialog: function() { return clientDialog }, media: function() { return mediaRemoveDialog }, inbox: function() { return inboxPoller }, firstRun: function() { return homeView }
+    })
+    function familyOwner(origin) { const owner = familyOwners[origin]; return owner ? owner() : null }
     function routeFamilyResponse(request, message) {
         const owner = familyOwner(request.origin || "")
         if (owner && typeof owner.handleResponse === "function") owner.handleResponse(request, message)
@@ -913,10 +978,90 @@ ApplicationWindow {
     // The bridge went away: pending family requests are gone; each owner resets what it was waiting for.
     function familiesConnectionLost() {
         sidebar.connectionLost(); detailView.notesEditor.connectionLost(); detailView.notesDocument.connectionLost(); liveView.notesEditor.connectionLost(); liveView.transcriptPanel.connectionLost()
+        detailView.templatePicker.connectionLost(); askPanel.connectionLost(); shareDialog.connectionLost(); homeView.connectionLost(); actionsView.connectionLost()
+        peopleView.connectionLost(); clientsView.connectionLost(); personDialog.connectionLost(); clientDialog.connectionLost(); mediaRemoveDialog.connectionLost(); inboxPoller.connectionLost()
+    }
+    // Dialogs about the open meeting close with it.
+    function closeMeetingDialogs() {
+        if (shareDialog.visible && shareDialog.jobId) shareDialog.close()
+        mediaRemoveDialog.close(); detailView.templatePicker.close()
+        if (clientDialog.visible && clientDialog.mode === "assign") clientDialog.close()
+    }
+    // A meeting (by job id) opened at a moment: the cited time plays when the media can play, else the
+    // transcript shows that segment. Used by Ask citations, briefs, actions and links from outside.
+    function findMeeting(jobId) {
+        const id = String(jobId || "").toLowerCase()
+        if (!id) return null
+        return items.find(function(entry){ return [entry.jobId, entry.recordingId].some(function(value){ return !!value && String(value).toLowerCase() === id }) }) || null
+    }
+    function openMeetingAt(jobId, segmentId, start) {
+        const item = findMeeting(jobId)
+        if (!item || !backend.available) return false
+        if (selected.key !== item.key) {
+            selectRecording(item)
+            if (selected.key !== item.key) return false
+        }
+        const seconds = typeof start === "number" && start >= 0 ? start : -1
+        if (!segmentId && seconds < 0) return true
+        if (seconds < 0 || mediaGone(item)) detailView.focusSegment(segmentId || "", Math.max(0, seconds))
+        else if (mediaReady) seek(seconds)
+        else { pendingSeek = seconds; openRecording() }
+        return true
+    }
+    // ── Links from outside (notifications, the tray): the launcher queues them; the Studio takes them
+    // every 3 s (inbox-take) and only navigates. One failure stops the polling.
+    property string pendingLink: ""
+    property int pendingLinkLists: 0
+    QtObject {
+        id: inboxPoller
+        property bool stopped: false
+        function handleResponse(request, message) {
+            if (!message.ok) { stopped = true; return }
+            for (const uri of asList(message.result.uris)) openLink(String(uri))
+        }
+        function connectionLost() {}
+    }
+    Timer { interval: 3000; repeat: true; running: backend.available && feature("openInbox") && !inboxPoller.stopped; onTriggered: { if (!hasPending("inbox-take")) send("inbox-take", "", ({}), {origin: "inbox"}) } }
+    function openLink(uri) {
+        const recording = /^falatrace:\/\/recording\/([0-9a-fA-F-]{36})$/.exec(uri)
+        const event = /^falatrace:\/\/event\/([0-9a-f]{64})$/.exec(uri)
+        if (!recording && !event && uri !== "falatrace://capture") return
+        window.raise(); window.requestActivate()
+        if (recording) { pendingLink = recording[1].toLowerCase(); pendingLinkLists = 0; if (!openPendingLink()) refreshLibrary() }
+        else if (event) { if (navigate("home")) homeView.focusEvent(event[1]) }
+        else if (liveAvailable()) openLive()
+        else navigate("home")
+    }
+    function openPendingLink() {
+        if (!pendingLink) return false
+        const item = findMeeting(pendingLink)
+        if (!item) { pendingLinkLists += 1; if (pendingLinkLists > 2) pendingLink = ""; return false }
+        pendingLink = ""
+        selectRecording(item)
+        return true
+    }
+    // ── "Notas prontas": a job that finished while the Studio is open (the list refreshes by itself).
+    function announceReadyJobs(before, after) {
+        if (!jobsLoaded || liveView.afterStop) return
+        const previous = ({})
+        for (const job of before) previous[job.id] = job.state
+        const ready = after.filter(function(job){ return job.state === "completed" && previous[job.id] !== undefined && previous[job.id] !== "completed" })
+        if (!ready.length) return
+        const job = ready[0], open = !!selected.key && (detail.jobId === job.id || selected.jobId === job.id)
+        if (open) { toast.show(t("Notas prontas."), "", null); return }
+        toast.show(tf("Notas prontas: %1", recordingTitle(job) || t("reunião")), t("Abrir"), function() { if (!openMeetingAt(job.id, "", -1)) { pendingLink = job.id; pendingLinkLists = 0; refreshLibrary() } })
+    }
+    // ── The library index refreshes in the background: list fields (people, client, duration, open
+    // actions) arrive once it ends, so the list is read again when a page sees it finish.
+    property bool indexRefreshing: false
+    function indexRefreshSeen(refreshing) {
+        const finished = indexRefreshing && !refreshing
+        indexRefreshing = refreshing === true
+        if (finished) refreshLibrary()
     }
     function selectRecording(item) { showVisualSummary=false;
         if(revisionPending() || hasPending("export-save"))return
-        summaryDialog.close(); reviewDialog.close(); exportDialog.close(); processDialog.close(); speakerSuggestDialog.close(); reviewGeneration+=1; exportGeneration+=1
+        cancelRegenerate(); closeMeetingDialogs(); reviewDialog.close(); exportDialog.close(); processDialog.close(); speakerSuggestDialog.close(); reviewGeneration+=1; exportGeneration+=1
         closeAgentAccess(); framesDialog.close(); cancelFramePreview()
         generation += 1; sourceReferenceSeconds = -1; pendingSeek = -1
         // A meeting opens on its notes (the speakers smoke test opens on Falantes).
@@ -978,6 +1123,16 @@ ApplicationWindow {
     CaptureConsentDialog { id: captureConsent }
     ProcessRecordingDialog { id: processDialog }
     SpeakerSuggestDialog { id: speakerSuggestDialog }
+    ShareDialog { id: shareDialog }
+    MediaRemoveDialog { id: mediaRemoveDialog }
+    PersonDialog { id: personDialog }
+    ClientDialog { id: clientDialog }
+    // Asks before a capture (title: the meeting from the calendar, when known).
+    function startCaptureFor(title, test) {
+        if (!backend.available || !captureKnown || captureBusy || captureStatus.active) return
+        if (test) liveView.testMode = true
+        captureConsent.intent = "capture"; captureConsent.captureTitle = title || ""; captureConsent.open()
+    }
     // The meeting page lives in MeetingView.qml; these keep the ids the controller, the dialogs and the journeys use.
     property alias tabs: detailView.tabs
     property alias video: detailView.video
@@ -1001,7 +1156,10 @@ ApplicationWindow {
     property alias openRecordingButton: detailView.openRecordingButton
     property alias reviewNoteButton: detailView.reviewNoteButton
     property alias speakerSuggestButton: detailView.speakerSuggestButton
-    Shortcut { sequence: "Escape"; enabled: !!selected.key && !uxModal && !notesTextFocused(); onActivated: backToLibrary() }
+    // Esc closes the Ask drawer first (or stops an answer coming in), then leaves the meeting.
+    Shortcut { sequence: "Escape"; enabled: (askPanel.shown || !!selected.key) && !uxModal && !notesTextFocused(); onActivated: { if (askPanel.shown) askPanel.handleEscape(); else backToLibrary() } }
+    Shortcut { sequence: "Ctrl+J"; enabled: !uxModal && feature("assistant") && currentView !== "live"; onActivated: askPanel.toggle() }
+    Shortcut { sequence: "Ctrl+Shift+E"; enabled: !uxModal && currentView === "meeting" && feature("share") && !!detail.jobId; onActivated: shareDialog.openMeeting() }
     // A focused checkbox (an action) keeps Space; Esc in the notepad only leaves the notepad.
     function checkableHasFocus() { return !!activeFocusItem && activeFocusItem.checkable === true }
     function notesTextFocused() { return !!activeFocusItem && activeFocusItem.objectName === "notesEditorText" }
@@ -1071,7 +1229,8 @@ ApplicationWindow {
             if (request.op === "detail") detailLoading = false
             if (request.op.startsWith("frames-") && request.op !== "frames-cancel" && (request.generation !== generation || request.frameGeneration !== frameGeneration)) return
             if((request.op.startsWith("agent-")||request.op.startsWith("provider-")) && (request.generation !== generation || request.agentGeneration !== agentGeneration)) return
-            if (request.op.startsWith("summary-") && request.op!=="summary-cancel" && (request.generation!==generation || request.summaryGeneration!==summaryGeneration))return
+            // summary-prefs-* belongs to a new family (its owner guards it), not to the notes generation.
+            if (request.op.startsWith("summary-") && !isFamilyOp(request.op) && request.op!=="summary-cancel" && (request.generation!==generation || request.summaryGeneration!==summaryGeneration))return
             if (request.op.startsWith("onboarding-") && request.onboardingGeneration !== onboardingGeneration) return
             if (isFamilyOp(request.op)) { routeFamilyResponse(request, message); return }
             if (request.op.startsWith("settings-")) { handleSettingsResponse(request, message); return }
@@ -1079,7 +1238,7 @@ ApplicationWindow {
             if (!message.ok && (request.op.startsWith("agent-")||request.op.startsWith("provider-"))) { agentError=message.error; return }
             if (!message.ok && request.op === "processing-status") { processingWait = t("Estado do processamento indisponível; nenhuma alteração na captura."); return }
             if (!message.ok && request.op.startsWith("onboarding-")) { if(request.op==="onboarding-save-local")onboardingSaveUncertain=true;invalidateOnboarding(message.error+t(" Releia a configuração e confirme sua escolha antes de salvar novamente."));return }
-            if (!message.ok && request.op.startsWith("summary-") && request.op!=="summary-cancel") {summaryRunning=false;summaryPolling=false;summaryNeedsReload=true;summaryConsent.checked=false;summaryPlan=({});summaryError=message.error;return}
+            if (!message.ok && request.op.startsWith("summary-") && request.op!=="summary-cancel") {summaryNeedsReload=true;summaryFailed(message.error);return}
             if (request.op==="summary-cancel")return
             if (!message.ok && request.op.startsWith("frames-")) { uxError = message.error; return }
             if (!message.ok && request.op.startsWith("revision-")) { reviewNeedsReload=true;reviewError=message.error+t(" Releia os dados antes de tentar novamente.");errorText=reviewError;detailLoading=true;send("detail",selected.key);return }
@@ -1087,9 +1246,11 @@ ApplicationWindow {
             if (!message.ok) { errorText = message.error; notice = ""; captureBusy = false; contextLoading = false; if (request.op === "subtitles") subtitleQueued = false; if (request.op === "diarization") diarizationQueued = false; if (request.op === "speakers-suggest") speakersQueued = false; if (request.op === "resolve" || request.op === "playback-status") { resolving = false; playbackOperation = "" } return }
             const result = message.result
             if(request.op === "summary-plan") {summaryPlan=result;summaryConsent.checked=false;summaryError=""
-            } else if((request.op === "summary-run" && result.status !== "running") || (request.op === "summary-status" && result.status === "completed")) {summaryRunning=false;summaryPolling=false;summaryCompleted=true;notice=t("Resumo novo ligado à revisão; confira a fonte. Original preservado.");summaryDialog.close();clearDerivedView();detailLoading=true;send("detail",selected.key)
+                // Outside this computer: the plan and a consent box first. Here: the click on Gerar was the consent.
+                if (result.external === true) { summaryStage = "consent"; summaryDialog.open() } else generateSummary()
+            } else if((request.op === "summary-run" && result.status !== "running") || (request.op === "summary-status" && result.status === "completed")) {summaryFinished(result)
             } else if(request.op === "summary-run") {summaryPolling=true
-            } else if(request.op === "summary-status") {if(result.status !== "running"){summaryRunning=false;summaryPolling=false;summaryNeedsReload=true;summaryConsent.checked=false;summaryPlan=({});summaryError=result.error||""}
+            } else if(request.op === "summary-status") {if(result.status === "cancelled"){summaryRunning=false;summaryPolling=false;summaryPlan=({});summaryStage="";regenerateRequest=({})}else if(result.status !== "running"){summaryNeedsReload=true;summaryFailed(result.error||"")}
             } else if(request.op === "provider-authorize") {providerConsent.checked=false;showAgentSetup=false;preferredGrantId=result.id;changeAgentGrant()
             } else if(request.op === "provider-analyze") {providerPendingGrant="";providerResult=result;send("agent-status",selected.key)
             } else if(request.op === "provider-cancel") {agentError=t("Pedido de análise cancelado; resultado/custo podem ser incertos se já enviado.")
@@ -1120,6 +1281,7 @@ ApplicationWindow {
                     if (target) selectRecording(target); else errorText = t("Gravação de verificação ausente.")
                 }
                 liveView.libraryUpdated()
+                openPendingLink()
             } else if (request.op === "automation-pause" || request.op === "automation-resume" || request.op === "capture-status" || request.op === "capture-start" || request.op === "capture-stop" || request.op === "capture-recover" || request.op === "audio-defaults") {
                 // The live view learns the new session from captureStatus: it must already know this Studio started it.
                 if (request.op === "capture-start") liveView.startedHere = true
@@ -1133,7 +1295,12 @@ ApplicationWindow {
                 const previousJobs = jobs
                 jobs = result.items || []
                 if (selectedJob.id) selectedJob = jobs.find(job => job.id === selectedJob.id) || ({})
-                if (jobsTransitioned(previousJobs, jobs)) refreshLibrary()
+                if (jobsTransitioned(previousJobs, jobs)) {
+                    refreshLibrary()
+                    // The first notes may be the ones that just finished: the first-run card learns it from ux-capabilities.
+                    if (homeView.firstRunWaiting) send("ux-capabilities", "")
+                }
+                announceReadyJobs(previousJobs, jobs)
                 jobsLoaded = true
             } else if (request.op === "job-process" || request.op === "job-retry") {
                 notice = result.warning || (result.status === "completed" ? t("Este job já está concluído.") : result.status === "active" ? t("Este job já está em processamento.") : t("Job enviado para processamento."))
@@ -1155,7 +1322,7 @@ ApplicationWindow {
                 contextPath = result.path || result.sourcePath || ""
                 contextCitations = result.citations || []
             } else if (request.op === "detail") {
-                if(summaryDialog.visible && summaryPlan.requestId && (!result.review || summaryPlan.revision!==result.review.revision.revision)) {abandonSummary();summaryNeedsReload=true;summaryError=t("A revisão mudou. Releia e prepare um novo plano; o original foi preservado.")}
+                if(summaryStage === "consent" && summaryPlan.requestId && (!result.review || summaryPlan.revision!==result.review.revision.revision)) {abandonSummary();summaryNeedsReload=true;summaryFailed(t("A transcrição mudou depois do plano. Gere de novo para usar a versão atual."))}
                 if (!initialTranscriptTiming) initialTranscriptTiming = result.transcript.timing
                 selected = Object.assign({}, selected, {
                     status: result.status, backup: result.backup,
@@ -1329,9 +1496,15 @@ ApplicationWindow {
                 Layout.fillHeight: true
                 color: canvas
 
-                HomeView { id: homeView }
-                MeetingView { id: detailView }
+                // The Ask drawer sits beside the page; in the compact layout it covers it instead.
+                readonly property real askInset: askPanel.shown && !compactLayout ? askPanel.width : 0
+                HomeView { id: homeView; anchors.rightMargin: mainArea.askInset }
+                MeetingView { id: detailView; anchors.rightMargin: mainArea.askInset }
                 LiveView { id: liveView }
+                ActionsView { id: actionsView; anchors.rightMargin: mainArea.askInset }
+                PeopleView { id: peopleView; anchors.rightMargin: mainArea.askInset }
+                ClientsView { id: clientsView; anchors.rightMargin: mainArea.askInset }
+                AskPanel { id: askPanel }
             }
         }
 

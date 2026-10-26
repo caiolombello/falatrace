@@ -5,6 +5,8 @@ import QtQuick.Layouts
 FtDialog {
     id: captureConsent
     property string intent: "capture"
+    // The meeting's name when the capture starts from the calendar (Início); empty otherwise.
+    property string captureTitle: ""
     objectName: "captureConsent"
     title: intent === "resume" ? t("Retomar gravações automáticas") : t("Antes de iniciar a gravação")
     anchors.centerIn: parent
@@ -21,7 +23,7 @@ FtDialog {
         }
         Label {
             Layout.fillWidth: true
-            text: (captureConsent.intent === "resume" ? t("As regras já configuradas poderão iniciar novas gravações. Esta ação não inicia uma captura manual. ") : "") + t("Confirme a permissão das pessoas envolvidas. A captura usa a tela e as fontes de áudio configuradas. Revise o áudio antes de continuar.\n\n") + audioSummary() + t("\n\nFechar o Studio não encerra a captura. Use Parar para finalizá-la. O processamento usa os providers configurados; serviços externos podem receber conteúdo.")
+            text: (captureConsent.intent !== "resume" && captureConsent.captureTitle ? tf("Reunião: %1", captureConsent.captureTitle) + "\n\n" : "") + (captureConsent.intent === "resume" ? t("As regras já configuradas poderão iniciar novas gravações. Esta ação não inicia uma captura manual. ") : "") + t("Confirme a permissão das pessoas envolvidas. A captura usa a tela e as fontes de áudio configuradas. Revise o áudio antes de continuar.\n\n") + audioSummary() + t("\n\nFechar o Studio não encerra a captura. Use Parar para finalizá-la. O processamento usa os providers configurados; serviços externos podem receber conteúdo.")
             textFormat: Text.PlainText
             wrapMode: Text.WordWrap
             color: ink
@@ -40,10 +42,11 @@ FtDialog {
     }
     // Cancel keeps the initial focus: an accidental Enter never starts a capture.
     onOpened: captureConsentCancel.forceActiveFocus(Qt.TabFocusReason)
+    onClosed: captureTitle = ""
     onAccepted: {
         if (backend.available && !captureBusy && (intent === "resume" || !captureStatus.active)) {
             captureBusy = true
-            if (send(intent === "resume" ? "automation-resume" : "capture-start", "", intent === "resume" ? ({}) : {title: ""}) < 0) captureBusy = false
+            if (send(intent === "resume" ? "automation-resume" : "capture-start", "", intent === "resume" ? ({}) : {title: captureTitle}) < 0) captureBusy = false
         }
     }
 }

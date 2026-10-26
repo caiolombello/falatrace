@@ -34,7 +34,15 @@ ColumnLayout {
     property alias exportButton: exportButton
     property alias reviewNoteButton: reviewNoteButton
     property alias speakerSuggestButton: speakerSuggestButton
-    readonly property bool menuOpen: meetingMenu.visible
+    property alias templatePicker: templatePicker
+    property alias regenerateBar: regenerateBar
+    property alias shareButton: shareButton
+    property alias askToggle: askToggle
+    readonly property bool menuOpen: meetingMenu.visible || notesDocument.regenerateMenuOpen
+    readonly property bool templatePickerOpen: templatePicker.visible
+    // What the media left by retention still allows (detail.media.features); unknown means yes.
+    function mediaAllows(name) { return !(detail.media && detail.media.features && detail.media.features[name] === false) }
+    readonly property bool mediaRemovable: feature("mediaRemoval") && !!selected.key && selected.sourceExists !== false && !mediaGone(selected) && mediaState !== "removed"
     // The transcript line a citation asked for, flashed for 1.5 s.
     property int flashIndex: -1
     property var pendingFocus: null
@@ -112,7 +120,18 @@ ColumnLayout {
                         Accessible.role: Accessible.StaticText
                         Accessible.name: detailView.meetingPeople.join(", ")
                     }
-                    FtChip { objectName: "clientChip"; visible: detailView.meetingClient !== ""; iconName: "building"; text: detailView.meetingClient; maximumWidth: 220 }
+                    FtChip {
+                        id: clientChip
+                        objectName: "clientChip"
+                        visible: detailView.meetingClient !== "" || (feature("clients") && !!detail.jobId)
+                        iconName: "building"
+                        text: detailView.meetingClient || t("Sem cliente")
+                        opacity: detailView.meetingClient ? 1 : 0.8
+                        maximumWidth: 220
+                        Accessible.role: feature("clients") ? Accessible.Button : Accessible.StaticText
+                        Accessible.name: (detailView.meetingClient ? tf("Cliente: %1", detailView.meetingClient) : t("Sem cliente")) + (feature("clients") ? t(", definir cliente") : "")
+                        MouseArea { anchors.fill: parent; enabled: feature("clients") && !!detail.jobId && backend.available; cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor; onClicked: clientDialog.openAssign() }
+                    }
                     FtChip { visible: detailView.mediaState === "audio-only" || detailView.mediaState === "removed" || selected.location === "missing"; kind: selected.location === "missing" ? "warning" : "neutral"; iconName: selected.location === "missing" ? "alert" : detailView.mediaState === "audio-only" ? "wave" : "transcript"; text: selected.location === "missing" ? t("Arquivo não encontrado") : detailView.mediaState === "audio-only" ? t("Só áudio") : t("Só transcrição") }
                     FtChip { visible: detailView.recordingStatus !== "" && ["completed", "archived"].indexOf(detailView.recordingStatus) < 0; kind: statusKind(detailView.recordingStatus); text: statusText(detailView.recordingStatus) || "" }
                     Repeater {
@@ -121,7 +140,9 @@ ColumnLayout {
                     }
                 }
             }
-            FtButton { id:processButton; objectName:"processButton"; compact:true; variant: "primary"; iconName:"spark"; iconOnly:compactLayout; text:t("Gerar notas…"); Layout.alignment:Qt.AlignTop; visible:!!selected.key && ["completed","processing","transferring"].indexOf(detail.status || selected.status) < 0; enabled:backend.available && !detailLoading; Accessible.name:t("Ver para onde vão o áudio e o texto e gerar as notas desta reunião"); onClicked:processDialog.open() }
+            FtButton { id:processButton; objectName:"processButton"; compact:true; variant: "primary"; iconName:"spark"; iconOnly:compactLayout; text:t("Gerar notas…"); Layout.alignment:Qt.AlignTop; visible:!!selected.key && ["completed","processing","transferring"].indexOf(detail.status || selected.status) < 0; enabled:backend.available && !detailLoading && detailView.mediaAllows("reprocess"); Accessible.name:t("Ver para onde vão o áudio e o texto e gerar as notas desta reunião"); onClicked:processDialog.open() }
+            FtButton { id: shareButton; objectName: "shareButton"; compact: true; variant: "outline"; iconName: "share"; iconOnly: compactLayout; text: t("Enviar"); Layout.alignment: Qt.AlignTop; visible: feature("share") && !!detail.jobId; enabled: backend.available; Accessible.name: t("Enviar estas notas (Ctrl+Shift+E)"); onClicked: shareDialog.openMeeting() }
+            FtButton { id: askToggle; objectName: "askToggle"; compact: true; variant: askPanel.shown ? "secondary" : "ghost"; iconName: "chat"; iconOnly: compactLayout; text: t("Perguntar"); Layout.alignment: Qt.AlignTop; visible: feature("assistant") && !!(detail.jobId || selected.jobId); Accessible.name: t("Perguntar sobre esta reunião (Ctrl+J)"); onClicked: askPanel.toggle() }
             FtButton {
                 id: meetingMore
                 objectName: "meetingMore"
@@ -134,12 +155,15 @@ ColumnLayout {
                     id: meetingMenu
                     Action { text: t("Gerar notas de novo…"); enabled: backend.available && !!detail.review && !revisionPending() && !detailLoading && !summaryBusy(); onTriggered: openSummary() }
                     Action { text: t("Exportar transcrição ou legendas…"); enabled: backend.available && !!detail.review && !revisionPending(); onTriggered: exportDialog.open() }
-                    Action { text: diarizationQueued ? t("Identificação em preparação…") : t("Identificar falantes"); enabled: backend.available && !!detail.diarizationId && !diarizationQueued && detail.diarization.state !== "review"; onTriggered: { diarizationQueued = true; if (send("diarization", detail.diarizationId) < 0) diarizationQueued = false } }
-                    Action { text: subtitleQueued ? t("Legendas em preparação…") : t("Gerar legendas no worker configurado"); enabled: backend.available && !!detail.subtitleId && !subtitleQueued && detail.subtitleState !== "ready"; onTriggered: { subtitleQueued = true; if (send("subtitles", detail.subtitleId) < 0) subtitleQueued = false } }
-                    Action { text: mockFramesEnabled ? t("Frames · mock local…") : t("Análise visual…"); enabled: backend.available && (mockFramesEnabled || realFramesEnabled) && !!selected.key; onTriggered: { cancelFramePreview(); framesDialog.open() } }
+                    Action { text: !detailView.mediaAllows("diarize") ? t("Identificar falantes · precisa do áudio original") : diarizationQueued ? t("Identificação em preparação…") : t("Identificar falantes"); enabled: backend.available && !!detail.diarizationId && !diarizationQueued && detail.diarization.state !== "review" && detailView.mediaAllows("diarize"); onTriggered: { diarizationQueued = true; if (send("diarization", detail.diarizationId) < 0) diarizationQueued = false } }
+                    Action { text: !detailView.mediaAllows("subtitles") ? t("Legendas · precisam do áudio original") : subtitleQueued ? t("Legendas em preparação…") : t("Gerar legendas no worker configurado"); enabled: backend.available && !!detail.subtitleId && !subtitleQueued && detail.subtitleState !== "ready" && detailView.mediaAllows("subtitles"); onTriggered: { subtitleQueued = true; if (send("subtitles", detail.subtitleId) < 0) subtitleQueued = false } }
+                    Action { text: !detailView.mediaAllows("frames") ? t("Análise visual · precisa do vídeo original") : mockFramesEnabled ? t("Frames · mock local…") : t("Análise visual…"); enabled: backend.available && (mockFramesEnabled || realFramesEnabled) && !!selected.key && detailView.mediaAllows("frames"); onTriggered: { cancelFramePreview(); framesDialog.open() } }
+                    Action { text: t("Definir cliente…"); enabled: feature("clients") && backend.available && !!detail.jobId; onTriggered: clientDialog.openAssign() }
                     MenuSeparator {}
                     Action { text: t("Acesso para agentes (MCP)…"); enabled: backend.available && !!selected.recordingId; onTriggered: openAgentAccess() }
                     Action { text: t("Contexto para agentes"); onTriggered: tabs.currentIndex = 3 }
+                    MenuSeparator {}
+                    Action { text: t("Remover mídia agora…"); enabled: backend.available && detailView.mediaRemovable; onTriggered: mediaRemoveDialog.open() }
                 }
             }
         }
@@ -172,6 +196,41 @@ ColumnLayout {
             model: [{value: 0, label: t("Completas")}, {value: 1, label: t("Minhas notas")}]
         }
     }
+
+    // ── Generating the notes again: confirm, progress and a failure, inline (never a modal for local work) ──
+    Rectangle {
+        id: regenerateBar
+        objectName: "regenerateBar"
+        Layout.fillWidth: true
+        Layout.leftMargin: compactLayout ? 12 : 20; Layout.rightMargin: compactLayout ? 12 : 20
+        Layout.bottomMargin: visible ? 10 : 0
+        visible: summaryStage !== ""
+        implicitHeight: visible ? regenerateRow.implicitHeight + 16 : 0
+        radius: 10
+        color: summaryStage === "failed" ? errorSoft : accentSoft
+        readonly property string message: {
+            const name = regenerateTemplateName(), language = regenerateLanguageName(regenerateRequest.language || "")
+            if (summaryStage === "confirm") return (name ? tf("Gerar de novo com “%1”?", name) : t("Gerar as notas de novo?")) + (language ? " " + tf("Em %1.", language) : "") + " " + t("As notas da IA serão reescritas; as suas ficam.")
+            if (summaryStage === "planning") return t("Preparando…")
+            if (summaryStage === "consent") return t("Confirme o envio para gerar as notas.")
+            if (summaryStage === "running") return name ? tf("Gerando com “%1”…", name) : t("Gerando as notas…")
+            if (summaryStage === "failed") return t("Não deu para gerar as notas.") + (summaryError ? " " + t(summaryError) : "")
+            return ""
+        }
+        RowLayout {
+            id: regenerateRow
+            anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+            anchors.leftMargin: 12; anchors.rightMargin: 8
+            spacing: 8
+            BusyIndicator { visible: summaryStage === "planning" || summaryStage === "running"; running: visible; implicitWidth: 22; implicitHeight: 22 }
+            FtIcon { visible: summaryStage === "confirm" || summaryStage === "consent" || summaryStage === "failed"; name: summaryStage === "failed" ? "alert" : "spark"; tint: summaryStage === "failed" ? errorColor : accent; size: 16 }
+            Label { objectName: "regenerateMessage"; Layout.fillWidth: true; text: regenerateBar.message; textFormat: Text.PlainText; color: ink; font.pixelSize: 13; wrapMode: Text.WordWrap }
+            FtButton { objectName: "regenerateConfirm"; visible: summaryStage === "confirm"; compact: true; variant: "primary"; iconName: "spark"; text: t("Gerar"); enabled: canRegenerate(); onClicked: prepareSummary() }
+            FtButton { objectName: "regenerateRetry"; visible: summaryStage === "failed"; compact: true; variant: "outline"; iconName: "refresh"; text: t("Tentar de novo"); enabled: canRegenerate(); onClicked: prepareSummary() }
+            FtButton { objectName: "regenerateCancel"; visible: summaryStage !== "consent"; compact: true; variant: "ghost"; text: summaryStage === "failed" ? t("Fechar") : t("Cancelar"); onClicked: summaryStage === "running" ? stopRegenerate() : cancelRegenerate() }
+        }
+    }
+    TemplatePicker { id: templatePicker }
 
     // ── Video, when expanded (the same frame as the thumbnail in the strip) ──
     Item {
