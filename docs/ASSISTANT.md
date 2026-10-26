@@ -213,5 +213,5 @@ Custom recipes are JSON files next to the configuration, in `recipes/<slug>.json
 
 - `id` is `custom:` plus lowercase letters, digits and hyphens, matching the file name; `scope` is `meeting` or `library`.
 - `name` needs all three languages (up to 80 characters each); `description` is one line of up to 300 characters; `prompt` has 10 to 8,000 characters.
-- Variables in the prompt: `{{meeting.title}}`, `{{meeting.date}}`, `{{meeting.people}}`, `{{client}}`, `{{person}}`, `{{me}}`, `{{scope}}`, `{{today}}`, `{{language}}`. Values are cleaned and filled in one pass; an unknown variable stays as written.
+- Variables in the prompt: `{{meeting.title}}`, `{{meeting.date}}`, `{{meeting.people}}`, `{{client}}`, `{{person}}`, `{{me}}`, `{{scope}}`, `{{today}}`, `{{language}}`. Values are cleaned and filled in one pass; an unknown variable stays as written. `{{meeting.date}}`, `{{today}}` and `{{language}}` are written in place. The others hold text written by other people (calendar titles, guest, speaker and client names), so they never become part of the instructions: the prompt names them as `{meeting.title}`… and their values follow it in a `<recipe-data>` block, as JSON strings the model is told to treat as data, never as instructions.
 - Unknown fields are refused, and a broken file is skipped and listed under `problems` by `recipes list`.

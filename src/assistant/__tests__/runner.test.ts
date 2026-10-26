@@ -7,6 +7,7 @@ import { type AppConfig, DEFAULT_CONFIG } from "../../config/defaults";
 import { LibraryIndex } from "../../library-index/index";
 import type { JobFacts } from "../../library-index/types";
 import { type FixtureRoot, filler, makeRoot, writeJob } from "../../library-index/__tests__/fixtures";
+import { MAX_RECIPE_PROMPT_CHARACTERS } from "../prompts";
 import { type AssistantReaders, createAssistantReaders, type MeetingContent, RETRIEVAL_ERRORS } from "../retrieval";
 import { ASSISTANT_KNOWN_ERRORS, ASSISTANT_RUNNER_ERRORS, assistantConsentKey, AssistantRunner, type AssistantRunnerOptions, type RunSnapshot } from "../runner";
 import { THREAD_ERRORS, ThreadStore } from "../threads";
@@ -353,7 +354,7 @@ describe("outcomes and errors", () => {
     await expect(runner.start({ scope: { kind: "meeting", jobId: "../etc" } as AssistantScope, question: "x" })).rejects.toThrow(RETRIEVAL_ERRORS.scope);
     await expect(runner.start({ scope: MEETING, question: "", recipe: { id: "Bad Id", prompt: "x" } })).rejects.toThrow(ASSISTANT_RUNNER_ERRORS.invalidRecipe);
     await expect(runner.start({ scope: MEETING, question: "", recipe: { id: "risks", prompt: "  " } })).rejects.toThrow(ASSISTANT_RUNNER_ERRORS.invalidRecipe);
-    await expect(runner.start({ scope: MEETING, question: "", recipe: { id: "risks", prompt: "x".repeat(8_001) } })).rejects.toThrow(ASSISTANT_RUNNER_ERRORS.invalidRecipe);
+    await expect(runner.start({ scope: MEETING, question: "", recipe: { id: "risks", prompt: "x".repeat(MAX_RECIPE_PROMPT_CHARACTERS + 1) } })).rejects.toThrow(ASSISTANT_RUNNER_ERRORS.invalidRecipe);
     await expect(runner.start({ scope: MEETING, question: "x", threadId: "not-a-uuid" })).rejects.toThrow(THREAD_ERRORS.notFound);
     await expect(runner.plan({ scope: MEETING, question: "", recipeId: "Bad" })).rejects.toThrow(ASSISTANT_RUNNER_ERRORS.invalidRecipe);
     expect(requests).toHaveLength(0);
