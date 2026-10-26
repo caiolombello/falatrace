@@ -19,6 +19,9 @@ FtDialog {
     readonly property bool planning: hasProcessPending("recording-process-plan")
     readonly property bool ready: !!plan.consentKey && plan.action !== "none"
     readonly property bool external: !!plan.transcription && !!plan.summary && (plan.transcription.external === true || plan.summary.external === true)
+    // The meeting notes go with the transcript to the summary; the plan binds them to the consent.
+    readonly property int notesCount: plan.notes ? Math.max(0, Number(plan.notes.count) || 0) : 0
+    readonly property bool notesExternal: notesCount > 0 && plan.notes.external === true
 
     function hasProcessPending(op) { return Object.keys(pending).some(function(id){ return pending[id].op === op && pending[id].processGeneration === processDialog.processGeneration }) }
     function load() {
@@ -39,6 +42,12 @@ FtDialog {
         if (plan.durationSeconds === null || plan.durationSeconds === undefined) return ""
         const minutes = Math.max(1, Math.round(plan.durationSeconds / 60))
         return t("Duração: cerca de ") + minutes + (minutes === 1 ? t(" minuto.") : t(" minutos."))
+    }
+    function notesText() {
+        if (!notesCount) return ""
+        if (notesExternal) return notesCount === 1 ? t("Sua nota desta reunião vai com a transcrição para o resumo, fora deste computador.")
+            : tf("Suas %1 notas desta reunião vão com a transcrição para o resumo, fora deste computador.", notesCount)
+        return notesCount === 1 ? t("O resumo usa sua nota desta reunião.") : tf("O resumo usa suas %1 notas desta reunião.", notesCount)
     }
     function remoteText() { return plan.remote ? tf("Worker remoto: %1, porta %2", plan.remote.destination, plan.remote.port) : "" }
     function destinationText(destination) { return destination ? t(destination.where) + " · " + destination.provider + "/" + destination.model : "" }
@@ -88,8 +97,15 @@ FtDialog {
                 }
             }
             Label {
+                objectName:"processNotes"
+                visible:processDialog.ready && processDialog.notesCount > 0
+                text:processDialog.notesText()
+                textFormat:Text.PlainText; wrapMode:Text.WordWrap; color:processDialog.notesExternal ? warningColor : muted; Layout.fillWidth:true
+            }
+            Label {
+                objectName:"processExternalWarning"
                 visible:processDialog.ready && processDialog.external
-                text:t("O áudio ou o texto desta reunião vai para os destinos marcados como fora deste computador.")
+                text:processDialog.notesExternal ? t("O áudio, o texto e suas notas desta reunião vão para os destinos marcados como fora deste computador.") : t("O áudio ou o texto desta reunião vai para os destinos marcados como fora deste computador.")
                 textFormat:Text.PlainText; wrapMode:Text.WordWrap; color:warningColor; Layout.fillWidth:true
             }
         }
@@ -98,7 +114,8 @@ FtDialog {
             id:processConsent; objectName:"processConsent"
             visible:processDialog.ready
             enabled:processDialog.ready && !processDialog.busy
-            text:processDialog.external ? t("Tenho a permissão das pessoas gravadas e autorizo enviar o áudio ou o texto aos destinos acima.") : t("Tenho a permissão das pessoas gravadas.")
+            text:processDialog.notesExternal ? t("Tenho a permissão das pessoas gravadas e autorizo enviar o áudio, o texto e minhas notas aos destinos acima.")
+                : processDialog.external ? t("Tenho a permissão das pessoas gravadas e autorizo enviar o áudio ou o texto aos destinos acima.") : t("Tenho a permissão das pessoas gravadas.")
             Accessible.name:text
         }
     }

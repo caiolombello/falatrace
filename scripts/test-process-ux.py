@@ -12,7 +12,7 @@ import hashlib, json, runpy, secrets, subprocess, sys, tempfile
 
 repo = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(repo / 'scripts'))
-from studio_fixture import copy_qml_siblings, qml_sources_digest, qml_steps, require_assertion_lines, require_studio_command, runner_kind
+from studio_fixture import UX_HELPERS, copy_qml_siblings, qml_sources_digest, qml_steps, require_assertion_lines, require_studio_command, runner_kind
 command = require_studio_command()
 out = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path(tempfile.mkdtemp(dir='/tmp', prefix='falatrace-process-ux-'))
 out.mkdir(parents=True, exist_ok=True)
@@ -39,6 +39,9 @@ for line in sys.stdin:
         v = {'key':item['key'],'action':action,'reason':'O arquivo original não está neste computador.' if mode == 'none' else 'Esta gravação ainda não foi processada.',
              'durationSeconds':None if mode == 'none' else 1830,'target':'local','transcription':external if mode == 'external' else local('t'),'summary':local('s'),
              'consentKey':('c' if plans == 1 else 'd') * 64}
+        # Like planRecordingProcessing: the meeting notes go with the summary and are disclosed.
+        if mode == 'local': v['notes'] = {'count':1,'external':False}
+        if mode == 'notes-external': v.update({'summary':{'provider':'openai','model':'gpt-5-mini','where':'OpenAI, serviço externo','external':True},'notes':{'count':3,'external':True}})
         if mode == 'remote':
             v.update({'target':'remote','remote':{'destination':'ana@gpu.lan','port':2222},'transcription':worker('t'),'summary':worker('s')})
     elif op == 'recording-process':
@@ -63,12 +66,17 @@ MODES = {
               'check("plan shows local destinations", processDialog.ready && !processDialog.external && processDialog.plan.transcription.where.indexOf("neste computador")>=0); '
               'check("a local plan names no worker", processDialog.remoteText()===""); '
               'check("running needs the consent box", !processDialog.processRun.enabled && processDialog.processConsent.visible); processDialog.processConsent.checked=true; '
+              'check("notes used here are named, without a warning", uxFind(processDialog.contentItem, "processNotes").visible && uxFind(processDialog.contentItem, "processNotes").text==="O resumo usa sua nota desta reunião." && processDialog.processConsent.text==="Tenho a permissão das pessoas gravadas."); '
               'check("consent enables running", processDialog.processRun.enabled); processDialog.run()',
               'check("dialog closes after queueing", !processDialog.visible); check("notice confirms the job", notice.indexOf("Processamento criado")>=0)'),
     'external': (SELECT, 'processDialog.open()',
                  'check("external destination is disclosed", processDialog.external && processDialog.plan.transcription.external); '
                  'check("warning names the external send", processDialog.ready); processDialog.close()',
                  'check("closing sends nothing", !processDialog.visible && !hasPending("recording-process"))'),
+    'notes-external': (SELECT, 'processDialog.open()',
+                       'check("notes sent outside are disclosed with their count", processDialog.ready && processDialog.notesExternal && uxFind(processDialog.contentItem, "processNotes").visible && uxFind(processDialog.contentItem, "processNotes").text.indexOf("Suas 3 notas") === 0); '
+                       'check("the warning and the consent name the notes", uxFind(processDialog.contentItem, "processExternalWarning").text.indexOf("suas notas") >= 0 && processDialog.processConsent.text.indexOf("minhas notas") >= 0); processDialog.close()',
+                       'check("closing sends nothing", !processDialog.visible && !hasPending("recording-process"))'),
     'remote': (SELECT, 'processDialog.open()',
                'check("remote plan names the worker that receives the audio", processDialog.ready && processDialog.remoteText()==="Worker remoto: ana@gpu.lan, porta 2222"); '
                'check("a remote worker is marked as leaving the computer", processDialog.external && processDialog.plan.transcription.external && processDialog.plan.summary.external); processDialog.close()',
@@ -99,7 +107,7 @@ with tempfile.TemporaryDirectory(dir='/tmp', prefix='falatrace-process-fixture-'
         extra = qml_steps([(700, 'items.length > 0 && !hasPending("list")', action), (1500, '!!selected.key && !detailLoading', timer(first)),
                            (2300, '!hasPending("recording-process-plan")', timer(second)),
                            (3100, '!hasPending("recording-process") && !hasPending("recording-process-plan")', timer(third))], 500)
-        (qml / 'Main.qml').write_text(base[:-1] + extra + '}\n'); copy_qml_siblings(qml)
+        (qml / 'Main.qml').write_text(base[:-1] + UX_HELPERS + extra + '}\n'); copy_qml_siblings(qml)
         image = out / f'process-{mode}.png'; receipt_path = root / f'{mode}-requests.json'
         env = {'FALATRACE_QA_ISOLATED': '1', 'FALATRACE_QA_ROOT': str(root), 'FALATRACE_QA_NONCE': nonce,
                'XDG_CONFIG_HOME': str(root / 'config'), 'XDG_STATE_HOME': str(root / 'state'), 'XDG_DATA_HOME': str(root / 'data'),
