@@ -28,6 +28,7 @@ describe("new bridge operations: accepted shapes", () => {
     accepts("live-read", { sinceSeq: 0 }, job);
     accepts("live-read", { sinceSeq: 12, limit: 500 }, job);
     accepts("live-set", { enabled: true, consent: true }, job);
+    accepts("live-set", { enabled: true, consent: true, provider: "groq" }, job);
     accepts("live-set", { enabled: false }, job);
   });
 

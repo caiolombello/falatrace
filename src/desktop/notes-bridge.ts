@@ -12,7 +12,8 @@ export const NOTES_BRIDGE_MESSAGES = Object.freeze({
   readFailed: "Não foi possível ler as notas desta reunião.",
   saveFailed: "Não foi possível confirmar o salvamento das notas; o texto continua na tela.",
   liveFailed: "O texto ao vivo não está disponível agora.",
-  liveConsent: "Confirme o envio do áudio ao provedor antes de ligar o texto ao vivo."
+  liveConsent: "Confirme o envio do áudio ao provedor antes de ligar o texto ao vivo.",
+  liveProviderChanged: "O provedor do texto ao vivo mudou. Confirme de novo para onde o áudio vai."
 });
 
 export const NOTES_BRIDGE_KNOWN_ERRORS: readonly string[] = Object.freeze([
@@ -28,7 +29,7 @@ const ALLOWED: Record<(typeof NOTES_BRIDGE_OPERATIONS)[number], readonly string[
   "notes-read": [],
   "notes-save": ["text", "expectedRev", "title"],
   "live-read": ["sinceSeq", "limit"],
-  "live-set": ["enabled", "consent"]
+  "live-set": ["enabled", "consent", "provider"]
 };
 
 const validate = (call: BridgeCall): void => {
@@ -44,6 +45,7 @@ const validate = (call: BridgeCall): void => {
   } else if (call.op === "live-set") {
     bool(p, "enabled");
     bool(p, "consent", { optional: true });
+    line(p, "provider", 40, { optional: true });
   }
 };
 
@@ -107,8 +109,10 @@ const setLive = async (call: BridgeCall, context: BridgeContext) => {
   const enabled = call.payload.enabled === true;
   // Fail closed: a provider added later counts as external until it is listed as local.
   const external = !LOCAL_LIVE_PROVIDERS.includes(config.live.provider);
-  // The audio of the meeting goes to the provider while the capture runs: the person agrees first.
+  // The audio of the meeting goes to the provider while the capture runs: the person agrees first,
+  // to the provider the consent named (one changed in Settings since then asks again).
   if (enabled && external && call.payload.consent !== true) throw new Error(NOTES_BRIDGE_MESSAGES.liveConsent);
+  if (enabled && external && call.payload.provider !== config.live.provider) throw new Error(NOTES_BRIDGE_MESSAGES.liveProviderChanged);
   // The live transcript (worker, audio tap, providers) loads on first use; the bridge starts without it.
   const { setLiveForSession } = await import("../live");
   const result = await setLiveForSession(call.key!.toLowerCase(), enabled, {

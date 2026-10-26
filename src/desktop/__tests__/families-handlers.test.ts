@@ -121,6 +121,13 @@ describe("notes and live transcript", () => {
     }
     f.config.live.provider = "groq";
     expect(await shown(f.context, "live-set", { enabled: true }, session)).toBe(NOTES_BRIDGE_MESSAGES.liveConsent);
+    // The consent names the provider it was shown for: another one configured since then asks again.
+    f.config.live.provider = "openai";
+    expect(await shown(f.context, "live-set", { enabled: true, consent: true, provider: "groq" }, session)).toBe(NOTES_BRIDGE_MESSAGES.liveProviderChanged);
+    expect(await shown(f.context, "live-set", { enabled: true, consent: true }, session)).toBe(NOTES_BRIDGE_MESSAGES.liveProviderChanged);
+    // The provider it names passes the gate (then the setting is checked).
+    expect(await shown(f.context, "live-set", { enabled: true, consent: true, provider: "openai" }, session)).toBe(LIVE_MESSAGES.disabled);
+    f.config.live.provider = "groq";
     // Stopping never needs consent and only queues the stop.
     expect(await run(f.context, "live-set", { enabled: false }, session)).toMatchObject({ enabled: false, status: "stopped", external: true });
     expect(calls).toEqual([["systemctl", "--user", "stop", "--no-block", `recording-cli-live-${session}.service`]]);

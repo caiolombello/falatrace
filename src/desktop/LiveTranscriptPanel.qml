@@ -21,7 +21,10 @@ Rectangle {
     property bool reading: false
     property bool switching: false
     property bool followEnd: true
-    readonly property string currentProvider: provider || String(studioSettings["live.provider"] || "")
+    readonly property string settingsProvider: String(studioSettings["live.provider"] || "")
+    // Running, the provider the worker reports; off, the audio would go where the settings say now
+    // (the last run's provider may be another one).
+    readonly property string currentProvider: running ? (provider || settingsProvider) : (settingsProvider || provider)
     // Fail closed, like the bridge: a provider not known here (settings not read yet) counts as one
     // outside this computer, so the consent is asked instead of a switch the bridge would refuse.
     readonly property bool external: currentProvider !== "whisper-cpp"
@@ -47,7 +50,8 @@ Rectangle {
         if (!feature("live") || !sessionId || switching || !backend.available) return
         if (enabled && external && !consent.checked) return
         error = ""; switching = true
-        const payload = enabled && external ? {enabled: true, consent: true} : {enabled: enabled}
+        // The consent names its provider: the bridge refuses it for another one.
+        const payload = enabled && external ? Object.assign({enabled: true, consent: true}, currentProvider ? {provider: currentProvider} : {}) : {enabled: enabled}
         if (send("live-set", sessionId, payload, {origin: "live", liveGeneration: liveGeneration}) < 0) { switching = false; error = t("Sem conexão com o FalaTrace.") }
     }
     function handleResponse(request, message) {

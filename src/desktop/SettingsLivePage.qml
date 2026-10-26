@@ -67,7 +67,7 @@ SettingsPage {
         detail: t("US$ 0,27 por hora de gravação. 20–35 s de atraso. O áudio vai para a OpenAI durante a reunião.")
         SecretField { name: "OPENAI_API_KEY"; label: t("Chave da OpenAI"); testService: "openai" }
     }
-    SettingsHint { text: t("Preços conferidos em 25/10/2026. Fora deste computador, o Studio pede sua confirmação antes de ligar.") }
+    SettingsHint { text: t("Preços conferidos em 25/10/2026. Com a opção ligada e um provedor fora deste computador, o áudio de toda gravação vai para ele enquanto você grava.") }
 
     SettingsSection { text: t("Avançado") }
     SettingsNumber { field: "live.chunkSeconds"; label: t("Enviar o áudio em trechos de (segundos)"); from: 5; to: 60 }

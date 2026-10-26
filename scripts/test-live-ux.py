@@ -76,6 +76,9 @@ for line in sys.stdin:
     elif op == 'live-set':
         if p.get('enabled') and p.get('consent') is not True:
             print(json.dumps({'id': r['id'], 'ok': False, 'error': 'Confirme o envio do áudio ao provedor antes de ligar o texto ao vivo.'}), flush=True); continue
+        # Like the bridge: the consent names the configured provider.
+        if p.get('enabled') and p.get('provider') != 'groq':
+            print(json.dumps({'id': r['id'], 'ok': False, 'error': 'O provedor do texto ao vivo mudou. Confirme de novo para onde o áudio vai.'}), flush=True); continue
         live_on = bool(p.get('enabled')); v = {'enabled': live_on, 'status': 'running' if live_on else 'stopped', 'changed': True, 'provider': 'groq', 'external': True}
     else:
         print(json.dumps({'id': r['id'], 'ok': False, 'error': 'Operação recusada no fixture.'}), flush=True); continue
@@ -142,7 +145,11 @@ PLANS = {
     uxFind(window.contentItem, "liveAddNote-1").clicked()'''),
         ('copied to notes', 'liveView.notesEditor.area.text.indexOf("orçamento de suporte") >= 0', '''
     check("a live line can become your note", liveView.notesEditor.area.text.indexOf("“Trecho ao vivo 1") === 0)
-    check("no error or notice from live", errorText === "" && notice.indexOf("ao vivo") < 0)''')]),
+    check("no error or notice from live", errorText === "" && notice.indexOf("ao vivo") < 0)
+    uxFind(window.contentItem, "liveTranscriptOff").clicked()'''),
+        ('turned off', '!liveView.transcriptPanel.running && !liveView.transcriptPanel.switching && liveView.transcriptPanel.provider === "groq"', '''
+    studioSettings = Object.assign({}, studioSettings, {"live.provider": "openai"})
+    check("off, the consent names the provider in the settings now, not the last run's", liveView.transcriptPanel.currentProvider === "openai" && uxFind(window.contentItem, "liveConsentCheck").text.indexOf("OpenAI") >= 0)''')]),
     'stop': ('1320x820', False, OPEN_LIVE + [
         ('type and stop', None, 'liveView.notesEditor.area.text = "linha escrita antes de parar"; uxFind(window.contentItem, "liveStop").clicked()'),
         ('meeting opened', 'currentView === "meeting" && selected.key === "/synthetic/Recordings/new.mkv" && !detailLoading', '''
@@ -224,7 +231,7 @@ with tempfile.TemporaryDirectory(dir='/tmp', prefix='falatrace-live-fixture-') a
             checks.append({'name': 'start: the live transcript was never read or switched while hidden', 'pass': not sent('live-read') and not sent('live-set')})
         if mode == 'panel':
             sets = sent('live-set')
-            checks.append({'name': 'panel: live-set only after consent, with consent', 'pass': [q['payload'] for q in sets] == [{'enabled': True, 'consent': True}] and all(q['key'] == SESSION for q in sets)})
+            checks.append({'name': 'panel: live-set only after consent, with consent', 'pass': [q['payload'] for q in sets] == [{'enabled': True, 'consent': True, 'provider': 'groq'}, {'enabled': False}] and all(q['key'] == SESSION for q in sets)})
         if mode == 'stop':
             stop_at = ops.index('capture-stop') if 'capture-stop' in ops else -1
             last_save = max([index for index, op in enumerate(ops) if op == 'notes-save'] or [-1])
