@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>FalaTrace — lembre o que foi decidido, confira onde foi dito</title>
-<meta name="description" content="Grave as chamadas que você escolher no Linux, transcreva com processamento local por padrão e leve contexto com fonte para seus agentes de IA. Código aberto (MIT), alpha experimental.">
+<title>FalaTrace — notas de reunião que apontam para a gravação</title>
+<meta name="description" content="Anote durante a reunião; o FalaTrace completa as notas com o que foi dito e cada linha leva ao momento da gravação. Local por padrão, para Linux. Código aberto (MIT), alpha experimental.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#F4F1E9" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0B1716" media="(prefers-color-scheme: dark)">
@@ -17,8 +17,8 @@
 <meta property="og:locale" content="pt_BR">
 <meta property="og:locale:alternate" content="en_US">
 <meta property="og:url" content="https://caiolombello.github.io/falatrace/">
-<meta property="og:title" content="FalaTrace — lembre o que foi decidido, confira onde foi dito">
-<meta property="og:description" content="Gravações de chamadas no Linux, resumos que apontam para a fonte e contexto limitado para seus agentes de IA. Código aberto, alpha experimental.">
+<meta property="og:title" content="FalaTrace — notas de reunião que apontam para a gravação">
+<meta property="og:description" content="Notas de reunião no Linux: você anota, a IA completa com o que foi dito e cada linha leva ao momento da gravação. Código aberto, alpha experimental.">
 <meta property="og:image" content="https://caiolombello.github.io/falatrace/assets/falatrace-social-card.jpg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
@@ -27,7 +27,7 @@
 <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
 <link rel="stylesheet" href="style.css">
 <script src="site.js" defer></script>
-<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"FalaTrace","description":"Gravações de chamadas no Linux, resumos que apontam para a fonte e contexto limitado para agentes de IA.","applicationCategory":"MultimediaApplication","operatingSystem":"Linux","softwareVersion":"0.2.0-alpha.14","license":"https://opensource.org/licenses/MIT","url":"https://caiolombello.github.io/falatrace/","downloadUrl":"https://github.com/caiolombello/falatrace/releases/tag/v0.2.0-alpha.14","sameAs":"https://github.com/caiolombello/falatrace","inLanguage":"pt-BR","author":{"@type":"Person","name":"Caio Barbieri"},"offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"FalaTrace","description":"Notas de reunião no Linux que apontam para a gravação: você anota, a IA completa com citações.","applicationCategory":"MultimediaApplication","operatingSystem":"Linux","softwareVersion":"0.2.0-alpha.14","license":"https://opensource.org/licenses/MIT","url":"https://caiolombello.github.io/falatrace/","downloadUrl":"https://github.com/caiolombello/falatrace/releases/tag/v0.2.0-alpha.14","sameAs":"https://github.com/caiolombello/falatrace","inLanguage":"pt-BR","author":{"@type":"Person","name":"Caio Barbieri"},"offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}</script>
 </head>
 <body>
 <a class="skip-link" href="#main">Ir para o conteúdo</a>
@@ -52,9 +52,9 @@
 
 <div class="announce">
  <div class="wrap announce-inner">
-  <span class="announce-badge">Novo</span>
-  <p>Alpha.14: tudo configurável no Studio, com assistente de primeiro uso, chaves de API, download de modelos verificados e interface em inglês.</p>
-  <a href="https://github.com/caiolombello/falatrace/releases/tag/v0.2.0-alpha.14">Ver novidades <span aria-hidden="true">↗</span></a>
+  <span class="announce-badge">Em breve</span>
+  <p>Próxima versão: você anota durante a reunião, a IA completa com citações, e dá para perguntar às reuniões, acompanhar pessoas e ações e compartilhar as notas. Já no código-fonte.</p>
+  <a href="https://github.com/caiolombello/falatrace/blob/main/CHANGELOG.md">Ver o changelog <span aria-hidden="true">↗</span></a>
  </div>
 </div>
 
@@ -81,8 +81,8 @@
  <section class="hero" aria-labelledby="hero-title">
   <div class="wrap hero-inner">
    <p class="hero-kicker"><span class="dot" aria-hidden="true"></span>Linux · código aberto · alpha experimental</p>
-   <h1 id="hero-title">Lembre o que foi decidido.<br><em>Confira onde foi dito.</em></h1>
-   <p class="hero-lead">O FalaTrace grava as chamadas que você configurar, transcreve com processamento local por padrão e liga resumos e notas ao trecho da gravação. Quando sua IA precisa de contexto, consulta só o necessário — com horário e origem para você conferir.</p>
+   <h1 id="hero-title">Você anota o essencial.<br><em>A IA completa, com a fonte.</em></h1>
+   <p class="hero-lead">Durante a reunião, você digita notas curtas. Depois, o FalaTrace completa com o que foi dito, no formato certo para aquela reunião, e cada linha leva ao momento da gravação. Gravação, transcrição e notas rodam no seu computador por padrão.</p>
    <div class="cta-row">
     <a class="btn btn-lg" href="#comecar">Instalar a alpha.14 <span aria-hidden="true">↓</span></a>
     <a class="btn btn-lg btn-ghost" href="https://github.com/caiolombello/falatrace">Ver código no GitHub <span aria-hidden="true">↗</span></a>
@@ -96,7 +96,7 @@
 
   <div class="wrap">
    <figure class="hero-visual">
-    <div class="studio-mock mock-surface" role="img" aria-label="Ilustração com dados fictícios, no estilo do Studio: biblioteca de gravações à esquerda, vídeo de uma chamada pausado em 12:48 ao centro e resumo à direita. A decisão “Adiar a migração do banco para a sprint 42” está destacada e aponta para o trecho 12:48 da gravação.">
+    <div class="studio-mock mock-surface" role="img" aria-label="Ilustração com dados fictícios, no estilo do Studio: biblioteca de gravações à esquerda, vídeo de uma chamada pausado em 12:48 ao centro e as notas da reunião à direita. A nota “Migração do banco fica para a sprint 42”, digitada pela pessoa e completada pela IA, está destacada e aponta para o trecho 12:48 da gravação.">
      <div class="sm-titlebar">
       <span class="sm-brand"><svg class="mark" aria-hidden="true" focusable="false"><use href="#mark"/></svg>FalaTrace Studio</span>
       <span class="sm-status"><span class="sm-ring"></span>Captura parada</span>
@@ -122,31 +122,31 @@
        <div class="sm-timeline"><span class="sm-track"><span class="sm-fill"></span><span class="sm-pin"></span></span><span class="sm-time">12:48 / 32:10</span></div>
       </div>
       <div class="sm-panel">
-       <div class="sm-tabs"><span>Transcrição</span><span class="is-active">Resumo</span><span>Falantes</span><span>Contexto IA</span></div>
-       <p class="sm-note">Resumo de IA · confira a fonte</p>
+       <div class="sm-tabs"><span class="is-active">Notas</span><span>Transcrição</span><span>Falantes</span><span>Agentes</span></div>
+       <p class="sm-note">Suas notas (✎) e as da IA · cada linha com a fonte</p>
        <p class="sm-section">Decisões</p>
        <ul class="sm-items">
-        <li class="is-active"><span>Adiar a migração do banco para a sprint 42.</span><span class="ts">12:48</span></li>
-        <li class="sm-hide-narrow"><span>Manter o deploy de sexta atrás de uma feature flag.</span><span class="ts">18:31</span></li>
+        <li class="is-active"><span>✎ Migração do banco fica para a sprint 42: o rollback ainda não está coberto.</span><span class="ts">12:48</span></li>
+        <li class="sm-hide-narrow"><span>O deploy de sexta fica atrás de uma feature flag.</span><span class="ts">18:31</span></li>
        </ul>
        <p class="sm-section">Ações</p>
        <ul class="sm-items">
         <li><span>Ana revisa o plano de rollback até sexta.</span><span class="ts">14:02</span></li>
        </ul>
-       <p class="sm-flag"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-alert"/></svg>1 referência com horário aproximado</p>
+       <p class="sm-flag"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-alert"/></svg>1 linha incerta para revisar</p>
       </div>
      </div>
     </div>
-    <figcaption><span class="tag">Ilustração</span>Dados fictícios. Veja as <a href="#studio">telas reais do Studio</a> mais abaixo.</figcaption>
+    <figcaption><span class="tag">Ilustração</span>Dados fictícios; o Studio está sendo redesenhado em torno das notas. Veja as <a href="#studio">telas reais do Studio</a> mais abaixo.</figcaption><!-- studio-check -->
    </figure>
   </div>
 
   <div class="works">
    <dl class="wrap works-grid">
-    <div><dt>Detecção automática no</dt><dd>Slack · Zoom · Chromium · Firefox · Zen · Helium e outros</dd></div>
+    <div><dt>Notas no formato da reunião</dt><dd>1:1 · daily · planejamento · postmortem · vendas · entrevista</dd></div>
     <div><dt>Processa localmente com</dt><dd>Whisper.cpp · Ollama</dd></div>
-    <div><dt>Ou, se você escolher</dt><dd>OpenAI · Gemini</dd></div>
-    <div><dt>Contexto para agentes como</dt><dd>Claude Code · Codex · Gemini CLI</dd></div>
+    <div><dt>Perguntas com citações via</dt><dd>Ollama · APIs · agentes ACP · Claude Code · Codex · ChatGPT</dd></div>
+    <div><dt>Compartilha no</dt><dd>Obsidian · Notion · Slack · apps de IA</dd></div>
    </dl>
   </div>
  </section>
@@ -155,20 +155,20 @@
   <div class="wrap">
    <div class="section-head">
     <p class="eyebrow">Como funciona</p>
-    <h2 id="how-title">Da chamada ao contexto, sem perder a origem.</h2>
-    <p>Cada etapa fica sob seu controle. Você escolhe quando gravar, onde processar e o que compartilhar.</p>
+    <h2 id="how-title">Da reunião às notas, sem perder a origem.</h2>
+    <p>Cada etapa fica sob seu controle. Você escolhe quando gravar, onde processar, a quem perguntar e o que compartilhar.</p>
    </div>
 
    <article class="feature" aria-labelledby="step-1">
     <div class="feature-copy">
-     <p class="step"><span class="step-number">01</span>Gravar <span class="badge-new">Novo na alpha.14</span></p>
-     <h3 id="step-1">Grava as chamadas que você escolher.</h3>
-     <p>Ative regras para gravar quando Slack, Zoom, Chromium, Firefox, Zen, Helium e outros apps usarem microfone ou câmera — ou inicie a captura manualmente. O estado da gravação fica sempre visível.</p>
+     <p class="step"><span class="step-number">01</span>Gravar e anotar <span class="badge-new">Notas na próxima versão</span></p>
+     <h3 id="step-1">Grave as reuniões que você escolher e anote enquanto isso.</h3>
+     <p>Ative regras para gravar quando Slack, Zoom, Chromium, Firefox, Zen, Helium e outros apps usarem microfone ou câmera — ou inicie a captura manualmente. Enquanto grava, digite notas curtas: cada linha guarda o momento em que foi escrita.</p>
      <ul class="checks">
-      <li>A detecção fica desligada até você ativar; o modo inicial só notifica.</li>
+      <li>A detecção fica desligada até você ativar; o modo inicial só notifica. Um lembrete antes da reunião da agenda oferece gravar ou pular (próxima versão).</li>
       <li>“Pausar novas gravações” e “Parar” são ações separadas.</li>
       <li>Um assistente guia o primeiro uso, e as Configurações cobrem gravação, captura, IA, chaves de API, modelos e serviços.</li>
-      <li>Microfone e áudio do sistema em faixas separadas; tela via OBS ou GPU Screen Recorder.</li>
+      <li>Microfone e áudio do sistema em faixas separadas; tela via OBS ou GPU Screen Recorder. Transcrição ao vivo opcional (próxima versão).</li>
      </ul>
     </div>
     <figure class="feature-visual">
@@ -195,19 +195,19 @@
 
    <article class="feature feature-flip" aria-labelledby="step-2">
     <div class="feature-copy">
-     <p class="step"><span class="step-number">02</span>Conferir</p>
-     <h3 id="step-2">Resumos que apontam para a fonte.</h3>
-     <p>Siga cada decisão até o trecho da transcrição e o momento do vídeo. Horários aproximados e referências incertas aparecem sinalizados para revisão.</p>
+     <p class="step"><span class="step-number">02</span>Completar <span class="badge-new">Próxima versão</span></p>
+     <h3 id="step-2">Suas notas, completadas com o que foi dito.</h3>
+     <p>Depois da reunião, a IA organiza suas notas no modelo da reunião — 1:1, daily, planejamento, postmortem, vendas, entrevista ou um seu — e completa cada seção. Cada linha da IA cita o trecho da transcrição e o momento da gravação.</p>
      <ul class="checks">
-      <li>Referência ao segmento, ao horário e ao hash SHA-256 da gravação.</li>
-      <li>Transcrição com Whisper.cpp no seu computador, ou OpenAI e Gemini se você configurar.</li>
+      <li>Suas linhas continuam suas; as da IA aparecem marcadas, com a fonte. Notas que o modelo não usou ficam listadas, nunca descartadas.</li>
+      <li>Referência ao segmento, ao horário e ao hash SHA-256 da gravação; linhas incertas aparecem sinalizadas.</li>
       <li>A validação garante que a referência existe — não que o modelo tenha interpretado certo.</li>
      </ul>
     </div>
     <figure class="feature-visual">
-     <div class="trace-mock mock-surface" role="img" aria-label="Ilustração com dados fictícios da cadeia de origem: a decisão do resumo cita o segmento s000214; o segmento vai de 12:48,4 a 12:55,1 e traz a fala da Marina; a gravação original é identificada por um hash SHA-256 conferido antes e depois do processamento.">
+     <div class="trace-mock mock-surface" role="img" aria-label="Ilustração com dados fictícios da cadeia de origem: a linha das notas cita o segmento s000214; o segmento vai de 12:48,4 a 12:55,1 e traz a fala da Marina; a gravação original é identificada por um hash SHA-256 conferido antes e depois do processamento.">
       <div class="trace-node">
-       <p class="trace-kind">Resumo · decisão</p>
+       <p class="trace-kind">Notas · linha da IA</p>
        <p class="trace-text">Adiar a migração do banco para a sprint 42.</p>
        <p class="trace-meta"><span class="ts">s000214</span>referência clara</p>
       </div>
@@ -230,26 +230,26 @@
 
    <article class="feature" aria-labelledby="step-3">
     <div class="feature-copy">
-     <p class="step"><span class="step-number">03</span>Revisar</p>
-     <h3 id="step-3">Revise sem apagar o original.</h3>
-     <p>Corrija trechos e nomes de falantes no Studio, gere um novo resumo com seu consentimento e exporte exatamente a versão que você conferiu.</p>
+     <p class="step"><span class="step-number">03</span>Usar <span class="badge-new">Próxima versão</span></p>
+     <h3 id="step-3">Pergunte, acompanhe e compartilhe.</h3>
+     <p>Pergunte sobre uma reunião, uma pessoa, um cliente ou a biblioteca inteira: a resposta cita os trechos. Acompanhe pessoas, clientes e ações combinadas, e envie as notas ao Obsidian, ao Notion, ao Slack ou a um app de IA depois de uma prévia.</p>
      <ul class="checks">
-      <li>Histórico com desfazer; mídia, transcrição e falantes originais ficam preservados.</li>
-      <li>Um novo resumo local só roda depois que você vê modelo, destino e limites — e confirma.</li>
-      <li>Exportação em JSON, Markdown, SRT ou WebVTT a partir da prévia que você revisou.</li>
+      <li>Ollama local por padrão; APIs, agentes ACP, Claude Code, Codex ou ChatGPT se você escolher — o destino aparece antes.</li>
+      <li>Destinos fora do computador pedem seu consentimento, a cada pergunta ou envio.</li>
+      <li>Correções de trechos e falantes viram revisões com desfazer; a exportação sai da versão que você conferiu.</li>
      </ul>
     </div>
     <figure class="feature-visual">
-     <div class="review-mock" role="img" aria-label="Ilustração com dados fictícios: um trecho da transcrição em 12:48 foi corrigido de “sprint quarenta e dois” para “sprint 42”, marcado como revisado, com botão Desfazer e original preservado. Abaixo, a exportação da revisão 3 com os formatos JSON, Markdown, SRT e WebVTT.">
+     <div class="review-mock" role="img" aria-label="Ilustração com dados fictícios: um trecho da transcrição em 12:48 foi corrigido de “sprint quarenta e dois” para “sprint 42”, marcado como revisado, com botão Desfazer e original preservado. Abaixo, o envio das notas com os destinos Obsidian, Notion, Slack e app de IA.">
       <div class="rv-card mock-surface">
        <div class="rv-head"><span class="ts">12:48</span><strong>Marina</strong><span class="pill pill-ok">Revisado</span><span class="fake-btn fake-btn-ghost">Desfazer</span></div>
        <p class="rv-text">Prefiro adiar para a <del>sprint quarenta e dois</del> <ins>sprint 42</ins> — o rollback ainda não está coberto.</p>
        <p class="rv-meta">Original preservado · revisão 3</p>
       </div>
       <div class="rv-card mock-surface">
-       <p class="rv-title">Exportar revisão 3</p>
-       <div class="formats"><span class="is-on">JSON</span><span>Markdown</span><span>SRT</span><span>WebVTT</span></div>
-       <p class="rv-meta">Prévia conferida · trechos com palavras editadas saem em JSON ou Markdown</p>
+       <p class="rv-title">Compartilhar as notas</p>
+       <div class="formats"><span class="is-on">Obsidian</span><span>Notion</span><span>Slack</span><span>App de IA</span></div>
+       <p class="rv-meta">Prévia conferida · Notion, Slack e apps de IA pedem consentimento</p>
       </div>
      </div>
      <figcaption><span class="tag">Ilustração</span>Dados fictícios.</figcaption>
@@ -263,7 +263,7 @@
    <div class="section-head">
     <p class="eyebrow">Para suas IAs</p>
     <h2 id="agents-title">Contexto com fonte para os seus agentes.</h2>
-    <p>Agentes que rodam no seu computador — como Claude Code, Codex e Gemini CLI — consultam suas gravações pela CLI ou por um servidor MCP local. Recebem trechos limitados, com horário, origem e hash, e só dentro do que você autorizou.</p>
+    <p>Pergunte no próprio FalaTrace, ou deixe agentes que rodam no seu computador — como Claude Code, Codex e Gemini CLI — consultarem suas gravações pela CLI ou por um servidor MCP local. Eles recebem trechos limitados, com horário, origem e hash, e só dentro do que você autorizou.</p>
    </div>
    <div class="agents-grid">
     <figure class="terminal">
@@ -305,7 +305,7 @@
      </ul>
     </div>
    </div>
-   <p class="fine">Nenhum agente é conectado automaticamente: você configura cada cliente. Agentes com modelo na nuvem podem enviar ao provider deles o que receberem.</p>
+   <p class="fine">Nenhum agente é conectado automaticamente: você configura cada cliente. Agentes e provedores com modelo na nuvem podem guardar o que receberem; o FalaTrace mostra o destino antes de enviar uma pergunta.</p>
   </div>
  </section>
 
@@ -330,7 +330,7 @@
      <figcaption><span class="tag tag-real">UI real · alpha.5</span>Acesso para IA: autorização, saldo e preview de frame.</figcaption>
     </figure>
    </div>
-   <p class="fine">As capturas são de alphas anteriores; o Studio foi redesenhado na alpha.12, ganhou Configurações na alpha.13 e um assistente de primeiro uso na alpha.14, então a aparência atual é diferente. Clique em uma imagem para ampliar.</p>
+   <p class="fine">As capturas são de alphas anteriores; o Studio foi redesenhado na alpha.12, ganhou Configurações na alpha.13 e um assistente de primeiro uso na alpha.14, e está sendo redesenhado em torno das notas, então a aparência atual é diferente. Clique em uma imagem para ampliar.</p><!-- studio-check -->
   </div>
  </section>
 
@@ -342,10 +342,10 @@
     <p>Não existe conta nem serviço hospedado: o processamento acontece no seu computador ou nos destinos que você configurar.</p>
    </div>
    <ul class="privacy-grid">
-    <li><span class="icon-box"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-laptop"/></svg></span><h3>Local por padrão</h3><p>Uma configuração nova usa Whisper.cpp e Ollama no seu computador, com processamento automático desligado. Você instala os modelos.</p></li>
-    <li><span class="icon-box"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-send"/></svg></span><h3>Envio é escolha sua</h3><p>OpenAI, Gemini, workers remotos e backups só entram em ação se você configurar — e podem transmitir conteúdo. Confira destino e custo antes.</p></li>
-    <li><span class="icon-box"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-shield"/></svg></span><h3>Consentimento por etapa</h3><p>Gravar, gerar um resumo no Studio e liberar frames para um agente são autorizações separadas, com limites que persistem.</p></li>
-    <li><span class="icon-box"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-trash"/></svg></span><h3>Exclusão com escopo claro</h3><p>Remover localmente invalida a memória derivada antes de mexer nos arquivos. Cópias remotas ou já aceitas por um provider não somem com isso.</p></li>
+    <li><span class="icon-box"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-laptop"/></svg></span><h3>Local por padrão</h3><p>Uma configuração nova usa Whisper.cpp e Ollama no seu computador para transcrever, gerar as notas e responder perguntas, com processamento automático desligado. Você instala os modelos.</p></li>
+    <li><span class="icon-box"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-send"/></svg></span><h3>Envio é escolha sua</h3><p>OpenAI, Gemini, outras APIs, agentes, workers remotos, backups, Notion, Slack e apps de IA só entram em ação se você configurar ou pedir — e podem transmitir conteúdo. O destino aparece antes.</p></li>
+    <li><span class="icon-box"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-shield"/></svg></span><h3>Consentimento por etapa</h3><p>Gravar, processar fora do computador, perguntar a um provedor externo, compartilhar e liberar frames para um agente são autorizações separadas.</p></li>
+    <li><span class="icon-box"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-trash"/></svg></span><h3>Exclusão com escopo claro</h3><p>Remover localmente invalida a memória derivada antes de mexer nos arquivos. Notas, conversas e estados de ações ainda não são apagados junto, e cópias remotas ou já aceitas por um provedor não somem com isso.</p></li>
    </ul>
   </div>
  </section>
@@ -361,16 +361,16 @@
     <article class="status-card">
      <h3><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check-circle"/></svg>Verificado offline</h3>
      <ul>
-      <li><strong>931 testes</strong> sem falhas na alpha.14, com dados sintéticos.</li>
+      <li><strong>2.531 testes</strong> sem falhas no código atual (26/10/2026), com dados sintéticos.</li>
       <li>Instalação com lockfile, configuração que não sobrescreve a sua e desinstalação que preserva dados.</li>
-      <li>Oito jornadas do Studio com QML real em Qt offscreen, 323 verificações, rodando no CI (alpha.14).</li>
+      <li>Jornadas do Studio com QML real em Qt offscreen rodando no CI.</li>
      </ul>
     </article>
     <article class="status-card status-open">
      <h3><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clock"/></svg>Ainda não demonstrado</h3>
      <ul>
       <li>Detecção dos apps novos em chamadas reais e captura em outros ambientes Linux.</li>
-      <li>Qualidade real de transcrição, falantes, resumos e análise visual com modelos instalados.</li>
+      <li>Qualidade real de transcrição, falantes, notas, respostas e análise visual com modelos instalados; provedores, agentes, agendas, Notion e Slack reais.</li>
       <li>Leitores de tela, escalas de tela variadas, instalação em máquina sem cache de pacotes, binários e outras plataformas.</li>
      </ul>
     </article>
@@ -405,7 +405,7 @@
     <div class="section-head">
      <p class="eyebrow">Comece pelo código</p>
      <h2 id="start-title">Instale a alpha.14 em poucos comandos.</h2>
-     <p>A alpha é distribuída como código-fonte para Linux. Nenhum destes comandos inicia uma gravação: a automação é ativada à parte, depois que você revisar regras e consentimento.</p>
+     <p>A alpha é distribuída como código-fonte para Linux. Nenhum destes comandos inicia uma gravação: a automação é ativada à parte, depois que você revisar regras e consentimento. As notas, as perguntas, pessoas e ações e o compartilhamento chegam na próxima versão; para testá-los agora, pule o <code>git switch</code>.</p>
     </div>
     <h3>Você vai precisar de</h3>
     <ul class="reqs">
@@ -467,15 +467,15 @@ falatrace record doctor</code></pre>
     </details>
     <details>
      <summary>Quanto custa?</summary>
-     <div class="faq-answer"><p>O FalaTrace é gratuito e de código aberto (MIT). Providers externos cobram à parte, e uma assinatura de chat (ChatGPT, Claude, Gemini) não inclui uso de API.</p></div>
+     <div class="faq-answer"><p>O FalaTrace é gratuito e de código aberto (MIT). Provedores externos cobram à parte, e uma assinatura de chat (ChatGPT, Claude, Gemini) não inclui uso de API. Na próxima versão, as perguntas podem usar a sua assinatura pelo próprio <code>claude</code>, <code>codex</code> ou <code>gemini</code> instalado, ou pelo login com o ChatGPT.</p></div>
     </details>
     <details>
      <summary>Funciona com o ChatGPT, o Claude ou o Gemini no navegador?</summary>
-     <div class="faq-answer"><p>Não diretamente. A integração é para agentes que rodam no seu computador e usam a CLI ou o servidor MCP local, como Claude Code, Codex e Gemini CLI. Os sites hospedados não acessam ferramentas locais por meio dela.</p></div>
+     <div class="faq-answer"><p>Os sites hospedados não acessam as ferramentas locais (CLI e servidor MCP), que são para agentes no seu computador, como Claude Code, Codex e Gemini CLI. Na próxima versão, compartilhar com um app de IA copia as notas e abre o ChatGPT, o Claude ou o Gemini no navegador para você colar e enviar, e as perguntas podem usar o login com o ChatGPT.</p></div>
     </details>
     <details>
-     <summary>Posso confiar nos resumos?</summary>
-     <div class="faq-answer"><p>Confira sempre. Os resumos apontam para trechos da transcrição e sinalizam horários aproximados e referências incertas. A validação garante que a referência existe — não que o modelo tenha interpretado corretamente.</p></div>
+     <summary>Posso confiar nas notas e nos resumos?</summary>
+     <div class="faq-answer"><p>Confira sempre. As linhas da IA apontam para trechos da transcrição e sinalizam horários aproximados e pontos incertos; as suas linhas aparecem separadas. A validação garante que a referência existe — não que o modelo tenha interpretado corretamente.</p></div>
     </details>
     <details>
      <summary>E o consentimento das outras pessoas na chamada?</summary>
@@ -487,7 +487,7 @@ falatrace record doctor</code></pre>
     </details>
     <details>
      <summary>Em que idioma está a interface?</summary>
-     <div class="faq-answer"><p>O Studio está em português e inglês: segue o idioma do sistema e pode ser trocado nas Configurações. A CLI, a skill para agentes e a documentação técnica estão em inglês.</p></div>
+     <div class="faq-answer"><p>O Studio está em português e inglês: segue o idioma do sistema e pode ser trocado nas Configurações. A skill para agentes e a documentação técnica estão em inglês; a ajuda da CLI passa a ser em português na próxima versão.</p></div>
     </details>
    </div>
   </div>
@@ -497,7 +497,7 @@ falatrace record doctor</code></pre>
   <div class="wrap">
    <svg class="mark" aria-hidden="true" focusable="false"><use href="#mark"/></svg>
    <h2 id="cta-title">Pare de procurar o que já foi dito.</h2>
-   <p>Instale a alpha.14, configure no seu ritmo e dê às suas IAs contexto com fonte.</p>
+   <p>Instale a alpha.14, configure no seu ritmo e tenha cada decisão com a fonte.</p>
    <div class="cta-row">
     <a class="btn btn-lg" href="#comecar">Instalar a alpha.14</a>
     <a class="btn btn-lg btn-ghost" href="https://github.com/caiolombello/falatrace/releases/tag/v0.2.0-alpha.14">Ver release no GitHub <span aria-hidden="true">↗</span></a>
@@ -510,7 +510,7 @@ falatrace record doctor</code></pre>
  <div class="wrap footer-grid">
   <div class="footer-brand">
    <a class="brand" href="#" aria-label="FalaTrace, voltar ao início"><svg class="mark" aria-hidden="true" focusable="false"><use href="#mark"/></svg><span>FalaTrace</span></a>
-   <p>Gravações e contexto com origem para Linux. Criado e usado por Caio Barbieri.</p>
+   <p>Notas de reunião com a fonte, para Linux. Criado e usado por Caio Barbieri.</p>
   </div>
   <nav aria-labelledby="footer-project">
    <h2 id="footer-project">Projeto</h2>
