@@ -46,8 +46,11 @@ class RecordingVideo(QQuickItem):
 
     @Slot('QVariantList')
     def commandAsync(self, command):
-        if command and command[0] == 'stop':
+        # Like mpv: stopping or loading another file forgets what the previous one reported.
+        if command and command[0] in ('stop', 'loadfile'):
             self._properties['time-pos'] = 0
+            self._properties['duration'] = 0
+            self._properties.pop('video-codec', None)
 
     @Slot(str, 'QVariant')
     def setPropertyAsync(self, name, value):

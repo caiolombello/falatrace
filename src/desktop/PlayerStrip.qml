@@ -33,14 +33,15 @@ Rectangle {
     property string appliedFor: ""
     readonly property bool removed: !!selected.key && mediaGone(selected)
     readonly property bool narrow: width < 620
-    // Whether there is something to watch: retention or the bridge say audio-only, mpv says once the media
-    // is open, and before that the file type does (an audio capture is a .mka).
+    // Whether there is something to watch: retention or the bridge say audio-only, mpv says once this
+    // meeting's media is open (never the previous meeting's file, still loaded for a moment after a switch),
+    // and before that the file type does (an audio capture is a .mka).
     readonly property bool hasVideo: {
         if (!selected.key || removed) return false
         const media = detail.media || ({})
         if (media.state === "audio-only" || selected.media === "audio-only" || selected.location === "audio-only") return false
         if (media.features && media.features.frames === false) return false
-        if (mediaReady && mediaProbed) return mediaHasVideo
+        if (mediaReady && mediaProbed && mediaLoadGeneration === generation) return mediaHasVideo
         const name = String(selected.fileName || selected.key || "").toLowerCase()
         const extension = name.indexOf(".") >= 0 ? name.slice(name.lastIndexOf(".") + 1) : ""
         return ["mka", "m4a", "mp3", "wav", "ogg", "oga", "opus", "flac", "aac", "weba"].indexOf(extension) < 0
@@ -65,10 +66,13 @@ Rectangle {
         if (on) preferExpanded = true
     }
     // Full screen covers the whole window with the video (and the window fills the screen where there is one).
+    // Leaving it gives the keyboard focus back to where it was (the button or key that asked for it).
     property int restoreVisibility: Window.Windowed
+    property Item focusBeforeFullScreen: null
     function setFullScreen(on) {
         if (on === fullScreen || (on && (removed || !hasVideo || !fullScreenSlot))) return
         if (on) {
+            focusBeforeFullScreen = window.activeFocusItem
             videoExpanded = true
             fullScreen = true
             if (Qt.platform.pluginName !== "offscreen" && window.visibility !== Window.FullScreen) { restoreVisibility = window.visibility; window.visibility = Window.FullScreen }
@@ -76,6 +80,10 @@ Rectangle {
         } else {
             fullScreen = false
             if (window.visibility === Window.FullScreen) window.visibility = restoreVisibility === Window.FullScreen ? Window.Windowed : restoreVisibility
+            const back = focusBeforeFullScreen
+            focusBeforeFullScreen = null
+            // The item may be gone (another meeting) or hidden (the video collapsed): then the focus stays put.
+            if (back && back.visible && back.enabled !== false && !!selected.key) Qt.callLater(function(){ if (back.visible) back.forceActiveFocus(Qt.OtherFocusReason) })
         }
     }
     // A meeting opens with the video as last left this session (expanded the first time); leaving one

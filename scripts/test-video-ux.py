@@ -6,9 +6,11 @@ with the video expanded (the first time; the last choice is kept for the session
 recording (an audio capture, .mka, or one whose video retention removed) says "Ouvir gravação" and
 keeps a waveform tile. Cinema mode makes the video take most of the page with the notes beside it
 (a wide window) or below it (compact); full screen covers the window, keeps captions and the
-speaker overlay, and Esc leaves it before anything else. Citations seek and keep the size. The
-PySide6 runner's player is inert, so a step sets the duration and codec it reports to stand in for
-an open video. Every step waits (bounded) for the state the previous reply produces.
+speaker overlay, and Esc leaves it before anything else, giving the focus back. Citations seek and
+keep the size. Going from a meeting whose audio was playing to a video meeting decides from the new
+meeting, never from what the player still reports about the previous file. The PySide6 runner's
+player is inert, so a step sets the duration and codec it reports to stand in for an open video once
+the meeting's file was loaded. Every step waits (bounded) for the state the previous reply produces.
 Exit 77 means no Studio runtime is available.
 """
 from pathlib import Path
@@ -75,12 +77,19 @@ def opened(file_name):
     return '!!selected.key && selected.fileName === "%s" && !detailLoading && !!detail.jobId && !!detail.notesDoc' % file_name
 
 
+def loaded(file_name):
+    # The meeting's file went to the player (resolve answered, loadfile sent): playback can be faked now.
+    return opened(file_name) + ' && !resolving && mediaLoadGeneration === generation'
+
+
 # The runner's player is inert: these are what mpv reports once a video is open.
 PLAY = 'video.setPropertyAsync("duration", 120); video.setPropertyAsync("video-codec", "h264")'
+# An audio file playing: a duration and no video codec.
+LISTEN = 'video.setPropertyAsync("duration", 90)'
 
 PLANS = {
     'video': ('1320x820', True, [pick('daily.mkv'),
-        ('video meeting open', opened('daily.mkv'), '''
+        ('video meeting open', loaded('daily.mkv'), '''
     check("a video recording offers to watch it", openRecordingButton.text === "Assistir gravação" && %(s)s.hasVideo)
     check("it opens with the video expanded the first time", %(s)s.videoExpanded && uxFind(detailView, "videoPane").visible && uxFind(detailView, "videoPane").height > 250)
     check("before it plays, a film tile with the same button", uxFind(detailView, "videoTile").watch === true && uxFind(detailView, "videoPanePlay").visible && uxFind(detailView, "videoPanePlay").text === "Assistir gravação")
@@ -92,7 +101,7 @@ PLANS = {
     uxFind(detailView, "citation-s2").clicked()
     check("a citation seeks and keeps the size", %(s)s.videoExpanded && !%(s)s.cinema && !%(s)s.fullScreen && tabs.currentIndex === 1)''' % {'s': STRIP})]),
     'video-cinema': ('1320x820', False, [pick('daily.mkv'),
-        ('video meeting open', opened('daily.mkv'), 'check("expanded first", %(s)s.videoExpanded); uxFind(detailView, "cinemaToggle").clicked(); %(play)s' % {'s': STRIP, 'play': PLAY}),
+        ('video meeting open', loaded('daily.mkv'), 'check("expanded first", %(s)s.videoExpanded); uxFind(detailView, "cinemaToggle").clicked(); %(play)s' % {'s': STRIP, 'play': PLAY}),
         ('cinema on', STRIP + '.cinema && mediaReady', '''
     const stage = uxFind(detailView, "meetingStage"), pane = uxFind(detailView, "videoPane"), pages = uxFind(detailView, "meetingPages")
     check("cinema puts the notes in a column beside the video", stage.columns === 2 && pages.width >= 360 && pages.width <= 460 && pages.visible)
@@ -109,7 +118,7 @@ PLANS = {
     check("compact cinema puts the notes below the video", stage.columns === 1 && pages.y > pane.y && pages.height > 80 && pages.width > 600)
     check("the video takes most of the page", pane.height >= stage.height * 0.55)''' % {'s': STRIP})]),
     'video-fullscreen': ('1320x820', False, [pick('daily.mkv'),
-        ('video meeting open', opened('daily.mkv'), PLAY),
+        ('video meeting open', loaded('daily.mkv'), PLAY),
         ('video playing', 'mediaReady && mediaProbed', 'fullScreenKey()'),
         ('full screen', STRIP + '.fullScreen', '''
     const layer = uxFind(window.contentItem, "videoFullScreen")
@@ -117,9 +126,25 @@ PLANS = {
     check("captions and the speaker keep working in full screen", captionOverlay.visible && activeSpeakerLabels(position) === "Ana")
     check("the full-screen bar can leave it", uxFind(layer, "fullScreenBar").visible && uxFind(layer, "fullScreenExit").visible)''')]),
     'video-escape': ('1320x820', True, [pick('daily.mkv'),
-        ('video meeting open', opened('daily.mkv'), STRIP + '.setFullScreen(true)'),
-        ('full screen', STRIP + '.fullScreen', 'escapeKey(); check("Esc leaves full screen first and keeps the meeting", !%(s)s.fullScreen && %(s)s.videoExpanded && !!selected.key && videoFrame.parent === uxFind(detailView, "videoPane"))' % {'s': STRIP}),
-        ('back in the page', '!' + STRIP + '.fullScreen', 'videoKey(); check("v collapses the video into the strip", !%(s)s.videoExpanded && videoFrame.parent === uxFind(detailView, "playerThumbnail"))' % {'s': STRIP})]),
+        ('video meeting open', opened('daily.mkv'), 'uxFind(detailView, "fullScreenButton").forceActiveFocus(); ' + STRIP + '.setFullScreen(true)'),
+        ('full screen', STRIP + '.fullScreen', 'check("full screen takes the keyboard focus", uxFind(window.contentItem, "videoFullScreen").activeFocus); escapeKey(); check("Esc leaves full screen first and keeps the meeting", !%(s)s.fullScreen && %(s)s.videoExpanded && !!selected.key && videoFrame.parent === uxFind(detailView, "videoPane"))' % {'s': STRIP}),
+        ('back in the page', '!' + STRIP + '.fullScreen && !!window.activeFocusItem && window.activeFocusItem.objectName === "fullScreenButton"', 'check("leaving full screen gives the focus back to the button that asked for it", uxFind(detailView, "fullScreenButton").activeFocus); videoKey(); check("v collapses the video into the strip", !%(s)s.videoExpanded && videoFrame.parent === uxFind(detailView, "playerThumbnail"))' % {'s': STRIP})]),
+    # Audio playing, then a video meeting: the player still reports the audio file for a moment, which must
+    # not decide the new meeting (it opens expanded, as a video); and back to an audio meeting, a tile again.
+    'switch': ('1320x820', False, [pick('recording.mka'),
+        ('audio meeting loaded', loaded('recording.mka'), LISTEN),
+        ('audio playing', 'mediaReady && mediaProbed', '''
+    check("mpv says the audio file has no picture", !mediaHasVideo && !%(s)s.hasVideo && !%(s)s.videoExpanded)
+    selectRecording(items.find(function(item){ return item.fileName === "daily.mkv" }))
+    check("the video meeting is decided from its own data, not the audio still loaded", %(s)s.hasVideo && %(s)s.videoExpanded && uxFind(detailView, "videoTile").watch === true)''' % {'s': STRIP}),
+        ('video meeting loaded', loaded('daily.mkv'), '''
+    check("the video stays open while its own file loads", %(s)s.videoExpanded && %(s)s.hasVideo && uxFind(detailView, "videoPanePlay").text === "Assistir gravação")
+    %(play)s''' % {'s': STRIP, 'play': PLAY}),
+        ('video playing', 'mediaReady && mediaProbed && mediaHasVideo', '''
+    check("the video plays", %(s)s.hasVideo && !uxFind(detailView, "videoTile").visible)
+    check("expanded", %(s)s.videoExpanded)
+    selectRecording(items.find(function(item){ return item.fileName === "recording.mka" }))
+    check("back to an audio meeting: a waveform tile, not the video pane", !%(s)s.hasVideo && !%(s)s.videoExpanded && uxFind(detailView, "videoTile").watch === false)''' % {'s': STRIP})]),
     'audio-only': ('900x640', True, [pick('recording.mka'),
         ('audio meeting open', opened('recording.mka'), '''
     check("an audio capture offers to listen", openRecordingButton.text === "Ouvir gravação" && !%(s)s.hasVideo)

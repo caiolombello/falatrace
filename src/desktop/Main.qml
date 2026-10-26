@@ -92,9 +92,12 @@ ApplicationWindow {
     property bool paused: true
     property bool playerInitialized: false
     // Whether the open media has a picture, as mpv reports it once loaded (mediaProbed); the player
-    // strip decides from the meeting's data until then.
+    // strip decides from the meeting's data until then. The probe counts only for the file loaded for
+    // the open meeting (mediaLoadGeneration === generation): right after switching meetings mpv still
+    // reports the previous file for a moment, and its answer must not decide the new one.
     property bool mediaProbed: false
     property bool mediaHasVideo: false
+    property int mediaLoadGeneration: -1
     property bool captions: true
     property bool subtitleQueued: false
     property string notice: ""
@@ -1154,6 +1157,8 @@ ApplicationWindow {
         if (!playerInitialized || !pendingPath) return
         video.setPropertyAsync("pause", true)
         video.commandAsync(["loadfile", pendingPath, "replace"])
+        // What mpv said about the previous file no longer counts; the next poll probes this one.
+        mediaLoadGeneration = generation; mediaProbed = false
         pendingPath = ""
     }
     function seek(seconds) {
@@ -1461,7 +1466,7 @@ ApplicationWindow {
             const length = Number(video.getProperty("duration")) || 0
             duration = length
             mediaReady = length > 0
-            if (mediaReady) { const codec = video.getProperty("video-codec"); mediaHasVideo = !!codec; mediaProbed = true } else mediaProbed = false
+            if (mediaReady && mediaLoadGeneration === generation) { const codec = video.getProperty("video-codec"); mediaHasVideo = !!codec; mediaProbed = true } else mediaProbed = false
             position = Number(video.getProperty("time-pos")) || 0
             paused = video.getProperty("pause") !== false
             const segments = detail.transcript.segments || []
