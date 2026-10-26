@@ -18,10 +18,10 @@ import { recordDelivery, type DeliveryLog, type DeliveryReceipt, type DeliveryRe
 
 /**
  * "Open in my AI": hands the note to an AI app without sending anything itself.
- * - Web apps: the content is copied and the bare page opens. Meeting text never goes into a web URL,
- *   because some of them submit `?q=` on load, before the user has seen it.
- * - Claude Desktop: `claude://claude.ai/new?q=` pre-fills a chat the user still has to send; Claude
- *   truncates q at about 14,000 characters, so longer content is copied instead.
+ * - Web apps and Claude Desktop: the content is copied and the bare page (or claude://claude.ai/new)
+ *   opens. Meeting text never goes into a URL: some web apps submit `?q=` on load, before the user
+ *   has seen it, and a claude:// URL travels as a command-line argument of xdg-open and of the app
+ *   it starts, which any local user can read in /proc while they run.
  * - Command-line tools: the content goes into a private file in a folder of its own, and a terminal
  *   opens there with the tool and a short prompt to read that file.
  */
@@ -33,9 +33,6 @@ export const AI_WEB_URLS = Object.freeze({
 } as const);
 
 export const CLAUDE_DESKTOP_URL = "claude://claude.ai/new";
-export const CLAUDE_DESKTOP_Q_MAX = 14_000;
-/** Linux caps one argument at 128 KiB (MAX_ARG_STRLEN); xdg-open gets the URL as one. */
-const MAX_URL_BYTES = 100_000;
 
 type WebTarget = keyof typeof AI_WEB_URLS;
 type CliTarget = "claude-cli" | "codex-cli" | "gemini-cli" | "opencode-cli";
@@ -62,15 +59,6 @@ export const handoffPrompt = (fileName: string, language: ShareLanguage = "pt-BR
   if (language === "en") return `Read the file ${fileName} (context from a meeting recorded in FalaTrace) and help me with it.`;
   if (language === "es") return `Lee el archivo ${fileName} (contexto de una reunión registrada en FalaTrace) y ayúdame con él.`;
   return `Leia o arquivo ${fileName} (contexto de uma reunião registrada no FalaTrace) e me ajude com ele.`;
-};
-
-/** claude:// URL: with `q` when the text fits Claude's limit, else the bare URL (the text is copied instead). */
-export const buildClaudeDesktopUrl = (content: string): { url: string; inline: boolean } => {
-  if (content.length > 0 && content.length <= CLAUDE_DESKTOP_Q_MAX) {
-    const url = `${CLAUDE_DESKTOP_URL}?q=${encodeURIComponent(content)}`;
-    if (Buffer.byteLength(url, "utf8") <= MAX_URL_BYTES) return { url, inline: true };
-  }
-  return { url: CLAUDE_DESKTOP_URL, inline: false };
 };
 
 /** Argument vector of a terminal tool for a handoff file name. */
@@ -188,20 +176,7 @@ export const deliverAiApp = async (input: AiAppDeliverInput, deps: AiAppDeps = {
     return finish({ result: open ? "opened" : "saved", location: path, command });
   }
 
-  let openFailed = false;
-  if (target === "claude-desktop") {
-    const built = buildClaudeDesktopUrl(content);
-    if (built.inline) {
-      // open: false → the Studio opens `url` itself.
-      if (!open) return finish({ result: "returned", url: built.url });
-      if (await openApp(built.url)) return finish({ result: "opened", url: built.url });
-      // Claude did not open (the warning is already there): copy the content below, so the
-      // "open it and paste" advice can be followed, instead of leaving it only inside the URL.
-      openFailed = true;
-    }
-  }
-
-  // Web apps, and Claude Desktop with content past the q limit: copy, then open the bare page.
+  // Web apps and Claude Desktop: copy, then open the bare page.
   const url = isWebTarget(target) ? AI_WEB_URLS[target] : CLAUDE_DESKTOP_URL;
   let copied: DeliveryResult = "returned";
   let location: string | undefined;
@@ -222,7 +197,7 @@ export const deliverAiApp = async (input: AiAppDeliverInput, deps: AiAppDeps = {
     }
   }
   warnings.push(SHARE_WARNINGS.pasteInApp);
-  const opened = openFailed ? false : await openApp(url);
+  const opened = await openApp(url);
   return finish({
     result: opened ? "opened" : copied,
     url,

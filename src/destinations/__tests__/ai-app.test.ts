@@ -7,9 +7,7 @@ import { buildTerminalLaunchArgs } from "../../tray/runtime";
 import { SHARE_MESSAGES, SHARE_WARNINGS, renderShare, renderTextShare, type ShareNote } from "../../share/render";
 import {
   AI_WEB_URLS,
-  CLAUDE_DESKTOP_Q_MAX,
   CLAUDE_DESKTOP_URL,
-  buildClaudeDesktopUrl,
   buildCliHandoffCommand,
   deliverAiApp,
   findOnPath,
@@ -99,57 +97,30 @@ describe("web apps", () => {
 });
 
 describe("Claude Desktop", () => {
-  test("short content pre-fills a chat through claude://claude.ai/new?q=, never auto-sent and not copied", async () => {
+  test("the note is copied and only the bare claude:// URL opens: meeting text never goes on a command line", async () => {
     const content = share();
     const receipt = await deliverAiApp({ share: content, target: "claude-desktop", clipboard: "system" }, deps());
-    expect(copies).toEqual([]);
-    expect(opened.length).toBe(1);
-    expect(opened[0].startsWith(`${CLAUDE_DESKTOP_URL}?q=`)).toBe(true);
-    expect(decodeURIComponent(opened[0].slice(`${CLAUDE_DESKTOP_URL}?q=`.length))).toBe(content.body);
-    expect(receipt.result).toBe("opened");
+    expect(copies).toEqual([content.body]);
+    expect(opened).toEqual([CLAUDE_DESKTOP_URL]);
+    expect(receipt).toMatchObject({ result: "opened", url: CLAUDE_DESKTOP_URL });
+    expect(receipt.warnings).toEqual([SHARE_WARNINGS.pasteInApp]);
+    // The Studio copies the returned content itself and opens the bare URL afterwards.
+    const deferred = await deliverAiApp({ share: content, target: "claude-desktop", clipboard: "return", open: false }, deps());
+    expect(deferred).toMatchObject({ result: "returned", content: content.body, url: CLAUDE_DESKTOP_URL });
+    expect(opened).toEqual([CLAUDE_DESKTOP_URL]);
   });
 
-  test("when Claude does not open, the content is copied so the advice to paste it can be followed", async () => {
+  test("when Claude does not open, the note is still copied and the advice to paste it stands", async () => {
     const content = share();
     const tried: string[] = [];
     const receipt = await deliverAiApp(
       { share: content, target: "claude-desktop", clipboard: "system" },
       deps({ openUrl: async (url) => { tried.push(url); throw new Error("no handler"); } })
     );
-    expect(tried.length).toBe(1);
-    expect(tried[0].startsWith(`${CLAUDE_DESKTOP_URL}?q=`)).toBe(true);
+    expect(tried).toEqual([CLAUDE_DESKTOP_URL]);
     expect(copies).toEqual([content.body]);
     expect(receipt.result).toBe("copied");
-    expect(receipt.warnings).toEqual([SHARE_WARNINGS.appNotOpened, SHARE_WARNINGS.pasteInApp]);
-    // The Studio's return mode gets the text too; with open: false it still just gets the q URL.
-    const returned = await deliverAiApp(
-      { share: content, target: "claude-desktop", clipboard: "return" },
-      deps({ openUrl: async () => { throw new Error("no handler"); } })
-    );
-    expect(returned).toMatchObject({ result: "returned", content: content.body, url: CLAUDE_DESKTOP_URL });
-    const deferred = await deliverAiApp({ share: content, target: "claude-desktop", clipboard: "return", open: false }, deps());
-    expect(deferred.result).toBe("returned");
-    expect(deferred.content).toBeUndefined();
-    expect(deferred.url?.startsWith(`${CLAUDE_DESKTOP_URL}?q=`)).toBe(true);
-  });
-
-  test("content past 14,000 characters is copied and the bare URL opens", async () => {
-    const long = renderTextShare({ title: "Long", text: "palavra ".repeat(2000), language: "pt-BR", jobId: JOB });
-    expect(long.body.length).toBeGreaterThan(CLAUDE_DESKTOP_Q_MAX);
-    const receipt = await deliverAiApp({ share: long, target: "claude-desktop", clipboard: "system" }, deps());
-    expect(copies).toEqual([long.body]);
-    expect(opened).toEqual([CLAUDE_DESKTOP_URL]);
-    expect(receipt.warnings).toEqual([SHARE_WARNINGS.pasteInApp]);
-  });
-
-  test("the q threshold is 14,000 characters, with a guard on the encoded size", () => {
-    expect(buildClaudeDesktopUrl("a".repeat(CLAUDE_DESKTOP_Q_MAX)).inline).toBe(true);
-    expect(buildClaudeDesktopUrl("a".repeat(CLAUDE_DESKTOP_Q_MAX + 1))).toEqual({ url: CLAUDE_DESKTOP_URL, inline: false });
-    expect(buildClaudeDesktopUrl("").inline).toBe(false);
-    // 14,000 three-byte characters encode to ~126 KB, past what one argument can safely carry.
-    expect(buildClaudeDesktopUrl("€".repeat(CLAUDE_DESKTOP_Q_MAX)).inline).toBe(false);
-    const built = buildClaudeDesktopUrl("a b&c=d#e");
-    expect(built.url).toBe(`${CLAUDE_DESKTOP_URL}?q=a%20b%26c%3Dd%23e`);
+    expect(receipt.warnings).toEqual([SHARE_WARNINGS.pasteInApp, SHARE_WARNINGS.appNotOpened]);
   });
 });
 

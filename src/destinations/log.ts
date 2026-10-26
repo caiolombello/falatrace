@@ -37,7 +37,7 @@ export type DeliveryReceipt = DeliveryRecord & {
   content?: string;
   /** Slack: messages posted. */
   posts?: number;
-  /** AI apps: the URL opened (or to open), never carrying meeting text except claude-desktop's reviewed `q`. */
+  /** AI apps: the URL opened (or to open), never carrying meeting text. */
   url?: string;
   /** AI command-line tools: the command started in a terminal, in the folder of `location`. */
   command?: string[];
