@@ -264,11 +264,14 @@ Flickable {
             iconName: doc.docState === "failed" ? "alert" : "spark"
             title: doc.docState === "failed" ? t("Não deu para gerar as notas.") : doc.myNotes.length ? t("Só as suas notas, por enquanto.") : t("Ainda sem notas para esta reunião.")
             body: doc.docState === "empty" ? t("Gere as notas: o FalaTrace transcreve, completa o que você escreveu e liga cada ponto ao momento em que foi dito.") : t(detail.artifactMessage || "")
-            primaryText: doc.docState === "failed" ? t("Tentar de novo") : t("Gerar notas…")
+            // Notes from the transcript need no media; processing the recording again needs the original.
+            readonly property bool fromTranscript: doc.docState === "noSummary" && !!detail.review
+            readonly property bool mediaGoneForIt: !fromTranscript && !detailView.mediaAllows("reprocess")
+            primaryText: mediaGoneForIt ? t("Gerar notas · precisa da gravação original") : doc.docState === "failed" ? t("Tentar de novo") : t("Gerar notas…")
             primaryIcon: "spark"
             secondaryText: (detail.transcript.segments || []).length || detail.transcript.text ? t("Ver transcrição") : ""
-            primaryEnabled: backend.available && !detailLoading
-            onPrimaryClicked: { if (doc.docState === "noSummary" && detail.review) openSummary(); else processDialog.open() }
+            primaryEnabled: backend.available && !detailLoading && !mediaGoneForIt
+            onPrimaryClicked: { if (fromTranscript) openSummary(); else if (!mediaGoneForIt) processDialog.open() }
             onSecondaryClicked: tabs.currentIndex = 0
         }
         // Your notes while there are no AI notes yet.

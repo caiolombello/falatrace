@@ -2294,6 +2294,8 @@ var EN = {
     "Identificar falantes · precisa do áudio original": "Identify speakers · needs the original audio",
     "Legendas · precisam do áudio original": "Subtitles · need the original audio",
     "Análise visual · precisa do vídeo original": "Visual analysis · needs the original video",
+    "Gerar notas · precisa da gravação original": "Generate notes · needs the original recording",
+    "Esc: voltar · F1: atalhos": "Esc: back · F1: shortcuts",
     "Definir cliente…": "Set client…",
     "Remover mídia agora…": "Remove media now…",
     "Gerar de novo com “%1”?": "Generate again with “%1”?",

@@ -352,6 +352,8 @@ ApplicationWindow {
     function asList(value) { return value && typeof value === "object" && typeof value.length === "number" ? Array.prototype.slice.call(value) : [] }
     function captureClock() { return clock(Math.max(0, (statusNow - Date.parse(captureStatus.session && captureStatus.session.startedAt || new Date(statusNow).toISOString())) / 1000)) }
     function keyboardHint() {
+        // Without media to play (removed, missing), the playback keys are not offered.
+        if (currentView === "meeting" && !mediaPlayable()) return t("Esc: voltar · F1: atalhos")
         if (currentView === "meeting") return detailView.playerStrip.hasVideo ? t("Espaço: reproduzir/pausar · Setas: ±5 s · V: vídeo · F: tela cheia · Esc: voltar · F1: atalhos") : t("Espaço: reproduzir/pausar · Setas: ±5 s · Esc: voltar · F1: atalhos")
         if (currentView === "live") return t("Enter: nova linha com horário · Ctrl+S: salvar agora · # título · [ ] ação")
         return t("Ctrl+K: buscar reuniões · Ctrl+Shift+R: gravar · F1: atalhos")

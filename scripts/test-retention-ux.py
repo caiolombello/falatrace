@@ -7,8 +7,10 @@ media is never counted as needing attention, the player offers no "Abrir gravaç
 for transcript-only media and the transcript stays readable. A second set of modes drives
 "Remover mídia agora…": the plan first (Cancel focused, sizes, scope), the explicit
 confirmation, the removal polled through media-status, the meeting left with its text and
-the media-only actions off; a plan that cannot remove anything; and a meeting whose media was
-removed (citations show the transcript, sharing still works).
+the media-only actions off (the subtitle and speaker buttons under the transcript too, each saying
+why; no "Gerar notas" from a recording that is gone; no playback keys in the hint); a plan that
+cannot remove anything; and a meeting whose media was removed (citations show the transcript,
+sharing still works).
 Exit 77 means no Studio runtime is available.
 """
 from pathlib import Path
@@ -16,7 +18,7 @@ import hashlib, json, runpy, secrets, subprocess, sys, tempfile
 
 repo = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(repo / 'scripts'))
-from studio_fixture import copy_qml_siblings, qml_sources_digest, qml_steps, require_assertion_lines, require_studio_command, run_journey_modes, runner_kind
+from studio_fixture import UX_HELPERS, copy_qml_siblings, qml_sources_digest, qml_steps, require_assertion_lines, require_studio_command, run_journey_modes, runner_kind
 command = require_studio_command()
 out = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path(tempfile.mkdtemp(dir='/tmp', prefix='falatrace-retention-ux-'))
 out.mkdir(parents=True, exist_ok=True)
@@ -56,7 +58,10 @@ SECOND = ('check("audio-only can still be opened", openRecordingButton.visible &
           'selectRecording(items[0])')
 # The snapshot is taken after this step: it shows the transcript-only recording.
 THIRD = ('check("transcript-only offers no player", !openRecordingButton.visible && mediaGone(selected)); '
-         'check("transcript stays readable", !!detail.transcript && detail.transcript.segments.length===1)')
+         'check("transcript stays readable", !!detail.transcript && detail.transcript.segments.length===1); '
+         'const empty = uxFind(detailView.notesDocument, "notesEmpty"); '
+         'check("its notes cannot be made again from the recording, and it says why", empty.visible && !empty.primaryEnabled && empty.primaryText === "Gerar notas · precisa da gravação original"); '
+         'check("the key hint offers no playback keys without media", keyboardHint() === "Esc: voltar · F1: atalhos")')
 
 checks = []; screens = []
 with tempfile.TemporaryDirectory(dir='/tmp', prefix='falatrace-retention-fixture-') as scratch:
@@ -70,7 +75,7 @@ with tempfile.TemporaryDirectory(dir='/tmp', prefix='falatrace-retention-fixture
         return (f'const a=[]; function check(name,pass){{a.push({{name:name,pass:!!pass}})}}; '
                 f'{body}; console.log("UX_ASSERTIONS "+JSON.stringify(a))')
     # Each step waits for the replies it depends on (bounded): the library, then each selection's detail.
-    extra = qml_steps([(900, 'items.length === 3 && !hasPending("list")', timer(FIRST)), (1700, '!detailLoading', timer(SECOND)),
+    extra = UX_HELPERS + qml_steps([(900, 'items.length === 3 && !hasPending("list")', timer(FIRST)), (1700, '!detailLoading', timer(SECOND)),
                        (2500, '!detailLoading', timer(THIRD))], 500)
     (qml / 'Main.qml').write_text(base[:-1] + extra + '}\n'); copy_qml_siblings(qml)
     image = out / 'retention-library.png'; receipt_path = root / 'requests.json'
@@ -159,7 +164,11 @@ for line in sys.stdin:
 PICK = ('library', 'items.length === 1 && !hasPending("list")', 'selectRecording(items[0])')
 OPEN = ('meeting open', '!!selected.key && !detailLoading && !!detail.jobId && !!detail.media && newBridge', '''
     check("media present can be removed", detailView.mediaRemovable)
+    check("with the media, subtitles and speakers can be asked for under the transcript", uxFind(detailView, "transcriptSubtitles").enabled && uxFind(detailView, "transcriptDiarize").enabled && uxFind(detailView, "transcriptDiarize").text === "Identificar falantes")
     mediaRemoveDialog.open()''')
+MEDIA_OFF = '''
+    const subtitles = uxFind(detailView, "transcriptSubtitles"), diarize = uxFind(detailView, "transcriptDiarize")
+    check("under the transcript, subtitles and speakers are off without the media and say why", !subtitles.enabled && subtitles.text === "Legendas · precisam do áudio original" && !diarize.enabled && diarize.text === "Identificar falantes · precisa do áudio original")'''
 MEDIA_PLANS = {
     'remove': ('1320x820', False, [PICK, OPEN,
         ('plan ready', 'mediaRemoveDialog.stage === "ready"', '''
@@ -176,7 +185,7 @@ MEDIA_PLANS = {
         ('removed', '!mediaRemoveDialog.visible && toast.message.indexOf("Mídia removida") === 0', 'check("the removal is confirmed in a toast, not in errorText or notice", errorText.indexOf("mídia") < 0 && notice.indexOf("mídia") < 0)'),
         ('meeting without media', 'selected.location === "transcript-only" && !detailLoading && detail.media.state === "removed"', '''
     check("the meeting shows its text-only state", uxFind(detailView, "playerRemovedLine").visible && !openRecordingButton.visible)
-    check("what needs the media is off, and no second removal", !detailView.mediaAllows("diarize") && !detailView.mediaAllows("frames") && !detailView.mediaRemovable)''')]),
+    check("what needs the media is off, and no second removal", !detailView.mediaAllows("diarize") && !detailView.mediaAllows("frames") && !detailView.mediaRemovable)''' + MEDIA_OFF)]),
     'not-eligible': ('900x640', True, [PICK, OPEN,
         ('plan ready', 'mediaRemoveDialog.stage === "ready"', '''
     check("a plan that cannot remove says why", mediaRemoveDialog.plan.eligible === false && mediaRemoveDialog.mode === "")
@@ -186,7 +195,8 @@ MEDIA_PLANS = {
     check("no player and no removal for a transcript-only meeting", !openRecordingButton.visible && !detailView.mediaRemovable)
     uxFind(window.contentItem, "citation-s2").clicked()
     check("a citation shows the transcript at that moment", tabs.currentIndex === 0)'''),
-        ('transcript shown', 'tabs.currentIndex === 0 && detailView.flashIndex === 1', '''
+        ('transcript shown', 'tabs.currentIndex === 0 && detailView.flashIndex === 1', MEDIA_OFF + '''
+    check("the transcript tab shows them, disabled", uxFind(detailView, "transcriptSubtitles").visible && uxFind(detailView, "transcriptDiarize").visible)
     check("sharing still works", detailView.shareButton.visible)
     detailView.shareButton.clicked()'''),
         ('shared', 'shareDialog.visible && !!shareDialog.preview.previewId', 'check("the preview is there", shareDialog.previewArea.text === "# Daily do time"); shareDialog.close()')]),
