@@ -50,7 +50,10 @@ test("queues only the selected job in a detached constrained systemd unit", asyn
   expect(calls[0]!.args).toContain("--property=Nice=10");
   // The job reads the configuration and writes the state of the process that queued it.
   for (const name of ["XDG_CONFIG_HOME", "XDG_STATE_HOME", "XDG_DATA_HOME"]) expect(calls[0]!.args).toContain(`--setenv=${name}=${process.env[name]}`);
-  expect(calls[0]!.args).toContain("--property=RuntimeMaxSec=5400");
+  // Waiting for admission (a recording or call still going on) must not count against a time limit:
+  // a unit killed while waiting would leave its job pending, with nothing to queue it again.
+  expect(calls[0]!.args).toContain("--property=RuntimeMaxSec=infinity");
+  expect(calls[0]!.args.filter((arg) => /^--property=(RuntimeMaxSec|TimeoutStartSec)=(?!infinity$)/.test(arg))).toEqual([]);
   expect(calls[0]!.args).toContain("--property=MemoryMax=2G");
   expect(calls[0]!.args).toContain(
     `--property=EnvironmentFile=-${join(homedir(), ".config/recording-cli/worker.env")}`

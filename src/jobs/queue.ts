@@ -108,7 +108,11 @@ export const queueSelectedJob = async (
           "--collect",
           "--property=Type=exec",
           "--property=Nice=10",
-          "--property=RuntimeMaxSec=5400",
+          // No limit on the unit: it may wait a long time for heavy admission (a recording or call still
+          // going on) before processing starts, and a unit killed while waiting leaves its job pending with
+          // nothing to queue it again (the fast path queues only the job that just stopped). Each step of
+          // the pipeline has its own time limit, like the sync timer's unit.
+          "--property=RuntimeMaxSec=infinity",
           "--property=TimeoutStopSec=30",
           "--property=UMask=0077",
           "--property=MemoryMax=2G",
