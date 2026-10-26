@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { promises as fs } from "node:fs";
+import { existsSync, promises as fs, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { type AppConfig, ASSISTANT_TOOL_AGENTS } from "../../config/defaults";
 import {
   ACP_AGENTS,
   ACP_KNOWN_ERRORS,
@@ -13,26 +14,40 @@ import {
   acpVersionMessage,
   choosePermissionOutcome,
   createAcpProvider,
-  resolveAcpAgent
+  RESTRICTIVE_MODE_IDS,
+  resolveAcpAgent,
+  restrictiveModeRequest
 } from "../providers/acp";
 import { COMMON_PROVIDER_MESSAGES, MAX_ANSWER_CHARACTERS } from "../providers/common";
 import { SHELL_WORDS_MESSAGES } from "../providers/shell-words";
 import { ProviderError } from "../types";
-import { chatRequest, configWith, processGone, readLog, waitFor, withTempDir } from "./provider-helpers";
+import { configWith as baseConfig, chatRequest, processGone, readLog, waitFor, withTempDir } from "./provider-helpers";
+
+/** These tests drive the agents themselves: each agent's tools are accepted unless a test says otherwise. */
+const configWith = (assistant: Partial<AppConfig["assistant"]>): AppConfig => baseConfig({ agentToolsAccepted: [...ASSISTANT_TOOL_AGENTS], ...assistant });
 
 const BUN = process.execPath;
 const AGENT = join(import.meta.dir, "fixtures", "fake-acp-agent.ts");
 
 type Fixture = { bin: string; log: string; root: string; env: (mode: string) => NodeJS.ProcessEnv };
 
-/** A PATH with wrappers named like real agents that start the fake agent. */
+/**
+ * A PATH with wrappers named like real agents that start the fake agent. Agents get a minimal
+ * environment, so each mode has its own wrappers carrying the fake agent's settings.
+ */
 const fixture = async (dir: string, commands: string[] = ["codex-acp"]): Promise<Fixture> => {
-  const bin = join(dir, "bin");
-  await fs.mkdir(bin);
-  for (const name of commands) await fs.writeFile(join(bin, name), `#!/bin/sh\nexec "${BUN}" "${AGENT}" "$@"\n`, { mode: 0o755 });
   const log = join(dir, "agent.log");
   const root = join(dir, "work");
-  return { bin, log, root, env: (mode) => ({ PATH: `${bin}:/usr/bin:/bin`, HOME: process.env.HOME, FAKE_ACP_MODE: mode, FAKE_ACP_LOG: log }) };
+  const binFor = (mode: string): string => {
+    const bin = join(dir, `bin-${mode}`);
+    if (existsSync(bin)) return bin;
+    mkdirSync(bin);
+    for (const name of commands) {
+      writeFileSync(join(bin, name), `#!/bin/sh\nexport FAKE_ACP_MODE='${mode}' FAKE_ACP_LOG='${log}'\nexec "${BUN}" "${AGENT}" "$@"\n`, { mode: 0o755 });
+    }
+    return bin;
+  };
+  return { bin: binFor("normal"), log, root, env: (mode) => ({ PATH: `${binFor(mode)}:/usr/bin:/bin`, HOME: process.env.HOME }) };
 };
 
 const fast = { startMs: 10_000, cancelGraceMs: 2_000, killGraceMs: 1_000 };
@@ -116,10 +131,70 @@ describe("ACP client", () => {
         return (event(await readLog(f.log), "start") as { argv: string[] }).argv;
       };
       expect(await run("claude")).toEqual(["--hide-claude-auth"]);
-      expect(await run("gemini")).toEqual(["--acp"]);
+      // No extensions and no MCP server of the user's.
+      expect(await run("gemini")).toEqual(["--acp", "-e", "none", "--allowed-mcp-server-names", "falatrace-no-mcp-server"]);
       expect(await run("grok")).toEqual(["agent", "stdio"]);
     });
   }, 20_000);
+
+  test("agents that run tools without asking start with their own tools refused, and without the user's ssh/gpg agents", async () => {
+    await withTempDir(async (dir) => {
+      const f = await fixture(dir, ["opencode", "goose", "codex-acp", "grok"]);
+      const startEnv = async (agent: "opencode" | "goose" | "codex" | "grok", user: Record<string, string> = {}) => {
+        await fs.rm(f.log, { force: true });
+        const env = { ...f.env("normal"), SSH_AUTH_SOCK: join(dir, "ssh.sock"), GPG_AGENT_INFO: join(dir, "gpg.sock"), NOTION_TOKEN: "x", ...user };
+        await createAcpProvider(configWith({ provider: "acp", acpAgent: agent }), { env, workspaceRoot: f.root, timeouts: fast }).run(chatRequest());
+        return (event(await readLog(f.log), "start") as { env: Record<string, string> }).env;
+      };
+      // The user's own values for the same settings are overridden.
+      const opencode = await startEnv("opencode", { OPENCODE_PERMISSION: '{"bash":"allow"}' });
+      expect(Object.keys(opencode).sort()).toEqual(["OPENCODE_CONFIG_CONTENT", "OPENCODE_PERMISSION"]);
+      const inline = JSON.parse(opencode.OPENCODE_CONFIG_CONTENT as string) as { permission: Record<string, string> };
+      expect(JSON.parse(opencode.OPENCODE_PERMISSION as string)).toEqual(inline.permission);
+      // "*" first, then each built-in tool OpenCode allows by default, all refused.
+      expect(Object.keys(inline.permission)[0]).toBe("*");
+      for (const tool of ["*", "bash", "edit", "webfetch", "websearch", "read", "task", "external_directory"]) expect(inline.permission[tool]).toBe("deny");
+      expect(new Set(Object.values(inline.permission))).toEqual(new Set(["deny"]));
+      expect(await startEnv("goose", { GOOSE_MODE: "auto" })).toEqual({ GOOSE_MODE: "chat" });
+      expect(await startEnv("codex", { INITIAL_AGENT_MODE: "agent-full-access" })).toEqual({ INITIAL_AGENT_MODE: "read-only" });
+      // An agent with no lockdown of its own still loses the sockets and FalaTrace's secrets.
+      expect(await startEnv("grok")).toEqual({});
+    });
+  }, 30_000);
+
+  test("the session is put in the most restrictive mode the agent offers before the question is sent", async () => {
+    await withTempDir(async (dir) => {
+      const f = await fixture(dir);
+      const methodsOf = (log: Array<Record<string, unknown>>) =>
+        log.filter((entry) => entry.event === "recv").map((entry) => (entry.message as Record<string, unknown>).method).filter((method) => typeof method === "string");
+
+      // "mode" config option (Claude Agent, codex-acp): set through session/set_config_option, groups included.
+      expect((await codex(f, "config-modes").run(chatRequest())).text).toBe("Olá, mundo.");
+      let log = await readLog(f.log);
+      expect(received(log, "session/set_config_option").map((message) => message.params)).toEqual([{ sessionId: "sess-1", configId: "mode", value: "plan" }]);
+      expect(received(log, "session/set_mode")).toEqual([]);
+      expect(methodsOf(log)).toEqual(["initialize", "session/new", "session/set_config_option", "session/prompt"]);
+
+      // Only the older `modes`: session/set_mode, "ask" before "plan".
+      await fs.rm(f.log, { force: true });
+      await codex(f, "legacy-modes").run(chatRequest());
+      log = await readLog(f.log);
+      expect(received(log, "session/set_mode").map((message) => message.params)).toEqual([{ sessionId: "sess-1", modeId: "ask" }]);
+      expect(methodsOf(log)).toEqual(["initialize", "session/new", "session/set_mode", "session/prompt"]);
+
+      // Already restricted, offering no restrictive mode, or no modes at all: nothing to switch.
+      for (const mode of ["already-restricted", "no-restrictive-mode", "normal"]) {
+        await fs.rm(f.log, { force: true });
+        await codex(f, mode).run(chatRequest());
+        expect(methodsOf(await readLog(f.log))).toEqual(["initialize", "session/new", "session/prompt"]);
+      }
+
+      // An agent that refuses the mode it offered never gets the question.
+      await fs.rm(f.log, { force: true });
+      await expectProviderError(codex(f, "config-modes-refused").run(chatRequest()), acpFailedMessage("Codex"), "unavailable");
+      expect(received(await readLog(f.log), "session/prompt")).toEqual([]);
+    });
+  }, 30_000);
 
   test("a custom command is split without a shell and its arguments stay out of the destination", async () => {
     await withTempDir(async (dir) => {
@@ -155,6 +230,23 @@ describe("ACP client", () => {
       await expect(fs.readdir(f.root)).rejects.toThrow();
     });
   });
+
+  test("an agent whose tools cannot be switched off never starts until the user accepted that agent", async () => {
+    await withTempDir(async (dir) => {
+      const f = await fixture(dir, ["codex-acp", "goose"]);
+      // Accepted for another agent only: Codex is still refused.
+      const config = configWith({ provider: "acp", acpAgent: "codex", agentToolsAccepted: ["acp:opencode", "cli:codex"] });
+      const provider = createAcpProvider(config, { env: f.env("normal"), workspaceRoot: f.root, timeouts: fast });
+      expect(await provider.check()).toEqual({ ready: false, problem: "misconfigured", message: COMMON_PROVIDER_MESSAGES.toolsNotAccepted });
+      await expectProviderError(provider.run(chatRequest()), COMMON_PROVIDER_MESSAGES.toolsNotAccepted, "bad-request");
+      expect(existsSync(f.log)).toBe(false);
+      await expect(fs.readdir(f.root)).rejects.toThrow();
+      // goose runs in its "chat" mode, which has no tools: no acceptance needed.
+      const goose = createAcpProvider(configWith({ provider: "acp", acpAgent: "goose", agentToolsAccepted: [] }), { env: f.env("normal"), workspaceRoot: f.root, timeouts: fast });
+      expect(await goose.check()).toEqual({ ready: true });
+      expect((await goose.run(chatRequest())).text).toBe("Olá, mundo.");
+    });
+  }, 20_000);
 
   test("authentication required (-32000) names the agent's login command", async () => {
     await withTempDir(async (dir) => {
@@ -295,6 +387,29 @@ describe("ACP helpers", () => {
     expect(choosePermissionOutcome(options(["reject_once"]), true)).toEqual({ outcome: { outcome: "cancelled" } });
     for (const malformed of [undefined, null, "x", { options: "x" }, { options: [{ kind: "reject_once" }] }, { options: [{ kind: "reject_once", optionId: "" }] }, { options: [{ kind: "reject_once", optionId: "x".repeat(501) }] }]) {
       expect(choosePermissionOutcome(malformed, false)).toEqual({ outcome: { outcome: "cancelled" } });
+    }
+  });
+
+  test("restrictiveModeRequest picks the most restrictive mode a real agent offers", () => {
+    expect(RESTRICTIVE_MODE_IDS).toEqual(["read-only", "ask", "chat", "plan"]);
+    const legacy = (current: string, ids: string[]) => ({ modes: { currentModeId: current, availableModes: ids.map((id) => ({ id, name: id })) } });
+    // codex-acp, Claude Agent, Cursor, Gemini CLI (its plan mode is optional).
+    expect(restrictiveModeRequest(legacy("agent", ["read-only", "workspace-write", "agent", "agent-full-access"]), "s")).toEqual({ method: "session/set_mode", params: { sessionId: "s", modeId: "read-only" } });
+    expect(restrictiveModeRequest(legacy("bypassPermissions", ["default", "acceptEdits", "plan", "auto", "bypassPermissions"]), "s")?.params).toEqual({ sessionId: "s", modeId: "plan" });
+    expect(restrictiveModeRequest(legacy("agent", ["agent", "plan", "ask"]), "s")?.params).toEqual({ sessionId: "s", modeId: "ask" });
+    expect(restrictiveModeRequest(legacy("default", ["default", "autoEdit", "yolo"]), "s")).toBeUndefined();
+    expect(restrictiveModeRequest(legacy("plan", ["default", "plan"]), "s")).toBeUndefined();
+    // The "mode" config option wins over the older modes; other categories are ignored.
+    const config = {
+      ...legacy("auto", ["auto", "plan"]),
+      configOptions: [
+        { id: "effort", category: "thought_level", type: "select", currentValue: "high", options: [{ value: "plan" }] },
+        { id: "permission", category: "mode", type: "select", currentValue: "auto", options: [{ value: "auto" }, { value: "plan" }] }
+      ]
+    };
+    expect(restrictiveModeRequest(config, "s")).toEqual({ method: "session/set_config_option", params: { sessionId: "s", configId: "permission", value: "plan" } });
+    for (const odd of [{}, { modes: "x" }, { modes: { availableModes: [null, 3, { id: 4 }] } }, { configOptions: [{ category: "mode", type: "boolean", id: "m", currentValue: true }] }]) {
+      expect(restrictiveModeRequest(odd, "s")).toBeUndefined();
     }
   });
 

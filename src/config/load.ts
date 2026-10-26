@@ -10,6 +10,7 @@ import {
   ASSISTANT_API_PRESETS,
   ASSISTANT_CLI_TOOLS,
   ASSISTANT_PROVIDERS,
+  ASSISTANT_TOOL_AGENTS,
   DEFAULT_CONFIG,
   LIVE_PROVIDERS,
   MEDIA_RETENTION_MODES,
@@ -187,6 +188,11 @@ const boundedText = (value: unknown, max: number, allowEmpty = false): boolean =
 const integerIn = (value: unknown, min: number, max: number): boolean => Number.isInteger(value) && (value as number) >= min && (value as number) <= max;
 
 /** Checks for the sections added with notes, templates, the assistant, reminders, live transcript, retention and destinations. */
+/** A list of unique agents from ASSISTANT_TOOL_AGENTS (assistant.agentToolsAccepted). */
+export const isToolAgentList = (value: unknown): boolean =>
+  Array.isArray(value) && value.length <= ASSISTANT_TOOL_AGENTS.length && new Set(value).size === value.length &&
+  value.every((item) => oneOfValues(ASSISTANT_TOOL_AGENTS, item));
+
 const validateFeatureSections = (config: AppConfig): void => {
   const summary = config.summary;
   if (!oneOfValues(SUMMARY_LANGUAGES, summary.language)) throw new Error(`summary.language must be one of ${SUMMARY_LANGUAGES.join(", ")}`);
@@ -209,6 +215,7 @@ const validateFeatureSections = (config: AppConfig): void => {
     throw new Error("assistant.apiBaseUrl must be empty or an http(s) URL");
   }
   if (!boundedText(assistant.acpCommand, 1000, true)) throw new Error("assistant.acpCommand is invalid");
+  if (!isToolAgentList(assistant.agentToolsAccepted)) throw new Error(`assistant.agentToolsAccepted must list unique agents among ${ASSISTANT_TOOL_AGENTS.join(", ")}`);
   if (!integerIn(assistant.maxContextCharacters, 8_000, 400_000)) throw new Error("assistant.maxContextCharacters must be between 8000 and 400000");
   if (!oneOfValues(REMINDER_MODES, config.reminders.mode)) throw new Error("reminders.mode must be auto, on or off");
   if (!integerIn(config.reminders.leadMinutes, 1, 15)) throw new Error("reminders.leadMinutes must be between 1 and 15");

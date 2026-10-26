@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { detectAssistantTools } from "../detect";
 import { ACP_AGENTS } from "../providers/acp";
 import type { ProbeRunner } from "../providers/cli";
-import { installFakeClis } from "./fixtures/fake-clis";
+import { installFakeClis, wrapFakeTools } from "./fixtures/fake-clis";
 import { withTempDir } from "./provider-helpers";
 
 const ACP_ORDER = ["claude", "codex", "gemini", "opencode", "kiro", "copilot", "cursor", "goose", "qwen", "grok"] as const;
@@ -69,7 +69,7 @@ describe("detectAssistantTools", () => {
       await fs.writeFile(join(bin, "opencode"), "#!/bin/sh\nexit 0\n", { mode: 0o644 });
       const runtime = join(dir, "runtime");
       await fs.mkdir(runtime, { mode: 0o700 });
-      const report = await detectAssistantTools({ env: { PATH: bin, HOME: process.env.HOME, XDG_RUNTIME_DIR: runtime, FAKE_CODEX_AUTH: "none" }, timeoutMs: 5_000 });
+      const report = await detectAssistantTools({ env: { PATH: wrapFakeTools(bin, { FAKE_CODEX_AUTH: "none" }), HOME: process.env.HOME, XDG_RUNTIME_DIR: runtime }, timeoutMs: 5_000 });
       expect(report.cli).toEqual([
         { tool: "claude", command: "claude", found: true, signedIn: true },
         { tool: "codex", command: "codex", found: true, signedIn: false },

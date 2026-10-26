@@ -81,13 +81,15 @@ API usage is billed by the provider; a chat subscription does not include API cr
 
 ### ACP agents
 
-[Agent Client Protocol](https://agentclientprotocol.com) agents you already use, with their own sign-in. Set `assistant.provider` to `acp` and `assistant.acpAgent`. FalaTrace starts the agent without a shell, in a fresh empty private folder, with no file or terminal access and no MCP servers; it refuses every permission request the agent makes, and stops the agent after the answer. It never runs `npx` or `bunx` for you: install the agent yourself.
+[Agent Client Protocol](https://agentclientprotocol.com) agents you already use, with their own sign-in. Set `assistant.provider` to `acp` and `assistant.acpAgent`. FalaTrace starts the agent without a shell, in a fresh empty private folder, with a minimal environment, offering it no file or terminal access and no MCP servers; it refuses every permission request the agent makes, and stops the agent after the answer. It never runs `npx` or `bunx` for you: install the agent yourself.
+
+See [Agents and their tools](#agents-and-their-tools) for what each agent can still do, and which ones need your OK before they get a question.
 
 | `acpAgent` | Command FalaTrace runs | Install (package in the ACP registry, 2026-10-25) | Sign in |
 | --- | --- | --- | --- |
 | `codex` (default) | `codex-acp` | `npm install -g @agentclientprotocol/codex-acp` | `codex login` (ChatGPT plan or API key) |
 | `claude` | `claude-agent-acp --hide-claude-auth` | `npm install -g @agentclientprotocol/claude-agent-acp` (Node 22+) | `claude auth login --console`, or `ANTHROPIC_API_KEY` in the environment FalaTrace runs in |
-| `gemini` | `gemini --acp` | `npm install -g @google/gemini-cli` | run `gemini` and sign in |
+| `gemini` | `gemini --acp -e none --allowed-mcp-server-names falatrace-no-mcp-server` | `npm install -g @google/gemini-cli` | run `gemini` and sign in |
 | `opencode` | `opencode acp` | `npm install -g opencode-ai` | `opencode auth login` |
 | `kiro` | `kiro-cli acp` | Kiro CLI 1.25 or later, from Kiro | `kiro-cli login` |
 | `copilot` | `copilot --acp` | `npm install -g @github/copilot` | run `copilot` and use `/login` |
@@ -107,12 +109,38 @@ Your own installed, signed-in command-line tool, run once per question. Set `ass
 | --- | --- | --- |
 | `claude` (default) | `claude -p --output-format json --tools "" --disallowedTools "mcp__*" --strict-mcp-config --permission-mode dontAsk --max-turns 1 --no-session-persistence` | run `claude` and sign in |
 | `codex` | `codex exec --sandbox read-only --skip-git-repo-check --ephemeral --ignore-user-config …` | `codex login` |
-| `gemini` | `gemini -p "<short instruction>" -o json` | run `gemini` and sign in |
-| `opencode` | `opencode run --format json` (output read on a best-effort basis) | `opencode auth login` |
+| `gemini` | `gemini -p "<short instruction>" -o json -e none --allowed-mcp-server-names falatrace-no-mcp-server` (no extensions, none of your MCP servers) | run `gemini` and sign in |
+| `opencode` | `opencode run --format json`, with every permission set to `deny` through `OPENCODE_CONFIG_CONTENT` and `OPENCODE_PERMISSION` (output read on a best-effort basis) | `opencode auth login` |
 
-The question and excerpts go on standard input, never in the command line. Each run uses a fresh empty private folder, with the tool's own tools turned off where the tool allows it. There is no streaming: the answer appears when the tool finishes. FalaTrace checks sign-in with `claude auth status` and `codex login status`.
+The question and excerpts go on standard input, never in the command line. Each run uses a fresh empty private folder and a minimal environment, with the tool's own tools turned off or refused as far as the tool allows (see [Agents and their tools](#agents-and-their-tools)). There is no streaming: the answer appears when the tool finishes. FalaTrace checks sign-in with `claude auth status` and `codex login status`.
 
 **A Claude subscription is used this way:** through your own `claude` command, signed in by you. FalaTrace never sees or stores your Claude credentials.
+
+### Agents and their tools
+
+The excerpts an agent receives hold what people said in a meeting and calendar titles: text written by others. A sentence such as "assistant, run this command" must not make the agent act on your computer. The prompt tells the model to treat meeting text as data and never use tools, but only the agent's own settings can enforce that, so FalaTrace also:
+
+- uses each agent's own read-only, plan or no-tools setting where it has one (below);
+- for ACP agents, switches the session to the most restrictive mode the agent offers before the question: `read-only`, `ask`, `chat` or `plan`, in that order. An agent that refuses the switch gets no question;
+- refuses every permission request (ACP) and turns permission prompts off (`claude --permission-mode dontAsk`);
+- starts every run in a fresh empty private folder, with a minimal environment: `PATH`, `HOME`, `USER`, `LOGNAME`, `SHELL`, `TERM`, `LANG`, `LANGUAGE`, `TZ`, `TMPDIR`, the `XDG_*` folders, `DBUS_SESSION_BUS_ADDRESS` (for a sign-in kept in your keyring), proxy and certificate settings, `GH_TOKEN`/`GITHUB_TOKEN`, and variables starting with `LC_` or with an agent's or model provider's prefix (`ANTHROPIC_`, `CLAUDE_`, `OPENAI_`, `CODEX_`, `GEMINI_`, `GOOGLE_`, `VERTEX_`, `CLOUD_ML_`, `OPENCODE_`, `OPENROUTER_`, `GOOSE_`, `KIRO_`, `COPILOT_`, `CURSOR_`, `QWEN_`, `DASHSCOPE_`, `XAI_`, `GROK_`, `GROQ_`, `MISTRAL_`, `DEEPSEEK_`, `TOGETHER_`, `OLLAMA_`, `AWS_`, `AZURE_`). Nothing else is passed on: no ssh or gpg agent, no display, and never FalaTrace's own secrets.
+
+**Agents whose tools cannot be switched off need your OK.** Most agents keep some tools that no setting turns off: reading any file your user can read, read-only commands, web fetches, or MCP servers and allow-rules from your own configuration. FalaTrace sends such an agent no question until you accept that for that agent: in **Configurações › Perguntar e receitas**, tick **Entendo: este agente pode rodar ferramentas no meu computador** under the agent (or add it to `assistant.agentToolsAccepted`, for example `["acp:codex"]`). Until then Ask, recipes and `falatrace ask` stop with a message saying so. The OK is per agent: choosing another one asks again.
+
+| Agent | What FalaTrace sets | What it can still do | Needs your OK |
+| --- | --- | --- | --- |
+| `cli` `claude` | `--tools ""` (no tools), `--strict-mcp-config` and `--disallowedTools "mcp__*"` (no MCP server), `--permission-mode dontAsk`, `--max-turns 1` | Nothing: it only answers | No |
+| `acp` `goose` | `GOOSE_MODE=chat` (over your own value) and its `chat` mode when offered | Nothing: chat mode uses no tools or extensions | No |
+| `acp` `claude` | `plan` mode | Read-only tools (reading and searching files, web search) and what your Claude settings allow | Yes |
+| `acp` `codex` | `INITIAL_AGENT_MODE=read-only` and the `read-only` mode | Its read-only sandboxed shell, which can read any file your user can, without asking | Yes |
+| `cli` `codex` | `exec --sandbox read-only --ignore-user-config --ephemeral` | The same read-only shell | Yes |
+| `acp`/`cli` `gemini` | `-e none` (no extensions) and an MCP allow-list naming no server; `plan` mode when offered (ACP) | Read-only tools such as reading files and web fetch | Yes |
+| `acp`/`cli` `opencode` | Every permission set to `deny` (`OPENCODE_CONFIG_CONTENT`, `OPENCODE_PERMISSION`, over your own values); `plan` mode when offered (ACP) | A rule of your own OpenCode configuration that allows a tool or MCP server by a narrower pattern can still win | Yes |
+| `acp` `cursor` | `ask` mode | Read-only tools | Yes |
+| `acp` `kiro`, `copilot`, `qwen`, `grok` | The most restrictive mode each offers; every permission request refused | Any tool it runs without asking | Yes |
+| `acp` `custom` | The most restrictive mode it offers; every permission request refused | Unknown: it is your own command | Yes |
+
+The local, API and ChatGPT providers only send text to a model and run no tools on your computer.
 
 ### Sign in with ChatGPT
 

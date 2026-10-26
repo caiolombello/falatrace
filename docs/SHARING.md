@@ -74,7 +74,7 @@ The Studio copies the note itself. The CLI uses `wl-copy`, `xclip` or `xsel`; wi
 | --- | --- |
 | `chatgpt-web`, `claude-web`, `gemini-web` | The note is copied, and the app's page opens in the browser. Meeting text never goes into the address. You paste and send it. |
 | `claude-desktop` | Claude Desktop opens with a new chat filled in (up to 14,000 characters; a longer note is copied instead). You send it. |
-| `claude-cli`, `codex-cli`, `gemini-cli`, `opencode-cli` | The note is written to a private file in a folder of its own, and a terminal opens there with the tool and the prompt "Leia o arquivo <nome> (contexto de uma reunião registrada no FalaTrace) e me ajude com ele." The tool reads the file and sends it to its provider right away. |
+| `claude-cli`, `codex-cli`, `gemini-cli`, `opencode-cli` | The note is written to a private file in a folder of its own, and a terminal opens there with the tool and the prompt "Leia o arquivo <nome> (contexto de uma reunião registrada no FalaTrace) e me ajude com ele." The tool reads the file and sends it to its provider right away. OpenCode, which runs commands and edits without asking by default, starts with its permissions set to ask you first. |
 
 Whichever app you use, it sends the note to its own AI provider under that app's terms. That is why FalaTrace asks for consent, even though it does not send anything itself.
 

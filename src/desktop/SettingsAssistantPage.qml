@@ -31,6 +31,9 @@ SettingsPage {
         {value: "qwen", label: "Qwen Code"}, {value: "grok", label: "Grok Build"}, {value: "custom", label: t("Outro agente (comando)")}
     ]
     readonly property var cliTools: [{value: "claude", label: "Claude Code"}, {value: "codex", label: "Codex"}, {value: "gemini", label: "Gemini CLI"}, {value: "opencode", label: "OpenCode"}]
+    // Agents whose own tools FalaTrace cannot switch off (ASSISTANT_TOOL_AGENTS in src/config/defaults.ts):
+    // each answers only once the user accepted that, agent by agent, in assistant.agentToolsAccepted.
+    readonly property var toolAgents: ["acp:claude", "acp:codex", "acp:gemini", "acp:opencode", "acp:kiro", "acp:copilot", "acp:cursor", "acp:qwen", "acp:grok", "acp:custom", "cli:codex", "cli:gemini", "cli:opencode"]
 
     function reset() { pageGeneration += 1; detected = null; detecting = false; chatgpt = ({}); recipes = []; recipesLoading = false; recipesLoaded = false; error = ""; notice = ""; confirmDelete = "" }
     function request(op, payload, meta) { return send(op, "", payload || ({}), Object.assign({origin: "settingsAssistant", pageGeneration: pageGeneration}, meta || ({}))) }
@@ -56,6 +59,15 @@ SettingsPage {
     }
     function saved(recipe) { notice = tf("Receita “%1” salva.", recipe.name || ""); recipesLoading = false; loadRecipes() }
     function found(list, field, value) { const entry = asList(list).find(function(item){ return item[field] === value }); return entry || null }
+    function toolsAgent(kind) { return kind + ":" + (kind === "acp" ? settingsDraft["assistant.acpAgent"] : settingsDraft["assistant.cliTool"]) }
+    function needsToolsOk(kind) { return toolAgents.indexOf(toolsAgent(kind)) >= 0 }
+    function toolsAccepted(kind) { return asList(settingsDraft["assistant.agentToolsAccepted"]).indexOf(toolsAgent(kind)) >= 0 }
+    function setToolsAccepted(kind, accepted) {
+        const agent = toolsAgent(kind)
+        const next = asList(settingsDraft["assistant.agentToolsAccepted"]).filter(function(item){ return item !== agent })
+        if (accepted) next.push(agent)
+        setSettingsField("assistant.agentToolsAccepted", next)
+    }
     function agentLabel(option) {
         if (!detected || option.value === "custom") return option.label
         const entry = found(detected.acp, "agent", option.value)
@@ -133,6 +145,7 @@ SettingsPage {
         SettingsChoice { field: "assistant.acpAgent"; label: t("Agente"); options: assistantPage.acpAgents.map(function(option){ return {label: assistantPage.agentLabel(option), value: option.value} }) }
         SettingsText { visible: settingsDraft["assistant.acpAgent"] === "custom"; field: "assistant.acpCommand"; label: t("Comando do agente"); placeholder: "meu-agente --acp" }
         SettingsHint { text: t("O FalaTrace não instala agentes. Instale e entre na conta pelo terminal.") }
+        AgentToolsOk { kind: "acp"; objectName: "assistantAcpTools" }
     }
     SettingsRadioCard {
         objectName: "assistantCli"; field: "assistant.provider"; value: "cli"; iconName: "external"
@@ -140,6 +153,7 @@ SettingsPage {
         detail: t("A ferramenta (claude, codex…) recebe os trechos e usa a sua assinatura. Sem custo além do plano.")
         SettingsChoice { field: "assistant.cliTool"; label: t("Ferramenta"); options: assistantPage.cliTools.map(function(option){ return {label: assistantPage.toolLabel(option), value: option.value} }) }
         SettingsText { field: "assistant.cliModel"; label: t("Modelo (opcional)"); placeholder: t("o padrão da ferramenta") }
+        AgentToolsOk { kind: "cli"; objectName: "assistantCliTools" }
     }
     SettingsRadioCard {
         objectName: "assistantChatgpt"; field: "assistant.provider"; value: "chatgpt"; iconName: "cloud"
@@ -226,6 +240,25 @@ SettingsPage {
                     FtButton { compact: true; variant: "danger"; text: t("Excluir"); enabled: backend.available && !hasPending("recipes-delete"); onClicked: assistantPage.removeRecipe(recipeRow.modelData) }
                 }
             }
+        }
+    }
+
+    // An agent that can still run tools on this computer says so and asks for an explicit OK.
+    component AgentToolsOk: ColumnLayout {
+        id: toolsOk
+        property string kind: "acp"
+        visible: assistantPage.needsToolsOk(kind)
+        Layout.fillWidth: true
+        spacing: 4
+        SettingsHint { color: warningColor; text: t("Este agente pode rodar ferramentas no seu computador (ler arquivos, executar comandos), e o FalaTrace não consegue desligá-las: um texto de reunião pode tentar usá-las. Ele só recebe perguntas depois que você confirmar.") }
+        WrappedCheck {
+            objectName: toolsOk.objectName + "Ok"
+            text: t("Entendo: este agente pode rodar ferramentas no meu computador")
+            checked: assistantPage.toolsAccepted(toolsOk.kind)
+            enabled: settingsEditable
+            Accessible.name: text
+            // The box follows the chosen agent: the binding is put back after each click.
+            onToggled: { assistantPage.setToolsAccepted(toolsOk.kind, checked); checked = Qt.binding(function(){ return assistantPage.toolsAccepted(toolsOk.kind) }) }
         }
     }
 }

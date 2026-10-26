@@ -19,7 +19,32 @@ const send = (message: Record<string, unknown>): void => {
   process.stdout.write(`${JSON.stringify(message)}\n`);
 };
 
-log({ event: "start", argv: process.argv.slice(2), cwd: process.cwd(), pid: process.pid });
+/** Settings that lock agents down, and agent sockets that must not reach them. */
+const WATCHED_ENV = ["OPENCODE_CONFIG_CONTENT", "OPENCODE_PERMISSION", "GOOSE_MODE", "INITIAL_AGENT_MODE", "SSH_AUTH_SOCK", "GPG_AGENT_INFO", "NOTION_TOKEN"];
+log({
+  event: "start",
+  argv: process.argv.slice(2),
+  cwd: process.cwd(),
+  pid: process.pid,
+  env: Object.fromEntries(WATCHED_ENV.flatMap((name) => (process.env[name] === undefined ? [] : [[name, process.env[name]]])))
+});
+
+/** Mode offers of real agents: Claude Agent's "mode" config option, the older `modes` of Cursor. */
+const sessionModes = (): Record<string, unknown> => {
+  if (mode === "config-modes" || mode === "config-modes-refused") {
+    return {
+      modes: { currentModeId: "auto", availableModes: [{ id: "default" }, { id: "auto" }, { id: "plan" }] },
+      configOptions: [
+        { id: "model", name: "Model", category: "model", type: "select", currentValue: "m1", options: [{ value: "m1", name: "M1" }] },
+        { id: "mode", name: "Mode", category: "mode", type: "select", currentValue: "auto", options: [{ group: "g", name: "G", options: [{ value: "default", name: "Manual" }, { value: "auto", name: "Auto" }] }, { value: "plan", name: "Plan" }] }
+      ]
+    };
+  }
+  if (mode === "legacy-modes") return { modes: { currentModeId: "agent", availableModes: [{ id: "agent", name: "Agent" }, { id: "plan", name: "Plan" }, { id: "ask", name: "Ask" }] } };
+  if (mode === "already-restricted") return { modes: { currentModeId: "read-only", availableModes: [{ id: "read-only" }, { id: "agent-full-access" }] } };
+  if (mode === "no-restrictive-mode") return { modes: { currentModeId: "agent", availableModes: [{ id: "agent" }, { id: "yolo" }] } };
+  return {};
+};
 
 let nextId = 1000;
 const waiting = new Map<number, (message: Record<string, unknown>) => void>();
@@ -158,9 +183,17 @@ lines.on("line", (line) => {
         log({ event: "unstuck" });
         return;
       }
-      send({ jsonrpc: "2.0", id: message.id, result: { sessionId: SESSION } });
+      send({ jsonrpc: "2.0", id: message.id, result: { sessionId: SESSION, ...sessionModes() } });
       return;
     }
+    case "session/set_config_option":
+    case "session/set_mode":
+      if (mode === "config-modes-refused") {
+        send({ jsonrpc: "2.0", id: message.id, error: { code: -32602, message: "Invalid Mode" } });
+        return;
+      }
+      send({ jsonrpc: "2.0", id: message.id, result: message.method === "session/set_mode" ? {} : { configOptions: [] } });
+      return;
     case "session/prompt":
       void handlePrompt(message.id, params);
       return;

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { promises as fs } from "node:fs";
 import { join } from "node:path";
-import type { AssistantCliTool } from "../../config/defaults";
+import { type AppConfig, ASSISTANT_TOOL_AGENTS, type AssistantCliTool } from "../../config/defaults";
 import {
   buildCliInvocation,
   CLI_KNOWN_ERRORS,
@@ -18,8 +18,11 @@ import {
 } from "../providers/cli";
 import { COMMON_PROVIDER_MESSAGES, MAX_ANSWER_CHARACTERS } from "../providers/common";
 import { ProviderError } from "../types";
-import { installFakeClis, readFakeCliRun } from "./fixtures/fake-clis";
-import { chatRequest, configWith, processGone, waitFor, withTempDir } from "./provider-helpers";
+import { installFakeClis, readFakeCliRun, wrapFakeTools } from "./fixtures/fake-clis";
+import { configWith as baseConfig, chatRequest, processGone, waitFor, withTempDir } from "./provider-helpers";
+
+/** These tests drive the tools themselves: each tool's tools are accepted unless a test says otherwise. */
+const configWith = (assistant: Partial<AppConfig["assistant"]>): AppConfig => baseConfig({ agentToolsAccepted: [...ASSISTANT_TOOL_AGENTS], ...assistant });
 
 type Setup = { bin: string; log: string; root: string; env: (extra?: Record<string, string>) => NodeJS.ProcessEnv };
 
@@ -31,7 +34,12 @@ const setup = async (dir: string): Promise<Setup> => {
     bin,
     log,
     root,
-    env: (extra = {}) => ({ PATH: `${bin}:/usr/bin:/bin`, HOME: process.env.HOME, FAKE_CLI_LOG: log, ...extra })
+    // FAKE_* settings reach the fakes through their wrappers; the rest is the user's environment.
+    env: (extra = {}) => {
+      const fake = Object.fromEntries(Object.entries({ FAKE_CLI_LOG: log, ...extra }).filter(([name]) => name.startsWith("FAKE_")));
+      const user = Object.fromEntries(Object.entries(extra).filter(([name]) => !name.startsWith("FAKE_")));
+      return { PATH: `${wrapFakeTools(bin, fake)}:/usr/bin:/bin`, HOME: process.env.HOME, ...user };
+    }
   };
 };
 
@@ -140,7 +148,8 @@ describe("subscription CLIs", () => {
       const result = await cli(s, "gemini", { model: "flash" }).run(chatRequest());
       expect(result).toEqual({ text: "Resposta do Gemini.", stopReason: "end" });
       const run = await readFakeCliRun(s.log);
-      expect(run.argv).toEqual(["-p", GEMINI_STDIN_INSTRUCTION, "-o", "json", "-m", "flash"]);
+      // No extensions and no MCP server of the user's.
+      expect(run.argv).toEqual(["-p", GEMINI_STDIN_INSTRUCTION, "-o", "json", "-e", "none", "--allowed-mcp-server-names", "falatrace-no-mcp-server", "-m", "flash"]);
       expect(run.stdin).toContain("Quem decidiu o prazo?");
     });
   });
@@ -151,6 +160,24 @@ describe("subscription CLIs", () => {
       expect(await cli(s, "opencode").run(chatRequest())).toEqual({ text: "Parte um.\n\nParte dois.", stopReason: "end" });
       expect((await readFakeCliRun(s.log)).argv).toEqual(["run", "--format", "json"]);
       await expectProviderError(cli(s, "opencode", { env: { FAKE_CLI_MODE: "error" } }).run(chatRequest()), cliFailedMessage(CLI_TOOLS.opencode), "unavailable");
+    });
+  });
+
+  test("opencode runs with every permission refused, overriding the user's own, and without ssh/gpg agents", async () => {
+    await withTempDir(async (dir) => {
+      const s = await setup(dir);
+      const user = { OPENCODE_PERMISSION: '{"bash":"allow"}', OPENCODE_CONFIG_CONTENT: '{"permission":"allow"}', SSH_AUTH_SOCK: join(dir, "ssh.sock"), GPG_AGENT_INFO: join(dir, "gpg.sock") };
+      await cli(s, "opencode", { env: user }).run(chatRequest());
+      const run = await readFakeCliRun(s.log);
+      const inline = JSON.parse(run.env.get("OPENCODE_CONFIG_CONTENT") ?? "{}") as { permission?: Record<string, string> };
+      expect(Object.keys(inline.permission ?? {})[0]).toBe("*");
+      for (const tool of ["*", "bash", "edit", "webfetch", "websearch", "read", "external_directory"]) expect(inline.permission?.[tool]).toBe("deny");
+      expect(JSON.parse(run.env.get("OPENCODE_PERMISSION") ?? "{}")).toEqual(inline.permission ?? {});
+      expect(run.env.has("SSH_AUTH_SOCK")).toBe(false);
+      expect(run.env.has("GPG_AGENT_INFO")).toBe(false);
+      // Other tools get no OpenCode settings.
+      await cli(s, "gemini").run(chatRequest());
+      expect((await readFakeCliRun(s.log)).env.has("OPENCODE_CONFIG_CONTENT")).toBe(false);
     });
   });
 
@@ -208,6 +235,21 @@ describe("subscription CLIs", () => {
       await waitFor(async () => processGone(Number((await fs.readFile(`${s.log}.pid`, "utf8")).trim())));
     });
   }, 15_000);
+
+  test("a tool whose own tools cannot be switched off never starts until the user accepted it; claude needs no acceptance", async () => {
+    await withTempDir(async (dir) => {
+      const s = await setup(dir);
+      for (const tool of ["codex", "gemini", "opencode"] as const) {
+        const provider = createCliProvider(configWith({ provider: "cli", cliTool: tool, agentToolsAccepted: ["acp:codex"] }), { env: s.env(), workspaceRoot: s.root });
+        expect(await provider.check()).toEqual({ ready: false, problem: "misconfigured", message: COMMON_PROVIDER_MESSAGES.toolsNotAccepted });
+        await expectProviderError(provider.run(chatRequest()), COMMON_PROVIDER_MESSAGES.toolsNotAccepted, "bad-request");
+      }
+      expect(await exists(`${s.log}.argv`)).toBe(false);
+      // claude runs with --tools "" and no MCP servers.
+      const claude = createCliProvider(configWith({ provider: "cli", cliTool: "claude", agentToolsAccepted: [] }), { env: s.env(), workspaceRoot: s.root });
+      expect((await claude.run(chatRequest())).text).toBe("Resposta do Claude.");
+    });
+  });
 
   test("nothing starts for an already-cancelled request, a missing tool or an unsafe model name", async () => {
     await withTempDir(async (dir) => {
@@ -280,8 +322,10 @@ describe("CLI helpers", () => {
       argv: ["/bin/codex", "exec", "--sandbox", "read-only", "--skip-git-repo-check", "--ephemeral", "--ignore-user-config", "-C", "/w/workspace", "--color", "never", "-o", "/w/output/last.txt", "-"],
       outputFile: "/w/output/last.txt"
     });
-    expect(buildCliInvocation("gemini", "/bin/gemini", "", paths).argv).toEqual(["/bin/gemini", "-p", GEMINI_STDIN_INSTRUCTION, "-o", "json"]);
+    expect(buildCliInvocation("gemini", "/bin/gemini", "", paths).argv).toEqual(["/bin/gemini", "-p", GEMINI_STDIN_INSTRUCTION, "-o", "json", "-e", "none", "--allowed-mcp-server-names", "falatrace-no-mcp-server"]);
     expect(buildCliInvocation("opencode", "/bin/opencode", "anthropic/claude-sonnet-5-5", paths).argv).toEqual(["/bin/opencode", "run", "--format", "json", "-m", "anthropic/claude-sonnet-5-5"]);
+    expect(Object.keys(buildCliInvocation("opencode", "/bin/opencode", "", paths).lockdown ?? {}).sort()).toEqual(["OPENCODE_CONFIG_CONTENT", "OPENCODE_PERMISSION"]);
+    for (const tool of ["claude", "codex", "gemini"] as const) expect(buildCliInvocation(tool, `/bin/${tool}`, "", paths).lockdown).toBeUndefined();
   });
 
   test("probeCliSignIn reads claude auth status JSON and codex login status exit codes", async () => {

@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { promises as fs } from "node:fs";
 import { join } from "node:path";
+import { ASSISTANT_TOOL_AGENTS, DEFAULT_CONFIG } from "../../config/defaults";
 import {
+  agentToolsNotAccepted,
+  CHILD_ENVIRONMENT_NAMES,
   COMMON_PROVIDER_MESSAGES,
   childEnvironment,
   createPrivateWorkspace,
@@ -11,6 +14,8 @@ import {
   flattenConversation,
   INTERNAL_SECRET_NAMES,
   MAX_REQUEST_CHARACTERS,
+  opencodeLockdown,
+  opencodePermissions,
   publicEndpoint,
   readBounded,
   readLines,
@@ -169,8 +174,8 @@ describe("text helpers", () => {
     expect(publicEndpoint(new URL("https://user:secret@example.com:8443/api/v1?key=abc#frag"))).toBe("https://example.com:8443/api/v1");
   });
 
-  test("childEnvironment keeps the user's environment and turns colours off", () => {
-    expect(childEnvironment({ PATH: "/bin", HOME: "/home/ana" })).toEqual({ PATH: "/bin", HOME: "/home/ana", NO_COLOR: "1" });
+  test("childEnvironment keeps the user's home, path and locale and turns colours off", () => {
+    expect(childEnvironment({ PATH: "/bin", HOME: "/home/ana", LC_TIME: "pt_BR.UTF-8" })).toEqual({ PATH: "/bin", HOME: "/home/ana", LC_TIME: "pt_BR.UTF-8", NO_COLOR: "1" });
   });
 
   test("childEnvironment drops FalaTrace's internal secrets but keeps the user's provider keys", () => {
@@ -180,6 +185,53 @@ describe("text helpers", () => {
     for (const name of INTERNAL_SECRET_NAMES) expect(child[name]).toBeUndefined();
     expect(child).toEqual({ PATH: "/bin", OPENAI_API_KEY: "sk-user", ANTHROPIC_API_KEY: "sk-ant-user", NO_COLOR: "1" });
     expect(INTERNAL_SECRET_NAMES).toEqual(["RECORDING_CLI_OBS_PASSWORD", "GOOGLE_CLIENT_SECRET", "NOTION_TOKEN", "SLACK_WEBHOOK_URL", "CUSTOM_API_KEY"]);
+  });
+
+  test("childEnvironment is minimal: ssh/gpg agents, the display and other programs' settings stay out; a lockdown wins over the user's values", () => {
+    const env = {
+      PATH: "/bin", HOME: "/home/ana", XDG_CONFIG_HOME: "/home/ana/.config", DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/1000/bus", HTTPS_PROXY: "http://proxy:3128",
+      SSH_AUTH_SOCK: "/run/user/1000/ssh", SSH_AGENT_PID: "42", GPG_AGENT_INFO: "/run/user/1000/gnupg", DISPLAY: ":0", WAYLAND_DISPLAY: "wayland-0",
+      NPM_CONFIG_USERCONFIG: "/home/ana/.npmrc", DATABASE_URL: "postgres://placeholder", RECORDING_CLI_CONFIG: "/home/ana/c.json", LD_PRELOAD: "/tmp/x.so", NODE_OPTIONS: "--require /tmp/x.js",
+      GOOSE_MODE: "auto", GOOSE_PROVIDER: "ollama", CODEX_HOME: "/home/ana/.codex", AWS_PROFILE: "work", GH_TOKEN: "placeholder-token"
+    };
+    expect(childEnvironment(env, { GOOSE_MODE: "chat" })).toEqual({
+      PATH: "/bin", HOME: "/home/ana", XDG_CONFIG_HOME: "/home/ana/.config", DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/1000/bus", HTTPS_PROXY: "http://proxy:3128",
+      GOOSE_MODE: "chat", GOOSE_PROVIDER: "ollama", CODEX_HOME: "/home/ana/.codex", AWS_PROFILE: "work", GH_TOKEN: "placeholder-token", NO_COLOR: "1"
+    });
+    for (const name of ["SSH_AUTH_SOCK", "GPG_AGENT_INFO", "DISPLAY", "LD_PRELOAD", "NODE_OPTIONS"]) expect(CHILD_ENVIRONMENT_NAMES).not.toContain(name);
+  });
+
+  test("agents whose tools FalaTrace cannot switch off need the user's acceptance, one by one", () => {
+    const config = structuredClone(DEFAULT_CONFIG);
+    expect(agentToolsNotAccepted(config, "acp:codex")).toBe(true);
+    expect(agentToolsNotAccepted(config, "cli:opencode")).toBe(true);
+    // Tools switched off by the agent's own settings: goose in chat mode, the claude CLI with --tools "".
+    expect(agentToolsNotAccepted(config, "acp:goose")).toBe(false);
+    expect(agentToolsNotAccepted(config, "cli:claude")).toBe(false);
+    expect(agentToolsNotAccepted(config, "api:openrouter")).toBe(false);
+    config.assistant.agentToolsAccepted = ["acp:codex"];
+    expect(agentToolsNotAccepted(config, "acp:codex")).toBe(false);
+    expect(agentToolsNotAccepted(config, "cli:codex")).toBe(true);
+    expect(COMMON_PROVIDER_MESSAGES.toolsNotAccepted).toContain("Configurações › Perguntar e receitas");
+  });
+
+  test("the Studio asks for the OK on exactly the agents that need it", async () => {
+    const qml = await fs.readFile(join(import.meta.dir, "..", "..", "desktop", "SettingsAssistantPage.qml"), "utf8");
+    const listed = /readonly property var toolAgents: (\[[^\]]*\])/.exec(qml)?.[1];
+    expect(JSON.parse(listed ?? "[]")).toEqual([...ASSISTANT_TOOL_AGENTS]);
+  });
+
+  test("OpenCode permissions name '*' first and then every built-in tool, so no rule of the user's comes after them", () => {
+    const deny = opencodePermissions("deny");
+    const tools = ["read", "edit", "glob", "grep", "list", "bash", "task", "todowrite", "skill", "lsp", "question", "webfetch", "websearch", "external_directory", "doom_loop"];
+    expect(Object.keys(deny)).toEqual(["*", ...tools]);
+    expect(new Set(Object.values(deny))).toEqual(new Set(["deny"]));
+    // At the terminal the user approves commands, edits, web access and other folders; reading stays free.
+    const ask = opencodePermissions("ask");
+    expect(Object.keys(ask)).toEqual(["*", ...tools]);
+    for (const tool of ["*", "edit", "bash", "task", "skill", "webfetch", "websearch", "external_directory", "doom_loop"]) expect(ask[tool]).toBe("ask");
+    for (const tool of ["read", "glob", "grep", "list", "lsp", "todowrite", "question"]) expect(ask[tool]).toBe("allow");
+    expect(opencodeLockdown("deny")).toEqual({ OPENCODE_CONFIG_CONTENT: JSON.stringify({ permission: deny }), OPENCODE_PERMISSION: JSON.stringify(deny) });
   });
 });
 

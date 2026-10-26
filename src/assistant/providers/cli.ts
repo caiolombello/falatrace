@@ -3,6 +3,7 @@ import { isAbsolute, join } from "node:path";
 import type { AppConfig, AssistantCliTool } from "../../config/defaults";
 import { type ChatProvider, type ChatRequest, type ChatResult, ProviderError, type ProviderDestination, type ProviderReadiness } from "../types";
 import {
+  agentToolsNotAccepted,
   childEnvironment,
   COMMON_PROVIDER_MESSAGES,
   createPrivateWorkspace,
@@ -10,8 +11,10 @@ import {
   defaultWhich,
   defaultWorkspaceRoot,
   flattenConversation,
+  GEMINI_NO_EXTENSIONS,
   isRecord,
   MAX_ANSWER_CHARACTERS,
+  opencodeLockdown,
   type ProviderTimeouts,
   runCaptured,
   type SpawnFn,
@@ -54,7 +57,8 @@ export const GEMINI_STDIN_INSTRUCTION = "Read the conversation given on standard
 const MODEL_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,199}$/;
 const MAX_OUTPUT_FILE_BYTES = 4 * 1024 * 1024;
 
-export type CliInvocation = { argv: string[]; outputFile?: string };
+/** `lockdown`: the tool's own settings that refuse its tools, added to its environment. */
+export type CliInvocation = { argv: string[]; outputFile?: string; lockdown?: Record<string, string> };
 
 /** argv for one question. `model` is already validated; the prompt itself never goes in argv. */
 export const buildCliInvocation = (tool: AssistantCliTool, executable: string, model: string, paths: { cwd: string; outputFile: string }): CliInvocation => {
@@ -71,9 +75,10 @@ export const buildCliInvocation = (tool: AssistantCliTool, executable: string, m
         outputFile: paths.outputFile
       };
     case "gemini":
-      return { argv: [executable, "-p", GEMINI_STDIN_INSTRUCTION, "-o", "json", ...(model ? ["-m", model] : [])] };
+      return { argv: [executable, "-p", GEMINI_STDIN_INSTRUCTION, "-o", "json", ...GEMINI_NO_EXTENSIONS, ...(model ? ["-m", model] : [])] };
     case "opencode":
-      return { argv: [executable, "run", "--format", "json", ...(model ? ["-m", model] : [])] };
+      // OpenCode has no flag to turn tools off and allows most of them without asking by default.
+      return { argv: [executable, "run", "--format", "json", ...(model ? ["-m", model] : [])], lockdown: opencodeLockdown("deny") };
   }
 };
 
@@ -227,10 +232,13 @@ export const createCliProvider = (config: AppConfig, deps: CliDeps = {}): ChatPr
     return found && isAbsolute(found) ? found : undefined;
   };
   const modelValid = !model || MODEL_PATTERN.test(model);
+  // A tool that can run tools FalaTrace cannot switch off answers only once the user accepted that.
+  const toolsNotAccepted = agentToolsNotAccepted(config, destination.id);
 
   const check = async (signal?: AbortSignal): Promise<ProviderReadiness> => {
     throwIfCancelled(signal);
     if (!modelValid) return { ready: false, problem: "misconfigured", message: CLI_MESSAGES.invalidModel };
+    if (toolsNotAccepted) return { ready: false, problem: "misconfigured", message: COMMON_PROVIDER_MESSAGES.toolsNotAccepted };
     const executable = locate();
     if (!executable) return { ready: false, problem: "missing-binary", message: cliNotFoundMessage(preset) };
     const signedIn = await probeCliSignIn(tool, executable, probe, { timeoutMs: timeouts.checkMs, signal });
@@ -242,6 +250,7 @@ export const createCliProvider = (config: AppConfig, deps: CliDeps = {}): ChatPr
   const run = async (request: ChatRequest): Promise<ChatResult> => {
     validateChatRequest(request);
     if (!modelValid) throw new ProviderError(CLI_MESSAGES.invalidModel, "bad-request");
+    if (toolsNotAccepted) throw new ProviderError(COMMON_PROVIDER_MESSAGES.toolsNotAccepted, "bad-request");
     const executable = locate();
     if (!executable) throw new ProviderError(cliNotFoundMessage(preset), "unavailable");
     const input = flattenConversation(request.system, request.messages);
@@ -267,7 +276,7 @@ export const createCliProvider = (config: AppConfig, deps: CliDeps = {}): ChatPr
       const invocation = buildCliInvocation(tool, executable, model, { cwd, outputFile: join(outputDir, "last.txt") });
       const result = await runCaptured(launch, invocation.argv, {
         cwd,
-        env: childEnvironment(env),
+        env: childEnvironment(env, invocation.lockdown),
         input,
         timeoutMs: timeouts.totalMs,
         signal: request.signal,

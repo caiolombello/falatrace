@@ -26,6 +26,17 @@ export const ASSISTANT_ACP_AGENTS = ["claude", "codex", "gemini", "opencode", "k
 export type AssistantAcpAgent = (typeof ASSISTANT_ACP_AGENTS)[number];
 export const ASSISTANT_CLI_TOOLS = ["claude", "codex", "gemini", "opencode"] as const;
 export type AssistantCliTool = (typeof ASSISTANT_CLI_TOOLS)[number];
+/**
+ * Agents and CLIs whose own tools FalaTrace cannot switch off completely (they can still read
+ * files, run commands or use the user's MCP servers, see docs/ASSISTANT.md). Each one answers
+ * only after the user accepted that in assistant.agentToolsAccepted. Not listed: goose (its
+ * "chat" mode has no tools) and the claude CLI (`--tools ""`, no MCP).
+ */
+export const ASSISTANT_TOOL_AGENTS = [
+  "acp:claude", "acp:codex", "acp:gemini", "acp:opencode", "acp:kiro", "acp:copilot", "acp:cursor", "acp:qwen", "acp:grok", "acp:custom",
+  "cli:codex", "cli:gemini", "cli:opencode"
+] as const;
+export type AssistantToolAgent = (typeof ASSISTANT_TOOL_AGENTS)[number];
 export const REMINDER_MODES = ["auto", "on", "off"] as const;
 export type ReminderMode = (typeof REMINDER_MODES)[number];
 export const LIVE_PROVIDERS = ["whisper-cpp", "openai", "groq"] as const;
@@ -160,6 +171,8 @@ export type AppConfig = {
     cliTool: AssistantCliTool;
     /** Model for provider "cli"; empty uses the tool's default. */
     cliModel: string;
+    /** Agents of ASSISTANT_TOOL_AGENTS the user accepted can run tools on this computer ("acp:codex"…). */
+    agentToolsAccepted: AssistantToolAgent[];
     /** Model for provider "chatgpt"; empty uses the account default. */
     chatgptModel: string;
     /** Upper bound of meeting text sent with one question. */
@@ -358,6 +371,7 @@ export const DEFAULT_CONFIG: AppConfig = {
     acpCommand: "",
     cliTool: "claude",
     cliModel: "",
+    agentToolsAccepted: [],
     chatgptModel: "",
     maxContextCharacters: 60_000,
     embeddingModel: ""

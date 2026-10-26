@@ -4,6 +4,7 @@ import type { AppConfig, AssistantAcpAgent } from "../../config/defaults";
 import { type ChatProvider, type ChatRequest, type ChatResult, type ChatStopReason, ProviderError, type ProviderDestination, type ProviderReadiness } from "../types";
 import {
   abortPromise,
+  agentToolsNotAccepted,
   type ChildProcess,
   childEnvironment,
   COMMON_PROVIDER_MESSAGES,
@@ -13,8 +14,10 @@ import {
   defaultWhich,
   defaultWorkspaceRoot,
   flattenConversation,
+  GEMINI_NO_EXTENSIONS,
   isRecord,
   MAX_ANSWER_CHARACTERS,
+  opencodeLockdown,
   type ProviderTimeouts,
   readBounded,
   readLines,
@@ -28,8 +31,11 @@ import { ShellWordsError, splitShellWords } from "./shell-words";
 
 // Minimal client of the Agent Client Protocol (JSON-RPC 2.0, one JSON object per line over
 // the agent's stdio). FalaTrace advertises no file system or terminal, starts every question
-// in a fresh empty directory, and turns down every tool permission the agent asks for: the
-// agent only reads the text it is given and answers.
+// in a fresh empty directory, and turns down every tool permission the agent asks for.
+// Not advertising a terminal does not stop an agent from running its own built-in tools, and
+// some agents (OpenCode, goose) run them without asking by default. So presets are also started
+// with the agent's own settings that refuse or switch off its tools, and every session is put in
+// the most restrictive mode the agent offers before the question is sent.
 
 export const ACP_PROTOCOL_VERSION = 1;
 /** JSON-RPC code ACP agents use for "authentication required". */
@@ -44,18 +50,24 @@ export type AcpAgentPreset = {
   loginHint: string;
   /** Plan whose limits the agent uses, shown with the destination. */
   subscription?: string;
+  /** The agent's own settings that keep it from running tools; they win over the user's environment. */
+  lockdown?: Readonly<Record<string, string>>;
 };
 
 export const ACP_AGENTS: Record<Exclude<AssistantAcpAgent, "custom">, AcpAgentPreset> = {
   // API key or Console login only: Anthropic does not allow third-party apps to route Claude.ai plan credentials.
   claude: { label: "Claude Agent", command: "claude-agent-acp", args: ["--hide-claude-auth"], loginHint: "rode `claude auth login --console` (conta do Console) ou defina ANTHROPIC_API_KEY no terminal" },
-  codex: { label: "Codex", command: "codex-acp", args: [], loginHint: "rode `codex login` no terminal", subscription: "plano do ChatGPT via Codex" },
-  gemini: { label: "Gemini CLI", command: "gemini", args: ["--acp"], loginHint: "rode `gemini` no terminal e entre com sua conta", subscription: "conta Google via Gemini CLI" },
-  opencode: { label: "OpenCode", command: "opencode", args: ["acp"], loginHint: "rode `opencode auth login` no terminal", subscription: "provedor configurado no OpenCode" },
+  // codex-acp starts in "agent" mode, which runs sandboxed commands without asking.
+  codex: { label: "Codex", command: "codex-acp", args: [], loginHint: "rode `codex login` no terminal", subscription: "plano do ChatGPT via Codex", lockdown: { INITIAL_AGENT_MODE: "read-only" } },
+  // No extensions and none of the user's MCP servers (the allow-list names one that does not exist).
+  gemini: { label: "Gemini CLI", command: "gemini", args: ["--acp", ...GEMINI_NO_EXTENSIONS], loginHint: "rode `gemini` no terminal e entre com sua conta", subscription: "conta Google via Gemini CLI" },
+  // OpenCode allows bash, edits and web fetches without asking by default.
+  opencode: { label: "OpenCode", command: "opencode", args: ["acp"], loginHint: "rode `opencode auth login` no terminal", subscription: "provedor configurado no OpenCode", lockdown: opencodeLockdown("deny") },
   kiro: { label: "Kiro CLI", command: "kiro-cli", args: ["acp"], loginHint: "rode `kiro-cli login` no terminal", subscription: "plano do Kiro" },
   copilot: { label: "GitHub Copilot CLI", command: "copilot", args: ["--acp"], loginHint: "rode `copilot` no terminal e use /login", subscription: "plano do GitHub Copilot" },
   cursor: { label: "Cursor Agent", command: "cursor-agent", args: ["acp"], loginHint: "rode `cursor-agent login` no terminal", subscription: "plano do Cursor" },
-  goose: { label: "goose", command: "goose", args: ["acp"], loginHint: "rode `goose configure` no terminal", subscription: "provedor configurado no goose" },
+  // goose runs tools without asking by default ("auto"); "chat" uses no tools or extensions.
+  goose: { label: "goose", command: "goose", args: ["acp"], loginHint: "rode `goose configure` no terminal", subscription: "provedor configurado no goose", lockdown: { GOOSE_MODE: "chat" } },
   qwen: { label: "Qwen Code", command: "qwen", args: ["--acp"], loginHint: "rode `qwen` no terminal e entre com sua conta", subscription: "plano do Qwen Code" },
   grok: { label: "Grok Build", command: "grok", args: ["agent", "stdio"], loginHint: "rode `grok login` no terminal", subscription: "plano do Grok via Grok Build" }
 };
@@ -132,6 +144,45 @@ export const choosePermissionOutcome = (params: unknown, cancelled: boolean): { 
     if (isRecord(option)) return { outcome: { outcome: "selected", optionId: option.optionId as string } };
   }
   return { outcome: { outcome: "cancelled" } };
+};
+
+/**
+ * Session modes that keep an agent from changing anything, most restrictive first: read-only
+ * (codex-acp), ask (Cursor), chat (goose), plan (Claude Agent, Gemini CLI, Qwen Code, OpenCode).
+ */
+export const RESTRICTIVE_MODE_IDS: readonly string[] = ["read-only", "ask", "chat", "plan"];
+
+/** Values of a select config option, flat or in groups. */
+const selectValues = (options: unknown): string[] => {
+  if (!Array.isArray(options)) return [];
+  return options.slice(0, 200).flatMap((entry) => {
+    if (!isRecord(entry)) return [];
+    if (Array.isArray(entry.options)) return selectValues(entry.options);
+    return typeof entry.value === "string" ? [entry.value] : [];
+  });
+};
+
+/**
+ * The request that switches a new session (the session/new result) to the most restrictive mode
+ * it offers, through its "mode" config option or else the older session/set_mode; undefined
+ * when it is already in that mode or offers none of RESTRICTIVE_MODE_IDS.
+ */
+export const restrictiveModeRequest = (session: Record<string, unknown>, sessionId: string): { method: string; params: Record<string, unknown> } | undefined => {
+  const configOptions = Array.isArray(session.configOptions) ? session.configOptions.slice(0, 100) : [];
+  const modeOption = configOptions.find((option) => isRecord(option) && option.category === "mode" && option.type === "select" && typeof option.id === "string");
+  if (isRecord(modeOption)) {
+    const values = selectValues(modeOption.options);
+    const target = RESTRICTIVE_MODE_IDS.find((id) => values.includes(id));
+    if (!target || modeOption.currentValue === target) return undefined;
+    return { method: "session/set_config_option", params: { sessionId, configId: modeOption.id, value: target } };
+  }
+  const modes = isRecord(session.modes) ? session.modes : undefined;
+  const available = modes && Array.isArray(modes.availableModes)
+    ? modes.availableModes.slice(0, 200).flatMap((mode) => (isRecord(mode) && typeof mode.id === "string" ? [mode.id] : []))
+    : [];
+  const target = RESTRICTIVE_MODE_IDS.find((id) => available.includes(id));
+  if (!target || modes?.currentModeId === target) return undefined;
+  return { method: "session/set_mode", params: { sessionId, modeId: target } };
 };
 
 class RpcError extends Error {
@@ -313,9 +364,13 @@ export const createAcpProvider = (config: AppConfig, deps: AcpDeps = {}): ChatPr
     return found && isAbsolute(found) ? found : undefined;
   };
 
+  // An agent that can run tools FalaTrace cannot switch off answers only once the user accepted that.
+  const toolsNotAccepted = agentToolsNotAccepted(config, destination.id);
+
   const check = async (signal?: AbortSignal): Promise<ProviderReadiness> => {
     throwIfCancelled(signal);
     if ("error" in resolved) return { ready: false, problem: "misconfigured", message: resolved.error };
+    if (toolsNotAccepted) return { ready: false, problem: "misconfigured", message: COMMON_PROVIDER_MESSAGES.toolsNotAccepted };
     if (!locate()) return { ready: false, problem: "missing-binary", message: notFound() };
     return { ready: true };
   };
@@ -323,6 +378,7 @@ export const createAcpProvider = (config: AppConfig, deps: AcpDeps = {}): ChatPr
   const run = async (request: ChatRequest): Promise<ChatResult> => {
     validateChatRequest(request);
     if ("error" in resolved) throw new ProviderError(resolved.error, "bad-request");
+    if (toolsNotAccepted) throw new ProviderError(COMMON_PROVIDER_MESSAGES.toolsNotAccepted, "bad-request");
     throwIfCancelled(request.signal);
     const executable = locate();
     if (!executable) throw new ProviderError(notFound(), "unavailable");
@@ -365,7 +421,7 @@ export const createAcpProvider = (config: AppConfig, deps: AcpDeps = {}): ChatPr
     };
     try {
       try {
-        child = spawn([executable, ...resolved.argv.slice(1)], { cwd: workspace.path, env: childEnvironment(env) });
+        child = spawn([executable, ...resolved.argv.slice(1)], { cwd: workspace.path, env: childEnvironment(env, preset?.lockdown) });
       } catch {
         throw new ProviderError(notFound(), "unavailable");
       }
@@ -421,6 +477,10 @@ export const createAcpProvider = (config: AppConfig, deps: AcpDeps = {}): ChatPr
         const session = await raceSetup(activeConnection.request("session/new", { cwd: workspace.path, mcpServers: [] }).catch((error) => { throw rpcFailure(error); }));
         if (!isRecord(session) || typeof session.sessionId !== "string" || !session.sessionId || session.sessionId.length > 512) throw new ProviderError(acpProtocolMessage(label), "protocol");
         sessionId = session.sessionId;
+        // A mode the user picked for their own work (auto, full access…) must not carry over to
+        // meeting text; an agent that refuses the restrictive mode it offered gets no question.
+        const restrict = restrictiveModeRequest(session, sessionId);
+        if (restrict) await raceSetup(activeConnection.request(restrict.method, restrict.params).catch((error) => { throw rpcFailure(error); }));
       } finally {
         setup.dispose();
       }

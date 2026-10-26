@@ -1,5 +1,5 @@
-import { promises as fs } from "node:fs";
-import { join } from "node:path";
+import { promises as fs, mkdtempSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 
 // Fake subscription CLIs (claude, codex, gemini, opencode) as small POSIX shell scripts in a
 // temporary PATH. Each run records its argv (NUL-separated), working directory, directory
@@ -101,6 +101,22 @@ export const installFakeClis = async (dir: string, names: Array<keyof typeof FAK
   await fs.mkdir(bin, { recursive: true });
   for (const name of names) await fs.writeFile(join(bin, name), FAKE_CLI_SCRIPTS[name], { mode: 0o755 });
   return bin;
+};
+
+/**
+ * A new PATH directory whose tools run the fakes in `bin` with `vars` (FAKE_CLI_MODE…) set.
+ * Agents and CLIs get a minimal environment, so a fake's own settings travel in its wrapper,
+ * never through the environment the provider is given. Tools in `bin` that are not executable
+ * are left out, as they would be on a real PATH.
+ */
+export const wrapFakeTools = (bin: string, vars: Record<string, string>): string => {
+  const wrapped = mkdtempSync(join(dirname(bin), "path-"));
+  const exports = Object.entries(vars).map(([name, value]) => `export ${name}='${value.replaceAll("'", "'\\''")}'\n`).join("");
+  for (const name of readdirSync(bin)) {
+    if ((statSync(join(bin, name)).mode & 0o111) === 0) continue;
+    writeFileSync(join(wrapped, name), `#!/bin/sh\n${exports}exec '${join(bin, name)}' "$@"\n`, { mode: 0o755 });
+  }
+  return wrapped;
 };
 
 /** What the last run of a fake CLI recorded. */

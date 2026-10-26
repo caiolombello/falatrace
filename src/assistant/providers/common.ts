@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
+import { type AppConfig, ASSISTANT_TOOL_AGENTS } from "../../config/defaults";
 import type { SecretName } from "../../config/secrets";
 import { type ChatMessage, type ChatRequest, ProviderError } from "../types";
 
@@ -15,7 +16,8 @@ export const COMMON_PROVIDER_MESSAGES = {
   lastNotUser: "A última mensagem enviada ao assistente precisa ser a pergunta.",
   requestTooLarge: "A pergunta com o contexto ficou grande demais para enviar. Reduza o contexto e tente de novo.",
   malformedStream: "O provedor devolveu uma resposta em formato inesperado.",
-  answerTooLong: "A resposta do assistente passou do tamanho máximo e foi interrompida."
+  answerTooLong: "A resposta do assistente passou do tamanho máximo e foi interrompida.",
+  toolsNotAccepted: "Este agente pode rodar ferramentas no seu computador (ler arquivos, executar comandos), e o FalaTrace não consegue desligá-las. Para usá-lo, confirme isso em Configurações › Perguntar e receitas."
 } as const;
 
 export type ReadSecretFn = (name: SecretName) => Promise<string | undefined>;
@@ -24,6 +26,13 @@ export type ReadSecretFn = (name: SecretName) => Promise<string | undefined>;
 export const MAX_REQUEST_MESSAGES = 400;
 export const MAX_REQUEST_CHARACTERS = 2_000_000;
 export const MAX_ANSWER_CHARACTERS = 1_000_000;
+
+/**
+ * Whether `id` ("acp:codex", "cli:gemini"…) is an agent whose own tools FalaTrace cannot switch
+ * off and the user has not accepted that in Settings: such an agent never gets a question.
+ */
+export const agentToolsNotAccepted = (config: AppConfig, id: string): boolean =>
+  (ASSISTANT_TOOL_AGENTS as readonly string[]).includes(id) && !(config.assistant.agentToolsAccepted as readonly string[]).includes(id);
 
 /** Checks the request shape before anything leaves the computer. */
 export const validateChatRequest = (request: ChatRequest): void => {
@@ -408,14 +417,79 @@ export const defaultWhich = (env: NodeJS.ProcessEnv = process.env): WhichFn => (
 
 /**
  * FalaTrace's own credentials that no agent or CLI has a use for. A systemd unit can carry
- * them in its environment; they are dropped before a third-party program starts. Provider
- * keys (OPENAI_API_KEY, ANTHROPIC_API_KEY…) stay: agents read them as the user's own login.
+ * them in its environment; they are dropped before a third-party program starts, even where a
+ * prefix below would keep them. Provider keys (OPENAI_API_KEY, ANTHROPIC_API_KEY…) stay: agents
+ * read them as the user's own login.
  */
 export const INTERNAL_SECRET_NAMES: readonly SecretName[] = ["RECORDING_CLI_OBS_PASSWORD", "GOOGLE_CLIENT_SECRET", "NOTION_TOKEN", "SLACK_WEBHOOK_URL", "CUSTOM_API_KEY"];
 
-/** Environment for agents and CLIs: the user's own, without FalaTrace's internal secrets or colour codes. */
-export const childEnvironment = (env: NodeJS.ProcessEnv): Record<string, string | undefined> => {
-  const copy: Record<string, string | undefined> = { ...env, NO_COLOR: "1" };
-  for (const name of INTERNAL_SECRET_NAMES) delete copy[name];
-  return copy;
+/**
+ * The only variables an agent or CLI gets from the user's environment: where it finds programs,
+ * its home, sign-in and settings (XDG folders, the session bus for a keyring login), locale,
+ * proxies and certificates.
+ */
+export const CHILD_ENVIRONMENT_NAMES: readonly string[] = [
+  "PATH", "HOME", "USER", "LOGNAME", "SHELL", "TERM", "LANG", "LANGUAGE", "TZ", "TMPDIR",
+  "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME", "XDG_RUNTIME_DIR", "XDG_CONFIG_DIRS", "XDG_DATA_DIRS",
+  "DBUS_SESSION_BUS_ADDRESS",
+  "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "no_proxy", "all_proxy",
+  "SSL_CERT_FILE", "SSL_CERT_DIR", "NODE_EXTRA_CA_CERTS", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE",
+  "GH_TOKEN", "GITHUB_TOKEN"
+];
+
+/**
+ * Prefixes of the agents' own settings and of the model providers they sign in with (API keys,
+ * Bedrock or Vertex accounts). Locale categories (LC_*) too.
+ */
+export const CHILD_ENVIRONMENT_PREFIXES: readonly string[] = [
+  "LC_", "ANTHROPIC_", "CLAUDE_", "OPENAI_", "CODEX_", "GEMINI_", "GOOGLE_", "VERTEX_", "CLOUD_ML_", "OPENCODE_", "OPENROUTER_",
+  "GOOSE_", "KIRO_", "COPILOT_", "CURSOR_", "QWEN_", "DASHSCOPE_", "XAI_", "GROK_", "GROQ_", "MISTRAL_", "DEEPSEEK_", "TOGETHER_",
+  "OLLAMA_", "AWS_", "AZURE_"
+];
+
+/**
+ * A minimal environment for agents and CLIs: only CHILD_ENVIRONMENT_NAMES and
+ * CHILD_ENVIRONMENT_PREFIXES from the user's own, never FalaTrace's internal secrets, with colour
+ * codes off. Anything else (ssh/gpg agent sockets, display, other programs' tokens) stays out.
+ * `lockdown` adds the settings that keep a tool from running its own tools; they win over the
+ * same names in the user's environment.
+ */
+export const childEnvironment = (env: NodeJS.ProcessEnv, lockdown: Readonly<Record<string, string>> = {}): Record<string, string | undefined> => {
+  const kept = new Set(CHILD_ENVIRONMENT_NAMES);
+  const internal = new Set<string>(INTERNAL_SECRET_NAMES);
+  const copy: Record<string, string | undefined> = {};
+  for (const [name, value] of Object.entries(env)) {
+    if (value === undefined || internal.has(name)) continue;
+    if (kept.has(name) || CHILD_ENVIRONMENT_PREFIXES.some((prefix) => name.startsWith(prefix))) copy[name] = value;
+  }
+  return { ...copy, NO_COLOR: "1", ...lockdown };
+};
+
+/**
+ * Gemini CLI arguments that load none of the user's extensions and none of their MCP servers:
+ * "-e none" turns every extension off, and the MCP allow-list names a server no one has.
+ */
+export const GEMINI_NO_EXTENSIONS: readonly string[] = ["-e", "none", "--allowed-mcp-server-names", "falatrace-no-mcp-server"];
+
+/** OpenCode's built-in tools (opencode.ai/docs/permissions). By default most of them run without asking. */
+const OPENCODE_TOOLS = ["read", "edit", "glob", "grep", "list", "bash", "task", "todowrite", "skill", "lsp", "question", "webfetch", "websearch", "external_directory", "doom_loop"] as const;
+
+/**
+ * OpenCode permission rules for its inline configuration (OPENCODE_CONFIG_CONTENT). OpenCode
+ * merges them over the user's own rules and the last matching rule wins, so besides "*" each
+ * built-in tool is named: a rule of the user's for that tool is replaced, never left after ours.
+ * `deny`: every tool is refused (questions and recipes). `ask`: the user, who is at the terminal,
+ * approves each command, edit, web access or file outside the folder; reading the folder is free.
+ */
+export const opencodePermissions = (policy: "deny" | "ask"): Record<string, "allow" | "ask" | "deny"> => {
+  const rules: Record<string, "allow" | "ask" | "deny"> = { "*": policy };
+  const readOnly = new Set<string>(["read", "glob", "grep", "list", "lsp", "todowrite", "question"]);
+  for (const tool of OPENCODE_TOOLS) rules[tool] = policy === "ask" && readOnly.has(tool) ? "allow" : policy;
+  return rules;
+};
+
+/** Environment that applies `opencodePermissions(policy)` to an OpenCode process. */
+export const opencodeLockdown = (policy: "deny" | "ask"): Record<string, string> => {
+  const permission = opencodePermissions(policy);
+  return { OPENCODE_CONFIG_CONTENT: JSON.stringify({ permission }), OPENCODE_PERMISSION: JSON.stringify(permission) };
 };

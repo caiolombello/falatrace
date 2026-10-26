@@ -52,7 +52,7 @@ values = {'callDetection.enabled': not first, 'callDetection.mode':'record', 'ca
           # Sections 10–15 (notes, assistant, reminders, live, sharing, privacy).
           'notes.enabled':True,'summary.useNotes':True,'summary.language':'auto','summary.template':'auto','summary.templateDetection':'ai','processing.fastPath':False,
           'assistant.provider':'acp','assistant.localModel':'qwen3.5:9b','assistant.apiPreset':'openrouter','assistant.apiBaseUrl':'','assistant.apiModel':'','assistant.acpAgent':'codex',
-          'assistant.acpCommand':'','assistant.cliTool':'claude','assistant.cliModel':'','assistant.chatgptModel':'','assistant.maxContextCharacters':60000,'assistant.embeddingModel':'',
+          'assistant.acpCommand':'','assistant.cliTool':'claude','assistant.cliModel':'','assistant.agentToolsAccepted':[],'assistant.chatgptModel':'','assistant.maxContextCharacters':60000,'assistant.embeddingModel':'',
           'reminders.mode':'auto','reminders.leadMinutes':2,'reminders.brief':True,'live.enabled':False,'live.provider':'whisper-cpp','live.chunkSeconds':15,
           'live.whisperModelPath':'/home/synthetic/models/ggml-base.bin','live.whisperThreads':2,'live.openaiModel':'gpt-transcribe','live.groqModel':'whisper-large-v3-turbo',
           'media.retention':'keep','media.graceDays':1,'destinations.obsidianVault':'','destinations.obsidianFolder':'FalaTrace','destinations.notionParentId':'','destinations.aiApp':'chatgpt-web',
@@ -370,6 +370,13 @@ MODES = {
                           'check("detection marks the installed agent", settingsDialog.assistantPage.agentLabel({value:"codex",label:"Codex"})==="Codex · encontrado" && settingsDialog.assistantPage.agentLabel({value:"claude",label:"Claude Agent"})==="Claude Agent · não instalado"); '
                           'const signIn = findObject(settingsDialog.contentItem, "chatgptSignIn"); check("the ChatGPT account shows as connected", settingsDialog.assistantPage.chatgpt.state==="signed-in" && signIn.text==="Sair"); '
                           'check("each choice says what leaves this computer and what it costs", findObject(settingsDialog.contentItem, "assistantApi").detail.indexOf("Cobrado por uso")>=0 && findObject(settingsDialog.contentItem, "assistantLocal").detail.indexOf("Nada sai daqui")>=0); '
+                          'const acpTools = findObject(settingsDialog.contentItem, "assistantAcpTools"), acpOk = findObject(settingsDialog.contentItem, "assistantAcpToolsOk"); '
+                          'check("an agent that can run tools says so and asks for an OK, not given yet", !!acpTools && acpTools.visible && !!acpOk && acpOk.visible && !acpOk.checked && acpOk.text.indexOf("pode rodar ferramentas no meu computador")>=0); '
+                          'acpOk.click(); check("the OK is saved for that agent only", acpOk.checked && JSON.stringify(settingsChanges()["assistant.agentToolsAccepted"])===JSON.stringify(["acp:codex"])); '
+                          'setSettingsField("assistant.acpAgent","opencode"); check("another agent asks again", acpTools.visible && !acpOk.checked); '
+                          'setSettingsField("assistant.acpAgent","goose"); check("goose, with no tools in chat mode, asks nothing", !acpTools.visible); '
+                          'setSettingsField("assistant.provider","cli"); setSettingsField("assistant.cliTool","gemini"); const cliOk = findObject(settingsDialog.contentItem, "assistantCliToolsOk"); check("a command-line tool with tools asks too", findObject(settingsDialog.contentItem, "assistantCliTools").visible && !!cliOk && !cliOk.checked); '
+                          'setSettingsField("assistant.cliTool","claude"); check("claude, run with no tools, asks nothing", !findObject(settingsDialog.contentItem, "assistantCliTools").visible); '
                           'setSettingsField("assistant.provider","api"); setSettingsField("assistant.apiPreset","anthropic"); const key = findObject(findObject(settingsDialog.contentItem, "settingsAssistant"), "secretInput_ANTHROPIC_API_KEY"); check("an API shows its key inline", !!key && key.visible); '
                           'recipeEditor.openNew()',
                           'check("the recipe editor opens with Cancel focused", recipeEditor.visible && findObject(recipeEditor.footer, "recipeCancel").activeFocus && recipeEditor.problem!==""); '

@@ -1,6 +1,7 @@
 import { constants, promises as fs } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { delimiter, isAbsolute, join } from "node:path";
+import { opencodeLockdown } from "../assistant/providers/common";
 import { AI_APP_TARGETS, type AiAppTarget } from "../config/defaults";
 import { SHARE_MESSAGES, SHARE_WARNINGS, ShareError, assertRenderedShare, sha256Hex, type RenderedShare, type ShareLanguage } from "../share/render";
 import {
@@ -39,11 +40,16 @@ const MAX_URL_BYTES = 100_000;
 type WebTarget = keyof typeof AI_WEB_URLS;
 type CliTarget = "claude-cli" | "codex-cli" | "gemini-cli" | "opencode-cli";
 
-const CLI_TOOLS: Record<CliTarget, { binary: string; args: (prompt: string) => string[] }> = {
+/**
+ * `lockdown`: settings the tool starts with, through env(1) in the terminal command. OpenCode
+ * runs commands, edits and web fetches without asking by default; with these it asks first,
+ * like the other tools do, while reading the handoff folder stays free.
+ */
+const CLI_TOOLS: Record<CliTarget, { binary: string; args: (prompt: string) => string[]; lockdown?: Record<string, string> }> = {
   "claude-cli": { binary: "claude", args: (prompt) => [prompt] },
   "codex-cli": { binary: "codex", args: (prompt) => [prompt] },
   "gemini-cli": { binary: "gemini", args: (prompt) => ["--prompt-interactive", prompt] },
-  "opencode-cli": { binary: "opencode", args: (prompt) => ["--prompt", prompt] }
+  "opencode-cli": { binary: "opencode", args: (prompt) => ["--prompt", prompt], lockdown: opencodeLockdown("ask") }
 };
 
 export const isAiAppTarget = (value: unknown): value is AiAppTarget =>
@@ -72,7 +78,8 @@ export const buildCliHandoffCommand = (target: AiAppTarget, fileName: string, la
   if (!isCliTarget(target)) throw new ShareError(SHARE_MESSAGES.aiAppInvalid, "invalid");
   if (!/^[A-Za-z0-9._-]{1,80}$/.test(fileName)) throw new ShareError(SHARE_MESSAGES.handoffFailed, "io");
   const tool = CLI_TOOLS[target];
-  return [tool.binary, ...tool.args(handoffPrompt(fileName, language))];
+  const settings = Object.entries(tool.lockdown ?? {}).map(([name, value]) => `${name}=${value}`);
+  return [...(settings.length > 0 ? ["env", ...settings] : []), tool.binary, ...tool.args(handoffPrompt(fileName, language))];
 };
 
 /** Absolute path of an executable found on PATH, or undefined. */

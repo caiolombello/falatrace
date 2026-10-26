@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
+import { opencodeLockdown } from "../../assistant/providers/common";
 import { buildTerminalLaunchArgs } from "../../tray/runtime";
 import { SHARE_MESSAGES, SHARE_WARNINGS, renderShare, renderTextShare, type ShareNote } from "../../share/render";
 import {
@@ -185,7 +186,17 @@ describe("command-line tools", () => {
   test("each tool gets its own interactive command", () => {
     expect(buildCliHandoffCommand("codex-cli", "f.md")).toEqual(["codex", handoffPrompt("f.md")]);
     expect(buildCliHandoffCommand("gemini-cli", "f.md")).toEqual(["gemini", "--prompt-interactive", handoffPrompt("f.md")]);
-    expect(buildCliHandoffCommand("opencode-cli", "f.md", "en")).toEqual(["opencode", "--prompt", "Read the file f.md (context from a meeting recorded in FalaTrace) and help me with it."]);
+    // OpenCode runs commands and edits without asking by default: it starts with its permissions set to ask first.
+    const ask = opencodeLockdown("ask");
+    expect(buildCliHandoffCommand("opencode-cli", "f.md", "en")).toEqual([
+      "env",
+      `OPENCODE_CONFIG_CONTENT=${ask.OPENCODE_CONFIG_CONTENT}`,
+      `OPENCODE_PERMISSION=${ask.OPENCODE_PERMISSION}`,
+      "opencode",
+      "--prompt",
+      "Read the file f.md (context from a meeting recorded in FalaTrace) and help me with it."
+    ]);
+    expect(JSON.parse(ask.OPENCODE_PERMISSION as string)).toMatchObject({ "*": "ask", bash: "ask", edit: "ask", webfetch: "ask", external_directory: "ask", read: "allow" });
     expect(() => buildCliHandoffCommand("chatgpt-web", "f.md")).toThrow(SHARE_MESSAGES.aiAppInvalid);
     expect(() => buildCliHandoffCommand("claude-cli", "../x.md")).toThrow(SHARE_MESSAGES.handoffFailed);
     expect(handoffPrompt("f.md", "es")).toBe("Lee el archivo f.md (contexto de una reunión registrada en FalaTrace) y ayúdame con él.");
@@ -206,7 +217,8 @@ describe("command-line tools", () => {
     const receipt = await deliverAiApp({ share: share(), target: "opencode-cli", clipboard: "system", open: false }, cliDeps());
     expect(receipt.result).toBe("saved");
     expect(launched).toEqual([]);
-    expect(receipt.command?.[0]).toBe("opencode");
+    expect(receipt.command?.slice(0, 2)).toEqual(["env", `OPENCODE_CONFIG_CONTENT=${opencodeLockdown("ask").OPENCODE_CONFIG_CONTENT}`]);
+    expect(receipt.command?.[3]).toBe("opencode");
   });
 
   test("a terminal that cannot start is a clear error", async () => {

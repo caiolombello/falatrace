@@ -17,7 +17,7 @@ import {
   TRANSCRIPTION_PROMPT_MAX_LENGTH,
   type AppConfig
 } from "./defaults";
-import { getConfigPath, getConfigPathCandidates, mergeConfig, validateConfig } from "./load";
+import { getConfigPath, getConfigPathCandidates, isToolAgentList, mergeConfig, validateConfig } from "./load";
 import { ollamaLocalByName } from "../summary/ollama-locality";
 import { commitConfigChange, configBackupPattern, readConfigRevision } from "./onboarding";
 import { describeCredentials, type SecretFiles } from "./secrets";
@@ -164,6 +164,7 @@ export const SETTINGS_FIELDS: Record<string, FieldRule> = {
   "assistant.acpCommand": emptyOr(text(1000)),
   "assistant.cliTool": oneOf(...ASSISTANT_CLI_TOOLS),
   "assistant.cliModel": emptyOr(text(200)),
+  "assistant.agentToolsAccepted": isToolAgentList,
   "assistant.chatgptModel": emptyOr(text(200)),
   "assistant.maxContextCharacters": intBetween(8_000, 400_000),
   "assistant.embeddingModel": emptyOr(text(200)),
