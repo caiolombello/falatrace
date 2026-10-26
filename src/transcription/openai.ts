@@ -1,6 +1,6 @@
 import { assertPaidAudioSignal } from "./audio-preflight";
 import fs from "node:fs";
-import OpenAI from "openai";
+import type OpenAI from "openai";
 import {
   TRANSCRIPTION_PROMPT_MAX_LENGTH,
   type AppConfig
@@ -214,7 +214,9 @@ export const transcribeWithOpenAI = async (
   if (!apiKey) {
     throw new Error("OPENAI_API_KEY is not configured");
   }
-  const client = new OpenAI({ apiKey, maxRetries: 0 });
+  // The SDK loads with the first OpenAI transcription, so the Studio bridge and the CLI start without it.
+  const { default: OpenAIClient } = await import("openai");
+  const client = new OpenAIClient({ apiKey, maxRetries: 0 });
   const audioPath = await extractAudioMp3(sourcePath, workDir, signal);
   await assertPaidAudioSignal(audioPath, signal);
   const duration = await probeMedia(audioPath, signal);

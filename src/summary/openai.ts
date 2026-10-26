@@ -1,4 +1,3 @@
-import OpenAI from "openai";
 import type { AppConfig } from "../config/defaults";
 import {
   validateSummary,
@@ -34,6 +33,8 @@ export const summarizeWithOpenAI = async (
   if (!apiKey) {
     throw new Error("OPENAI_API_KEY is not configured");
   }
+  // The SDK loads with the first OpenAI summary, so the Studio bridge and the CLI start without it.
+  const { default: OpenAI } = await import("openai");
   const client = new OpenAI({ apiKey, maxRetries: 0, timeout: 120_000 });
   const response = await client.chat.completions.create({
     model,

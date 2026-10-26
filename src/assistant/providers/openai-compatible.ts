@@ -1,4 +1,3 @@
-import OpenAI from "openai";
 import type { ChatCompletionCreateParamsStreaming, ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import type { AppConfig, AssistantApiPreset } from "../../config/defaults";
 import { readSecret, type SecretName } from "../../config/secrets";
@@ -96,9 +95,21 @@ const finishReason = (value: unknown): ChatStopReason | undefined => {
   return undefined;
 };
 
-/** Typed SDK errors to Portuguese messages; specific classes first (connection errors extend APIError). */
-export const mapOpenAiError = (error: unknown): ProviderError => {
+/** The SDK class; loaded with the first request so importing this provider (Studio bridge, CLI) stays fast. */
+type OpenAiSdk = typeof import("openai").default;
+let openAiSdk: Promise<OpenAiSdk> | undefined;
+const loadOpenAiSdk = (): Promise<OpenAiSdk> => {
+  openAiSdk ??= import("openai").then((module) => module.default);
+  return openAiSdk;
+};
+
+/**
+ * Typed SDK errors to Portuguese messages; specific classes first (connection errors extend APIError).
+ * `OpenAI` is the loaded SDK; without it (it failed to load) nothing can be an SDK error.
+ */
+export const mapOpenAiError = (error: unknown, OpenAI?: OpenAiSdk): ProviderError => {
   if (error instanceof ProviderError) return error;
+  if (!OpenAI) return new ProviderError(API_MESSAGES.unavailable, "unavailable");
   if (error instanceof OpenAI.APIUserAbortError) return new ProviderError(COMMON_PROVIDER_MESSAGES.cancelled, "cancelled");
   if (error instanceof OpenAI.APIConnectionTimeoutError) return new ProviderError(COMMON_PROVIDER_MESSAGES.timeout, "timeout");
   if (error instanceof OpenAI.APIConnectionError) return new ProviderError(API_MESSAGES.unreachable, "unavailable");
@@ -160,7 +171,9 @@ export const createOpenAiCompatibleProvider = (config: AppConfig, deps: OpenAiCo
     const apiKey = await resolveKey();
     if (!apiKey) throw new ProviderError(missingKeyMessage(preset.keyName), "auth");
     const deadline = new Deadline(request.signal, { totalMs: timeouts.totalMs, idleMs: timeouts.idleMs });
+    let OpenAI: OpenAiSdk | undefined;
     try {
+      OpenAI = await loadOpenAiSdk();
       // Explicit nulls keep OPENAI_ORG_ID/PROJECT/BASE_URL from the environment out of other providers' requests.
       // Logging off: OPENAI_LOG=debug would print the request (meeting text) to stdout, where the Studio bridge talks.
       const client = new OpenAI({
@@ -211,7 +224,7 @@ export const createOpenAiCompatibleProvider = (config: AppConfig, deps: OpenAiCo
       if (!stopReason && !text) throw new ProviderError(COMMON_PROVIDER_MESSAGES.malformedStream, "protocol");
       return { text, stopReason: stopReason ?? "end", ...(usage ? { usage } : {}) };
     } catch (error) {
-      throw deadline.failure() ?? mapOpenAiError(error);
+      throw deadline.failure() ?? mapOpenAiError(error, OpenAI);
     } finally {
       deadline.dispose();
     }

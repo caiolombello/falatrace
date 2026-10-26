@@ -1,6 +1,5 @@
 // Notepad and live transcript operations of the Studio bridge (DESIGN-STUDIO §4 "Notes", "Live transcript").
 import { formatNoteOffset, NOTES_KNOWN_ERRORS, NotesStore, findNotesForJob, notesCaptureReference, notesText, type MeetingNotes } from "../notes";
-import { setLiveForSession } from "../live";
 import { LIVE_KNOWN_ERRORS, LIVE_PAGE_MAX, readLiveTranscript } from "../live/store";
 import { JobStore } from "../jobs/store";
 import { RecordingSessionStore } from "../recording/session";
@@ -110,6 +109,8 @@ const setLive = async (call: BridgeCall, context: BridgeContext) => {
   const external = !LOCAL_LIVE_PROVIDERS.includes(config.live.provider);
   // The audio of the meeting goes to the provider while the capture runs: the person agrees first.
   if (enabled && external && call.payload.consent !== true) throw new Error(NOTES_BRIDGE_MESSAGES.liveConsent);
+  // The live transcript (worker, audio tap, providers) loads on first use; the bridge starts without it.
+  const { setLiveForSession } = await import("../live");
   const result = await setLiveForSession(call.key!.toLowerCase(), enabled, {
     config, ...context.deps.live, ...(context.deps.sessions ? { sessions: context.deps.sessions } : {})
   });

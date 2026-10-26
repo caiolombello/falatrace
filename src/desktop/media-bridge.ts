@@ -2,8 +2,9 @@
 // re-plans and hashes again, so both are start + poll: media-plan and media-remove return a request
 // id at once and media-status reports the outcome.
 import { randomUUID } from "node:crypto";
-import { MEDIA_RETENTION_KNOWN_ERRORS, MEDIA_RETENTION_MESSAGES, planMediaRemoval, removeMediaNow, type MediaRemovalPlan, type RetainedMode } from "../media-retention";
 import type { MediaRetentionResult } from "../media-retention/apply";
+import type { MediaRemovalPlan } from "../media-retention/manual";
+import { MEDIA_RETENTION_KNOWN_ERRORS, MEDIA_RETENTION_MESSAGES, type RetainedMode } from "../media-retention/store";
 import { type BridgeCall, type BridgeFamily, invalid, matches, oneOf, pathKey, SHA256, UUID } from "./bridge-family";
 import type { BridgeContext } from "./bridge-context";
 
@@ -95,6 +96,8 @@ export const mediaBridge: BridgeFamily<BridgeContext> = {
     context.library.invalidate();
     const { config, entry } = await context.library.find(call.key!);
     const deps = { ...context.deps.retention, config };
+    // Planning and removing (hashing, rewriting the media) load on first use; the bridge starts without them.
+    const { planMediaRemoval, removeMediaNow } = await import("../media-retention/manual");
     if (call.op === "media-plan") return run("plan", entry.sourcePath, async () => ({ plan: await planMediaRemoval(entry, deps) }), MEDIA_BRIDGE_MESSAGES.planFailed);
     if (call.op === "media-remove") {
       return run("remove", entry.sourcePath, async () => {

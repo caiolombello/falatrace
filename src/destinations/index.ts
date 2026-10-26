@@ -4,6 +4,7 @@ import { readSecret } from "../config/secrets";
 import type { AiAppTarget, AppConfig } from "../config/defaults";
 import { SHARE_MESSAGES, ShareError, assertRenderedShare, type RenderedShare } from "../share/render";
 import { deliverAiApp, findOnPath, isAiAppTarget, type AiAppDeps } from "./ai-app";
+import { EXTERNAL_DESTINATIONS } from "./consent";
 import { deliverClipboard, type ClipboardDeps } from "./clipboard";
 import { DeliveryLog, recordDelivery, type DeliveryReceipt, type DestinationKind } from "./log";
 import { deliverNotion, parseNotionPageId, type NotionDeps } from "./notion";
@@ -11,23 +12,12 @@ import { deliverObsidian, obsidianFolderParts, type ObsidianDeps } from "./obsid
 import { deliverSlack, redactSlackWebhook, validateSlackWebhookUrl, type SlackDeps } from "./slack";
 
 export * from "./ai-app";
+export * from "./consent";
 export * from "./clipboard";
 export * from "./log";
 export * from "./notion";
 export * from "./obsidian";
 export * from "./slack";
-
-/** Product names of the AI app targets (not translated). */
-export const AI_APP_LABELS: Readonly<Record<AiAppTarget, string>> = Object.freeze({
-  "chatgpt-web": "ChatGPT (web)",
-  "claude-web": "Claude (web)",
-  "claude-desktop": "Claude Desktop",
-  "gemini-web": "Gemini (web)",
-  "claude-cli": "Claude Code",
-  "codex-cli": "Codex CLI",
-  "gemini-cli": "Gemini CLI",
-  "opencode-cli": "OpenCode"
-});
 
 const CLI_BINARIES: Partial<Record<AiAppTarget, string>> = { "claude-cli": "claude", "codex-cli": "codex", "gemini-cli": "gemini", "opencode-cli": "opencode" };
 
@@ -38,15 +28,6 @@ export type ShareDestinationRequest =
   | { destination: "clipboard"; mode: "return" | "system" }
   | { destination: "ai-app"; target?: AiAppTarget; clipboard: "return" | "system"; open?: boolean };
 
-/** Destinations whose content leaves this computer through FalaTrace itself. */
-export const EXTERNAL_DESTINATIONS: readonly DestinationKind[] = Object.freeze(["notion", "slack"]);
-
-/**
- * Destinations sent only with the person's consent: Notion and Slack, where FalaTrace sends the
- * content, and the AI app, whose command-line tools read the note and send it to their provider at
- * once. The CLI (`--yes`) and the Studio (consent dialog) use the same list.
- */
-export const SHARE_CONSENT_DESTINATIONS: readonly DestinationKind[] = Object.freeze([...EXTERNAL_DESTINATIONS, "ai-app"]);
 
 export type DeliverShareInput = {
   share: RenderedShare;

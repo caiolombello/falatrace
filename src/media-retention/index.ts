@@ -19,9 +19,6 @@ export * from "./binding";
 export * from "./analysis";
 export * from "./manual";
 
-/** Fixed Portuguese messages this module can show (bridge whitelist and i18n keys). */
-export const MEDIA_RETENTION_KNOWN_ERRORS: readonly string[] = Object.freeze(Object.values(MEDIA_RETENTION_MESSAGES));
-
 export type MediaRetentionPassItem = {
   sourcePath: string;
   outcome: "removed" | "finalized" | "waiting" | "blocked" | "deferred" | "failed";

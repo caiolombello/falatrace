@@ -1,6 +1,6 @@
 import { createReadStream, promises as fs } from "node:fs";
 import { dirname, join } from "node:path";
-import OpenAI, { APIError } from "openai";
+import type { APIError } from "openai";
 import type { AppConfig } from "../config/defaults";
 import { runCommand } from "../jobs/command";
 import { probeMedia } from "../jobs/media";
@@ -76,6 +76,8 @@ export const diarizeAudioWithOpenAI = async (
   await assertDiarizationUpload(audioPath);
   const apiKey = (await readSecret("OPENAI_API_KEY")) || config.openai.apiKey;
   if (!apiKey) throw new Error("A chave OpenAI não está configurada");
+  // The SDK loads with the first diarization, so the Studio bridge and the CLI start without it.
+  const { default: OpenAI } = await import("openai");
   const client = new OpenAI({
     apiKey, maxRetries: 0, timeout: 60 * 60 * 1000,
     fetch: (input, init) => {

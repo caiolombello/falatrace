@@ -1,4 +1,3 @@
-import Anthropic from "@anthropic-ai/sdk";
 import type { BetaMessageParam, BetaMessageStreamParams, BetaOutputConfig } from "@anthropic-ai/sdk/resources/beta/messages/messages";
 import type { AppConfig } from "../../config/defaults";
 import { readSecret, type SecretName } from "../../config/secrets";
@@ -34,6 +33,14 @@ export const ANTHROPIC_KNOWN_ERRORS: string[] = [...Object.values(ANTHROPIC_MESS
 
 export type AnthropicEffort = NonNullable<BetaOutputConfig["effort"]>;
 
+/** The SDK class; loaded with the first request so importing this provider (Studio bridge, CLI) stays fast. */
+type AnthropicSdk = typeof import("@anthropic-ai/sdk").default;
+let anthropicSdk: Promise<AnthropicSdk> | undefined;
+const loadAnthropicSdk = (): Promise<AnthropicSdk> => {
+  anthropicSdk ??= import("@anthropic-ai/sdk").then((module) => module.default);
+  return anthropicSdk;
+};
+
 export type AnthropicDeps = {
   fetch?: typeof fetch;
   readSecret?: ReadSecretFn;
@@ -42,9 +49,13 @@ export type AnthropicDeps = {
   effort?: AnthropicEffort;
 };
 
-/** Typed SDK errors, most specific first. Connection and abort errors extend APIError in this SDK, so they come before it. */
-export const mapAnthropicError = (error: unknown): ProviderError => {
+/**
+ * Typed SDK errors, most specific first. Connection and abort errors extend APIError in this SDK, so they come before it.
+ * `Anthropic` is the loaded SDK; without it (it failed to load) nothing can be an SDK error.
+ */
+export const mapAnthropicError = (error: unknown, Anthropic?: AnthropicSdk): ProviderError => {
   if (error instanceof ProviderError) return error;
+  if (!Anthropic) return new ProviderError(ANTHROPIC_MESSAGES.unavailable, "unavailable");
   if (error instanceof Anthropic.APIUserAbortError) return new ProviderError(COMMON_PROVIDER_MESSAGES.cancelled, "cancelled");
   if (error instanceof Anthropic.APIConnectionTimeoutError) return new ProviderError(COMMON_PROVIDER_MESSAGES.timeout, "timeout");
   if (error instanceof Anthropic.APIConnectionError) return new ProviderError(ANTHROPIC_MESSAGES.unreachable, "unavailable");
@@ -101,7 +112,9 @@ export const createAnthropicProvider = (config: AppConfig, deps: AnthropicDeps =
     const apiKey = await readKey(KEY_NAME);
     if (!apiKey) throw new ProviderError(missingKeyMessage(KEY_NAME), "auth");
     const deadline = new Deadline(request.signal, { totalMs: timeouts.totalMs, idleMs: timeouts.idleMs });
+    let Anthropic: AnthropicSdk | undefined;
     try {
+      Anthropic = await loadAnthropicSdk();
       // Explicit key and base URL: ANTHROPIC_BASE_URL/AUTH_TOKEN from the environment must not redirect the request.
       // Logging off: ANTHROPIC_LOG=debug would print the request (meeting text) to stdout, where the Studio bridge talks.
       const client = new Anthropic({ apiKey, baseURL: ANTHROPIC_BASE_URL, maxRetries: 0, timeout: timeouts.totalMs, logLevel: "off", ...(deps.fetch ? { fetch: deps.fetch } : {}) });
@@ -139,7 +152,7 @@ export const createAnthropicProvider = (config: AppConfig, deps: AnthropicDeps =
       const stopReason = stopReasonOf(message.stop_reason);
       return { text, stopReason, usage: { inputTokens: message.usage.input_tokens, outputTokens: message.usage.output_tokens } };
     } catch (error) {
-      throw deadline.failure() ?? mapAnthropicError(error);
+      throw deadline.failure() ?? mapAnthropicError(error, Anthropic);
     } finally {
       deadline.dispose();
     }

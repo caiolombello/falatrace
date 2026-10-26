@@ -3,10 +3,10 @@
 // changed since the preview the person saw; the Studio never hands the bridge content to send.
 import { randomUUID } from "node:crypto";
 import type { AiAppTarget } from "../config/defaults";
-import {
-  AI_APP_LABELS, deliverShare, describeDestinations, DESTINATION_KINDS, type DestinationKind, SHARE_CONSENT_DESTINATIONS, type ShareDestinationRequest
-} from "../destinations";
+import type { DeliveryReceipt, ShareDestinationRequest } from "../destinations";
 import { AI_WEB_URLS, isAiAppTarget } from "../destinations/ai-app";
+import { AI_APP_LABELS, SHARE_CONSENT_DESTINATIONS } from "../destinations/consent";
+import { DESTINATION_KINDS, type DestinationKind } from "../destinations/log";
 import { JobStore } from "../jobs/store";
 import {
   renderShare, renderTextShare, SHARE_INCLUDES, SHARE_KNOWN_ERRORS, SHARE_KNOWN_WARNINGS, SHARE_LIMITS, SHARE_MESSAGES, ShareError, type RenderedShare, type ShareInclude
@@ -121,6 +121,8 @@ const sharePreview = async (call: BridgeCall, context: BridgeContext) => {
   };
   const share = await render(draft, context);
   const config = await context.studio.config();
+  // The destinations (Notion, Slack, Obsidian, clipboard) load on first use; the bridge starts without them.
+  const { describeDestinations } = await import("../destinations");
   const status = (await describeDestinations(config, context.deps.destinations)).find((item) => item.destination === draft.destination);
   const preview: Preview = {
     ...draft, id: randomUUID(), snapshot: share.snapshot, createdAt: now,
@@ -148,6 +150,7 @@ const shareSend = async (call: BridgeCall, context: BridgeContext) => {
   const preview = previews.get(call.payload.previewId as string);
   if (!preview) throw new Error(SHARE_MESSAGES.previewChanged);
   const config = await context.studio.config();
+  const { deliverShare, describeDestinations } = await import("../destinations");
   // Consent was given for the destination the preview named. Another Notion page, Slack channel, vault
   // or AI app set since then is a new destination: the person previews (and agrees) again.
   const status = (await describeDestinations(config, context.deps.destinations)).find((item) => item.destination === preview.destination);
@@ -166,7 +169,7 @@ const shareSend = async (call: BridgeCall, context: BridgeContext) => {
     notion: { signal: deadline, sleep, ...context.deps.share?.notion },
     slack: { signal: deadline, sleep, ...context.deps.share?.slack }
   };
-  let receipt: Awaited<ReturnType<typeof deliverShare>>;
+  let receipt: DeliveryReceipt;
   try {
     receipt = await deliverShare({
       share, config, request: requestFor(preview.destination, preview.aiApp), consent: call.payload.consent === true, expectedSnapshot: preview.snapshot

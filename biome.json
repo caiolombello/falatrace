@@ -146,7 +146,8 @@
 			"src/desktop/__tests__/families-fixture.ts",
 			"src/desktop/__tests__/families-handlers.test.ts",
 			"src/desktop/__tests__/studio-ops-bridge.test.ts",
-			"src/desktop/__tests__/studio-services.test.ts"
+			"src/desktop/__tests__/studio-services.test.ts",
+			"src/desktop/__tests__/bridge-startup.test.ts"
 		]
 	},
 	"formatter": { "enabled": false },

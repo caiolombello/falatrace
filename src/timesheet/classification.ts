@@ -1,4 +1,3 @@
-import OpenAI from "openai";
 import type { AppConfig } from "../config/defaults";
 import type { RecordingSummary, Transcript } from "../jobs/types";
 import type {
@@ -424,6 +423,8 @@ export const classifyTimeEntry = async (
       evidence: [...fallback.evidence, "Classificação por IA indisponível: chave não configurada."]
     };
   }
+  // The SDK loads with the first classification, so the Studio bridge and the CLI start without it.
+  const { default: OpenAI } = await import("openai");
   const client = new OpenAI({ apiKey });
   const response = await client.chat.completions.create({
     model: config.timesheet.aiModel,

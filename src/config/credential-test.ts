@@ -1,5 +1,3 @@
-import Anthropic from "@anthropic-ai/sdk";
-import OpenAI from "openai";
 import { getSecretFiles, readSecretFiles, resolveSecretFrom, unitEnvironment, type SecretFiles, type SecretName, type SecretSource } from "./secrets";
 
 /**
@@ -72,6 +70,8 @@ const testAssistantKey = async (provider: AssistantKeyTestProvider, deps: KeyTes
   const key = resolved.value;
   if (provider === "anthropic") {
     // Same client settings as the assistant provider (src/assistant/providers/anthropic.ts).
+    // The SDK loads only for this explicit test, so opening the Studio or the CLI does not pay for it.
+    const { default: Anthropic } = await import("@anthropic-ai/sdk");
     const client = new Anthropic({ apiKey: key, baseURL: "https://api.anthropic.com", maxRetries: 0, timeout: 10_000, logLevel: "off", fetch: deps.fetch });
     try {
       await client.models.list({ limit: 1 });
@@ -124,6 +124,7 @@ export const testProviderKey = async (provider: KeyTestProvider, deps: KeyTestDe
     return { provider, source, status: "missing", detail: "Nenhuma chave alcança o processamento em segundo plano. Salve a chave nesta seção." };
   }
   if (provider === "openai") {
+    const { default: OpenAI } = await import("openai");
     const client = new OpenAI({ apiKey: key, maxRetries: 0, timeout: 10_000, fetch: deps.fetch });
     try {
       await client.models.list();

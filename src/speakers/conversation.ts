@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import OpenAI from "openai";
 import type { AppConfig } from "../config/defaults";
 import { readSecret } from "../config/secrets";
 import { validSpeakerLabel } from "../diarization/store";
@@ -159,6 +158,8 @@ export const completeWithConfiguredModel = (config: AppConfig): ConversationComp
   if (destination.provider === "openai") {
     const apiKey = (await readSecret("OPENAI_API_KEY")) || config.openai.apiKey;
     if (!apiKey) throw new Error("A chave OpenAI não está configurada");
+    // The SDK loads with the first OpenAI request, so the Studio bridge and the CLI start without it.
+    const { default: OpenAI } = await import("openai");
     const client = new OpenAI({ apiKey, maxRetries: 0, timeout: 180_000 });
     const response = await client.chat.completions.create({
       model: destination.model, max_completion_tokens: CONVERSATION_OUTPUT_TOKENS,

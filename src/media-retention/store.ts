@@ -68,6 +68,9 @@ export const MEDIA_RETENTION_MESSAGES = Object.freeze({
   passDeferred: "Há uma gravação, chamada ou processamento pesado em andamento; a retenção de mídia fica para a próxima execução."
 } as const);
 
+/** Fixed Portuguese messages this module can show (bridge whitelist and i18n keys). */
+export const MEDIA_RETENTION_KNOWN_ERRORS: readonly string[] = Object.freeze(Object.values(MEDIA_RETENTION_MESSAGES));
+
 export type MediaRetentionMessage = (typeof MEDIA_RETENTION_MESSAGES)[keyof typeof MEDIA_RETENTION_MESSAGES];
 
 export class MediaRetentionError extends Error {

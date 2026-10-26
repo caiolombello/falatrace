@@ -4,7 +4,6 @@ import { promises as fs } from "node:fs";
 import { isAbsolute } from "node:path";
 import { upcomingEventSources } from "../calendar/upcoming";
 import type { AppConfig } from "../config/defaults";
-import { liveProviderKey } from "../live/transcribe";
 
 export type StudioFeatures = {
   notes: boolean; live: boolean; assistant: boolean; recipes: boolean; share: boolean; actions: boolean; people: boolean; clients: boolean;
@@ -29,7 +28,9 @@ export const liveAvailable = async (config: AppConfig, deps: CapabilityDeps = {}
     const found = isAbsolute(command) ? await (deps.fileExists ?? regularFile)(command) : !!which(command);
     return found && await (deps.fileExists ?? regularFile)(config.live.whisperModelPath);
   }
-  const key = await (deps.liveKey ?? ((value: AppConfig) => liveProviderKey(value.live.provider, value)))(config).catch(() => undefined);
+  // The live providers load only when an external one is configured; the bridge starts without them.
+  const liveKey = deps.liveKey ?? (async (value: AppConfig) => (await import("../live/transcribe")).liveProviderKey(value.live.provider, value));
+  const key = await liveKey(config).catch(() => undefined);
   return !!key;
 };
 
