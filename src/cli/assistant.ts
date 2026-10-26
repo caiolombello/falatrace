@@ -70,10 +70,14 @@ const modelsFor = async (config: AppConfig, deps: AssistantCliDeps) => {
   }
 };
 
+const ASSISTANT_SUBCOMMANDS: readonly string[] = ["status", "detect", "models", "login-chatgpt", "logout-chatgpt"];
+
 export const runAssistantCli = async (args: string[], deps: AssistantCliDeps = defaultAssistantCliDeps()): Promise<void> => {
   const [, subcommand, ...rest] = args;
   const { io } = deps;
   if (subcommand === "help" || subcommand === "--help") { io.out(ASSISTANT_HELP); return; }
+  // A missing or unknown subcommand is a usage error, whatever the state of the configuration.
+  if (!subcommand || !ASSISTANT_SUBCOMMANDS.includes(subcommand)) throw new Error(CLI_USAGE.assistant);
   parseArgs(rest);
   if (subcommand === "detect") { printJson(io, await deps.detect()); return; }
   if (subcommand === "logout-chatgpt") {

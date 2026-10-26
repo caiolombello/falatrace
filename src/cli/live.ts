@@ -87,7 +87,7 @@ export const runLiveCli = async (args: string[], deps: LiveCliDeps = defaultLive
     interrupt?.dispose();
   }
   if (!command.follow) return;
-  if (view.status?.state === "failed") throw new Error(view.status.error || CLI_MESSAGES.liveStale);
+  if (view.status?.state === "failed") throw new Error(view.status.error || CLI_MESSAGES.liveFailed);
   if (view.stale) notice(io, CLI_MESSAGES.liveStale);
   else if (view.status?.state === "stopped") notice(io, CLI_MESSAGES.liveStopped);
 };

@@ -129,6 +129,24 @@ test("ask reports a failed answer, stops on interrupt, and checks its arguments"
   expect(staleRun.capture.err()).toContain(CLI_MESSAGES.indexRefreshFailed);
 });
 
+test("an answer never reaches the terminal with control sequences, while streaming or at the end", async () => {
+  // The streamed text is the provider's raw output; the runner cleans control characters only in the final text.
+  const raw = "Olá \u001b]52;c;ZXZpbA==\u0007\u001b[2J\u202emundo\u009b31m\r\nfim";
+  const runnerFinal = `${raw.replace(/[^\P{Cc}\t\n\r]/gu, " ")} [[s000003]].`;
+  const fake = fakeServices({
+    snapshots: [
+      running(raw),
+      { status: "done", threadId: "t1", text: runnerFinal, citations: [C1], droppedRefs: [], saved: true }
+    ]
+  });
+  const { deps, capture } = askDeps(fake);
+  await runAskCli(["ask", "pergunta"], deps);
+  const out = capture.out();
+  for (const unsafe of ["\u001b", "\u0007", "\u009b", "\r", "\u202e"]) expect(out).not.toContain(unsafe);
+  // What was streamed stays a prefix of the final answer: printed once, not repeated.
+  expect(out).toBe(`Olá  ]52;c;ZXZpbA==  [2Jmundo 31m\nfim [1].\n\n[1] Revisão semanal 2026-10-25 01:05 ${JOB}#s000003\n`);
+});
+
 test("answers render only checked markers, and a citation without a time shows --:--", () => {
   expect(renderAnswer("a [[s000003]][[m2:s000001]] b [[x]]", [C1])).toBe("a [1][[m2:s000001]] b [[x]]");
   expect(citationLine({ ...C1, start: undefined, n: 3, date: "" })).toBe(`[3] Revisão semanal - --:-- ${JOB}#s000003`);

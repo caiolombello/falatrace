@@ -11,8 +11,10 @@ import { REVIEWED_SNAPSHOT_HELP } from "./reviewed-snapshots";
 
 export const NOTES_HELP = `Notas da reunião (o bloco de notas; ficam neste computador):
   notes show <id> [--json]       Mostra as notas de uma reunião (id do job ou da captura)
-  notes edit <id> [--rev N]      Troca as notas pelo texto da entrada padrão e mostra o que foi salvo;
-                                 --rev recusa salvar se as notas mudaram depois daquela revisão
+  notes edit <id> [--rev N] [--clear]
+                                 Troca as notas pelo texto da entrada padrão e mostra o que foi salvo;
+                                 --rev recusa salvar se as notas mudaram depois daquela revisão;
+                                 uma entrada vazia só apaga notas existentes com --clear
   notes path <id>                Caminho do arquivo das notas
 `;
 
@@ -96,7 +98,7 @@ export const MEDIA_HELP = `Mídia das gravações (media.retention; a transcriç
   media retention [--dry-run|--apply] [--limit N]
                                  Prévia (padrão) ou aplicação da política; --apply também conclui
                                  remoções interrompidas, mesmo com a política "keep"
-  media remove <job-id> [--keep-audio] --yes
+  media remove <job-id> [--keep-audio] [--json] --yes
                                  Remove a mídia agora e mantém a transcrição (e o áudio, com --keep-audio)
 `;
 

@@ -50,7 +50,7 @@ The following are available but require task-specific authorization, selected in
 - `record start`, `calls resume`, service install/start and config edits can enable capture. `calls pause` affects future automation; `record stop` ends the active capture. Never interchange them.
 - `jobs cleanup --dry-run` previews eligibility; cleanup without dry-run and other deletion/reset actions require exact scope. Do not imply deletion reaches originals/provider copies/remotes.
 - `share <job-id> --to <clipboard|obsidian|notion|slack|ai-app>` delivers the meeting notes; `--dry-run` only prints the Markdown. Notion and Slack send content off the computer and require `--yes`.
-- `notes edit`, `templates init|delete`, `people rename|merge|alias|hide`, `clients add|rename|delete|assign` and `actions done|reopen|dismiss` change the user's local data.
+- `notes edit`, `templates init|delete`, `people rename|merge|alias|hide`, `clients add|rename|delete|assign` and `actions done|reopen|dismiss` change the user's local data. `notes edit` replaces the whole notepad with stdin; an empty stdin over existing notes is refused unless `--clear` is given.
 - `media remove <job-id> [--keep-audio] --yes` deletes the recorded media (the transcript stays) and `media retention --apply` applies the retention policy; both are destructive.
 - `reminders install-service`, `assistant login-chatgpt`/`logout-chatgpt` and `studio open` change services, credentials or the desktop. `reminders run`, `live run`, `notify ready|reminder` are internal (used by systemd units).
 

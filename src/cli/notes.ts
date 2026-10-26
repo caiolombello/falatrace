@@ -1,6 +1,6 @@
 import { JobStore } from "../jobs/store";
 import type { JobRecord } from "../jobs/types";
-import { findNotesForJob, type MeetingNotes, NOTE_LIMITS, NotesStore, normalizeNotesId, notesText } from "../notes";
+import { findNotesForJob, type MeetingNotes, NOTE_LIMITS, NotesStore, normalizeNotesId, notesText, splitNoteLines } from "../notes";
 import { NOTES_HELP } from "./help";
 import { CLI_MESSAGES, CLI_USAGE, type CliIO, integerOption, parseArgs, printJson, processIO, readStdinText } from "./shared";
 
@@ -67,14 +67,20 @@ export const runNotesCli = async (args: string[], deps: NotesCliDeps = defaultNo
     return;
   }
   if (subcommand === "edit") {
-    const parsed = parseArgs(rest, { values: ["--rev"] });
+    const parsed = parseArgs(rest, { values: ["--rev"], flags: ["--clear"] });
     const expected = integerOption(parsed, "--rev", 0, Number.MAX_SAFE_INTEGER, CLI_MESSAGES.revInvalid);
     const target = await resolveTarget(parsed.positionals[0], deps, store);
     // Read before saving: the revision check then catches a Studio save made while the text was typed.
     const text = await deps.readStdin();
+    const expectedRev = expected ?? target.notes?.rev ?? 0;
+    // An empty input (stdin closed, nothing piped, Ctrl+D at once) would silently wipe the notes;
+    // a stale --rev is left to the store, which reports the conflict instead.
+    if (!parsed.flags.has("--clear") && target.notes?.entries.length && expectedRev === target.notes.rev && !splitNoteLines(text).length) {
+      throw new Error(CLI_MESSAGES.notesEmptyInput);
+    }
     const saved = await store.save(target.id, {
       text,
-      expectedRev: expected ?? target.notes?.rev ?? 0,
+      expectedRev,
       // Notes added after processing belong to the job's recording, so later jobs of the same file find them.
       ...(!target.notes?.sourcePath && target.job?.sourcePath ? { sourcePath: target.job.sourcePath } : {})
     });

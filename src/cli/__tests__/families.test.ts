@@ -2,7 +2,9 @@ import { expect, test } from "bun:test";
 import { version as productVersion } from "../../../package.json";
 import { CLI_FAMILY_NAMES, familyLoader } from "../families";
 import { commandHelp, HELP_COMMANDS, mainHelp } from "../help";
-import { CLI_KNOWN_ERRORS, CLI_MESSAGES, CLI_USAGE, MISSING_VALUE, parseArgs, readJob, readStdinText, requireJobId, UNKNOWN_OPTION } from "../shared";
+import {
+  CLI_KNOWN_ERRORS, CLI_MESSAGES, CLI_USAGE, MISSING_VALUE, oneLine, parseArgs, readJob, readStdinText, requireJobId, terminalText, UNKNOWN_OPTION
+} from "../shared";
 
 test("the overview starts with the banner and pitch, then groups tasks, without the old duplicated list", () => {
   const help = mainHelp(productVersion);
@@ -46,6 +48,13 @@ test("arguments are parsed strictly: unknown options and missing values are refu
   expect(() => parseArgs(["--bogus"], {})).toThrow(UNKNOWN_OPTION);
   expect(() => parseArgs(["--to"], { values: ["--to"] })).toThrow(`${MISSING_VALUE} --to.`);
   expect(() => parseArgs(["--to", "--yes"], { values: ["--to"], flags: ["--yes"] })).toThrow(MISSING_VALUE);
+});
+
+test("untrusted text reaches the terminal without control sequences or bidirectional overrides", () => {
+  const hostile = "Título\u001b]0;pwned\u0007 \u009b2J‮etirw‬⁦x⁩\r\nfim";
+  expect(oneLine(hostile)).toBe("Título ]0;pwned 2Jetirwx fim");
+  expect(terminalText(hostile)).toBe("Título ]0;pwned   2Jetirwx\nfim");
+  expect(terminalText("a\tb\nc\r\nd\re f")).toBe("a\tb\nc\nd\ne\nf");
 });
 
 test("job ids, stdin limits and missing jobs give the CLI's Portuguese messages", async () => {

@@ -10,7 +10,7 @@ import {
 } from "../media-retention";
 import { buildLibrary, type LibraryEntry } from "../tui/library";
 import { MEDIA_HELP } from "./help";
-import { CLI_MESSAGES, CLI_USAGE, type CliIO, defaultLoadConfig, integerOption, notice, parseArgs, printJson, printLine, processIO, readJob } from "./shared";
+import { CLI_MESSAGES, CLI_USAGE, type CliIO, defaultLoadConfig, integerOption, notice, oneLine, parseArgs, printJson, printLine, processIO, readJob } from "./shared";
 
 export { MEDIA_HELP };
 
@@ -42,6 +42,8 @@ export const defaultMediaCliDeps = (): MediaCliDeps => ({
 });
 
 const mebibytes = (bytes: number): string => `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
+/** The recording's file name as one terminal line. */
+const fileName = (path: string): string => oneLine(basename(path), 200);
 
 /** The library entry of a job; a recording outside the library still has its own job. */
 const entryOf = async (deps: MediaCliDeps, config: AppConfig, job: JobRecord): Promise<LibraryEntry | MediaRetentionEntry> =>
@@ -88,8 +90,10 @@ export const runMediaCli = async (args: string[], deps: MediaCliDeps = defaultMe
     const items = [];
     for (const entry of await deps.library(config)) {
       const plan = await deps.plan(config, entry, { reason: "policy", verifyMedia: "never" });
+      // The planner stops early (no jobs) when nothing will be removed; the library entry knows them.
+      const jobs = plan.jobs.length ? plan.jobs : entry.jobs ?? [];
       items.push({
-        file: plan.sourcePath, jobs: plan.jobs.map((job) => job.id), action: plan.action, mode: plan.mode,
+        file: plan.sourcePath, jobs: jobs.map((job) => job.id), action: plan.action, mode: plan.mode,
         ready: (plan.action === "remove" || plan.action === "finalize") && plan.blockers.length === 0,
         blockers: plan.blockers.map((blocker) => ({ code: blocker.code, message: blocker.message })),
         ...(plan.waitUntil ? { waitUntil: plan.waitUntil } : {}), ...(plan.media.size !== undefined ? { size: plan.media.size } : {})
@@ -109,7 +113,9 @@ export const runMediaCli = async (args: string[], deps: MediaCliDeps = defaultMe
     // An interrupted removal has one way forward (finishing it), whatever was asked.
     const option = plan.options.find((item) => item.mode === mode) ?? (plan.options.length === 1 ? plan.options[0] : undefined);
     const freed = option?.bytesFreed === null || option?.bytesFreed === undefined ? CLI_MESSAGES.mediaUnknownSize : mebibytes(option.bytesFreed);
-    notice(io, `Remover a mídia de ${basename(entry.sourcePath)}: mantém ${mode === "audio-only" ? "a transcrição e o áudio" : "a transcrição"}; ` +
+    // Finishing an interrupted removal keeps what that removal chose, which may differ from --keep-audio.
+    const kept = option?.mode ?? mode;
+    notice(io, `Remover a mídia de ${fileName(entry.sourcePath)}: mantém ${kept === "audio-only" ? "a transcrição e o áudio" : "a transcrição"}; ` +
       `espaço liberado: ${freed}; ${plan.scope === "total" ? "não há cópia verificada em outro lugar" : "as cópias do backup continuam"}.`);
     if (!option?.eligible) throw new Error(option?.reasons[0] ?? plan.reasons[0] ?? CLI_MESSAGES.mediaNoOption);
     if (!parsed.flags.has("--yes")) throw new Error(CLI_MESSAGES.confirmRequired);
@@ -124,7 +130,7 @@ export const runMediaCli = async (args: string[], deps: MediaCliDeps = defaultMe
       return;
     }
     const shown = result.mode === "audio-only" ? CLI_MESSAGES.mediaUnknownSize : mebibytes(result.bytesFreed);
-    printLine(io, `Mídia removida: ${basename(result.sourcePath)}. Espaço liberado: ${shown}.`);
+    printLine(io, `Mídia removida: ${fileName(result.sourcePath)}. Espaço liberado: ${shown}.`);
     return;
   }
   throw new Error(CLI_USAGE.media);

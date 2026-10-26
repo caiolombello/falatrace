@@ -71,6 +71,24 @@ test("a job's notes typed during the capture are found by the recording file and
   expect(await store.read(JOB)).toBeUndefined();
 });
 
+test("an empty input never wipes existing notes unless --clear says so", async () => {
+  const { deps, store } = await notesDeps(["", "  \n\n", ""]);
+  // Nothing stored yet: an empty input saves nothing and is not an error.
+  const first = captureIO();
+  await runNotesCli(["notes", "edit", JOB], { ...deps, io: first.io });
+  expect(first.out()).toBe("");
+  expect(await store.read(JOB)).toBeUndefined();
+  await store.save(JOB, { text: "# Pauta\n- orçamento\n", expectedRev: 0 });
+  // stdin closed or blank (a script without input, Ctrl+D at once): refused, notes untouched.
+  await expect(runNotesCli(["notes", "edit", JOB], deps)).rejects.toThrow(CLI_MESSAGES.notesEmptyInput);
+  expect((await store.read(JOB))?.rev).toBe(1);
+  const cleared = captureIO();
+  await runNotesCli(["notes", "edit", JOB, "--clear"], { ...deps, io: cleared.io });
+  expect(cleared.out()).toBe("");
+  const after = await store.read(JOB);
+  expect(after).toMatchObject({ rev: 2, entries: [] });
+});
+
 test("notes without an id, with a bad id or an unknown subcommand fail with a Portuguese message", async () => {
   const { deps, capture } = await notesDeps([]);
   await expect(runNotesCli(["notes"], deps)).rejects.toThrow(CLI_USAGE.notes);

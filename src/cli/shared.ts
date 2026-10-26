@@ -40,6 +40,7 @@ export const CLI_MESSAGES = {
   recipeNeedsMeeting: "Esta receita é de uma reunião: informe --meeting <id>.",
   shareDestinationRequired: "Informe o destino com --to clipboard, obsidian, notion, slack ou ai-app.",
   shareIncludeInvalid: "--include precisa ser summary, summary+notes ou full.",
+  shareUnreadable: "Esta gravação ainda não tem uma transcrição utilizável para compartilhar.",
   actionRefInvalid: "Informe a ação como <mídia>:<id da ação>, como aparece em actions list.",
   actionStatusInvalid: "--status precisa ser open, done ou all.",
   clientCodesRequired: "Informe ao menos um código de cliente (ou --auto para voltar à escolha automática).",
@@ -59,7 +60,8 @@ export const CLI_MESSAGES = {
   liveFailed: "A transcrição ao vivo falhou.",
   mediaPassFailed: "A retenção de mídia não conseguiu concluir algumas gravações; veja os itens acima.",
   mediaUnknownSize: "desconhecido",
-  notesStdinHint: "Digite ou cole as notas e pressione Ctrl+D para salvar."
+  notesStdinHint: "Digite ou cole as notas e pressione Ctrl+D para salvar.",
+  notesEmptyInput: "A entrada está vazia e apagaria as notas desta reunião; para apagá-las, repita com --clear."
 } as const;
 
 /** Usage lines of each family; fixed text shown when a subcommand is missing or unknown. */
@@ -216,7 +218,19 @@ export const localDay = (iso: string | undefined): string => {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 };
 
-/** One line for terminal output: control characters become spaces. */
-export const oneLine = (text: string, max = 300): string => text.replace(/[\p{Cc}\u2028\u2029]+/gu, " ").replace(/\s+/g, " ").trim().slice(0, max);
+/** Explicit bidirectional embeddings, overrides and isolates: they reorder what the terminal shows. */
+const BIDI_CONTROLS = /[\u202a-\u202e\u2066-\u2069]/g;
+
+/** One line for terminal output: control characters become spaces, bidirectional overrides are dropped. */
+export const oneLine = (text: string, max = 300): string =>
+  text.replace(/[\p{Cc}\u2028\u2029]+/gu, " ").replace(BIDI_CONTROLS, "").replace(/\s+/g, " ").trim().slice(0, max);
+
+/**
+ * Untrusted multi-line text (a model's answer) made safe to print on a terminal: line breaks and
+ * tabs stay, any other control character (ESC sequences that move the cursor, set the title or
+ * write the clipboard) becomes a space, and explicit bidirectional overrides are dropped.
+ */
+export const terminalText = (text: string): string =>
+  text.replace(/\r\n?|[\u2028\u2029\u0085]/g, "\n").replace(/[^\P{Cc}\n\t]/gu, " ").replace(BIDI_CONTROLS, "");
 
 export const errorMessage = (error: unknown): string => (error instanceof Error ? error.message : String(error));

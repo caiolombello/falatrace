@@ -110,6 +110,10 @@ test("live show prints the lines so far; --follow waits until the worker stops",
   await runLiveCli(["live", "show", SESSION, "--json"], { ...deps, io: json.io, read: async () => view([line(1, 5, "Bom dia")], "running") });
   expect(JSON.parse(json.out())).toMatchObject({ lines: [{ seq: 1, text: "Bom dia" }], status: { state: "running" } });
   await expect(runLiveCli(["live", "show", SESSION, "--follow"], { ...deps, read: async () => view([], "failed") })).rejects.toThrow("O provedor recusou a chave.");
+  // A worker that failed without saying why is reported as failed, not as stale.
+  const failedQuietly = view([], "failed");
+  delete failedQuietly.status!.error;
+  await expect(runLiveCli(["live", "show", SESSION, "--follow"], { ...deps, read: async () => failedQuietly })).rejects.toThrow(CLI_MESSAGES.liveFailed);
   await expect(runLiveCli(["live", "show"], deps)).rejects.toThrow(CLI_MESSAGES.liveSessionRequired);
 });
 
@@ -178,6 +182,23 @@ test("media status and the retention preview and pass", async () => {
   await expect(runMediaCli(["media", "retention", "--apply"], failing.deps)).rejects.toThrow(CLI_MESSAGES.mediaPassFailed);
   expect(JSON.parse(failing.capture.out()).counts.failed).toBe(1);
   await expect(runMediaCli(["media", "retention", "--apply", "--dry-run"], apply.deps)).rejects.toThrow(CLI_MESSAGES.mediaModeConflict);
+  // Under "keep" the planner stops before listing jobs; the preview still names the recording's jobs.
+  const keep = mediaDeps({ plan: async () => ({ sourcePath: entry.sourcePath, jobs: [], action: "none", mode: "keep", blockers: [{ code: "mode-keep", message: "manter" }], media: {} } as unknown as MediaRetentionPlan) });
+  await runMediaCli(["media", "retention", "--dry-run"], keep.deps);
+  expect(JSON.parse(keep.capture.out()).items).toEqual([{ file: entry.sourcePath, jobs: [JOB], action: "none", mode: "keep", ready: false, blockers: [{ code: "mode-keep", message: "manter" }] }]);
+});
+
+test("media remove of an interrupted removal says what that removal keeps, whatever --keep-audio says", async () => {
+  // A "removing" tombstone has one way forward: finishing it, in the mode it was started with.
+  const finishing = mediaDeps({
+    planRemoval: async () => ({ ...removalPlan(), options: [{ mode: "audio-only", eligible: true, bytesFreed: 0, reasons: [], blockers: [] }] }),
+    library: async () => [{ ...entry, sourcePath: "/recordings/reunião\u001b[2J‮.mkv" }]
+  });
+  await runMediaCli(["media", "remove", JOB, "--yes"], finishing.deps);
+  const err = finishing.capture.err();
+  expect(err).toContain("mantém a transcrição e o áudio; espaço liberado: 0.0 MiB");
+  for (const unsafe of ["\u001b", "‮"]) expect(err).not.toContain(unsafe);
+  expect(finishing.calls[0]).toEqual(["remove", "transcript-only", "a".repeat(64)]);
 });
 
 test("media remove shows the plan, needs --yes, removes with the plan's consent key and refreshes the index", async () => {
@@ -258,6 +279,10 @@ test("assistant status, models, detect, login and logout", async () => {
   await runAssistantCli(["assistant", "models"], { ...deps, io: api.io, loadConfig: async () => config((value) => { value.assistant.provider = "api"; value.assistant.apiPreset = "groq"; }) });
   expect(JSON.parse(api.out())).toMatchObject({ provider: "api", preset: "groq", current: "openai/gpt-oss-120b" });
   await expect(run("upgrade")).rejects.toThrow(CLI_USAGE.assistant);
+  // A missing or unknown subcommand is a usage error even when the configuration cannot be read.
+  const broken = { ...deps, loadConfig: async (): Promise<AppConfig> => { throw new Error("configuração quebrada"); } };
+  await expect(runAssistantCli(["assistant"], broken)).rejects.toThrow(CLI_USAGE.assistant);
+  await expect(runAssistantCli(["assistant", "upgrade"], broken)).rejects.toThrow(CLI_USAGE.assistant);
 });
 
 test("library refresh and search (JSON marked as untrusted meeting data)", async () => {

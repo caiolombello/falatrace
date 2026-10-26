@@ -2,7 +2,7 @@ import type { AppServices } from "../app/context";
 import type { AssistantPlan, AssistantRunner, RunSnapshot } from "../assistant/runner";
 import type { AssistantScope, ChatCitation } from "../assistant/types";
 import type { JobFacts } from "../library-index/types";
-import { CLI_MESSAGES, type CliIO, clockText, errorMessage, type Interrupt, localDay, notice, oneLine, type ParsedArgs, printJson } from "./shared";
+import { CLI_MESSAGES, type CliIO, clockText, errorMessage, type Interrupt, localDay, notice, oneLine, type ParsedArgs, printJson, terminalText } from "./shared";
 
 /**
  * Asking the assistant from a terminal (`ask`, `recipes run`): plan, show the destination, refuse
@@ -42,7 +42,7 @@ export const SCOPE_OPTIONS = ["--meeting", "--person", "--client"] as const;
 export const destinationLine = (plan: AssistantPlan): string => {
   const { destination } = plan;
   const where = destination.external ? "fora deste computador" : "neste computador";
-  const subscription = destination.subscription ? ` · ${destination.subscription}` : "";
+  const subscription = destination.subscription ? ` · ${oneLine(destination.subscription, 200)}` : "";
   const meetings = plan.meetings.length === 1 ? "1 reunião" : `${plan.meetings.length} reuniões`;
   return `Destino: ${oneLine(destination.label, 200)}${subscription} (${where}) · ${meetings}${plan.truncated ? " (trechos)" : ""}`;
 };
@@ -55,6 +55,15 @@ export const renderAnswer = (text: string, citations: readonly ChatCitation[]): 
     return number === undefined ? match : `[${number}]`;
   });
 };
+
+/**
+ * The answer as the terminal shows it: checked markers as `[n]`, control characters neutralised
+ * (the model's text is untrusted), and trailing spaces held back, since a marker that turns out
+ * unknown may still remove them. Streaming and the final text go through the same function, so
+ * what was already printed stays a prefix of the final answer.
+ */
+export const displayAnswer = (text: string, citations: readonly ChatCitation[]): string =>
+  terminalText(renderAnswer(text, citations)).replace(/\s+$/, "");
 
 /** `[n] <title> <date> <mm:ss> <job-id>#<segment>` */
 export const citationLine = (citation: CitationLine): string =>
@@ -119,8 +128,7 @@ export const askQuestion = async (services: QuestionServices, input: QuestionInp
       snapshot = services.runner.poll(runId);
       if (snapshot.status !== "running") break;
       if (!input.json) {
-        // Trailing spaces are held back: a marker that turns out unknown may still remove them.
-        const visible = renderAnswer(snapshot.text, snapshot.citations).replace(/\s+$/, "");
+        const visible = displayAnswer(snapshot.text, snapshot.citations);
         if (visible.startsWith(printed) && visible.length > printed.length) {
           io.out(visible.slice(printed.length));
           printed = visible;
@@ -143,7 +151,7 @@ export const askQuestion = async (services: QuestionServices, input: QuestionInp
   if (input.json) {
     printJson(io, { text: snapshot.text, citations, destination: plan.destination, threadId: snapshot.threadId });
   } else {
-    const final = renderAnswer(snapshot.text, snapshot.citations).replace(/\s+$/, "");
+    const final = displayAnswer(snapshot.text, snapshot.citations);
     io.out(final.startsWith(printed) ? final.slice(printed.length) : `\n${final}`);
     io.out("\n");
     if (citations.length) io.out(`\n${citations.map(citationLine).join("\n")}\n`);
