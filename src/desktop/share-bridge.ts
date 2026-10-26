@@ -9,7 +9,7 @@ import {
 import { AI_WEB_URLS, isAiAppTarget } from "../destinations/ai-app";
 import { JobStore } from "../jobs/store";
 import {
-  renderShare, renderTextShare, SHARE_INCLUDES, SHARE_KNOWN_ERRORS, SHARE_KNOWN_WARNINGS, SHARE_LIMITS, SHARE_MESSAGES, type RenderedShare, type ShareInclude
+  renderShare, renderTextShare, SHARE_INCLUDES, SHARE_KNOWN_ERRORS, SHARE_KNOWN_WARNINGS, SHARE_LIMITS, SHARE_MESSAGES, ShareError, type RenderedShare, type ShareInclude
 } from "../share";
 import { type BridgeCall, type BridgeFamily, bool, invalid, line, matches, oneOf, RECIPE_ID, text, UUID } from "./bridge-family";
 import type { BridgeContext } from "./bridge-context";
@@ -30,6 +30,17 @@ export const SHARE_BRIDGE_KNOWN_ERRORS: readonly string[] = Object.freeze([
 
 /** Previews kept for sending: the newest few, for a few minutes. */
 export const SHARE_PREVIEW_LIMITS = Object.freeze({ kept: 32, maxAgeMs: 10 * 60_000, previewCharacters: 200_000 });
+/**
+ * Notion and Slack send in several requests (each with its own timeout and rate-limit waits); the
+ * whole send stops here, inside the bridge's 30 s request limit, instead of the Studio killing the bridge.
+ */
+export const SHARE_SEND_DEADLINE_MS = 24_000;
+/**
+ * Destinations the Studio sends only with the person's consent (DESIGN-STUDIO §2.12): Notion and
+ * Slack, where FalaTrace sends the content, and the AI app, whose command-line tools this bridge
+ * starts with the note (they read it and send it to their provider at once).
+ */
+export const SHARE_CONSENT_DESTINATIONS: readonly DestinationKind[] = Object.freeze([...EXTERNAL_DESTINATIONS, "ai-app"]);
 
 const ALLOWED: Record<(typeof SHARE_BRIDGE_OPERATIONS)[number], readonly string[]> = {
   "share-preview": ["destination", "include", "jobId", "text", "frontmatter", "title", "recipeId"],
@@ -58,6 +69,8 @@ const validate = (call: BridgeCall): void => {
 type Preview = {
   id: string; destination: DestinationKind; include: ShareInclude; jobId?: string; text?: string; title?: string; recipeId?: string;
   frontmatter: boolean; snapshot: string; createdAt: number;
+  /** Where the preview said the content goes (vault, Notion page, Slack channel, AI app): consent covers only that. */
+  target?: string; aiApp?: AiAppTarget;
 };
 
 const previews = new Map<string, Preview>();
@@ -97,7 +110,7 @@ const destinationLabel = (destination: DestinationKind, aiApp: AiAppTarget | und
  */
 const requestFor = (destination: DestinationKind, aiApp: AiAppTarget | undefined): ShareDestinationRequest =>
   destination === "clipboard" ? { destination, mode: "return" }
-    : destination === "ai-app" ? { destination, clipboard: "return", open: aiApp !== undefined && !(aiApp in AI_WEB_URLS) && aiApp !== "claude-desktop" }
+    : destination === "ai-app" ? { destination, ...(aiApp ? { target: aiApp } : {}), clipboard: "return", open: aiApp !== undefined && !(aiApp in AI_WEB_URLS) && aiApp !== "claude-desktop" }
       : destination === "obsidian" ? { destination, open: false } : { destination };
 
 const sharePreview = async (call: BridgeCall, context: BridgeContext) => {
@@ -113,7 +126,10 @@ const sharePreview = async (call: BridgeCall, context: BridgeContext) => {
   const share = await render(draft, context);
   const config = await context.studio.config();
   const status = (await describeDestinations(config, context.deps.destinations)).find((item) => item.destination === draft.destination);
-  const preview: Preview = { ...draft, id: randomUUID(), snapshot: share.snapshot, createdAt: now };
+  const preview: Preview = {
+    ...draft, id: randomUUID(), snapshot: share.snapshot, createdAt: now,
+    ...(status?.target ? { target: status.target } : {}), ...(status?.aiApp ? { aiApp: status.aiApp } : {})
+  };
   prune(now);
   previews.set(preview.id, preview);
   const markdown = share.markdown;
@@ -122,7 +138,7 @@ const sharePreview = async (call: BridgeCall, context: BridgeContext) => {
     markdown: markdown.slice(0, SHARE_PREVIEW_LIMITS.previewCharacters),
     ...(markdown.length > SHARE_PREVIEW_LIMITS.previewCharacters ? { truncated: true } : {}),
     chars: markdown.length,
-    external: EXTERNAL_DESTINATIONS.includes(draft.destination),
+    external: SHARE_CONSENT_DESTINATIONS.includes(draft.destination),
     destinationLabel: destinationLabel(draft.destination, status?.aiApp),
     ready: status?.ready ?? false,
     ...(status?.problem ? { problem: status.problem } : {}),
@@ -135,11 +151,35 @@ const shareSend = async (call: BridgeCall, context: BridgeContext) => {
   prune(now);
   const preview = previews.get(call.payload.previewId as string);
   if (!preview) throw new Error(SHARE_MESSAGES.previewChanged);
-  const share = await render(preview, context);
   const config = await context.studio.config();
-  const receipt = await deliverShare({
-    share, config, request: requestFor(preview.destination, isAiAppTarget(config.destinations.aiApp) ? config.destinations.aiApp : undefined), consent: call.payload.consent === true, expectedSnapshot: preview.snapshot
-  }, context.deps.share);
+  // Consent was given for the destination the preview named. Another Notion page, Slack channel, vault
+  // or AI app set since then is a new destination: the person previews (and agrees) again.
+  const status = (await describeDestinations(config, context.deps.destinations)).find((item) => item.destination === preview.destination);
+  if (status?.target !== preview.target || status?.aiApp !== preview.aiApp) throw new Error(SHARE_MESSAGES.previewChanged);
+  if (SHARE_CONSENT_DESTINATIONS.includes(preview.destination) && call.payload.consent !== true) throw new Error(SHARE_MESSAGES.consentRequired);
+  const share = await render(preview, context);
+  const deadline = AbortSignal.timeout(context.deps.shareSendDeadlineMs ?? SHARE_SEND_DEADLINE_MS);
+  // Rate-limit waits end at the deadline too; the next request then stops at once.
+  const sleep = (ms: number): Promise<void> => new Promise((resolve) => {
+    if (deadline.aborted) return resolve();
+    const timer = setTimeout(resolve, ms);
+    deadline.addEventListener("abort", () => { clearTimeout(timer); resolve(); }, { once: true });
+  });
+  const deps = {
+    ...context.deps.share,
+    notion: { signal: deadline, sleep, ...context.deps.share?.notion },
+    slack: { signal: deadline, sleep, ...context.deps.share?.slack }
+  };
+  let receipt: Awaited<ReturnType<typeof deliverShare>>;
+  try {
+    receipt = await deliverShare({
+      share, config, request: requestFor(preview.destination, preview.aiApp), consent: call.payload.consent === true, expectedSnapshot: preview.snapshot
+    }, deps);
+  } catch (error) {
+    // Stopped by the deadline before an answer: like a request timeout, the outcome is not confirmed.
+    if (deadline.aborted && error instanceof ShareError && error.code === "network") throw new ShareError(SHARE_MESSAGES.timeout, "timeout");
+    throw error;
+  }
   previews.delete(preview.id);
   return {
     kind: receipt.result,

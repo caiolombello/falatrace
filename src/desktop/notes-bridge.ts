@@ -22,8 +22,8 @@ export const NOTES_BRIDGE_KNOWN_ERRORS: readonly string[] = Object.freeze([
 
 /** Raw notepad text accepted from the Studio (the store keeps at most 64 KiB of lines). */
 export const NOTES_TEXT_MAX_CHARACTERS = 256 * 1024;
-/** Providers that send the audio off this computer. */
-export const CLOUD_LIVE_PROVIDERS: readonly string[] = ["openai", "groq"];
+/** The only live provider that keeps the audio on this computer; any other one (today openai, groq) needs consent. */
+export const LOCAL_LIVE_PROVIDERS: readonly string[] = ["whisper-cpp"];
 
 const ALLOWED: Record<(typeof NOTES_BRIDGE_OPERATIONS)[number], readonly string[]> = {
   "notes-read": [],
@@ -106,7 +106,8 @@ const readLive = async (call: BridgeCall) => {
 const setLive = async (call: BridgeCall, context: BridgeContext) => {
   const config = await context.studio.config();
   const enabled = call.payload.enabled === true;
-  const external = CLOUD_LIVE_PROVIDERS.includes(config.live.provider);
+  // Fail closed: a provider added later counts as external until it is listed as local.
+  const external = !LOCAL_LIVE_PROVIDERS.includes(config.live.provider);
   // The audio of the meeting goes to the provider while the capture runs: the person agrees first.
   if (enabled && external && call.payload.consent !== true) throw new Error(NOTES_BRIDGE_MESSAGES.liveConsent);
   const result = await setLiveForSession(call.key!.toLowerCase(), enabled, {

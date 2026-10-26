@@ -42,6 +42,11 @@ export const HOME_BRIDGE_KNOWN_ERRORS: readonly string[] = Object.freeze([
 /** Home shows meetings that started up to half an hour ago and those of the next hours (12 h window at most). */
 export const HOME_WINDOW = Object.freeze({ beforeMs: 30 * 60_000, afterMs: 11.5 * 60 * 60_000, events: 10, openActions: 5, processing: 10 });
 export const LIBRARY_SEARCH_LIMIT = 50;
+/**
+ * Google may renew its access token (30 s timeout) before listing events (20 s): the calendar read
+ * stops here, well inside the bridge's 30 s request limit, and Home shows the calendar as unavailable.
+ */
+export const HOME_CALENDAR_DEADLINE_MS = 12_000;
 
 const ALLOWED: Record<(typeof HOME_BRIDGE_OPERATIONS)[number], readonly string[]> = {
   "home-read": [],
@@ -86,7 +91,10 @@ const planOf = (config: AppConfig, paused: boolean, override: MeetingOverride | 
 const upcomingEvents = async (config: AppConfig, context: BridgeContext, now: number): Promise<{ events: UpcomingEvent[]; error?: string }> => {
   if (!upcomingEventSources(config).length) return { events: [] };
   try {
-    const events = await listUpcomingEvents(config, { from: new Date(now - HOME_WINDOW.beforeMs), to: new Date(now + HOME_WINDOW.afterMs), deps: context.deps.upcoming });
+    const signal = AbortSignal.timeout(context.deps.calendarDeadlineMs ?? HOME_CALENDAR_DEADLINE_MS);
+    const events = await listUpcomingEvents(config, {
+      from: new Date(now - HOME_WINDOW.beforeMs), to: new Date(now + HOME_WINDOW.afterMs), deps: { signal, ...context.deps.upcoming }
+    });
     return { events: events.filter((event) => Date.parse(event.endAt) > now).sort((a, b) => a.startAt.localeCompare(b.startAt)).slice(0, HOME_WINDOW.events) };
   } catch (error) {
     return { events: [], error: error instanceof Error && UPCOMING_KNOWN_ERRORS.includes(error.message) ? error.message : UPCOMING_ERRORS.unavailable };

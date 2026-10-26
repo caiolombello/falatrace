@@ -33,6 +33,10 @@ export type BridgeDeps = {
   detect?: DetectDeps;
   chatgpt?: ChatGptOAuthDeps;
   share?: DeliverShareDeps;
+  /** Overall limit of one share-send to Notion or Slack (tests shorten it). */
+  shareSendDeadlineMs?: number;
+  /** Overall limit of the calendar read behind home-read and meeting-override (tests shorten it). */
+  calendarDeadlineMs?: number;
   destinations?: DescribeDestinationsDeps;
   live?: LiveUnitDeps;
   upcoming?: UpcomingEventsDeps;

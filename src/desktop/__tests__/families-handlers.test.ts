@@ -1,10 +1,13 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { join } from "node:path";
 import { assertQaIsolation } from "../../../scripts/qa-isolation-guard";
 import { NOTES_ERRORS, NotesStore } from "../../notes";
 import { LIVE_MESSAGES } from "../../live/store";
+import { LIVE_PROVIDERS } from "../../config/defaults";
+import { UPCOMING_ERRORS } from "../../calendar/upcoming";
+import { MEDIA_RETENTION_MESSAGES } from "../../media-retention";
 import { TEMPLATE_KNOWN_ERRORS, TEMPLATE_MESSAGES, BUILT_IN_TEMPLATES } from "../../templates";
 import { SHARE_MESSAGES } from "../../share";
 import { SUMMARY_PREFS_ERRORS } from "../../summary/prefs";
@@ -111,6 +114,11 @@ describe("notes and live transcript", () => {
     const session = randomUUID();
     expect(await run(f.context, "live-read", { sinceSeq: 0 }, session)).toEqual({ lines: [], lastSeq: 0, hasMore: false, status: "idle", stale: false });
     expect(await shown(f.context, "live-set", { enabled: true }, session)).toBe(LIVE_MESSAGES.disabled);
+    // Every provider but the local whisper.cpp sends the audio away: consent first (then the setting is checked).
+    for (const provider of LIVE_PROVIDERS) {
+      f.config.live.provider = provider;
+      expect(await shown(f.context, "live-set", { enabled: true }, session)).toBe(provider === "whisper-cpp" ? LIVE_MESSAGES.disabled : NOTES_BRIDGE_MESSAGES.liveConsent);
+    }
     f.config.live.provider = "groq";
     expect(await shown(f.context, "live-set", { enabled: true }, session)).toBe(NOTES_BRIDGE_MESSAGES.liveConsent);
     // Stopping never needs consent and only queues the stop.
@@ -270,15 +278,20 @@ describe("share", () => {
       openUrl: async (url: string) => { opened.push(url); } } };
     const web = await setup({ config: (config) => { config.destinations.aiApp = "chatgpt-web"; }, deps: { share } });
     const webPreview = await run(web.context, "share-preview", { destination: "ai-app", include: "summary", jobId: web.job.id });
-    expect(webPreview).toMatchObject({ external: false, ready: true, destinationLabel: "ChatGPT (web)" });
-    const webSent = await run(web.context, "share-send", { previewId: webPreview.previewId });
+    // The AI app needs consent (DESIGN-STUDIO §2.12): nothing is handed over without it.
+    expect(webPreview).toMatchObject({ external: true, ready: true, destinationLabel: "ChatGPT (web)", target: "ai-app:chatgpt-web" });
+    expect(await shown(web.context, "share-send", { previewId: webPreview.previewId })).toBe(SHARE_MESSAGES.consentRequired);
+    const webSent = await run(web.context, "share-send", { previewId: webPreview.previewId, consent: true });
     expect(webSent).toMatchObject({ kind: "returned", url: "https://chatgpt.com/", opened: false });
     expect(webSent.content).toContain("Planejamento do lançamento");
     expect(opened).toEqual([]);
     const cli = await setup({ config: (config) => { config.destinations.aiApp = "codex-cli"; }, deps: { share, destinations: { which } } });
     const cliPreview = await run(cli.context, "share-preview", { destination: "ai-app", include: "summary", jobId: cli.job.id });
-    expect(cliPreview).toMatchObject({ ready: true, destinationLabel: "Codex CLI" });
-    const cliSent = await run(cli.context, "share-send", { previewId: cliPreview.previewId });
+    expect(cliPreview).toMatchObject({ external: true, ready: true, destinationLabel: "Codex CLI" });
+    // The command-line tool reads the note and sends it to its provider as soon as it starts.
+    expect(await shown(cli.context, "share-send", { previewId: cliPreview.previewId })).toBe(SHARE_MESSAGES.consentRequired);
+    expect(launched).toEqual([]);
+    const cliSent = await run(cli.context, "share-send", { previewId: cliPreview.previewId, consent: true });
     expect(cliSent).toMatchObject({ kind: "opened", opened: true });
     expect(cliSent.content).toBeUndefined();
     expect(cliSent.path.startsWith(handoffDir)).toBe(true);
@@ -286,6 +299,63 @@ describe("share", () => {
     expect(launched[0]!.command[0]).toBe("codex");
     expect(await fs.readFile(cliSent.path, "utf8")).toContain("Planejamento do lançamento");
     await fs.rm(handoffDir, { recursive: true, force: true });
+  });
+
+  test("consent covers the destination the preview named: another AI app or Notion page set since asks again", async () => {
+    const opened: string[] = [];
+    const parentA = "0123456789abcdef0123456789abcdef";
+    const parentB = "fedcba9876543210fedcba9876543210";
+    const created: string[] = [];
+    const notionFetch = async (_url: string | URL | Request, init?: RequestInit) => {
+      created.push(JSON.parse(String(init?.body)).parent.page_id);
+      return new Response(JSON.stringify({ id: "11111111111111111111111111111111", url: "https://www.notion.so/11111111111111111111111111111111" }), { status: 200 });
+    };
+    const f = await setup({
+      config: (config) => { config.destinations.aiApp = "chatgpt-web"; config.destinations.notionParentId = parentA; },
+      deps: {
+        destinations: { readSecret: async (name) => name === "NOTION_TOKEN" ? "secret_synthetic_token" : undefined },
+        share: { log: null, aiApp: { openUrl: async (url: string) => { opened.push(url); } }, notion: { token: "secret_synthetic_token", fetch: notionFetch as typeof fetch } }
+      }
+    });
+    const preview = await run(f.context, "share-preview", { destination: "ai-app", include: "summary", jobId: f.job.id });
+    expect(preview).toMatchObject({ external: true, destinationLabel: "ChatGPT (web)", target: "ai-app:chatgpt-web" });
+    f.config.destinations.aiApp = "claude-web";
+    // Agreed for ChatGPT; Claude is another destination, even with consent.
+    expect(await shown(f.context, "share-send", { previewId: preview.previewId, consent: true })).toBe(SHARE_MESSAGES.previewChanged);
+    const again = await run(f.context, "share-preview", { destination: "ai-app", include: "summary", jobId: f.job.id });
+    expect(again).toMatchObject({ destinationLabel: "Claude (web)", target: "ai-app:claude-web" });
+    expect(await run(f.context, "share-send", { previewId: again.previewId, consent: true })).toMatchObject({ kind: "returned", url: "https://claude.ai/new" });
+    const notion = await run(f.context, "share-preview", { destination: "notion", include: "summary", jobId: f.job.id });
+    expect(notion).toMatchObject({ external: true, ready: true, target: `notion:page/${parentA}` });
+    f.config.destinations.notionParentId = parentB;
+    expect(await shown(f.context, "share-send", { previewId: notion.previewId, consent: true })).toBe(SHARE_MESSAGES.previewChanged);
+    expect(created).toEqual([]);
+    f.config.destinations.notionParentId = parentA;
+    expect(await run(f.context, "share-send", { previewId: notion.previewId, consent: true })).toMatchObject({ kind: "created", destination: "notion" });
+    expect(created).toHaveLength(1);
+    expect(created[0]!.replace(/-/g, "")).toBe(parentA);
+    expect(opened).toEqual([]);
+  });
+
+  test("a Notion send that does not answer stops at the bridge's deadline instead of the Studio's 30 s limit", async () => {
+    let requests = 0;
+    const hanging = (_url: string | URL | Request, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      requests += 1;
+      init?.signal?.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+    });
+    const f = await setup({
+      config: (config) => { config.destinations.notionParentId = "0123456789abcdef0123456789abcdef"; },
+      deps: {
+        shareSendDeadlineMs: 50,
+        destinations: { readSecret: async (name) => name === "NOTION_TOKEN" ? "secret_synthetic_token" : undefined },
+        share: { log: null, notion: { token: "secret_synthetic_token", fetch: hanging as typeof fetch } }
+      }
+    });
+    const preview = await run(f.context, "share-preview", { destination: "notion", include: "summary", jobId: f.job.id });
+    const started = Date.now();
+    expect(await shown(f.context, "share-send", { previewId: preview.previewId, consent: true })).toBe(SHARE_MESSAGES.timeout);
+    expect(Date.now() - started).toBeLessThan(5_000);
+    expect(requests).toBe(1);
   });
 
   test("an answer is shared as text with its title", async () => {
@@ -384,6 +454,30 @@ describe("home, links, first run and search", () => {
     await fs.rm(stateDir, { recursive: true, force: true });
   });
 
+  test("a calendar that does not answer stops at the bridge's deadline: Home answers without it", async () => {
+    let signalled = false;
+    const f = await setup({
+      config: (config) => { config.google.calendar = true; config.google.clientId = "123456789012-abcdefghijklmnop.apps.googleusercontent.com"; },
+      deps: {
+        calendarDeadlineMs: 50,
+        upcoming: {
+          salt: async () => "b".repeat(64),
+          // Like a token renewal or an event list that never answers: only the abort ends it.
+          google: (_from, _to, signal) => new Promise((_resolve, reject) => {
+            signalled = signal !== undefined;
+            signal?.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+          })
+        }
+      }
+    });
+    const started = Date.now();
+    const home = await run(f.context, "home-read");
+    expect(Date.now() - started).toBeLessThan(5_000);
+    expect(signalled).toBe(true);
+    expect(home).toMatchObject({ upcoming: [], calendarConnected: true, calendarError: UPCOMING_ERRORS.unavailable });
+    expect(await shown(f.context, "meeting-override", { eventIdHash: "c".repeat(64), decision: "skip" })).toBe(HOME_BRIDGE_MESSAGES.eventGone);
+  });
+
   test("links queued for the Studio are taken once; the first-run celebration is dismissed once", async () => {
     const dir = await fs.mkdtemp(join(process.env.TMPDIR!, "inbox-"));
     const stateDir = await fs.mkdtemp(join(process.env.TMPDIR!, "first-run-"));
@@ -420,6 +514,31 @@ describe("media removal", () => {
     expect(plan.options[1].bytesFreed).toBeNull();
     expect(plan.consentKey).toMatch(/^[a-f0-9]{64}$/);
     expect(f.invalidations).toBeGreaterThan(0);
+  });
+
+  test("a second plan of the same recording joins the running one; a removal with a stale consent removes nothing", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let hashes = 0;
+    const hashFile = async (path: string): Promise<string> => {
+      hashes += 1;
+      await gate;
+      return createHash("sha256").update(await fs.readFile(path)).digest("hex");
+    };
+    const f = await setup({ deps: { retention: { hashFile } } });
+    const first = await run(f.context, "media-plan", undefined, f.source);
+    await until(async () => hashes, (count) => count > 0);
+    // Planning hashes the whole media: a second click while it runs gets the same request.
+    const second = await run(f.context, "media-plan", undefined, f.source);
+    expect(second.requestId).toBe(first.requestId);
+    release();
+    const plan = await until(() => run(f.context, "media-status", { requestId: first.requestId }), (value) => value.status !== "running");
+    expect(plan).toMatchObject({ status: "completed", kind: "plan" });
+    const removal = await run(f.context, "media-remove", { mode: "transcript-only", consentKey: "0".repeat(64) }, f.source);
+    const outcome = await until(() => run(f.context, "media-status", { requestId: removal.requestId }), (value) => value.status !== "running");
+    expect(outcome).toMatchObject({ kind: "remove", status: "failed", error: MEDIA_RETENTION_MESSAGES.planChanged });
+    expect(outcome.removed).toBeUndefined();
+    expect((await fs.stat(f.source)).isFile()).toBe(true);
   });
 });
 

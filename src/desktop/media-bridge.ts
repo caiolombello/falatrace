@@ -55,8 +55,8 @@ const knownMessage = (error: unknown, fallback: string): string =>
 
 const run = (kind: MediaTask["kind"], key: string, work: () => Promise<Partial<Pick<MediaTask, "plan" | "result">>>, fallback: string): { requestId: string; status: "running" } => {
   prune();
-  // One removal per recording at a time: a second click joins the running one.
-  const running = kind === "remove" ? [...tasks.values()].find((task) => task.kind === "remove" && task.key === key && task.status === "running") : undefined;
+  // One plan and one removal per recording at a time (each hashes the whole media): a second click joins the running one.
+  const running = [...tasks.values()].find((task) => task.kind === kind && task.key === key && task.status === "running");
   if (running) return { requestId: running.id, status: "running" };
   const task: MediaTask = { id: randomUUID(), kind, key, status: "running" };
   tasks.set(task.id, task);
