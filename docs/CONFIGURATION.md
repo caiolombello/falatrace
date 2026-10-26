@@ -112,7 +112,7 @@ The **audio test** records five seconds with the saved sources, reports the leve
 | `summary.templateDetection` | `ai`, `keywords` | `ai` | When the calendar title and keywords do not decide, `ai` lets the summary request pick the template; `keywords` falls back to the general template. No extra request is made either way. |
 | `summary.useNotes` | true, false | true | Use the notes typed during the meeting as the skeleton of the summary. |
 
-The three **presets** fill these fields: everything on this computer (Whisper.cpp and Ollama), local transcription with an OpenAI summary, or everything through OpenAI. Any recording can be processed later with **Process…**, which shows where the audio and text go before asking for consent.
+The three **presets** fill these fields: everything on this computer (Whisper.cpp and Ollama), local transcription with an OpenAI summary, or everything through OpenAI. Any recording can be processed later with **Generate notes…**, which shows where the audio and text go before asking for consent.
 
 ### Notes and templates
 

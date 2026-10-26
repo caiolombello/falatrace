@@ -233,6 +233,32 @@ test("the guides do not promise regeneration through an external summary provide
   expect(section).not.toMatch(/OpenAI[^\n]*asks for consent/);
 });
 
+test("every Studio button the guides name is a label the Studio shows", () => {
+  // A bold label ending in "…" names a Studio button: the Portuguese guides use the QML text, the
+  // English ones its English entry. A renamed button would otherwise leave the guides pointing at nothing.
+  const desktop = join(root, "src/desktop");
+  const source = read("src/desktop/i18n.js").replace(/^\.pragma library\s*$/m, "");
+  const english = new Function(`${source}\nreturn EN;`)() as Record<string, string>;
+  const shown = new Set<string>();
+  for (const name of readdirSync(desktop).filter((file) => file.endsWith(".qml"))) {
+    for (const match of readFileSync(join(desktop, name), "utf8").matchAll(/\bt[f]?\(\s*"((?:[^"\\]|\\.)*)"/g)) {
+      const text = JSON.parse(`"${match[1]}"`) as string;
+      shown.add(text);
+      if (Object.prototype.hasOwnProperty.call(english, text)) shown.add(english[text] ?? "");
+    }
+  }
+  const problems: string[] = [];
+  let named = 0;
+  for (const file of GUIDES) {
+    for (const match of read(file).matchAll(/\*\*([^*\n]+…)\*\*/g)) {
+      named += 1;
+      if (!shown.has(match[1] ?? "")) problems.push(`${file}: ${match[1]}`);
+    }
+  }
+  expect(problems).toEqual([]);
+  expect(named).toBeGreaterThanOrEqual(8);
+});
+
 test("a new guide in docs/ is added to the checked list", () => {
   // Release notes and older review records are history; every other docs/*.md is a guide checked above.
   const history = [

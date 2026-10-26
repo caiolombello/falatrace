@@ -41,7 +41,7 @@ Dá para mudar tudo depois em **Configurações**. A lista completa de opções 
 - Quando a gravação para, ela é processada:
   - na hora, quando o processamento é local e `processing.fastPath` está ligado (os padrões recomendados ligam); <!-- studio-check -->
   - em segundo plano, quando o processamento automático está ligado;
-  - se não, quando você abre a gravação e escolhe **Processar…**, que mostra para onde vão o áudio e a transcrição, marca o que sai do computador e pede consentimento antes de enfileirar.
+  - se não, quando você abre a gravação e escolhe **Gerar notas…**, que mostra para onde vão o áudio e a transcrição, marca o que sai do computador e pede consentimento antes de enfileirar.
 - Uma notificação avisa quando as notas ficam prontas; clicar nela abre a reunião no Studio.
 
 Parar encerra a captura atual; pausar novas gravações vale só para as próximas gravações automáticas. Fechar a janela do Studio mantém rodando os serviços em segundo plano configurados. Nenhum comando de instalação ou de init inicia uma captura.
@@ -55,7 +55,7 @@ Pelo terminal: `falatrace record start`, `falatrace record stop` (encerra a capt
 - As abas **Transcrição** e **Falantes** mostram a fonte. Correções viram revisões humanas; o original é preservado.
 - **Pergunte** sobre esta reunião, uma pessoa, um cliente ou a biblioteca inteira; as respostas citam as fontes. O padrão é o Ollama local; qualquer outro provedor mostra para onde vai a pergunta e pede confirmação antes. Veja [assistente](ASSISTANT.md) (em inglês).
 - **Compartilhe** as notas no Obsidian, no Notion, no Slack ou num app de IA depois de uma prévia; veja [compartilhamento](SHARING.md) (em inglês). **Exportar** grava arquivos JSON, Markdown, SRT ou WebVTT neste computador.
-- **Acesso para IA…** autoriza um agente local (Claude Code, Codex ou Gemini CLI) a ler esta gravação e mostra o comando para conectá-lo. Você copia e roda no seu terminal; pausar ou revogar vale na próxima consulta.
+- **Acesso para agentes…**, na aba **Agentes**, autoriza um agente local (Claude Code, Codex ou Gemini CLI) a ler esta gravação e mostra o comando para conectá-lo. Você copia e roda no seu terminal; pausar ou revogar vale na próxima consulta.
 
 ## 5. Acompanhar com o tempo
 

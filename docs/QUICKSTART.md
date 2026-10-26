@@ -41,7 +41,7 @@ Every choice can be changed later in **Settings**. The full list of options is i
 - When it stops, the recording is processed:
   - right away, when processing is local and `processing.fastPath` is on (the recommended defaults turn it on); <!-- studio-check -->
   - in the background, when automatic processing is on;
-  - otherwise when you open it and choose **Process…**, which shows where the audio and the transcript go, marks anything that leaves the computer and asks for consent before queueing.
+  - otherwise when you open it and choose **Generate notes…**, which shows where the audio and the transcript go, marks anything that leaves the computer and asks for consent before queueing.
 - A desktop notification says when the notes are ready; clicking it opens the meeting in the Studio.
 
 Stopping ends the current capture; pausing new recordings affects only future automatic captures. Closing the Studio window keeps the configured background services running. No install or init command starts a capture.
@@ -55,7 +55,7 @@ From the terminal: `falatrace record start`, `falatrace record stop` (ends the c
 - The **Transcript** and **Speakers** tabs show the source. Corrections are saved as human revisions; the original is kept.
 - **Ask** about this meeting, a person, a client or the whole library; answers cite their sources. Local Ollama is the default; any other provider shows where your question goes and asks first. See [assistant](ASSISTANT.md).
 - **Share** the notes to Obsidian, Notion, Slack or an AI app after a preview; see [sharing](SHARING.md). **Export** writes JSON, Markdown, SRT or WebVTT files on this computer.
-- **AI access…** authorizes a local agent (Claude Code, Codex or Gemini CLI) to read this recording, and shows the command to connect it. You copy and run it yourself; pausing or revoking applies on the next query.
+- **Agent access…**, on the **Agents** tab, authorizes a local agent (Claude Code, Codex or Gemini CLI) to read this recording, and shows the command to connect it. You copy and run it yourself; pausing or revoking applies on the next query.
 
 ## 5. Keep track over time
 
