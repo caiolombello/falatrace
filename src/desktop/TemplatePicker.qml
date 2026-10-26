@@ -21,7 +21,19 @@ Popup {
     property string chosen: "auto"
     property string currentId: ""
     readonly property var options: [{id: "auto", name: t("Automático"), description: t("O FalaTrace escolhe pelo título da agenda ou pela conversa."), sectionTitles: []}].concat(templates)
+    // Placed in window coordinates beside the chip: below it when the picker fits there, above it when
+    // there is more room above (the chip sits low under an expanded video), and never past the window:
+    // the list shrinks so the title and the Apply/Manage buttons stay on screen.
+    parent: Overlay.overlay
+    margins: 8
+    property real anchorTop: 0
+    property real anchorBottom: 0
+    readonly property real spaceBelow: Math.max(0, window.height - anchorBottom - 6 - 8)
+    readonly property real spaceAbove: Math.max(0, anchorTop - 6 - 8)
+    readonly property bool opensAbove: implicitHeight > spaceBelow && spaceAbove > spaceBelow
     width: Math.min(440, window.width - 32)
+    height: Math.min(implicitHeight, opensAbove ? spaceAbove : spaceBelow)
+    y: opensAbove ? anchorTop - 6 - height : anchorBottom + 6
     padding: 12
     modal: false
     focus: true
@@ -34,14 +46,14 @@ Popup {
         const doc = detail.notesDoc && detail.notesDoc.version === 2 ? detail.notesDoc : null
         currentId = doc && doc.template ? (doc.template.id || "") : ""
         chosen = currentId || "auto"
-        const point = anchorItem.mapToItem(picker.parent, 0, anchorItem.height + 6)
-        x = Math.max(8, Math.min(point.x, picker.parent.width - width - 8))
-        y = point.y
+        const point = anchorItem.mapToItem(null, 0, 0)
+        anchorTop = point.y; anchorBottom = point.y + anchorItem.height
+        x = Math.max(8, Math.min(point.x, window.width - width - 8))
         open()
-        if (!templates.length) {
-            loading = true
-            if (send("templates-list", "", ({}), {origin: "templates", pickerGeneration: pickerGeneration}) < 0) { loading = false; error = t("Sem conexão com o FalaTrace.") }
-        }
+        // Read again on every opening: templates made, changed or deleted in Settings, and built-in
+        // names in the current language. The list there was stays while the new one arrives.
+        loading = true
+        if (send("templates-list", "", ({}), {origin: "templates", pickerGeneration: pickerGeneration}) < 0) { loading = false; error = t("Sem conexão com o FalaTrace.") }
         if (prefsKey) send("summary-prefs-read", prefsKey, ({}), {origin: "templates", pickerGeneration: pickerGeneration})
     }
     function optionFor(id) {
@@ -119,13 +131,15 @@ Popup {
         spacing: 8
         Label { text: t("Modelo das notas"); textFormat: Text.PlainText; color: ink; font.pixelSize: 15; font.weight: Font.DemiBold }
         Label { text: picker.reasonText(); textFormat: Text.PlainText; color: muted; font.pixelSize: 12; wrapMode: Text.WordWrap; Layout.fillWidth: true }
-        BusyIndicator { visible: picker.loading; running: visible; implicitWidth: 28; implicitHeight: 28; Layout.alignment: Qt.AlignHCenter }
+        BusyIndicator { visible: picker.loading && !picker.templates.length; running: visible; implicitWidth: 28; implicitHeight: 28; Layout.alignment: Qt.AlignHCenter }
         Label { visible: !!picker.error; text: picker.error; textFormat: Text.PlainText; color: warningColor; font.pixelSize: 12; wrapMode: Text.WordWrap; Layout.fillWidth: true }
         ListView {
             id: optionList
             objectName: "templateOptions"
             Layout.fillWidth: true
+            Layout.fillHeight: true
             Layout.preferredHeight: Math.min(contentHeight, Math.max(160, window.height - 320))
+            Layout.minimumHeight: Math.min(contentHeight, 64)
             clip: true
             spacing: 2
             model: picker.options

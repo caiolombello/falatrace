@@ -3,8 +3,10 @@
 
 Offline and disposable. Each mode drives the meeting page with studio_fixture.qml_steps (every step
 waits, bounded, for the state the previous reply produces, never a fixed delay): the picker opened
-from the template chip (the current template marked, focus in the list and back on the chip; "Gerenciar
-modelos…" opens Settings on Notas e resumos); a
+from the template chip (the current template marked, focus in the list and back on the chip; inside the
+window beside the chip with Apply and Manage on screen, at 1320×820 under the expanded video and at
+900×640; the templates read again on each opening; "Gerenciar modelos…" opens Settings on Notas e
+resumos); a
 template chosen, saved for the meeting and generated on this computer (the regenerate bar, no dialog,
 summary-status polled until the notes are ready, the meeting read again); another language with a
 destination outside this computer in the compact English layout (SummaryDialog with the plan and a
@@ -45,6 +47,8 @@ templates = [
     {'id': 'postmortem', 'name': 'Postmortem', 'description': 'Linha do tempo, causa, impacto e próximos passos de um incidente.', 'builtIn': True, 'sectionTitles': ['Linha do tempo', 'Causa', 'Impacto', 'Próximos passos'], 'version': 1},
     {'id': 'one-on-one', 'name': '1:1', 'description': 'Conversa entre duas pessoas: assuntos, combinados e acompanhamento.', 'builtIn': True, 'sectionTitles': ['Assuntos', 'Combinados'], 'version': 1}]
 prefs = {'id': JOB, 'rev': 0}
+lists = 0
+weekly = {'id': 'weekly', 'name': 'Revisão semanal', 'description': 'Feito em Configurações depois da primeira abertura.', 'builtIn': False, 'sectionTitles': ['Semana'], 'version': 1}
 generated = None; runs = 0; status_polls = 0
 def doc():
     template = {'id': 'standup', 'name': 'Daily', 'source': 'calendar', 'reason': 'pela agenda', 'confidence': 1} if not generated else {'id': generated, 'name': 'Postmortem', 'source': 'user', 'reason': 'você escolheu', 'confidence': 1}
@@ -77,7 +81,9 @@ for line in sys.stdin:
         if mode == 'no-review': del v['review']; del v['notesDoc']; v['summary'] = ''
         if r['key'] == other['key']: v.update({'jobId': OTHER, 'diarizationId': OTHER, 'subtitleId': OTHER, 'review': dict(v['review'], revision={'revision': 0, 'base': {'jobId': OTHER}, 'humanReviewed': False})})
     elif op == 'resolve': v = {'state': 'completed', 'location': 'local', 'path': os.environ['FALATRACE_SYNTHETIC_MEDIA']}
-    elif op == 'templates-list' and features['templates']: v = {'templates': templates, 'default': 'auto', 'problems': []}
+    elif op == 'templates-list' and features['templates']:
+        lists += 1
+        v = {'templates': templates + ([weekly] if mode == 'picker' and lists > 1 else []), 'default': 'auto', 'problems': []}
     elif op == 'summary-prefs-read' and features['templates']: v = prefs
     elif op == 'summary-prefs-save' and features['templates']:
         if p.get('expectedRev') != prefs['rev']: refuse(r, 'Não foi possível ler ou salvar o modelo e o idioma escolhidos para esta reunião.'); continue
@@ -111,6 +117,13 @@ for line in sys.stdin:
 OPEN = ('meeting open', '!!selected.key && !detailLoading && !!detail.notesDoc && !!detail.review && newBridge && settingsFirstRunChecked', '''
     check("the template chip names the template and why", uxFind(detailView.notesDocument, "templateChip").chipText === "Daily · pela agenda" || uxFind(detailView.notesDocument, "templateChip").chipText === "Daily · from the calendar")''')
 PICKER = 'detailView.templatePicker.visible && !detailView.templatePicker.loading && detailView.templatePicker.templates.length === 3 && typeof detailView.templatePicker.prefs.rev === "number"'
+# The picker and its Apply/Manage buttons lie inside the window, and it does not cover the chip.
+INSIDE = '''
+    function inside(item) { const p = item.mapToItem(null, 0, 0); return p.x >= 0 && p.y >= 0 && p.x + item.width <= window.width && p.y + item.height <= window.height }
+    const chipAt = uxFind(detailView.notesDocument, "templateChip").mapToItem(null, 0, 0), chipHeight = uxFind(detailView.notesDocument, "templateChip").height
+    check("the picker stays inside the window", picker.y >= 8 && picker.y + picker.height <= window.height - 8 && inside(picker.contentItem))
+    check("Apply and Manage are on screen", inside(uxFind(picker.contentItem, "templateApply")) && inside(uxFind(picker.contentItem, "templateManage")))
+    check("the picker opens beside the chip, not over it", picker.y >= chipAt.y + chipHeight || picker.y + picker.height <= chipAt.y)'''
 
 
 def menu(label):
@@ -124,7 +137,7 @@ PLANS = {
     'picker': ('1320x820', False, [OPEN[:2] + (OPEN[2] + '''
     uxFind(detailView.notesDocument, "templateChip").clicked()''',),
         ('picker open', PICKER, '''
-    const picker = detailView.templatePicker
+    const picker = detailView.templatePicker''' + INSIDE + '''
     check("Automático first, then every template", picker.options.length === 4 && picker.options[0].id === "auto" && picker.options[2].id === "postmortem")
     check("the current template is chosen", picker.chosen === "standup" && picker.currentId === "standup")
     check("the list has the focus", uxFind(picker.contentItem, "templateOptions").activeFocus)
@@ -133,8 +146,9 @@ PLANS = {
         ('closed', '!detailView.templatePicker.visible', '''
     check("closing returns the focus to the chip", uxFind(detailView.notesDocument, "templateChip").activeFocus)
     uxFind(detailView.notesDocument, "templateChip").clicked()'''),
-        ('open again', PICKER, '''
+        ('open again', PICKER.replace('length === 3', 'length === 4'), '''
     const picker = detailView.templatePicker
+    check("each opening reads the templates again: one made in Settings meanwhile is offered", !!picker.optionFor("weekly") && !!uxFind(picker.contentItem, "templateOption-weekly"))
     uxFind(picker.contentItem, "templateOption-postmortem").clicked()
     check("a click chooses without applying", picker.chosen === "postmortem" && picker.visible && summaryStage === "")
     picker.prefs = ({})
@@ -142,6 +156,11 @@ PLANS = {
     summaryGeneration += 1'''),
         ('prefs routed', 'typeof detailView.templatePicker.prefs.rev === "number"', '''
     check("summary-prefs replies go to the picker, not to the notes generation guard", detailView.templatePicker.prefs.id === "''' + JOB + '''")''')]),
+    'picker-compact': ('900x640', True, [OPEN[:2] + (OPEN[2] + '''
+    uxFind(detailView.notesDocument, "templateChip").clicked()''',),
+        ('picker open', PICKER, '''
+    const picker = detailView.templatePicker''' + INSIDE + '''
+    check("the list keeps room for at least one template", uxFind(picker.contentItem, "templateOptions").height >= 64)''')]),
     'local': ('1320x820', False, [OPEN[:2] + (OPEN[2] + '''
     uxFind(detailView.notesDocument, "templateChip").clicked()''',),
         ('picker open', PICKER, '''
@@ -289,8 +308,8 @@ def payloads(mode, op):
 plan = payloads('local', 'summary-plan')
 run = payloads('local', 'summary-run')
 checks += [
-    {'name': 'picker: templates and the saved choice are read once; nothing is saved or planned before applying',
-     'pass': len(sent('picker', 'templates-list')) == 1 and [q['key'] for q in sent('picker', 'summary-prefs-read')] == [JOB, JOB, JOB]
+    {'name': 'picker: templates are read on each opening and the saved choice once per opening; nothing is saved or planned before applying',
+     'pass': len(sent('picker', 'templates-list')) == 2 and [q['key'] for q in sent('picker', 'summary-prefs-read')] == [JOB, JOB, JOB]
      and not sent('picker', 'summary-prefs-save') and not sent('picker', 'summary-plan')},
     {'name': 'local: the choice is saved for the meeting with its revision',
      'pass': [(q['key'], q['payload']) for q in sent('local', 'summary-prefs-save')] == [(JOB, {'expectedRev': 0, 'templateId': 'postmortem'})]},
