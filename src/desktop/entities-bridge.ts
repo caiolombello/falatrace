@@ -235,7 +235,9 @@ const meetingClientSet = async (call: BridgeCall, context: BridgeContext) => {
     readClientCatalog(catalogPath(config)).then((read) => read.context, () => undefined)
   ]);
   const clients = effectiveClients(facts ?? { jobId, mediaSha256: job.source.sha256, clients: [] }, overrides, catalog);
-  return { jobId, clients: clients.map(({ code, name, source }) => ({ code, name, source })) };
+  // A choice the person made, "no client" included, so the Studio can tell "Nenhum" from "Automático".
+  const manual = call.payload.automatic !== true && (clients.length === 0 || clients.some((client) => client.source === "manual"));
+  return { jobId, clients: clients.map(({ code, name, source }) => ({ code, name, source })), manual };
 };
 
 export const entitiesBridge: BridgeFamily<BridgeContext> = {

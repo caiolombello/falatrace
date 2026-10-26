@@ -25,7 +25,9 @@ FtDialog {
     property alias previewArea: sharePreview
     readonly property bool previewing: hasSharePending("share-preview")
     readonly property bool sending: hasSharePending("share-send")
-    readonly property bool external: preview.external === true
+    // Fail closed, like the notes and Ask consent: only a preview that says it stays on this computer
+    // (external === false) skips the consent step; anything else asks first.
+    readonly property bool external: !!preview.previewId && preview.external !== false
     readonly property string aiTarget: String(preview.target || "").indexOf("ai-app:") === 0 ? String(preview.target).slice(7) : ""
     readonly property bool aiWeb: ["chatgpt-web", "claude-web", "gemini-web", "claude-desktop"].indexOf(aiTarget) >= 0
     readonly property var destinations: [

@@ -405,13 +405,17 @@ describe("actions, people and clients", () => {
     expect(added).toMatchObject({ code: "ACME", client: { code: "ACME", name: "Acme Ltda" } });
     await run(f.context, "client-edit", { op: "alias-add", code: "ACME", value: "acme corp" });
     const assigned = await run(f.context, "meeting-client-set", { clientCodes: ["ACME"] }, f.job.id);
-    expect(assigned).toEqual({ jobId: f.job.id, clients: [{ code: "ACME", name: "Acme Ltda", source: "manual" }] });
+    expect(assigned).toEqual({ jobId: f.job.id, clients: [{ code: "ACME", name: "Acme Ltda", source: "manual" }], manual: true });
     const clients = await run(f.context, "clients-list");
     expect(clients.clients[0]).toMatchObject({ code: "ACME", aliases: ["acme corp"], meetingCount: 1 });
     expect((await run(f.context, "client-detail", { clientCode: "ACME" })).meetings[0].jobId).toBe(f.job.id);
     expect(await shown(f.context, "meeting-client-set", { clientCodes: ["NOPE"] }, f.job.id)).toBe(CLIENT_OVERRIDE_ERRORS.unknownClient);
+    // "Nenhum" is a choice too: an empty list the Studio can tell from the automatic one.
+    const none = await run(f.context, "meeting-client-set", { clientCodes: [] }, f.job.id);
+    expect(none).toEqual({ jobId: f.job.id, clients: [], manual: true });
     const automatic = await run(f.context, "meeting-client-set", { automatic: true }, f.job.id);
     expect(automatic.clients).toEqual([]);
+    expect(automatic.manual).toBe(false);
   });
 });
 
@@ -552,6 +556,8 @@ describe("list and detail fields from the index", () => {
     // The user is not listed; names follow the people store (another test may have renamed Ana).
     expect(extras.people).toHaveLength(2);
     expect(extras.people.map((person: { name: string }) => person.name)).toContain("Bruno Lima");
+    // No client chosen by hand: the client chip offers "Automático".
+    expect(extras.clientsManual).toBe(false);
     const doc = extras.notesDoc;
     expect(doc).toMatchObject({ version: 2, language: "pt-BR", stale: null, template: { id: "planning", source: "calendar", confidence: 0.8 },
       overview: { text: "Reunião sobre o lançamento.", citations: [{ segmentId: "s000001", start: 4 }] } });

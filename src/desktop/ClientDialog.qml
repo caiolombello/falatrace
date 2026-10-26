@@ -33,8 +33,9 @@ FtDialog {
     function openAssign() {
         if (!feature("clients") || !detail.jobId) return
         editGeneration += 1; mode = "assign"; client = null; error = ""; jobId = String(detail.jobId).toLowerCase()
+        // An empty list is "Nenhum" when the person chose it (clientsManual), else the automatic choice.
         const current = asList(detail.clients)
-        choice = current.length ? (current[0].source === "manual" ? current[0].code : "auto") : "auto"
+        choice = current.length ? (current[0].source === "manual" ? current[0].code : "auto") : detail.clientsManual === true ? "" : "auto"
         open()
         catalogLoading = true
         if (send("clients-list", "", ({}), {origin: "clientDialog", editGeneration: editGeneration, catalog: true}) < 0) { catalogLoading = false; error = t("Sem conexão com o FalaTrace.") }
@@ -72,7 +73,7 @@ FtDialog {
         if (!message.ok) { error = t(message.error); return }
         if (request.editOp === "assign") {
             const clients = asList(message.result.clients)
-            if (selected.key && String(detail.jobId || "").toLowerCase() === String(message.result.jobId || "").toLowerCase()) detail = Object.assign({}, detail, {clients: clients})
+            if (selected.key && String(detail.jobId || "").toLowerCase() === String(message.result.jobId || "").toLowerCase()) detail = Object.assign({}, detail, {clients: clients, clientsManual: message.result.manual === true})
             close()
             toast.show(clients.length ? tf("Cliente desta reunião: %1", clients[0].name) : t("Reunião sem cliente."), "", null)
             return

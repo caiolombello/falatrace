@@ -65,6 +65,8 @@ for line in sys.stdin:
     elif op == 'detail':
         v = {'transcript': {'segments': [{'id': 's1', 'start': 3, 'end': 9, 'text': 'Bom dia.'}], 'text': 'Bom dia.', 'timing': 'segment'}, 'diarization': {'state': 'idle', 'turns': []},
              'summary': '# Daily\n\n- ok', 'status': 'completed', 'backup': 'none', 'jobId': E['JOB'], 'clients': assigned}
+        # The person chose "Nenhum" for this meeting: no client, set by hand.
+        if mode == 'assign-none': v['clientsManual'] = True
     elif op == 'resolve': v = {'state': 'failed', 'message': 'Mídia sintética indisponível.'}
     elif op == 'home-read': v = {'upcoming': [], 'openActions': [], 'openActionsTotal': 0, 'processing': [], 'calendarConnected': True, 'reminderMode': 'on', 'refreshing': False}
     elif op == 'actions-list':
@@ -98,7 +100,7 @@ for line in sys.stdin:
         else: v = {'code': p['code'], 'revision': 'r4'}
     elif op == 'meeting-client-set':
         assigned = [{'code': code, 'name': next(item['name'] for item in clients if item['code'] == code), 'source': 'manual'} for code in p.get('clientCodes', [])]
-        v = {'jobId': r['key'], 'clients': assigned}
+        v = {'jobId': r['key'], 'clients': assigned, 'manual': p.get('automatic') is not True}
     elif op == 'recipes-list': v = {'recipes': [], 'problems': []}
     elif op == 'assistant-plan':
         v = {'ready': False, 'problem': 'unreachable', 'message': 'O Ollama não respondeu.', 'destination': {'label': 'Ollama · qwen3.5:9b', 'kind': 'local', 'external': False}, 'consentKey': 'c' * 64, 'contextCharacters': 0, 'meetings': 0, 'truncated': False}
@@ -183,6 +185,12 @@ PLANS = {
     check("the client can be automatic, none or one of the catalog", !!uxFind(clientDialog.contentItem, "clientAssignOption-auto") && !!uxFind(clientDialog.contentItem, "clientAssignOption-ACME"))
     clientDialog.choice = "ACME"; clientDialog.confirm()'''),
         ('assigned', '!clientDialog.visible && detailView.meetingClient === "ACME Ltda"', 'check("the meeting shows its client at once", toast.message === "Cliente desta reunião: ACME Ltda")')]),
+    'assign-none': ('1320x820', False, [
+        ('meeting open', '!!selected.key && !detailLoading && !!detail.jobId && features.clients === true && detail.clientsManual === true', 'clientDialog.openAssign()'),
+        ('catalog read', 'clientDialog.visible && !clientDialog.catalogLoading', '''
+    check("a meeting set to Nenhum by hand opens on Nenhum, not Automático", clientDialog.choice === "" && uxFind(clientDialog.contentItem, "clientAssignOption-none").chosen && !uxFind(clientDialog.contentItem, "clientAssignOption-auto").chosen)
+    clientDialog.choice = "auto"; clientDialog.confirm()'''),
+        ('automatic again', '!clientDialog.visible && detail.clientsManual === false', 'check("back to automatic, said in a toast", toast.message === "Reunião sem cliente.")')]),
     'people-compact-en': ('900x640', True, [
         (READY[0], READY[1] + ' && uiLanguage === "en"', 'navigate("people")'),
         ('people listed', 'peopleView.loaded', '''
@@ -202,7 +210,7 @@ PLANS = {
 
 def env_for(mode):
     env = {'ENT_' + name: value for name, value in {'JOB': JOB, 'OTHER': OTHER, 'SHA': SHA, 'SHA2': SHA2, 'A1': A1, 'A2': A2, 'A3': A3, 'A4': A4, 'ANA': ANA}.items()}
-    if mode == 'assign': env['RECORDING_DESKTOP_SMOKE_KEY'] = '/synthetic/Recordings/daily.mkv'
+    if mode in ('assign', 'assign-none'): env['RECORDING_DESKTOP_SMOKE_KEY'] = '/synthetic/Recordings/daily.mkv'
     return env
 
 
@@ -227,4 +235,5 @@ checks.append({'name': 'clients: add then delete in the catalog',
 checks.append({'name': 'clients-invalid: nothing is edited', 'pass': not sent('clients-invalid', 'client-edit')})
 assign = sent('assign', 'meeting-client-set')
 checks.append({'name': 'assign: the meeting gets the chosen client', 'pass': len(assign) == 1 and assign[0]['key'] == JOB and assign[0]['payload'] == {'clientCodes': ['ACME']}})
+checks.append({'name': 'assign-none: going back to automatic sends only that', 'pass': [q['payload'] for q in sent('assign-none', 'meeting-client-set')] == [{'automatic': True}]})
 finish_journey(command, 'entities', out, checks, screens)

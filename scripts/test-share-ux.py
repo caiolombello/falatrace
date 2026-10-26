@@ -5,8 +5,8 @@ Offline and disposable. Each mode drives the share dialog with studio_fixture.qm
 waits, bounded, for the state the previous reply produces, never a fixed delay): the preview first,
 then Notion with the consent box (nothing goes before it), Obsidian and the clipboard straight away
 (no consent on this computer), a destination changed after the preview (the dialog previews again),
-an AI app in the compact English layout, a destination that is not set up, and a bridge without
-sharing. Exit 77 means no Studio runtime is available.
+an AI app in the compact English layout, a destination that is not set up, a preview that does not
+say whether it leaves this computer (consent asked: fail closed), and a bridge without sharing. Exit 77 means no Studio runtime is available.
 """
 from pathlib import Path
 import sys, tempfile
@@ -53,6 +53,8 @@ for line in sys.stdin:
         preview_id = '8888888%d-8888-4888-8888-888888888888' % (counter % 10)
         text = markdown(p); previews[preview_id] = p
         v = dict(destinations[p['destination']], previewId=preview_id, markdown=text, chars=len(text))
+        # A preview that does not say whether the destination is outside this computer.
+        if mode == 'unsaid' and p['destination'] == 'obsidian': del v['external']
     elif op == 'share-send' and features['share']:
         sends += 1
         preview = previews.get(p['previewId'])
@@ -131,6 +133,14 @@ PLANS = {
         ('slack preview', destination('slack'), '''
     check("a destination not set up says what is missing", uxFind(shareDialog.contentItem, "shareProblem").visible && uxFind(shareDialog.contentItem, "shareProblem").text.indexOf("Slack") >= 0)
     check("it cannot be sent", !uxFind(shareDialog.footer, "shareSend").enabled && !uxFind(shareDialog.contentItem, "shareConsent").visible)''')]),
+    'unsaid': ('1320x820', False, [OPEN,
+        ('first preview', PREVIEWED, 'shareDialog.choose("obsidian")'),
+        ('obsidian preview', destination('obsidian'), '''
+    check("a preview that does not say it stays here asks the consent (fail closed)", shareDialog.external && uxFind(shareDialog.contentItem, "shareConsent").visible && !uxFind(shareDialog.footer, "shareSend").enabled)
+    shareDialog.sendNow()
+    check("and nothing is sent without it", !hasPending("share-send") && !shareDialog.sendResult)
+    shareDialog.consent.checked = true; shareDialog.sendNow()'''),
+        ('saved', '!!shareDialog.sendResult', 'check("with the consent it goes", uxFind(shareDialog.contentItem, "shareResultText").text.indexOf("Salvo em /home/synthetic/Vault/FalaTrace/") === 0)')]),
     'no-share': ('1320x820', False, [
         ('meeting open', '!!selected.key && !detailLoading && !!detail.jobId && newBridge && features.share === false', '''
     check("no Enviar without the share feature", !detailView.shareButton.visible)
@@ -160,5 +170,6 @@ checks.append({'name': 'obsidian: the YAML header choice is in the preview, and 
 checks.append({'name': 'clipboard-full: Tudo asks the full preview', 'pass': [q['payload']['include'] for q in sent('clipboard-full', 'share-preview')] == ['summary', 'full']})
 checks.append({'name': 'changed: a refused send previews again', 'pass': len(sent('changed', 'share-send')) == 1 and len(sent('changed', 'share-preview')) == 3})
 checks.append({'name': 'unconfigured: nothing is sent', 'pass': not sent('unconfigured', 'share-send')})
+checks.append({'name': 'unsaid: one send, with the consent', 'pass': [q['payload'].get('consent') for q in sent('unsaid', 'share-send')] == [True]})
 checks.append({'name': 'no-share: no share op without the flag', 'pass': not any(q['op'].startswith('share-') for q in requests['no-share'])})
 finish_journey(command, 'share', out, checks, screens)

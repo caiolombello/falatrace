@@ -7,7 +7,7 @@ import { listActionsForFacts, type ListedAction } from "../actions/list";
 import { normalizeActionText } from "../actions/store";
 import type { AppServices } from "../app/context";
 import { readClientCatalog } from "../clients/catalog";
-import { ClientOverridesStore, effectiveClients } from "../clients/overrides";
+import { ClientOverridesStore, effectiveClients, overrideFor } from "../clients/overrides";
 import type { AppConfig } from "../config/defaults";
 import type { JobRecord, RecordingSummary } from "../jobs/types";
 import { readMeetingArtifacts, type MeetingArtifacts } from "../knowledge/meetings";
@@ -172,12 +172,16 @@ export const detailExtras = async (input: {
     ? [...new Map(meetingPeople(facts).map((name) => [directory.idForName(name) ?? `name:${personKey(name)}`, name])).entries()].map(([id, name]) => ({ id, name: directory.record(id)?.displayName ?? name }))
     : undefined;
   let clients: Array<{ code: string; name: string; source: string }> | undefined;
+  let clientsManual = false;
   if (facts) {
     const [overrides, catalog] = await Promise.all([
       new ClientOverridesStore().read().catch(() => undefined),
       readClientCatalog(config.timesheet.contextPath).then((read) => read.context, () => undefined)
     ]);
     clients = effectiveClients(facts, overrides, catalog).map(({ code, name, source }) => ({ code, name, source }));
+    // "No client" chosen by hand reads as an empty list too; this tells it from the automatic choice.
+    const override = overrideFor(overrides, facts.jobId, facts.mediaSha256);
+    clientsManual = !!override && (override.clientCodes.length === 0 || clients.some((client) => client.source === "manual"));
   }
   const link = await readCalendarLink(job).catch(() => undefined);
   let notesDoc: Awaited<ReturnType<typeof buildNotesDoc>>;
@@ -188,7 +192,7 @@ export const detailExtras = async (input: {
   return {
     ...(notes ? { notes: { ...notesView(notes.id, notes), digest: notesDigest(notes) } } : {}),
     ...(people ? { people } : {}),
-    ...(clients ? { clients } : {}),
+    ...(clients ? { clients, clientsManual } : {}),
     ...(link ? { calendar: { title: link.link.title, startAt: link.link.startAt, endAt: link.link.endAt } } : {}),
     ...(notesDoc ? { notesDoc } : {})
   };
