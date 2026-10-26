@@ -20,6 +20,8 @@ const fakeServices = () => {
       },
       listFacts: async () => facts
     },
+    // Only its identity matters here: which services started a question.
+    runner: {},
     close: async () => { state.closed += 1; }
   }) as unknown as AppServices;
   return { state, create };
@@ -82,8 +84,18 @@ test("a changed configuration gets new services; closing stops all of them and r
   const second = await studio.services();
   expect(second).not.toBe(first);
   expect(second.config.assistant.provider).toBe("api");
+  // Nobody can poll a question on the replaced services: they are closed at once.
+  expect(state.closed).toBe(1);
+  // A question started on the current services keeps them (for its polls) after the next change.
+  studio.rememberRun("123e4567-e89b-42d3-a456-426614174077", second.runner);
+  config = structuredClone(config);
+  config.assistant.provider = "acp";
+  const third = await studio.services();
+  expect(third).not.toBe(second);
+  expect(state.closed).toBe(1);
+  expect(studio.runnerFor("123e4567-e89b-42d3-a456-426614174077")).toBe(second.runner);
   await studio.close();
-  expect(state.closed).toBe(2);
+  expect(state.closed).toBe(3);
   expect(held).toBe(1);
   expect(released).toBe(1);
   // Closed: nothing starts again.

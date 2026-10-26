@@ -21,6 +21,11 @@ export type StudioServicesDeps = {
 
 /** A background refresh starts at most this often when pages ask for fresh data. */
 export const LIBRARY_REFRESH_MIN_AGE_MS = 60_000;
+/**
+ * How long a question stays pollable through the services that started it: past a run's time limit
+ * plus the runner's retention of finished runs, it is gone anyway.
+ */
+export const RUN_OWNER_MAX_AGE_MS = 30 * 60_000;
 const CLOSE_WAIT_MS = 3_000;
 
 const wait = (ms: number): Promise<void> => new Promise((resolve) => { const timer = setTimeout(resolve, ms); timer.unref?.(); });
@@ -34,7 +39,7 @@ export class StudioServices {
   private refreshedAt = 0;
   private readonly controller = new AbortController();
   private presenceLease?: Promise<SingletonLease | null>;
-  private readonly runOwners = new Map<string, AssistantRunner>();
+  private readonly runOwners = new Map<string, { runner: AssistantRunner; at: number }>();
   private closed = false;
 
   constructor(private readonly deps: StudioServicesDeps = {}) {}
@@ -48,10 +53,27 @@ export class StudioServices {
     const current = config ?? await this.config();
     const identity = JSON.stringify(current);
     if (this.current?.identity !== identity) {
-      if (this.current) this.retired.push(this.current.services);
+      const replaced = this.current?.services;
       this.current = { identity, services: (this.deps.create ?? ((value: AppConfig) => createAppServices(value)))(structuredClone(current)) };
+      if (replaced) {
+        this.retired.push(replaced);
+        this.pruneRetired();
+      }
     }
     return this.current.services;
+  }
+
+  /**
+   * Services of a replaced configuration stay only while a question started on them can still be
+   * polled; the others are closed now, so each settings change does not keep another index in memory.
+   */
+  private pruneRetired(): void {
+    const now = (this.deps.now ?? Date.now)();
+    for (const [runId, owner] of this.runOwners) if (now - owner.at > RUN_OWNER_MAX_AGE_MS) this.runOwners.delete(runId);
+    const owners = new Set([...this.runOwners.values()].map((owner) => owner.runner));
+    const unused = this.retired.filter((services) => !owners.has(services.runner));
+    this.retired.splice(0, this.retired.length, ...this.retired.filter((services) => owners.has(services.runner)));
+    for (const services of unused) void services.close().catch(() => undefined);
   }
 
   /** Holds the Studio presence lock (in the background); links from notifications are then queued for this Studio. */
@@ -144,17 +166,18 @@ export class StudioServices {
 
   /** Assistant runs are polled through the runner that started them, even after a settings change. */
   rememberRun(runId: string, runner: AssistantRunner): void {
-    this.runOwners.set(runId, runner);
+    this.runOwners.set(runId, { runner, at: (this.deps.now ?? Date.now)() });
     // Bounded: runs older than the runner's retention cannot be polled anyway.
     while (this.runOwners.size > 256) {
       const oldest = this.runOwners.keys().next().value;
       if (oldest === undefined) break;
       this.runOwners.delete(oldest);
     }
+    if (this.retired.length) this.pruneRetired();
   }
 
   runnerFor(runId: string): AssistantRunner | undefined {
-    return this.runOwners.get(runId);
+    return this.runOwners.get(runId)?.runner;
   }
 
   /** Stops the refresh and running questions and releases the presence lock. */
