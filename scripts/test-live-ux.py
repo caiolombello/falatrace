@@ -183,7 +183,7 @@ with tempfile.TemporaryDirectory(dir='/tmp', prefix='falatrace-live-fixture-') a
                'LANG': 'C.UTF-8', 'PATH': '/usr/bin:/bin', 'QT_QPA_PLATFORM': 'offscreen', 'QT_QUICK_BACKEND': 'software', 'QT_FORCE_STDERR_LOGGING': '1',
                'RECORDING_DESKTOP_SOFTWARE_SMOKE': '1', 'RECORDING_DESKTOP_SMOKE_KEY': '',
                # A deadline only: the PySide6 runner snapshots as soon as the last step ran (qaSnapshotReady).
-               'RECORDING_DESKTOP_SNAPSHOT': str(image), 'RECORDING_DESKTOP_SNAPSHOT_MS': '20000',
+               'RECORDING_DESKTOP_SNAPSHOT': str(image), 'RECORDING_DESKTOP_SNAPSHOT_MS': '12000',
                'FALATRACE_TEST_MODE': mode, 'FALATRACE_REQUEST_LOG': str(log), 'FALATRACE_SESSION': SESSION}
         runpy.run_path(str(repo / 'scripts/qa-run.py'))['require_isolated'](env)
         r = subprocess.run([*command, str(qml), str(stub)], env=env, capture_output=True, text=True, timeout=60)

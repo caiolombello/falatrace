@@ -258,7 +258,7 @@ with tempfile.TemporaryDirectory(dir='/tmp', prefix='falatrace-notes-fixture-') 
                'LANG': 'C.UTF-8', 'PATH': '/usr/bin:/bin', 'QT_QPA_PLATFORM': 'offscreen', 'QT_QUICK_BACKEND': 'software', 'QT_FORCE_STDERR_LOGGING': '1',
                'RECORDING_DESKTOP_SOFTWARE_SMOKE': '1', 'RECORDING_DESKTOP_SMOKE_KEY': '' if mode == 'search' else '/synthetic/Recordings/daily.mkv',
                # A deadline only: the PySide6 runner snapshots as soon as the last step ran (qaSnapshotReady).
-               'RECORDING_DESKTOP_SNAPSHOT': str(image), 'RECORDING_DESKTOP_SNAPSHOT_MS': '20000',
+               'RECORDING_DESKTOP_SNAPSHOT': str(image), 'RECORDING_DESKTOP_SNAPSHOT_MS': '12000',
                'FALATRACE_TEST_MODE': mode, 'FALATRACE_REQUEST_LOG': str(log), 'FALATRACE_DETAIL': json.dumps(DETAILS[DETAIL_FOR[mode]]),
                'FALATRACE_NOTES': json.dumps(NOTES), 'FALATRACE_SYNTHETIC_MEDIA': str(media)}
         runpy.run_path(str(repo / 'scripts/qa-run.py'))['require_isolated'](env)
