@@ -4,10 +4,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_CONFIG } from "../../config/defaults";
 import { runCommand } from "../../jobs/command";
+import { defaultLiveDir, LIVE_TRANSCRIPT_RETENTION_DAYS } from "../../live/store";
 import { notesCaptureReference } from "../../notes/capture";
 import { NotesStore } from "../../notes/store";
 import { readActivity } from "../../runtime/heavy-admission";
-import { type LiveTranscriptUnits, RecordingController } from "../controller";
+import { defaultLiveTranscriptUnits, type LiveTranscriptUnits, RecordingController } from "../controller";
 import { captureMediaStartedAt, RecordingSessionStore } from "../session";
 
 const sources = JSON.stringify([
@@ -111,6 +112,39 @@ test("with the live setting off, nothing starts; a stop is sent only when a work
       await recorder.stop(ID);
       expect(log).toEqual(used ? ["capture-start", "capture-stop", `live-stop:${ID}`] : ["capture-start", "capture-stop"]);
     } finally { await fs.rm(root, { recursive: true, force: true }); }
+  }
+});
+
+test("every capture start, live on or off, removes old live transcripts but its own; a failure never fails the capture", async () => {
+  for (const live of [true, false]) {
+    const { root, store, config } = await setup(live);
+    const log: string[] = [];
+    try {
+      const pruning: LiveTranscriptUnits = { ...fakeLive(log, {}, store), prune: async (keep) => { log.push(`live-prune:${keep}`); throw new Error("prune failed"); } };
+      const recorder = new RecordingController(config, "manual", store, fakeCapture(log), pruning);
+      expect(await recorder.start({ sessionId: ID })).toBe("started");
+      expect(log).toEqual(live ? ["capture-start", `live-start:recording:${ID}`, `live-prune:${ID}`] : ["capture-start", `live-prune:${ID}`]);
+      expect((await store.read())?.phase).toBe("recording");
+    } finally { await fs.rm(root, { recursive: true, force: true }); }
+  }
+});
+
+test("the default prune removes stopped live transcripts older than the retention, and keeps recent ones and the current capture", async () => {
+  const dir = defaultLiveDir();
+  const old = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", recent = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+  const past = new Date(Date.now() - (LIVE_TRANSCRIPT_RETENTION_DAYS + 1) * 86_400_000);
+  try {
+    for (const id of [old, recent, ID]) {
+      await fs.mkdir(join(dir, id), { recursive: true, mode: 0o700 });
+      await fs.writeFile(join(dir, id, "live.jsonl"), "", { mode: 0o600 });
+    }
+    for (const id of [old, ID]) await fs.utimes(join(dir, id), past, past);
+    await defaultLiveTranscriptUnits.prune?.(ID);
+    await expect(fs.stat(join(dir, old))).rejects.toMatchObject({ code: "ENOENT" });
+    expect((await fs.stat(join(dir, recent))).isDirectory()).toBe(true);
+    expect((await fs.stat(join(dir, ID))).isDirectory()).toBe(true);
+  } finally {
+    for (const id of [old, recent, ID]) await fs.rm(join(dir, id), { recursive: true, force: true });
   }
 });
 

@@ -99,6 +99,8 @@ const MAX_MEDIA_SECONDS = 7 * 24 * 3600;
 const ERROR_MAX_LENGTH = 300;
 /** A running worker rewrites status.json at least this often; older means it is gone. */
 export const LIVE_STATUS_HEARTBEAT_MS = 5_000;
+/** Live transcripts of stopped captures are removed this long after their last update (the job keeps the real transcript). */
+export const LIVE_TRANSCRIPT_RETENTION_DAYS = 30;
 export const liveStatusStaleAfterMs = (chunkSeconds: number): number => Math.max(60_000, chunkSeconds * 4_000);
 
 export class LiveError extends Error {

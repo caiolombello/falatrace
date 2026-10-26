@@ -58,7 +58,7 @@ An optional preview of the transcript while you record. The final transcript is 
 
 - `live.enabled` is off by default. **When it is on, every capture starts the live transcript**: with a provider outside this computer (Groq, OpenAI), the audio of every capture goes to it while you record, and the setting is that consent. While a capture runs, the Studio can turn the live transcript off and on again; turning it back on with a provider outside this computer asks for consent first, for that provider. <!-- studio-check -->
 - A separate FFmpeg process listens to the same microphone and system audio as the capture, in chunks of `live.chunkSeconds` (5 to 60 seconds, default 15). Silent chunks are skipped.
-- Each chunk is transcribed and appended as a line to `~/.local/state/recording-cli/live/<session>/live.jsonl`. Chunk audio files are deleted once transcribed. The transcript lines stay until you delete that folder; nothing removes them automatically yet.
+- Each chunk is transcribed and appended as a line to `~/.local/state/recording-cli/live/<session>/live.jsonl`. Chunk audio files are deleted once transcribed. The transcript lines stay for 30 days after the capture stops (each new capture removes older ones) or until the recording is deleted, whichever comes first.
 - It runs as a temporary user unit (`recording-cli-live-<session>.service`) at low priority (Nice 10, CPU weight 20, at most 1 GiB of memory), so the capture comes first. Its status says when it falls behind.
 
 ```sh

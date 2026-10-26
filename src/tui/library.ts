@@ -498,12 +498,22 @@ const pathsOverlap = (left: string, right: string): boolean =>
   resolve(left) === resolve(right) || isPathInside(left, right) || isPathInside(right, left);
 
 /**
- * Files kept beside a deleted job under the data directory: its calendar link (meeting title and
- * invited names). Best effort: the recording is already deleted, so a failure here never undoes it.
+ * Files kept about a deleted job outside its folder: its calendar link (meeting title and invited
+ * names), the live transcript of its capture (same id), the assistant conversations about it (other
+ * conversations lose their citations to it) and its share log. Best effort: the recording is already
+ * deleted, so a failure here never undoes it.
  */
 const removeJobSidecars = async (jobIds: string[]): Promise<void> => {
-  const { removeCalendarLink } = await import("../calendar/links");
-  for (const jobId of jobIds) await removeCalendarLink(jobId).catch(() => undefined);
+  const [{ removeCalendarLink }, { sharedLiveStore }, { ThreadStore }, { removeDeliveriesForJob }] = await Promise.all([
+    import("../calendar/links"), import("../live/store"), import("../assistant/threads"), import("../destinations/log")
+  ]);
+  const threads = new ThreadStore();
+  for (const jobId of jobIds) {
+    await removeCalendarLink(jobId).catch(() => undefined);
+    await sharedLiveStore().remove(jobId).catch(() => undefined);
+    await threads.removeThreadsForJob(jobId).catch(() => undefined);
+    await removeDeliveriesForJob(jobId).catch(() => undefined);
+  }
 };
 
 export const deleteJobArtifacts = async (

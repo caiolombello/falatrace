@@ -6,6 +6,9 @@ import { DEFAULT_CONFIG } from "../../config/defaults";
 import { mergeConfig } from "../../config/load";
 import { JobStore } from "../../jobs/store";
 import { calendarLinksDir } from "../../calendar/links";
+import { ThreadStore } from "../../assistant/threads";
+import { DeliveryLog, deliveryLogKey } from "../../destinations/log";
+import { defaultLiveDir } from "../../live/store";
 import {
   buildLibrary,
   deleteJobArtifacts,
@@ -271,6 +274,52 @@ describe("Trash operations", () => {
       expect((await fs.stat(join(links, `${unrelated}.json`))).isFile()).toBe(true);
     } finally {
       await fs.rm(join(links, `${unrelated}.json`), { force: true });
+    }
+  });
+
+  test("deleting jobs also deletes their live transcripts, assistant conversations and share logs", async () => {
+    const root = await makeTemporaryDirectory();
+    const recordingsDir = join(root, "recordings");
+    const mediaPath = join(recordingsDir, "meeting.mkv");
+    await fs.mkdir(recordingsDir);
+    await fs.writeFile(mediaPath, "video");
+    const config = mergeConfig(DEFAULT_CONFIG, { recordingsDir });
+    const store = new JobStore(join(root, "state"), join(root, "data"));
+    // Captures are queued under their capture session id, which names the live transcript folder too.
+    const first = await store.enqueue(config, mediaPath, { recordingId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1" });
+    const second = await store.enqueue(config, mediaPath, { recordingId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2" });
+    const unrelated = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+    for (const job of [first, second]) await fs.mkdir(job.artifactDir, { recursive: true });
+    const live = defaultLiveDir();
+    const threads = new ThreadStore();
+    const log = new DeliveryLog();
+    const threadOf: Record<string, string> = {};
+    for (const id of [first.id, second.id, unrelated]) {
+      await fs.mkdir(join(live, id), { recursive: true, mode: 0o700 });
+      await fs.writeFile(join(live, id, "live.jsonl"), "", { mode: 0o600 });
+      threadOf[id] = (await threads.create({ scope: { kind: "meeting", jobId: id }, title: "Conversa", destinationKey: "a".repeat(64) })).id;
+      await log.append(deliveryLogKey(id), { at: new Date().toISOString(), destination: "clipboard", target: "clipboard", sha256: "b".repeat(64), result: "copied" });
+    }
+    const gone = async (id: string) => {
+      await expect(fs.stat(join(live, id))).rejects.toMatchObject({ code: "ENOENT" });
+      expect(await threads.read(threadOf[id] as string).then(() => true, () => false)).toBe(false);
+      expect(await log.read(deliveryLogKey(id))).toEqual([]);
+    };
+    try {
+      const [entry] = await buildLibrary(config, store);
+      await deleteJobArtifacts(config, entry, second, store, join(root, "trash"));
+      await gone(second.id);
+      expect((await fs.stat(join(live, first.id))).isDirectory()).toBe(true);
+      const [remaining] = await buildLibrary(config, store);
+      await deleteRecording(config, remaining, store, join(root, "trash"));
+      await gone(first.id);
+      expect((await fs.stat(join(live, unrelated))).isDirectory()).toBe(true);
+      expect((await threads.read(threadOf[unrelated] as string)).scope).toEqual({ kind: "meeting", jobId: unrelated });
+      expect(await log.read(deliveryLogKey(unrelated))).toHaveLength(1);
+    } finally {
+      await fs.rm(join(live, unrelated), { recursive: true, force: true });
+      await threads.remove(threadOf[unrelated] as string).catch(() => undefined);
+      await log.remove(deliveryLogKey(unrelated)).catch(() => undefined);
     }
   });
 

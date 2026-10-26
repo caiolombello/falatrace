@@ -42,7 +42,7 @@ Paths below are the defaults. `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOM
 | Processing queue | `jobs/` | |
 | Library index | `knowledge-index/` | A derived copy of facts and transcript passages, plus embeddings when enabled. Rebuilt from the recordings. |
 | Per-client AI context | `ai-context/` | |
-| Live transcripts | `live/<session>/` | `live.jsonl` with the live lines; not removed automatically |
+| Live transcripts | `live/<session>/` | `live.jsonl` with the live lines; removed 30 days after the capture stopped (checked at each capture start) and when its recording is deleted |
 | Share log | `share-deliveries/<job-id>.json` | Time, destination, redacted target and content hash; never the content |
 | ChatGPT sign-in | `chatgpt/oauth.json` | Access and refresh tokens (0600) |
 | Google sign-in | `google/oauth.json` | Refresh token (0600) |
@@ -127,12 +127,12 @@ Separate older settings remove only processing work data: `retention.localComple
 
 ## Deleting a recording
 
-Deleting a recording (in `falatrace tui`; the Studio has no delete action) first invalidates the derived AI context, and cancels the deletion if that fails. It then moves the media and its `<name>.recording/` folder (with the transcripts and summaries) to the Trash, deletes its jobs' queue records and work files, and removes its calendar link. The Trash keeps a full copy until you empty it.
+Deleting a recording (in `falatrace tui`; the Studio has no delete action) first invalidates the derived AI context, and cancels the deletion if that fails. It then moves the media and its `<name>.recording/` folder (with the transcripts and summaries) to the Trash, deletes its jobs' queue records and work files, and removes its calendar link, its live transcript, the assistant conversations about it (other conversations lose their citations to it) and its share log. The Trash keeps a full copy until you empty it.
 
 It does **not** yet remove:
 
 - the meeting notes, summary choices, action states and client choices of that recording;
-- assistant conversations that quoted it, its share log and its live transcript lines;
+- the live transcript of a capture that was never processed (it goes 30 days after the capture);
 - human revisions, reviewed summaries and exported files;
 - remote, archive and backup copies, and the archive catalog;
 - anything already sent to a provider, a destination or an agent.

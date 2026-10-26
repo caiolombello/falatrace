@@ -17,7 +17,7 @@ import { readState } from "./state";
 import { sharedControllerBackend } from "./capabilities";
 import { captureProcessMatches, findFlatpakCapture } from "./flatpak-capture";
 import { ArchiveStore } from "../archive/store";
-import { LiveStore } from "../live/store";
+import { LiveStore, LIVE_TRANSCRIPT_RETENTION_DAYS, sharedLiveStore } from "../live/store";
 import { startLiveUnit, stopLiveUnit } from "../live/unit";
 import { NotesStore } from "../notes/store";
 
@@ -31,12 +31,15 @@ export type LiveTranscriptUnits = {
   stop: (sessionId: string) => Promise<unknown>;
   /** Whether a live worker ever ran for this capture, e.g. started from the Studio while the setting is off. */
   used: (sessionId: string) => Promise<boolean>;
+  /** Removes the live transcripts of other captures that stopped LIVE_TRANSCRIPT_RETENTION_DAYS ago. */
+  prune?: (keepSessionId: string) => Promise<unknown>;
 };
 
 export const defaultLiveTranscriptUnits: LiveTranscriptUnits = {
   start: (sessionId) => startLiveUnit(sessionId),
   stop: (sessionId) => stopLiveUnit(sessionId, { noBlock: true }),
-  used: (sessionId) => fs.lstat(new LiveStore().sessionDir(sessionId)).then(() => true, () => false)
+  used: (sessionId) => fs.lstat(new LiveStore().sessionDir(sessionId)).then(() => true, () => false),
+  prune: (keepSessionId) => sharedLiveStore().prune({ maxAgeMs: LIVE_TRANSCRIPT_RETENTION_DAYS * 86_400_000, keep: [keepSessionId] })
 };
 
 const liveWarning = (event: string, sessionId: string, error: unknown): void => {
@@ -291,6 +294,8 @@ export class RecordingController {
         if (this.config.live.enabled) {
           await Promise.resolve().then(() => this.live.start(id)).catch((error) => liveWarning("live.start-error", id, error));
         }
+        // Old live transcripts go with every capture, live on or off; a failure never touches the capture.
+        await Promise.resolve().then(() => this.live.prune?.(id)).catch((error) => liveWarning("live.prune-error", id, error));
         return "started";
       } catch (err) {
         if (backend !== "obs") {
