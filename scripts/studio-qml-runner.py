@@ -5,9 +5,11 @@ Mirrors src/desktop/main.cpp closely enough for offscreen UX journeys and CI:
 same arguments (<qml-root> <program> [--packaged]), the same JSONL bridge
 contract (ids, response validation, timeouts, bounded auto-reconnect), the same
 context properties and snapshot evidence. MpvQt is replaced by an inert
-RecordingVideo item: no media is decoded, so mediaReady stays false. One
-addition for the journeys: when the window sets `qaSnapshotReady`, the
-snapshot is taken at once (RECORDING_DESKTOP_SNAPSHOT_MS is then the deadline).
+RecordingVideo item: no media is decoded, so mediaReady stays false. Two
+additions for the journeys: when the window sets `qaSnapshotReady`, the
+snapshot is taken at once (RECORDING_DESKTOP_SNAPSHOT_MS is then the deadline);
+and the Qt key codes a step puts in `qaKeys` are pressed through the window
+system (QTest), so window shortcuts and the focused control see a real key.
 
 Requires PySide6 (pip install PySide6-Essentials). Exit 77 when it is missing.
 Never use it with production media or credentials; journeys pass synthetic
@@ -285,6 +287,26 @@ def main():
         ready.setInterval(50)
         ready.timeout.connect(lambda: capture() if window.property('qaSnapshotReady') else None)
         ready.start()
+    # Keys a journey step asked for: the window is activated first (window shortcuts only fire in the
+    # focus window), then each key is pressed and released as the window system would deliver it.
+    keys = QTimer(app)
+    keys.setInterval(50)
+
+    def press():
+        wanted = window.property('qaKeys')
+        wanted = wanted.toVariant() if hasattr(wanted, 'toVariant') else wanted
+        if not wanted:
+            return
+        if QGuiApplication.focusWindow() is not window:
+            window.requestActivate()
+            return
+        from PySide6.QtCore import Qt
+        from PySide6.QtTest import QTest
+        window.setProperty('qaKeys', [])
+        for key in wanted:
+            QTest.keyClick(window, Qt.Key(int(key)))
+    keys.timeout.connect(press)
+    keys.start()
     code = app.exec()
     bridge.shutdown()
     return code

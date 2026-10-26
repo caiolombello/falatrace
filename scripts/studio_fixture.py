@@ -126,8 +126,11 @@ def require_assertion_lines(stderr, marker, expected, label):
 
 
 # Window helpers for journey steps: find an item by objectName under any item, and evaluate a
-# ready condition that may touch an item not built yet (false instead of a TypeError).
+# ready condition that may touch an item not built yet (false instead of a TypeError). A step that
+# sets `qaKeys` (Qt key codes) has the PySide6 runner press them through the window system, as a
+# person would: window shortcuts first, then the focused control (the next step waits for the effect).
 UX_HELPERS = '''
+ property var qaKeys: []
  function uxFind(item, name) { if (!item) return null; if (item.objectName === name) return item
   const kids = [].concat(item.children || [], item.contentItem && item.contentItem !== item ? [item.contentItem] : [])
   for (let i = 0; i < kids.length; i++) { const f = uxFind(kids[i], name); if (f) return f } return null }

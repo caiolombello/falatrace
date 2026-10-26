@@ -1186,7 +1186,11 @@ ApplicationWindow {
         contextLoading = true; contextText = ""; contextCopyText = ""; tabs.currentIndex = 3
         if (send("context-meeting", id, {maxCharacters: 10000}) < 0) contextLoading = false
     }
-    Shortcut { sequence: "Space"; enabled: mediaReady && !textHasFocus && !uxModal && !captionToggle.activeFocus && !captionHasFocus() && !checkableHasFocus(); onActivated: togglePlay() }
+    // The playback keys never take a key from the control that has the focus: Space stays with a
+    // checkbox and with a button reached with the keyboard (it clicks it; after a mouse click Space
+    // still plays and pauses), and a control that uses a key itself claims it with
+    // Keys.onShortcutOverride (the tab lists' arrows, the meeting list's Space).
+    Shortcut { sequence: "Space"; enabled: mediaReady && !textHasFocus && !uxModal && !captionToggle.activeFocus && !captionHasFocus() && !checkableHasFocus() && !keyboardButtonHasFocus(); onActivated: togglePlay() }
     Shortcut { sequence: "Right"; enabled: mediaReady && !textHasFocus && !uxModal && !captionHasFocus(); onActivated: seek(position + 5) }
     Shortcut { sequence: "Left"; enabled: mediaReady && !textHasFocus && !uxModal && !captionHasFocus(); onActivated: seek(position - 5) }
     SummaryDialog { id: summaryDialog }
@@ -1248,6 +1252,8 @@ ApplicationWindow {
     Shortcut { sequence: "Ctrl+Shift+E"; enabled: !uxModal && currentView === "meeting" && feature("share") && !!detail.jobId; onActivated: shareDialog.openMeeting() }
     // A focused checkbox (an action) keeps Space; Esc in the notepad only leaves the notepad.
     function checkableHasFocus() { return !!activeFocusItem && activeFocusItem.checkable === true }
+    // Any button (AbstractButton has `checkable`) showing its keyboard focus ring.
+    function keyboardButtonHasFocus() { return !!activeFocusItem && typeof activeFocusItem.checkable === "boolean" && activeFocusItem.visualFocus === true }
     function notesTextFocused() { return !!activeFocusItem && activeFocusItem.objectName === "notesEditorText" }
     Shortcut { sequence: "V"; enabled: currentView === "meeting" && !textHasFocus && !uxModal; onActivated: videoKey() }
     Shortcut { sequence: "Alt+1"; enabled: currentView === "meeting" && !uxModal; onActivated: tabs.currentIndex = 1 }

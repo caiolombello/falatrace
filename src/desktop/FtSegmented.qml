@@ -38,6 +38,8 @@ Control {
     }
     Keys.onLeftPressed: move(-1)
     Keys.onRightPressed: move(1)
+    // These keys are the tab list's own while it has the focus: window shortcuts (seek ±5 s) wait.
+    Keys.onShortcutOverride: event => { if ([Qt.Key_Left, Qt.Key_Right, Qt.Key_Home, Qt.Key_End].indexOf(event.key) >= 0) event.accepted = true }
     Keys.onPressed: event => {
         if (!model.length) return
         if (event.key === Qt.Key_Home) { select(model[0].value); event.accepted = true }

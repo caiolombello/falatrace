@@ -10,7 +10,10 @@ speaker overlay, and Esc leaves it before anything else, giving the focus back. 
 keep the size. Going from a meeting whose audio was playing to a video meeting decides from the new
 meeting, never from what the player still reports about the previous file. The PySide6 runner's
 player is inert, so a step sets the duration and codec it reports to stand in for an open video once
-the meeting's file was loaded. Every step waits (bounded) for the state the previous reply produces.
+the meeting's file was loaded. While it plays, real key presses (the runner's qaKeys) show that the
+playback keys leave the focused control its own keys: Right moves the meeting tabs, Space clicks a
+button reached with the keyboard and opens the meeting focused in the list, Space plays and pauses
+after a mouse click, and Esc in the sidebar search clears it before it leaves the meeting. Every step waits (bounded) for the state the previous reply produces.
 Exit 77 means no Studio runtime is available.
 """
 from pathlib import Path
@@ -155,6 +158,34 @@ PLANS = {
     selectRecording(items.find(function(item){ return item.fileName === "retained.mkv" }))''' % {'s': STRIP}),
         ('retained meeting open', opened('retained.mkv'), '''
     check("a recording whose video retention removed is audio only", openRecordingButton.text === "Ouvir gravação" && !%(s)s.hasVideo && !%(s)s.videoExpanded)''' % {'s': STRIP})]),
+    'keys': ('1320x820', False, [pick('daily.mkv'),
+        ('video meeting open', loaded('daily.mkv'), PLAY),
+        ('video playing', 'mediaReady && mediaProbed', '''
+    tabs.forceActiveFocus(Qt.TabFocusReason)
+    check("the meeting tabs have the keyboard focus on Notas", tabs.activeFocus && tabs.currentIndex === 1 && paused)
+    qaKeys = [Qt.Key_Right]'''),
+        ('tab moved', 'tabs.currentIndex === 0', '''
+    check("Right on the tab list moves to the next tab instead of seeking", tabs.activeFocus && tabs.currentIndex === 0)
+    uxFind(detailView, "videoToggle").forceActiveFocus(Qt.TabFocusReason)
+    qaKeys = [Qt.Key_Space]'''),
+        ('button clicked', '!%(s)s.videoExpanded' % {'s': STRIP}, '''
+    check("Space on a button reached with the keyboard clicks it (the video collapses) and does not play", !%(s)s.videoExpanded && paused)
+    tabs.forceActiveFocus(Qt.TabFocusReason); uxFind(detailView, "videoToggle").forceActiveFocus(Qt.MouseFocusReason)
+    check("a click gives the button the focus without the keyboard ring", uxFind(detailView, "videoToggle").activeFocus && !uxFind(detailView, "videoToggle").visualFocus)
+    qaKeys = [Qt.Key_Space]''' % {'s': STRIP}),
+        ('played', '!paused', '''
+    check("after a mouse click Space still plays and pauses", !paused && !%(s)s.videoExpanded)
+    libraryView.forceActiveFocus(Qt.TabFocusReason); libraryView.currentIndex = 1
+    qaKeys = [Qt.Key_Space]''' % {'s': STRIP}),
+        ('opened from the list', 'selected.fileName === "review.mp4"', '''
+    check("Space on the meeting list opens the focused meeting, even while media plays", selected.fileName === "review.mp4")
+    search.forceActiveFocus(Qt.TabFocusReason); search.text = "design"
+    qaKeys = [Qt.Key_Escape]'''),
+        ('search cleared', 'search.text === ""', '''
+    check("Esc in the search clears the words and keeps the meeting open", !!selected.key && selected.fileName === "review.mp4" && search.activeFocus)
+    qaKeys = [Qt.Key_Escape]'''),
+        ('meeting left', '!selected.key', '''
+    check("Esc in the empty search leaves the meeting", !selected.key && currentView !== "meeting")''')]),
     'preference': ('1320x820', False, [pick('daily.mkv'),
         ('first video open', opened('daily.mkv'), '''
     check("in English the button says watch", openRecordingButton.text === "Watch the recording")

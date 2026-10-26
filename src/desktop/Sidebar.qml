@@ -77,6 +77,8 @@ Rectangle {
             Keys.onEnterPressed: { if (filtered.length) selectRecording(filtered[0]); else sidebar.runLibrarySearch() }
             Keys.onDownPressed: { if (libraryView.count) { libraryView.forceActiveFocus(Qt.TabFocusReason); libraryView.currentIndex = 0 } }
             Keys.onEscapePressed: event => { if (text) { text = ""; event.accepted = true } else event.accepted = false }
+            // With words typed, Esc is the field's (it clears them); empty, the window's Esc leaves the meeting.
+            Keys.onShortcutOverride: event => { if (event.key === Qt.Key_Escape && text !== "") event.accepted = true }
         }
 
         // The capture in progress, above the list: one click back to its notes.
@@ -124,6 +126,8 @@ Rectangle {
             Keys.onReturnPressed: openCurrent()
             Keys.onEnterPressed: openCurrent()
             Keys.onSpacePressed: openCurrent()
+            // Space opens the meeting here even while media plays (the window's Space plays and pauses elsewhere).
+            Keys.onShortcutOverride: event => { if (event.key === Qt.Key_Space) event.accepted = true }
             Keys.onUpPressed: event => { if (currentIndex <= 0) { search.forceActiveFocus(Qt.TabFocusReason); event.accepted = true } else event.accepted = false }
             onActiveFocusChanged: { if (activeFocus && currentIndex < 0 && count > 0) currentIndex = 0; else if (!activeFocus) followSelection() }
             ScrollBar.vertical: ScrollBar {}
