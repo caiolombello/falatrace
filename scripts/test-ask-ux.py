@@ -7,7 +7,9 @@ the open meeting answered on this computer (no consent, a streamed answer whose 
 moments that open the meeting there), a question to the whole library sent outside this computer
 (the consent card comes first, once per conversation, and nothing starts before it), recipes with
 "/" and sending an answer, an assistant that is not set up, stopping an answer in the compact
-English layout, and a bridge without the assistant. Exit 77 means no Studio runtime is available.
+English layout, a question left by "Nova conversa" (its run is stopped), an earlier conversation
+reopened and asked again, a plan that does not say where it goes (consent first), and a bridge
+without the assistant. Exit 77 means no Studio runtime is available.
 """
 from pathlib import Path
 import json, sys, tempfile
@@ -42,6 +44,7 @@ def detail(job):
             'review': {'revision': {'revision': 0, 'base': {'jobId': job}}, 'canUndo': False, 'notes': [], 'derivedStale': False}}
 external = mode == 'library-consent'
 destination = {'label': 'OpenRouter · deepseek/deepseek-v4.1-flash-1017', 'kind': 'api', 'external': True} if external else {'label': 'Ollama · qwen3.5:9b', 'kind': 'local', 'external': False}
+if mode == 'unsaid': destination = {'label': 'Ollama · qwen3.5:9b', 'kind': 'local'}
 consent_key = os.environ['ASK_EXTERNAL_KEY'] if external else os.environ['ASK_LOCAL_KEY']
 runs = {}; counter = 0
 recipes = [{'id': 'follow-up-email', 'name': 'E-mail de follow-up', 'description': 'A follow-up email.', 'scope': 'meeting', 'builtIn': True, 'prompt': 'x', 'version': 1},
@@ -65,7 +68,8 @@ for line in sys.stdin:
     elif op == 'processing-status': v = {'waiting': []}
     elif op == 'ux-capabilities': v = {'mockFrames': False, 'realFrames': False, 'features': features, 'firstRun': {}}
     elif op == 'settings-read':
-        values = {'studio.language': 'en' if english else 'pt-BR', 'assistant.provider': 'api' if external else 'local', 'assistant.localModel': 'qwen3.5:9b', 'assistant.apiPreset': 'openrouter'}
+        values = {'studio.language': 'en' if english else 'pt-BR', 'assistant.provider': 'api' if external else 'local', 'assistant.localModel': 'qwen3.5:9b', 'assistant.apiPreset': 'openrouter',
+                  'summary.ollamaUrl': 'http://gpu-box.lan:11434' if mode == 'not-configured' else 'http://127.0.0.1:11434'}
         v = {'revision': 'a' * 64, 'exists': True, 'values': values, 'apps': [], 'nullable': [], 'readOnly': {}, 'credentials': {'details': []}}
     elif op == 'detail': v = detail(OTHER if r['key'].endswith('one.mkv') else JOB)
     elif op == 'resolve': v = {'state': 'failed', 'message': 'Mídia sintética indisponível.'}
@@ -94,6 +98,12 @@ for line in sys.stdin:
         else:
             v = {'status': 'done', 'threadId': run['thread'], 'text': text, 'citations': citations, 'saved': True}
     elif op == 'assistant-cancel' and features['assistant']: v = {'runId': p['runId'], 'cancelled': True}
+    elif op == 'assistant-threads' and features['assistant']: v = {'threads': [{'id': '99999999-9999-4999-8999-999999999999', 'title': 'O que foi decidido?', 'updatedAt': '2026-10-21T15:00:00Z', 'messageCount': 2}]}
+    elif op == 'assistant-thread' and features['assistant']:
+        text, citations = answer({'kind': 'meeting'})
+        v = {'id': p['threadId'], 'title': 'O que foi decidido?', 'scope': {'kind': 'meeting', 'jobId': JOB}, 'updatedAt': '2026-10-21T15:00:00Z',
+             'messages': [{'role': 'user', 'text': 'O que foi decidido?', 'citations': [], 'createdAt': '2026-10-21T15:00:00Z', 'destination': 'Ollama · qwen3.5:9b'},
+                          {'role': 'assistant', 'text': text, 'citations': citations, 'createdAt': '2026-10-21T15:00:05Z', 'destination': 'Ollama · qwen3.5:9b'}]}
     elif op == 'share-preview' and features['share']:
         v = {'previewId': '88888888-8888-4888-8888-888888888888', 'markdown': '# ' + p.get('title', '') + '\n\n' + p.get('text', ''), 'chars': 120, 'external': False, 'destinationLabel': 'Área de transferência', 'ready': True, 'target': 'clipboard'}
     else:
@@ -125,7 +135,10 @@ PLANS = {
     check("the drawer stays open", askPanel.shown)
     check("nothing about Ask in errorText or notice", errorText === "" && notice.indexOf("pergunt") < 0)
     uxFind(askPanel, "askCopy-1").clicked()
-    check("copying the answer says so", toast.opened && toast.message === "Resposta copiada.")'''),
+    check("copying the answer says so", toast.opened && toast.message === "Resposta copiada.")
+    selectRecording(items[1])'''),
+        ('another meeting', 'selected.key === "/synthetic/Recordings/one.mkv" && !detailLoading && !!detail.jobId', '''
+    check("away from its meeting the conversation names it", askPanel.scope.jobId === "%s" && askPanel.scopeText() === "Reunião: Daily do time")''' % JOB),
         ('closing', 'true', '''
     askPanel.handleEscape()
     check("Esc closes the drawer", !askPanel.shown && !!selected.key)''')]),
@@ -173,6 +186,7 @@ PLANS = {
     check("Início has the Ask bar", bar.visible)
     bar.clicked()
     check("the Ask bar opens the drawer about the library", askPanel.shown && askPanel.scope.kind === "library")
+    check("Ollama on another computer is shown as outside this one before anything is sent", uxFind(askPanel, "askDestinationChip").iconName === "cloud" && askPanel.destinationExternal())
     askPanel.input.text = "O que eu prometi?"; askPanel.submit()'''),
         ('problem shown', 'askPanel.problem !== ""', '''
     check("an assistant that is not set up says how to fix it", uxFind(askPanel, "askProblem").visible && askPanel.problem.indexOf("chave") >= 0)
@@ -187,6 +201,30 @@ PLANS = {
     check("the send button becomes Parar", !!uxFind(askPanel, "askStop"))
     askPanel.stop()
     check("stopping keeps what arrived", askPanel.messages.length === 2 && askPanel.messages[1].status === "cancelled" && !askPanel.runId)''')]),
+    'threads': ('1320x820', False, [MEETING_OPEN,
+        ('drawer open', 'askPanel.shown', '''
+    askPanel.start({question: "Primeira pergunta?", recipeId: "", recipeName: ""}, "%s")
+    const left = askPanel.askGeneration
+    uxFind(askPanel, "askNew").clicked()
+    check("Nova conversa leaves the question that was starting", askPanel.askGeneration === left + 1 && !askPanel.live && !askPanel.messages.length && !askPanel.busy)''' % LOCAL_KEY),
+        ('left run stopped', '!hasPending("assistant-start") && !hasPending("assistant-cancel")', '''
+    check("nothing of the left question reaches the new conversation", !askPanel.live && !askPanel.messages.length && !askPanel.runId)
+    uxFind(askPanel, "askThreadsButton").clicked()'''),
+        ('threads listed', 'askPanel.threads.length === 1 && !askPanel.threadsLoading', '''
+    askPanel.openThread(askPanel.threads[0].id)'''),
+        ('thread open', 'askPanel.messages.length === 2 && !askPanel.threadsOpen', '''
+    check("an earlier answer can be asked again", uxFind(askPanel, "askRetry-1").visible && askPanel.messages[1].question === "O que foi decidido?")
+    askPanel.retry(1)
+    check("while a question is on its way, no other conversation opens", askPanel.busy && !uxFind(askPanel, "askThreadsButton").enabled)
+    askPanel.openThread(askPanel.threads[0].id)
+    check("and opening one is refused", !hasPending("assistant-thread"))'''),
+        ('asked again', 'askPanel.messages.length === 4 && !askPanel.runId && !askPanel.planning', '''
+    check("the question is asked again in the same conversation", askPanel.messages[2].text === "O que foi decidido?" && askPanel.messages[3].status === "done" && askPanel.threadId === "99999999-9999-4999-8999-999999999999")''')]),
+    'unsaid': ('1320x820', False, [MEETING_OPEN,
+        ('drawer open', 'askPanel.shown', 'askPanel.input.text = "O que foi decidido?"; askPanel.submit()'),
+        ('planned', '!askPanel.planning', '''
+    check("a destination that does not say it stays here asks first", !!askPanel.waiting && uxFind(askPanel, "askConsentCard").visible)
+    check("nothing starts before the consent", !hasPending("assistant-start") && !askPanel.live)''')]),
     'no-assistant': ('1320x820', False, [
         ('meeting open', '!!selected.key && !detailLoading && !!detail.jobId && features.assistant === false', '''
     check("no Perguntar without the assistant", !detailView.askToggle.visible)
@@ -195,7 +233,7 @@ PLANS = {
     backToLibrary()'''),
         ('home', 'homeView.visible', 'check("no Ask bar on Início", !uxFind(homeView, "askBar").visible)')]),
 }
-SMOKE = {'meeting-local', 'recipes', 'stop-compact-en', 'no-assistant'}
+SMOKE = {'meeting-local', 'recipes', 'stop-compact-en', 'no-assistant', 'threads', 'unsaid'}
 
 
 def env_for(mode):
@@ -232,5 +270,13 @@ checks.append({'name': 'recipes: the answer is previewed as text, not as the mee
 checks.append({'name': 'not-configured: nothing is started', 'pass': not sent('not-configured', 'assistant-start')})
 cancels = sent('stop-compact-en', 'assistant-cancel')
 checks.append({'name': 'stop-compact-en: Parar cancels the run', 'pass': len(cancels) == 1 and cancels[0]['payload']['runId'].startswith('6666666')})
+thread_starts = sent('threads', 'assistant-start')
+checks.append({'name': 'threads: the question left by Nova conversa has its run cancelled',
+               'pass': len(thread_starts) == 2 and [q['payload']['runId'] for q in sent('threads', 'assistant-cancel')] == ['66666661-6666-4666-8666-666666666666']})
+checks.append({'name': 'threads: asking again plans the question of that answer in its conversation',
+               'pass': [q['payload'] for q in sent('threads', 'assistant-plan')] == [{'scope': {'kind': 'meeting', 'jobId': JOB}, 'question': 'O que foi decidido?'}]
+               and thread_starts[1]['payload'].get('threadId') == '99999999-9999-4999-8999-999999999999' if len(thread_starts) == 2 else False})
+checks.append({'name': 'threads: one conversation is read', 'pass': len(sent('threads', 'assistant-thread')) == 1})
+checks.append({'name': 'unsaid: nothing is started without the consent', 'pass': len(sent('unsaid', 'assistant-plan')) == 1 and not sent('unsaid', 'assistant-start')})
 checks.append({'name': 'no-assistant: no assistant or recipe op without the flag', 'pass': not any(q['op'].startswith(('assistant-', 'recipes-')) for q in requests['no-assistant'])})
 finish_journey(command, 'ask', out, checks, screens)

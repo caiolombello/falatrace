@@ -59,7 +59,8 @@ Rectangle {
     }
     function sameScope(a, b) { return JSON.stringify(a) === JSON.stringify(b) }
     function scopeText() {
-        if (scope.kind === "meeting") return t("Esta reunião")
+        // A conversation keeps its meeting while you navigate: away from it, the chip names it.
+        if (scope.kind === "meeting") return currentView === "meeting" && String(detail.jobId || selected.jobId || "").toLowerCase() === scope.jobId ? t("Esta reunião") : tf("Reunião: %1", scopeLabel || t("reunião"))
         if (scope.kind === "person") return tf("Pessoa: %1", scopeLabel)
         if (scope.kind === "client") return tf("Cliente: %1", scopeLabel)
         return t("Toda a biblioteca")
@@ -129,7 +130,7 @@ Rectangle {
         const pending = request.ask
         if (result.ready !== true) { problem = t(result.message || "") || t("O assistente não está pronto. Confira em Configurações."); restore(pending); return }
         // Outside this computer: one confirmation per conversation for this destination and scope.
-        if (result.destination && result.destination.external === true && !accepted[result.consentKey]) {
+        if (!(result.destination && result.destination.external === false) && !accepted[result.consentKey]) {
             waiting = Object.assign({}, pending, {consentKey: result.consentKey}); return
         }
         start(pending, result.consentKey)
@@ -167,7 +168,8 @@ Rectangle {
     function retry(index) {
         const answer = messages[index]
         if (!answer || busy) return
-        if (answer.recipeId) runRecipe({id: answer.recipeId, name: answer.recipeName}); else ask(answer.question, null)
+        const known = answer.recipeId ? recipes.find(function(recipe){ return recipe.id === answer.recipeId }) : null
+        if (answer.recipeId) runRecipe({id: answer.recipeId, name: answer.recipeName || (known ? known.name : answer.recipeId)}); else if (String(answer.question || "").trim()) ask(answer.question, null)
     }
 
     // ── Replies (all of them stay in this panel) ──
@@ -177,7 +179,12 @@ Rectangle {
             recipes = asList(message.result.recipes).map(function(recipe){ return {id: recipe.id, name: recipe.name, description: recipe.description || "", scope: recipe.scope} })
             return
         }
-        if (request.askGeneration !== askGeneration) return
+        if (request.askGeneration !== askGeneration) {
+            // A question started for a conversation that was left meanwhile ("Nova conversa", another
+            // scope): nobody follows that answer, so it is stopped instead of running on (and costing).
+            if (request.op === "assistant-start" && message.ok && message.result && message.result.runId) send("assistant-cancel", "", {runId: message.result.runId}, {origin: "ask", askGeneration: request.askGeneration})
+            return
+        }
         if (request.op === "assistant-plan") {
             if (!message.ok) { planning = false; problem = t(message.error); restore(request.ask); return }
             planned(request, message.result)
@@ -200,7 +207,11 @@ Rectangle {
             if (!message.ok) { problem = t(message.error); return }
             const result = message.result
             threadId = result.id || ""; threadsOpen = false; accepted = ({}); waiting = null; live = null; problem = ""
-            messages = asList(result.messages).map(function(item){ return {role: item.role, text: item.text || "", citations: asList(item.citations), status: "done", question: item.role === "user" ? item.text : "", recipeId: item.recipeId || ""} })
+            let asked = {question: "", recipeId: ""}
+            messages = asList(result.messages).map(function(item){
+                if (item.role === "user") asked = {question: item.recipeId ? "" : (item.text || ""), recipeId: item.recipeId || ""}
+                return {role: item.role, text: item.text || "", citations: asList(item.citations), status: "done", question: asked.question, recipeId: item.recipeId || asked.recipeId}
+            })
             Qt.callLater(function(){ messageList.positionViewAtEnd() })
         }
     }
@@ -214,12 +225,13 @@ Rectangle {
         onTriggered: { if (!hasPending("assistant-poll")) send("assistant-poll", "", {runId: askPanel.runId}, {origin: "ask", askGeneration: askPanel.askGeneration, runId: askPanel.runId}) }
     }
     function showThreads() {
+        if (busy && !threadsOpen) return
         threadsOpen = !threadsOpen
         if (!threadsOpen || !backend.available) return
         threadsLoading = true; threads = []
         if (send("assistant-threads", "", {scope: scope}, {origin: "ask", askGeneration: askGeneration}) < 0) threadsLoading = false
     }
-    function openThread(id) { send("assistant-thread", "", {threadId: id}, {origin: "ask", askGeneration: askGeneration}) }
+    function openThread(id) { if (!busy) send("assistant-thread", "", {threadId: id}, {origin: "ask", askGeneration: askGeneration}) }
 
     // ── Answers: paragraphs with their citations ──
     function paragraphs(text) {
@@ -266,8 +278,15 @@ Rectangle {
         return ""
     }
     function destinationExternal() {
-        if (plan.destination) return plan.destination.external === true
-        return studioSettings["assistant.provider"] !== undefined && studioSettings["assistant.provider"] !== "local"
+        if (plan.destination) return plan.destination.external !== false
+        const provider = studioSettings["assistant.provider"]
+        if (provider === undefined) return false
+        return provider !== "local" || !ollamaOnThisComputer()
+    }
+    // The local assistant talks to the Ollama address of the settings; only a loopback host stays here.
+    function ollamaOnThisComputer() {
+        const match = /^[a-z][a-z0-9+.-]*:\/\/(\[[^\]]*\]|[^\/:?#]*)/i.exec(String(studioSettings["summary.ollamaUrl"] || "http://127.0.0.1:11434"))
+        return !!match && ["127.0.0.1", "localhost", "[::1]", "::1"].indexOf(match[1].toLowerCase()) >= 0
     }
     function suggestions() {
         if (scope.kind === "meeting") return [t("Quais foram as decisões?"), t("O que ficou comigo?"), t("Quais perguntas ficaram em aberto?")]
@@ -356,7 +375,7 @@ Rectangle {
             spacing: 2
             FtButton { objectName: "askCopy-" + answer.index; visible: !!answer.message.text; compact: true; variant: "ghost"; iconName: "copy"; text: t("Copiar"); implicitHeight: 28; onClicked: askPanel.copyAnswer(answer.message.text) }
             FtButton { objectName: "askShareAnswer-" + answer.index; visible: !!answer.message.text && feature("share"); compact: true; variant: "ghost"; iconName: "send"; text: t("Enviar…"); implicitHeight: 28; enabled: backend.available; onClicked: askPanel.shareAnswer(answer.message) }
-            FtButton { objectName: "askRetry-" + answer.index; compact: true; variant: "ghost"; iconName: "refresh"; iconOnly: true; text: t("Perguntar de novo"); implicitHeight: 28; enabled: backend.available && !askPanel.busy; onClicked: askPanel.retry(answer.index) }
+            FtButton { objectName: "askRetry-" + answer.index; compact: true; variant: "ghost"; iconName: "refresh"; iconOnly: true; text: t("Perguntar de novo"); implicitHeight: 28; visible: !!answer.message.recipeId || String(answer.message.question || "").trim() !== ""; enabled: backend.available && !askPanel.busy; onClicked: askPanel.retry(answer.index) }
         }
     }
 
@@ -373,7 +392,7 @@ Rectangle {
             FtIcon { name: "chat"; tint: accent; size: 18 }
             Label { text: t("Perguntar"); textFormat: Text.PlainText; color: ink; font.pixelSize: 16; font.weight: Font.DemiBold; Layout.fillWidth: true; leftPadding: 4 }
             FtButton { objectName: "askNew"; iconOnly: true; compact: true; variant: "ghost"; iconName: "plus"; text: t("Nova conversa"); onClicked: askPanel.newThread(askPanel.viewScope()) }
-            FtButton { objectName: "askThreadsButton"; iconOnly: true; compact: true; variant: askPanel.threadsOpen ? "secondary" : "ghost"; iconName: "history"; text: t("Conversas anteriores"); enabled: backend.available; onClicked: askPanel.showThreads() }
+            FtButton { objectName: "askThreadsButton"; iconOnly: true; compact: true; variant: askPanel.threadsOpen ? "secondary" : "ghost"; iconName: "history"; text: t("Conversas anteriores"); enabled: backend.available && (!askPanel.busy || askPanel.threadsOpen); onClicked: askPanel.showThreads() }
             FtButton { objectName: "askClose"; iconOnly: true; compact: true; variant: "ghost"; iconName: "close"; text: t("Fechar (Esc)"); onClicked: askPanel.close() }
         }
         // Scope and destination, before anything is sent.
