@@ -1121,6 +1121,8 @@ ApplicationWindow {
                 }
                 liveView.libraryUpdated()
             } else if (request.op === "automation-pause" || request.op === "automation-resume" || request.op === "capture-status" || request.op === "capture-start" || request.op === "capture-stop" || request.op === "capture-recover" || request.op === "audio-defaults") {
+                // The live view learns the new session from captureStatus: it must already know this Studio started it.
+                if (request.op === "capture-start") liveView.startedHere = true
                 captureStatus = result
                 captureKnown = true
                 if (request.op !== "capture-status" || !["capture-start", "capture-stop", "capture-recover", "audio-defaults", "automation-pause", "automation-resume"].some(op => hasPending(op))) captureBusy = false

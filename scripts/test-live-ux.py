@@ -7,7 +7,8 @@ never a fixed delay, and prints its own assertion line): a capture started from 
 notepad and autosaves (800 ms after typing, right away on Enter), the live transcript stays off until
 asked and a cloud provider needs consent before live-set (again for another provider, and also when
 the provider is not known), Parar saves the notes first and then opens the new meeting, the compact
-light layout, a bridge with the notepad off, and the one-minute test capture.
+light layout, a bridge with the notepad off, and the one-minute test capture (also when test mode is
+set before the capture starts).
 Exit 77 means no Studio runtime is available.
 """
 from pathlib import Path
@@ -27,7 +28,7 @@ import sys, json, os, datetime
 mode = os.environ['FALATRACE_TEST_MODE']; log = open(os.environ['FALATRACE_REQUEST_LOG'], 'a'); session_id = os.environ['FALATRACE_SESSION']
 now = lambda: datetime.datetime.now(datetime.timezone.utc)
 ago = {'test-mode': 58}.get(mode, 30)
-active = mode not in ('start', 'no-notes')
+active = mode not in ('start', 'no-notes', 'test-start')
 started = (now() - datetime.timedelta(seconds=ago)).isoformat()
 stopped = False; live_on = False; seq = 0
 notes = {'id': session_id, 'rev': 0, 'text': '', 'entries': [], 'updatedAt': None}
@@ -151,6 +152,11 @@ PLANS = {
     'no-notes': ('1320x820', False, [(READY[0], 'captureKnown && features.live === true && features.notes === false', ''), CONSENT,
         ('capture started', 'captureStatus.active && !captureBusy', '''
     check("with the notepad off, the capture does not open the live view", currentView !== "live")''')]),
+    # The first-steps test recording sets test mode before the capture starts (C6c's wizardRecordTest).
+    'test-start': ('1320x820', False, [READY,
+        ('test consent', None, 'liveView.testMode = true; captureConsent.intent = "capture"; captureConsent.open(); captureConsent.accept()'),
+        ('live view', 'currentView === "live" && liveView.notesEditor.loaded && liveView.recording', '''
+    check("a test capture started here stays a test capture", liveView.testMode && uxFind(window.contentItem, "liveCoach").visible && uxFind(window.contentItem, "liveCoach").text.indexOf("Conversa de teste") === 0)''')]),
     'test-mode': ('1320x820', False, OPEN_LIVE + [
         ('test', None, 'liveView.testMode = true; check("the test capture says when it stops", uxFind(window.contentItem, "liveCoach").visible)'),
         ('stopped', '!captureStatus.active && !captureBusy', 'check("the test capture stops by itself after a minute", true)', 9000)]),
@@ -208,6 +214,8 @@ with tempfile.TemporaryDirectory(dir='/tmp', prefix='falatrace-live-fixture-') a
             checks.append({'name': 'stop: the list is read again after Parar', 'pass': 'list' in ops[stop_at + 1:]})
         if mode == 'no-notes':
             checks.append({'name': 'no-notes: no notes op without the notes flag', 'pass': not any(op.startswith('notes-') for op in ops) and 'capture-start' in ops})
+        if mode == 'test-start':
+            checks.append({'name': 'test-start: the test capture starts and is not stopped before its minute', 'pass': 'capture-start' in ops and 'capture-stop' not in ops})
         if mode == 'test-mode':
             checks.append({'name': 'test-mode: one capture-stop', 'pass': ops.count('capture-stop') == 1})
         screens.append({'mode': mode, 'file': image.name, 'sha256': hashlib.sha256(image.read_bytes()).hexdigest()})

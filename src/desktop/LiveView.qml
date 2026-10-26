@@ -34,7 +34,9 @@ Rectangle {
         if (session.id !== sessionId) {
             sessionId = session.id; sessionStartedAt = session.startedAt || ""
             afterStop = false; stopResult = ({}); listTries = 0; testStopSent = false
-            if (!startedHere) testMode = false
+            // Test mode is set before the test capture starts: only a capture this Studio did not ask for
+            // (an automatic one) clears it. A status poll can report the new session before capture-start answers.
+            if (!startedHere && !hasPending("capture-start")) testMode = false
         }
     }
     // capture-start answered by this Studio: the notepad opens (when notes are on).
