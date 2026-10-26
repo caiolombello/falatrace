@@ -5,7 +5,7 @@ import runpy
 import tempfile,subprocess,json,sys,hashlib,shutil,secrets
 repo=Path(__file__).resolve().parents[1]
 out=Path(sys.argv[1]).resolve();out.mkdir(parents=True,exist_ok=True)
-from studio_fixture import require_studio_command,copy_qml_siblings
+from studio_fixture import require_studio_command,copy_qml_siblings,qml_steps,require_assertion_lines
 command=require_studio_command()
 bun=shutil.which('bun') or str(Path.home()/'.bun/bin/bun')
 source=(repo/'src/desktop/Main.qml').read_text()
@@ -68,37 +68,37 @@ for await(const line of createInterface({input:process.stdin})){
 '''
   for token,value in {'GUARD_MODULE':str(repo/'scripts/qa-isolation-guard.ts'),'HEAVY_MODULE':str(repo/'src/runtime/heavy-admission.ts'),'FRAME_MODULE':str(repo/'src/visual/review-flow.ts'),'PREVIEW_MODULE':str(repo/'src/visual/mock-preview.ts'),'VIDEO_PATH':str(video),'VIDEO_HASH':videoHash,'CONFIG_MODULE':str(repo/'src/config/onboarding.ts'),'BRIDGE_MODULE':str(repo/'src/desktop/bridge.ts'),'CONFIG_PATH':str(config),'RECEIPT':str(receipt),'MODE':mode,'REAL_MODULE':str(repo/'src/visual/studio-flow.ts'),'DEFAULT_MODULE':str(repo/'src/config/defaults.ts'),'REAL_ROOT':str(folder/'visual-state')}.items():bridge=bridge.replace(token,json.dumps(value))
   (folder/'bridge.ts').write_text(bridge)
-  extra='''
- Timer { interval: 350; running: true; onTriggered: { window.lightTheme = true; ACTION } }
- Timer { interval: 650; running: true; onTriggered: { SECOND } }
- Timer { interval: 1100; running: true; onTriggered: { const a=[]; function check(name,pass){a.push({name:name,pass:!!pass})}; /*TEST_ASSERT*/; console.log("LOCAL_UX_ASSERTIONS "+JSON.stringify(a)) } }
-'''
+  # Each step waits for the state its predecessor produces (bounded), never a fixed delay: the fixture bridge
+  # starts with a cold transpile cache, so its replies come late on a busy machine (studio_fixture.qml_steps).
   action='framesDialog.open(); frameVisionModel.text="vision-fixture"; frameSummaryModel.text="summary-fixture"; send("frames-check-models",selected.key,{visionModel:frameVisionModel.text,summaryModel:frameSummaryModel.text})'
   second='scopeStart.text="0";scopeEnd.text="3";prepareTranscriptScope()'
-  extra+='\n Timer { interval:1000; running:true; onTriggered:{ plannerTranscriptConsent.checked=true; planFrames() } }\n'
   assertion='check("plan and exact source visible before images",framePlan.decision==="frames" && framePlan.sources[0].quote==="Botão sintético à direita." && !framePreview.id && !frameResult.sourceKey)'
-  extra=extra.replace('interval: 1100','interval: 3400')
   if mode=='real-plan-result':
-   extra+='\n Timer { interval: 1550; running:true; onTriggered: previewPlannedFrames() }\n Timer { interval: 2350; running:true; onTriggered: { confirmFrames();confirmFrames() } }\n Timer { interval: 3050; running:true; onTriggered: { frameScroll.contentItem.contentY=Math.max(0,frameScroll.contentItem.contentHeight-frameScroll.availableHeight) } }\n'
    assertion='check("planner result stays separate from complete summary",frameResult.sourceKey && !frameResult.synthetic && detail.summary==="Fixture sem IA real." && detail.visualReview.summaryMarkdown.includes("Resumo do transporte stub"));check("source timestamp preserved",frameResult.timestampSeconds===1.2 && frameResult.observations[0].uncertainty==="uncertain")'
   elif mode=='real-plan-none':assertion='check("none leaves summary and sends no frames",framePlan.decision==="none" && framePlan.plan.requests.length===0 && !framePreview.id && !frameResult.sourceKey)'
   elif mode=='real-plan-cancel':
    second='plannerTranscriptConsent.checked=false'
-   extra=extra.replace('plannerTranscriptConsent.checked=true; planFrames()', '')
-   extra+='\n Timer { interval: 1200; running:true; onTriggered: { planFrames();framesDialog.reject() } }\n'
    assertion='check("planner unconsented/cancel closes without results",!framesDialog.visible && !framePlan.id && !framePreview.id && !frameResult.sourceKey)'
   elif mode=='real-plan-compact':
    action='window.width=900;window.height=640;'+action
    assertion+=';check("compact cancel and no overflow",frameCancelButton.visible && framesDialog.height<=window.height-64 && frameColumn.width<=frameScroll.availableWidth)'
-  if mode in ['real-plan-visible','real-plan-compact','real-plan-none']:extra+='\n Timer { interval: 2000; running:true; onTriggered: { frameScroll.contentItem.contentY=300 } }\n'
-  extra=extra.replace('ACTION',action).replace('SECOND',second).replace('/*TEST_ASSERT*/',assertion)
+  # The smoke recording is selected (a frames reply for an earlier selection is dropped) and the capabilities are known.
+  steps=[(350,'selected.key === "synthetic-demo" && !detailLoading && !hasPending("ux-capabilities")','window.lightTheme = true; '+action),(650,'!!frameCapability.id',second)]
+  if mode=='real-plan-cancel':steps.append((1200,'true','planFrames();framesDialog.reject()'))
+  else:steps.append((1000,'!!frameScope.id','plannerTranscriptConsent.checked=true; planFrames()'))
+  if mode=='real-plan-result':steps+=[(1550,'!!framePlan.id','previewPlannedFrames()'),(2350,'!!framePreview.id','confirmFrames();confirmFrames()'),(3050,'!!frameResult.sourceKey','frameScroll.contentItem.contentY=Math.max(0,frameScroll.contentItem.contentHeight-frameScroll.availableHeight)')]
+  if mode in ['real-plan-visible','real-plan-compact','real-plan-none']:steps.append((2000,'!!framePlan.decision','frameScroll.contentItem.contentY=300'))
+  ready='!!frameResult.sourceKey' if mode=='real-plan-result' else '!framesDialog.visible && !hasPending("frames-plan")' if mode=='real-plan-cancel' else '!!framePlan.decision'
+  steps.append((3400,ready,'const a=[]; function check(name,pass){a.push({name:name,pass:!!pass})}; '+assertion+'; console.log("LOCAL_UX_ASSERTIONS "+JSON.stringify(a))'))
+  extra=qml_steps(steps,500)
   qml=source.replace('../../docs/assets/',(repo/'docs/assets').as_uri()+'/').rstrip();(folder/'Main.qml').write_text(qml[:-1]+extra+'}\n');copy_qml_siblings(folder)
   png=out/(mode+'.png')
-  env={'FALATRACE_QA_ISOLATED':'1','FALATRACE_QA_ROOT':str(root),'FALATRACE_QA_NONCE':nonce,'XDG_CONFIG_HOME':str(root/'config'),'XDG_STATE_HOME':str(root/'state'),'XDG_DATA_HOME':str(root/'data'),'FALATRACE_HEAVY_PAUSE':'off','HOME':str(root/'home'),'XDG_RUNTIME_DIR':str(root/'runtime'),'XDG_CACHE_HOME':str(root/'cache'),'TMPDIR':str(root/'tmp'),'LANG':'C.UTF-8','PATH':'/usr/bin:/bin','QT_QPA_PLATFORM':'offscreen','QT_QUICK_BACKEND':'software','RECORDING_DESKTOP_SOFTWARE_SMOKE':'1','RECORDING_DESKTOP_SMOKE_KEY':'synthetic-demo','RECORDING_DESKTOP_SNAPSHOT':str(png),'RECORDING_DESKTOP_SNAPSHOT_MS':'3900'}
+  env={'FALATRACE_QA_ISOLATED':'1','FALATRACE_QA_ROOT':str(root),'FALATRACE_QA_NONCE':nonce,'XDG_CONFIG_HOME':str(root/'config'),'XDG_STATE_HOME':str(root/'state'),'XDG_DATA_HOME':str(root/'data'),'FALATRACE_HEAVY_PAUSE':'off','HOME':str(root/'home'),'XDG_RUNTIME_DIR':str(root/'runtime'),'XDG_CACHE_HOME':str(root/'cache'),'TMPDIR':str(root/'tmp'),'LANG':'C.UTF-8','PATH':'/usr/bin:/bin','QT_QPA_PLATFORM':'offscreen','QT_QUICK_BACKEND':'software','RECORDING_DESKTOP_SOFTWARE_SMOKE':'1','RECORDING_DESKTOP_SMOKE_KEY':'synthetic-demo','RECORDING_DESKTOP_SNAPSHOT':str(png),'RECORDING_DESKTOP_SNAPSHOT_MS':'15000'}
   runpy.run_path(str(repo/'scripts/qa-run.py'))['require_isolated'](env)
   result=subprocess.run([*command,str(folder),bun],env=env,capture_output=True,text=True,timeout=40)
   (out/(mode+'.stderr')).write_text(result.stderr)
   assert png.is_file() and 'ReferenceError' not in result.stderr and 'TypeError' not in result.stderr and 'Unable to assign' not in result.stderr and 'failed to load component' not in result.stderr,result.stderr
+  require_assertion_lines(result.stderr,'LOCAL_UX_ASSERTIONS ',1,mode)
   for line in result.stderr.splitlines():
    if 'LOCAL_UX_ASSERTIONS ' in line:checks.extend(json.loads(line.split('LOCAL_UX_ASSERTIONS ',1)[1]))
   data=json.loads(receipt.read_text());assert data['mockCalls']==(1 if mode in ['frames-result','frames-reference','frames-compact'] else 0),data

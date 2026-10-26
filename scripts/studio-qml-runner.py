@@ -5,7 +5,9 @@ Mirrors src/desktop/main.cpp closely enough for offscreen UX journeys and CI:
 same arguments (<qml-root> <program> [--packaged]), the same JSONL bridge
 contract (ids, response validation, timeouts, bounded auto-reconnect), the same
 context properties and snapshot evidence. MpvQt is replaced by an inert
-RecordingVideo item: no media is decoded, so mediaReady stays false.
+RecordingVideo item: no media is decoded, so mediaReady stays false. One
+addition for the journeys: when the window sets `qaSnapshotReady`, the
+snapshot is taken at once (RECORDING_DESKTOP_SNAPSHOT_MS is then the deadline).
 
 Requires PySide6 (pip install PySide6-Essentials). Exit 77 when it is missing.
 Never use it with production media or credentials; journeys pass synthetic
@@ -248,8 +250,12 @@ def main():
         if 'RECORDING_DESKTOP_CONTEXT_SMOKE' in os.environ:
             QTimer.singleShot(8000, lambda: window.metaObject().invokeMethod(window, 'requestMeetingContext'))
         delay = int(os.environ.get('RECORDING_DESKTOP_SNAPSHOT_MS') or 0) or 12000
+        taken = []
 
         def capture():
+            if taken:
+                return
+            taken.append(True)
             if not isinstance(window, QQuickWindow):
                 app.exit(4)
                 return
@@ -269,6 +275,12 @@ def main():
             Path(snapshot + '.json').write_text(json.dumps(evidence, indent=2, default=str))
             app.exit(0 if saved and evidence['mediaReady'] else 5)
         QTimer.singleShot(delay, capture)
+        # Journeys whose steps wait for bridge replies set qaSnapshotReady once their last step ran:
+        # the snapshot is taken then, and RECORDING_DESKTOP_SNAPSHOT_MS stays the deadline.
+        ready = QTimer(app)
+        ready.setInterval(50)
+        ready.timeout.connect(lambda: capture() if window.property('qaSnapshotReady') else None)
+        ready.start()
     code = app.exec()
     bridge.shutdown()
     return code

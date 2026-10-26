@@ -18,7 +18,7 @@ import tempfile
 
 repo = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(repo / 'scripts'))
-from studio_fixture import copy_qml_siblings, require_studio_command, runner_kind  # noqa: E402
+from studio_fixture import copy_qml_siblings, qml_steps, require_assertion_lines, require_studio_command, runner_kind  # noqa: E402
 
 command = require_studio_command()
 out = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path(tempfile.mkdtemp(dir='/tmp', prefix='falatrace-speakers-ux-'))
@@ -95,24 +95,23 @@ FIND = '''
  }
 '''
 
+# Each mode: (steps, settle). A step runs once the replies it depends on arrived (bounded), never after a fixed
+# delay (studio_fixture.qml_steps); the snapshot follows the last step after `settle` ms.
+# The speakers tab is open on the smoke recording and the saved settings were read.
+READY = 'selected.key === "synthetic-speakers" && !detailLoading && tabs.currentIndex === 2 && settingsFirstRunChecked'
+# Settings › Models answered: the catalog (voice block) and the known voices.
+MODELS = '!hasSettingsPending("settings-model-catalog") && !hasSettingsPending("settings-voices-list") && !!settingsDialog.catalog.voice'
+OPEN_SETTINGS = [(900, READY, 'settingsDialog.open()')]
 MODES = {
     # The tab as it opens: two suggestions and the apply action.
-    'tab': ('', 1500),
+    'tab': ([(1000, READY, '')], 500),
     # The request dialog with the conversation consent checked.
-    'dialog': ('''
- Timer { interval: 1000; running: true; repeat: false; onTriggered: { speakerSuggestDialog.open(); speakerSuggestDialog.conversationConsent.checked = true } }
-''', 1500),
-    'english': ('', 1700),
+    'dialog': ([(1000, READY, 'speakerSuggestDialog.open(); speakerSuggestDialog.conversationConsent.checked = true')], 500),
+    'english': ([(1200, READY + ' && uiLanguage === "en"', '')], 500),
     # Settings › Models with the voice block and two known voices.
-    'settings': ('''
- Timer { interval: 900; running: true; repeat: false; onTriggered: settingsDialog.open() }
- Timer { interval: 1100; running: true; repeat: false; onTriggered: settingsDialog.goToSection(4) }
-''', 1900),
+    'settings': (OPEN_SETTINGS + [(1100, '!!settingsData.revision', 'settingsDialog.goToSection(4)'), (1600, MODELS, '')], 300),
     # Settings › Integrations with a connected Google account (connecting would open a browser: not clicked).
-    'google': ('''
- Timer { interval: 900; running: true; repeat: false; onTriggered: settingsDialog.open() }
- Timer { interval: 1100; running: true; repeat: false; onTriggered: settingsDialog.goToSection(5) }
- Timer { interval: 1600; running: true; repeat: false; onTriggered: {
+    'google': (OPEN_SETTINGS + [(1100, '!!settingsData.revision', 'settingsDialog.goToSection(5)'), (1600, '!hasSettingsPending("settings-google-status")', '''
   const a=[]; function check(name,pass){a.push({name:name,pass:!!pass})}
   const root = settingsDialog.contentItem
   const line = uxFind(root, "googleStatusLine")
@@ -121,12 +120,8 @@ MODES = {
   check("the calendar option and the client fields are there", !!uxFind(root, "googleCalendar") && !!uxFind(root, "googleClientId"))
   check("reading the section sends no sign-in", !hasSettingsPending("settings-google-connect") && !hasSettingsPending("settings-google-disconnect"))
   console.log("UX_ASSERTIONS "+JSON.stringify(a))
- } }
-''', 2000),
-    'voices': ('''
- Timer { interval: 900; running: true; repeat: false; onTriggered: settingsDialog.open() }
- Timer { interval: 1100; running: true; repeat: false; onTriggered: settingsDialog.goToSection(4) }
- Timer { interval: 1600; running: true; repeat: false; onTriggered: {
+''')], 400),
+    'voices': (OPEN_SETTINGS + [(1100, '!!settingsData.revision', 'settingsDialog.goToSection(4)'), (1600, MODELS, '''
   const a=[]; function check(name,pass){a.push({name:name,pass:!!pass})}
   const root = settingsDialog.contentItem
   check("voice block shown with its size and nothing downloaded", uxFind(root, "voicePackage").visible && uxFind(root, "voiceDownload").visible && !hasSettingsPending("settings-model-download"))
@@ -143,13 +138,10 @@ MODES = {
   remove.clicked()
   check("confirmed deletion sends one request", hasSettingsPending("settings-voices-delete"))
   console.log("UX_ASSERTIONS "+JSON.stringify(a))
- } }
- Timer { interval: 2100; running: true; repeat: false; onTriggered: {
+'''), (2100, '!hasSettingsPending("settings-voices-delete")', '''
   console.log("UX_ASSERTIONS "+JSON.stringify([{name:"the list follows the deletion and says what happened",pass:(settingsDialog.voices.people||[]).length === 1 && settingsNotice.indexOf("Voz apagada") === 0}]))
- } }
-''', 2500),
-    'flow': ('''
- Timer { interval: 1000; running: true; repeat: false; onTriggered: {
+''')], 400),
+    'flow': ([(1000, READY + ' && speakerRows.length === 4', '''
   const a=[]; function check(name,pass){a.push({name:name,pass:!!pass})}
   check("speakers tab open with four speakers", tabs.currentIndex === 2 && speakerRows.length === 4)
   const mic = uxFind(window.contentItem, "speakerSuggestion-S01-microphone")
@@ -169,8 +161,7 @@ MODES = {
   uxFind(window.contentItem, "speakerApplySuggestions").clicked()
   check("apply sends one revision", hasPending("revision-save"))
   console.log("UX_ASSERTIONS "+JSON.stringify(a))
- } }
- Timer { interval: 1500; running: true; repeat: false; onTriggered: {
+'''), (1500, '!revisionPending() && !detailLoading', '''
   const a=[]; function check(name,pass){a.push({name:name,pass:!!pass})}
   check("revision answered and detail reread", !revisionPending())
   uxFind(window.contentItem, "speakerSuggestButton").clicked()
@@ -184,11 +175,9 @@ MODES = {
   run.clicked()
   check("request sent and dialog closed", hasPending("speakers-suggest") && !speakerSuggestDialog.visible)
   console.log("UX_ASSERTIONS "+JSON.stringify(a))
- } }
- Timer { interval: 2100; running: true; repeat: false; onTriggered: {
+'''), (2100, '!hasPending("speakers-suggest")', '''
   console.log("UX_ASSERTIONS "+JSON.stringify([{name:"queued request polls and disables a second request",pass:speakersQueued && !uxFind(window.contentItem, "speakerSuggestButton").enabled}]))
- } }
-''', 2600),
+''')], 500),
 }
 
 checks, screens, requests = [], [], {}
@@ -205,11 +194,11 @@ with tempfile.TemporaryDirectory(dir='/tmp', prefix='falatrace-speakers-fixture-
     stub = root / 'bridge-stub.py'
     stub.write_text(STUB)
     stub.chmod(0o700)
-    for mode, (extra, delay) in MODES.items():
+    for mode, (steps, settle) in MODES.items():
         qml = root / mode
         qml.mkdir()
         base = source.replace('../../docs/assets/', (repo / 'docs/assets').as_uri() + '/').rstrip()
-        (qml / 'Main.qml').write_text(base[:-1] + FIND + extra + '}\n')
+        (qml / 'Main.qml').write_text(base[:-1] + FIND + qml_steps(steps, settle) + '}\n')
         copy_qml_siblings(qml)
         image = out / f'speakers-{mode}.png'
         log = root / f'{mode}-requests.jsonl'
@@ -221,7 +210,7 @@ with tempfile.TemporaryDirectory(dir='/tmp', prefix='falatrace-speakers-fixture-
                # both would hide the console.log lines the assertions travel on.
                'QT_LOGGING_RULES': 'js.debug=true;qml.debug=true;default.debug=true', 'QT_FORCE_STDERR_LOGGING': '1',
                'RECORDING_DESKTOP_SOFTWARE_SMOKE': '1', 'RECORDING_DESKTOP_SMOKE_KEY': 'synthetic-speakers', 'RECORDING_DESKTOP_DIARIZATION_SMOKE': '1',
-               'RECORDING_DESKTOP_SNAPSHOT': str(image), 'RECORDING_DESKTOP_SNAPSHOT_MS': str(delay),
+               'RECORDING_DESKTOP_SNAPSHOT': str(image), 'RECORDING_DESKTOP_SNAPSHOT_MS': '8000',
                'FALATRACE_TEST_MODE': mode, 'FALATRACE_REQUEST_LOG': str(log), 'FALATRACE_DETAIL': json.dumps(DETAIL),
                'FALATRACE_SYNTHETIC_MEDIA': str(media), 'FALATRACE_PEOPLE': json.dumps(PEOPLE)}
         runpy.run_path(str(repo / 'scripts/qa-run.py'))['require_isolated'](env)
@@ -230,6 +219,7 @@ with tempfile.TemporaryDirectory(dir='/tmp', prefix='falatrace-speakers-fixture-
         evidence = json.loads(Path(str(image) + '.json').read_text()) if Path(str(image) + '.json').exists() else {}
         if not evidence.get('snapshot') or 'ReferenceError' in result.stderr or 'TypeError' in result.stderr or 'failed to load component' in result.stderr:
             raise SystemExit(f'QML failure in {mode}: ' + result.stderr[-4000:])
+        require_assertion_lines(result.stderr, 'UX_ASSERTIONS ', sum(1 for step in steps if 'UX_ASSERTIONS' in step[2]), mode)
         for line in result.stderr.splitlines():
             if 'UX_ASSERTIONS ' in line:
                 checks.extend(json.loads(line.split('UX_ASSERTIONS ', 1)[1]))

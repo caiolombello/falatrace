@@ -7,7 +7,7 @@ from pathlib import Path
 import runpy
 import tempfile,subprocess,os,json,sys,hashlib,shutil,secrets
 repo=Path(__file__).resolve().parents[1]
-from studio_fixture import require_studio_command,copy_qml_siblings
+from studio_fixture import require_studio_command,copy_qml_siblings,qml_steps,require_assertion_lines
 command=require_studio_command()
 out=Path(sys.argv[1]).resolve() if len(sys.argv)>1 else Path(tempfile.mkdtemp(dir='/tmp',prefix='falatrace-ui-output-'))
 out.mkdir(parents=True,exist_ok=True)
@@ -47,26 +47,22 @@ for line in sys.stdin:
   light='true' if mode in ['light','compact'] else 'false'
   action='captureConsent.open()' if mode=='consent' else 'tabs.currentIndex = 1' if mode=='summary' else ''
   if mode in ['compact','recording']:action+='; window.width = 900; window.height = 640'
-  extra=f'\n Timer {{ interval: 350; running: true; repeat: false; onTriggered: {{ window.lightTheme = {light}; {action} }} }}\n'
-  if mode=='recording':extra+='''
- Timer { interval:700; running:true; repeat:false; onTriggered:{
+  # Each step waits for the replies it depends on (bounded), never a fixed delay; the snapshot follows the last step.
+  # What the screen needs before the first step: the capture state and, by mode, the library or its failure.
+  ready='captureKnown'+(' && !loading' if mode=='empty' else ' && !!errorText' if mode=='error' else '' if mode=='loading' else ' && selected.key === "synthetic-demo" && !detailLoading')
+  steps=[(350,ready,f'window.lightTheme = {light}; {action}')]
+  if mode=='recording':steps.append((700,'captureStatus.active','''
   const p=headerStop.mapToItem(window.contentItem,0,0);headerStop.forceActiveFocus(Qt.TabFocusReason);
   console.log("UX_ASSERTIONS "+JSON.stringify([{name:"stop visible without opening dialog",pass:headerStop.visible&&headerStop.enabled&&!recordingTools.visible},{name:"stop inside 900x640 viewport",pass:p.x>=0&&p.y>=0&&p.x+headerStop.width<=window.width&&p.y+headerStop.height<=window.height},{name:"stop has visible keyboard focus",pass:headerStop.activeFocus&&headerStop.visualFocus}]))
- } }
-'''
-  if mode=='stop-warning':extra+='''
- Timer { interval: 650; running: true; repeat: false; onTriggered: headerStop.clicked() }
- Timer { interval: 1100; running: true; repeat: false; onTriggered: {
+'''))
+  if mode=='stop-warning':steps+=[(650,'captureStatus.active && headerStop.visible','headerStop.clicked()'),(1100,'!hasPending("capture-stop")','''
   console.log("UX_ASSERTIONS "+JSON.stringify([{name:"a stop the backend could not confirm shows its warning",pass:notice.indexOf("Captura parada, com aviso: O GNOME")===0&&!captureStatus.active}]))
- } }
-'''
-  if mode=='english':extra+='''
- Timer { interval: 900; running: true; repeat: false; onTriggered: {
+''')]
+  if mode=='english':steps.append((900,'uiLanguage === "en"','''
   console.log("UX_ASSERTIONS "+JSON.stringify([{name:"saved English language applies",pass:uiLanguage==="en"},{name:"library heading in English",pass:t("Biblioteca")==="Library"&&t("Transcrição")==="Transcript"},{name:"bridge status parts in English",pass:artifactParts("Transcrição pronta · Resumo indisponível").join(" · ")==="Transcript ready · Summary unavailable"}]))
- } }
-'''
-  if mode=='regression':extra+='''
- Timer { interval: 450; running: true; repeat: false; onTriggered: {
+'''))
+  # The second step waits for the stale context reply, so it is proven discarded rather than not yet arrived.
+  if mode=='regression':steps+=[(450,'true','''
   const a=[]; function check(name,pass){a.push({name:name,pass:!!pass})}
   check("synthetic backend available", backend.available)
   check("synthetic selection", selected.key === "synthetic-demo")
@@ -77,21 +73,21 @@ for line in sys.stdin:
   search.forceActiveFocus(); check("editing excludes player shortcuts", textHasFocus)
   requestMeetingContext(); const other=Object.assign({},selected);other.key="synthetic-other";selectRecording(other)
   console.log("UX_ASSERTIONS "+JSON.stringify(a))
- } }
- Timer { interval: 900; running: true; repeat: false; onTriggered: {
+'''),(900,'!hasPending("context-meeting")','''
   const a=[{name:"stale context discarded",pass:selected.key === "synthetic-other" && contextText === "" && contextCopyText === "" && !contextLoading}]
   backToLibrary(); a.push({name:"back clears selected and focuses search",pass:!selected.key && search.activeFocus && !mediaReady})
   console.log("UX_ASSERTIONS "+JSON.stringify(a))
- } }
-'''
+''')]
+  extra=qml_steps(steps,1300-steps[-1][0])
   (qml/'Main.qml').write_text(base[:-1]+extra+'}\n');copy_qml_siblings(qml)
   image=out/f'studio-{mode}.png'
-  env={'FALATRACE_QA_ISOLATED':'1','FALATRACE_QA_ROOT':str(root),'FALATRACE_QA_NONCE':nonce,'XDG_CONFIG_HOME':str(root/'config'),'XDG_STATE_HOME':str(root/'state'),'XDG_DATA_HOME':str(root/'data'),'HOME':str(root/'home'),'XDG_RUNTIME_DIR':str(root/'runtime'),'XDG_CACHE_HOME':str(root/'cache'),'TMPDIR':str(root/'tmp'),'LANG':'C.UTF-8','PATH':'/usr/bin:/bin','QT_QPA_PLATFORM':'offscreen','QT_QUICK_BACKEND':'software','RECORDING_DESKTOP_SOFTWARE_SMOKE':'1','RECORDING_DESKTOP_SMOKE_KEY':'synthetic-demo' if mode not in ['empty','error','loading'] else '', 'RECORDING_DESKTOP_SNAPSHOT':str(image),'RECORDING_DESKTOP_SNAPSHOT_MS':'1300','FALATRACE_TEST_MODE':mode,'FALATRACE_SYNTHETIC_VIDEO':str(video)}
+  env={'FALATRACE_QA_ISOLATED':'1','FALATRACE_QA_ROOT':str(root),'FALATRACE_QA_NONCE':nonce,'XDG_CONFIG_HOME':str(root/'config'),'XDG_STATE_HOME':str(root/'state'),'XDG_DATA_HOME':str(root/'data'),'HOME':str(root/'home'),'XDG_RUNTIME_DIR':str(root/'runtime'),'XDG_CACHE_HOME':str(root/'cache'),'TMPDIR':str(root/'tmp'),'LANG':'C.UTF-8','PATH':'/usr/bin:/bin','QT_QPA_PLATFORM':'offscreen','QT_QUICK_BACKEND':'software','RECORDING_DESKTOP_SOFTWARE_SMOKE':'1','RECORDING_DESKTOP_SMOKE_KEY':'synthetic-demo' if mode not in ['empty','error','loading'] else '', 'RECORDING_DESKTOP_SNAPSHOT':str(image),'RECORDING_DESKTOP_SNAPSHOT_MS':'8000','FALATRACE_TEST_MODE':mode,'FALATRACE_SYNTHETIC_VIDEO':str(video)}
   runpy.run_path(str(repo/'scripts/qa-run.py'))['require_isolated'](env)
   r=subprocess.run([*command,str(qml),str(stub)],env=env,capture_output=True,text=True,timeout=40)
   (out/f'studio-{mode}.stderr').write_text(r.stderr)
   receipt=json.loads(Path(str(image)+'.json').read_text()) if Path(str(image)+'.json').exists() else {}
   if not receipt.get('snapshot') or 'ReferenceError' in r.stderr or 'failed to load component' in r.stderr:raise SystemExit(f'Native QML failure: {mode}: '+r.stderr)
+  require_assertion_lines(r.stderr,'UX_ASSERTIONS ',{'recording':1,'stop-warning':1,'english':1,'regression':2}.get(mode,0),mode)
   for line in r.stderr.splitlines():
    if 'UX_ASSERTIONS ' in line:checks.extend(json.loads(line.split('UX_ASSERTIONS ',1)[1]))
   screens.append({'mode':mode,'file':image.name,'sha256':hashlib.sha256(image.read_bytes()).hexdigest(),'snapshot':True,'exitCode':r.returncode,'mediaReady':receipt.get('mediaReady')})

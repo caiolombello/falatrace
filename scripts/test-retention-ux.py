@@ -12,7 +12,7 @@ import hashlib, json, runpy, secrets, subprocess, sys, tempfile
 
 repo = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(repo / 'scripts'))
-from studio_fixture import copy_qml_siblings, qml_sources_digest, require_studio_command, runner_kind
+from studio_fixture import copy_qml_siblings, qml_sources_digest, qml_steps, require_assertion_lines, require_studio_command, runner_kind
 command = require_studio_command()
 out = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path(tempfile.mkdtemp(dir='/tmp', prefix='falatrace-retention-ux-'))
 out.mkdir(parents=True, exist_ok=True)
@@ -62,10 +62,12 @@ with tempfile.TemporaryDirectory(dir='/tmp', prefix='falatrace-retention-fixture
     stub = root / 'bridge-stub.py'; stub.write_text(STUB); stub.chmod(0o700)
     qml = root / 'library'; qml.mkdir()
     base = source.replace('../../docs/assets/', (repo / 'docs/assets').as_uri() + '/').rstrip()
-    def timer(ms, body):
-        return (f' Timer {{ interval: {ms}; running: true; repeat: false; onTriggered: {{ const a=[]; function check(name,pass){{a.push({{name:name,pass:!!pass}})}}; '
-                f'{body}; console.log("UX_ASSERTIONS "+JSON.stringify(a)) }} }}\n')
-    extra = '\n' + timer(900, FIRST) + timer(1700, SECOND) + timer(2500, THIRD)
+    def timer(body):
+        return (f'const a=[]; function check(name,pass){{a.push({{name:name,pass:!!pass}})}}; '
+                f'{body}; console.log("UX_ASSERTIONS "+JSON.stringify(a))')
+    # Each step waits for the replies it depends on (bounded): the library, then each selection's detail.
+    extra = qml_steps([(900, 'items.length === 3 && !hasPending("list")', timer(FIRST)), (1700, '!detailLoading', timer(SECOND)),
+                       (2500, '!detailLoading', timer(THIRD))], 500)
     (qml / 'Main.qml').write_text(base[:-1] + extra + '}\n'); copy_qml_siblings(qml)
     image = out / 'retention-library.png'; receipt_path = root / 'requests.json'
     env = {'FALATRACE_QA_ISOLATED': '1', 'FALATRACE_QA_ROOT': str(root), 'FALATRACE_QA_NONCE': nonce,
@@ -73,11 +75,12 @@ with tempfile.TemporaryDirectory(dir='/tmp', prefix='falatrace-retention-fixture
            'HOME': str(root / 'home'), 'XDG_RUNTIME_DIR': str(root / 'runtime'), 'XDG_CACHE_HOME': str(root / 'cache'),
            'TMPDIR': str(root / 'tmp'), 'LANG': 'C.UTF-8', 'PATH': '/usr/bin:/bin', 'QT_QPA_PLATFORM': 'offscreen',
            'QT_QUICK_BACKEND': 'software', 'RECORDING_DESKTOP_SOFTWARE_SMOKE': '1', 'RECORDING_DESKTOP_SMOKE_KEY': '',
-           'RECORDING_DESKTOP_SNAPSHOT': str(image), 'RECORDING_DESKTOP_SNAPSHOT_MS': '3000', 'FALATRACE_RECEIPT': str(receipt_path)}
+           'RECORDING_DESKTOP_SNAPSHOT': str(image), 'RECORDING_DESKTOP_SNAPSHOT_MS': '8000', 'FALATRACE_RECEIPT': str(receipt_path)}
     runpy.run_path(str(repo / 'scripts/qa-run.py'))['require_isolated'](env)
     r = subprocess.run([*command, str(qml), str(stub)], env=env, capture_output=True, text=True, timeout=40)
     (out / 'retention-library.stderr').write_text(r.stderr)
     problems = [line for line in r.stderr.splitlines() if any(marker in line for marker in ('ReferenceError', 'TypeError', 'failed to load component', 'Unable to assign', 'is not a type', 'unavailable'))]
+    require_assertion_lines(r.stderr, 'UX_ASSERTIONS ', 3, 'library')
     if not image.exists() or problems:
         raise SystemExit('QML failure: ' + ('\n'.join(problems) or r.stderr[-4000:]))
     for line in r.stderr.splitlines():

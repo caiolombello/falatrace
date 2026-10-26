@@ -12,7 +12,7 @@ import hashlib, json, runpy, secrets, subprocess, sys, tempfile
 
 repo = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(repo / 'scripts'))
-from studio_fixture import copy_qml_siblings, qml_sources_digest, require_studio_command, runner_kind
+from studio_fixture import copy_qml_siblings, qml_sources_digest, qml_steps, require_assertion_lines, require_studio_command, runner_kind
 command = require_studio_command()
 out = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path(tempfile.mkdtemp(dir='/tmp', prefix='falatrace-process-ux-'))
 out.mkdir(parents=True, exist_ok=True)
@@ -56,7 +56,8 @@ for line in sys.stdin:
 '''
 
 SELECT = 'selectRecording(items[0])'
-# mode: (action at 700 ms, step at 1500 ms, step at 2300 ms, step at 3100 ms)
+# mode: (action at 700 ms, step at 1500 ms, step at 2300 ms, step at 3100 ms); each waits for the replies its
+# predecessor asked for (bounded) before it runs, never a fixed delay.
 MODES = {
     'local': (SELECT, 'check("button offered for an unprocessed recording", processButton.visible && processButton.enabled); processDialog.open()',
               'check("plan shows local destinations", processDialog.ready && !processDialog.external && processDialog.plan.transcription.where.indexOf("neste computador")>=0); '
@@ -91,10 +92,13 @@ with tempfile.TemporaryDirectory(dir='/tmp', prefix='falatrace-process-fixture-'
     for mode, (action, first, second, third) in MODES.items():
         qml = root / mode; qml.mkdir()
         base = source.replace('../../docs/assets/', (repo / 'docs/assets').as_uri() + '/').rstrip()
-        def timer(ms, body):
-            return (f' Timer {{ interval: {ms}; running: true; repeat: false; onTriggered: {{ const a=[]; function check(name,pass){{a.push({{name:"{mode}: "+name,pass:!!pass}})}}; '
-                    f'{body}; console.log("UX_ASSERTIONS "+JSON.stringify(a)) }} }}\n')
-        extra = '\n' + f' Timer {{ interval: 700; running: true; repeat: false; onTriggered: {{ {action} }} }}\n' + timer(1500, first) + timer(2300, second) + timer(3100, third)
+        def timer(body):
+            return (f'const a=[]; function check(name,pass){{a.push({{name:"{mode}: "+name,pass:!!pass}})}}; '
+                    f'{body}; console.log("UX_ASSERTIONS "+JSON.stringify(a))')
+        # The library, then the detail of the selection, then the plan, then the queueing answered.
+        extra = qml_steps([(700, 'items.length > 0 && !hasPending("list")', action), (1500, '!!selected.key && !detailLoading', timer(first)),
+                           (2300, '!hasPending("recording-process-plan")', timer(second)),
+                           (3100, '!hasPending("recording-process") && !hasPending("recording-process-plan")', timer(third))], 500)
         (qml / 'Main.qml').write_text(base[:-1] + extra + '}\n'); copy_qml_siblings(qml)
         image = out / f'process-{mode}.png'; receipt_path = root / f'{mode}-requests.json'
         env = {'FALATRACE_QA_ISOLATED': '1', 'FALATRACE_QA_ROOT': str(root), 'FALATRACE_QA_NONCE': nonce,
@@ -102,12 +106,13 @@ with tempfile.TemporaryDirectory(dir='/tmp', prefix='falatrace-process-fixture-'
                'HOME': str(root / 'home'), 'XDG_RUNTIME_DIR': str(root / 'runtime'), 'XDG_CACHE_HOME': str(root / 'cache'),
                'TMPDIR': str(root / 'tmp'), 'LANG': 'C.UTF-8', 'PATH': '/usr/bin:/bin', 'QT_QPA_PLATFORM': 'offscreen',
                'QT_QUICK_BACKEND': 'software', 'RECORDING_DESKTOP_SOFTWARE_SMOKE': '1', 'RECORDING_DESKTOP_SMOKE_KEY': '',
-               'RECORDING_DESKTOP_SNAPSHOT': str(image), 'RECORDING_DESKTOP_SNAPSHOT_MS': '3600',
+               'RECORDING_DESKTOP_SNAPSHOT': str(image), 'RECORDING_DESKTOP_SNAPSHOT_MS': '8000',
                'FALATRACE_TEST_MODE': mode, 'FALATRACE_RECEIPT': str(receipt_path)}
         runpy.run_path(str(repo / 'scripts/qa-run.py'))['require_isolated'](env)
         r = subprocess.run([*command, str(qml), str(stub)], env=env, capture_output=True, text=True, timeout=40)
         (out / f'process-{mode}.stderr').write_text(r.stderr)
         problems = [line for line in r.stderr.splitlines() if any(marker in line for marker in ('ReferenceError', 'TypeError', 'failed to load component', 'Unable to assign', 'is not a type', 'unavailable'))]
+        require_assertion_lines(r.stderr, 'UX_ASSERTIONS ', 3, mode)
         if not image.exists() or problems:
             raise SystemExit(f'QML failure: {mode}: ' + ('\n'.join(problems) or r.stderr[-4000:]))
         for line in r.stderr.splitlines():

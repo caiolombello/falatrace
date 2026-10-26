@@ -5,7 +5,7 @@ import runpy
 import tempfile,subprocess,json,sys,hashlib,shutil,secrets
 repo=Path(__file__).resolve().parents[1]
 out=Path(sys.argv[1]).resolve();out.mkdir(parents=True,exist_ok=True)
-from studio_fixture import require_studio_command,copy_qml_siblings
+from studio_fixture import require_studio_command,copy_qml_siblings,qml_steps,require_assertion_lines
 command=require_studio_command()
 bun=shutil.which('bun') or str(Path.home()/'.bun/bin/bun')
 source=(repo/'src/desktop/Main.qml').read_text()
@@ -65,34 +65,21 @@ for await(const line of createInterface({input:process.stdin})){
 '''
   for token,value in {'GUARD_MODULE':str(repo/'scripts/qa-isolation-guard.ts'),'HEAVY_MODULE':str(repo/'src/runtime/heavy-admission.ts'),'FRAME_MODULE':str(repo/'src/visual/review-flow.ts'),'PREVIEW_MODULE':str(repo/'src/visual/mock-preview.ts'),'VIDEO_PATH':str(video),'VIDEO_HASH':videoHash,'CONFIG_MODULE':str(repo/'src/config/onboarding.ts'),'BRIDGE_MODULE':str(repo/'src/desktop/bridge.ts'),'CONFIG_PATH':str(config),'RECEIPT':str(receipt),'MODE':mode,'REAL_MODULE':str(repo/'src/visual/studio-flow.ts'),'DEFAULT_MODULE':str(repo/'src/config/defaults.ts'),'REAL_ROOT':str(folder/'visual-state')}.items():bridge=bridge.replace(token,json.dumps(value))
   (folder/'bridge.ts').write_text(bridge)
-  extra='''
- Timer { interval: 350; running: true; onTriggered: { window.lightTheme = true; ACTION } }
- Timer { interval: 650; running: true; onTriggered: { SECOND } }
- Timer { interval: 1100; running: true; onTriggered: { const a=[]; function check(name,pass){a.push({name:name,pass:!!pass})}; /*TEST_ASSERT*/; console.log("LOCAL_UX_ASSERTIONS "+JSON.stringify(a)) } }
-'''
+  # Each step waits for the state its predecessor produces (bounded), never a fixed delay: the fixture bridge
+  # starts with a cold transpile cache, so its replies come late on a busy machine (studio_fixture.qml_steps).
+  third='';visual=None
   if mode.startswith('real-'):
    action='framesDialog.open(); frameVisionModel.text="vision-fixture"; frameSummaryModel.text="summary-fixture"; send("frames-check-models",selected.key,{visionModel:frameVisionModel.text,summaryModel:frameSummaryModel.text})'
    second='' if mode=='real-model-error' else 'frameSeconds.text="1.2"; prepareFrames()'
    assertion='check("real path preview has bound consent", !!framePreview.consentKey && framePreview.visionModel==="vision-fixture" && !frameResult.sourceKey)' if mode in ['real-preview','real-no-consent'] else 'check("real result separates visual and original summary", frameResult.sourceKey && !frameResult.synthetic && detail.summary==="Fixture sem IA real." && detail.visualReview.summaryMarkdown.includes("Resumo do transporte stub")); check("real timestamp exact",frameResult.timestampSeconds===1.2)' if mode in ['real-result','real-compact'] else 'check("real cancellation clears preview",!framesDialog.visible && !framePreview.id)' if mode=='real-cancel' else 'check("model missing error visible, no capability",!!uxError && !frameCapability.id)' if mode=='real-model-error' else 'check("real source reference exact",sourceReferenceSeconds===1.2 && !framesDialog.visible && notice.includes("00:01.200"))'
    if mode=='real-summary':assertion='check("summary visible after real adapter result",tabs.currentIndex===1 && !framesDialog.visible && contextArea.text.includes("Resumo do transporte stub") && detail.summary==="Fixture sem IA real." && showVisualSummary)'
-   extra=extra.replace('interval: 1100','interval: 1900')
    third='confirmFrames(); confirmFrames()' if mode in ['real-result','real-compact','real-reference','real-summary'] else 'framesDialog.reject()' if mode=='real-cancel' else 'send("frames-confirm",selected.key,{previewId:framePreview.id,consent:false,consentKey:framePreview.consentKey})' if mode=='real-no-consent' else ''
-   extra+='\n Timer { interval: 1100; running: true; onTriggered: { '+third+' } }\n'
-   if mode in ['real-result','real-compact']:extra+='\n Timer { interval: 1700; running: true; onTriggered: { frameScroll.contentItem.contentY=Math.max(0,frameScroll.contentItem.contentHeight-frameScroll.availableHeight) } }\n'
-   if mode=='real-summary':extra+='\n Timer { interval: 1650; running: true; onTriggered: { framesDialog.close(); tabs.currentIndex=1; visualSummaryButton.clicked() } }\n'
-   if mode=='real-reference':extra+='\n Timer { interval: 1650; running: true; onTriggered: followFrameReference() }\n'
+   if mode in ['real-result','real-compact']:visual=(1700,'frameScroll.contentItem.contentY=Math.max(0,frameScroll.contentItem.contentHeight-frameScroll.availableHeight)')
+   if mode=='real-summary':visual=(1650,'framesDialog.close(); tabs.currentIndex=1; visualSummaryButton.clicked()')
+   if mode=='real-reference':visual=(1650,'followFrameReference()')
    if mode=='real-compact':action='window.width=900; window.height=640; '+action;assertion+='; check("real compact cancel visible",framesDialog.height<=window.height-64 && frameCancelButton.visible && frameColumn.width<=frameScroll.availableWidth)'
   elif mode.startswith('frames-'):
    action='framesDialog.open(); frameSeconds.text="1.2"; prepareFrames()'
-   if mode in ['frames-result','frames-reference','frames-compact']:
-    # Confirm only once the preview exists and assert once the result arrived (bounded waits):
-    # the preview extracts a real frame with FFmpeg, so fixed delays raced on slower runs.
-    ready='sourceReferenceSeconds === 1.2' if mode=='frames-reference' else '!!frameResult.synthetic'
-    extra='''
- Timer { interval: 350; running: true; onTriggered: { window.lightTheme = true; ACTION } }
- Timer { interval: 50; running: true; repeat: true; property int elapsed: 0; onTriggered: { elapsed += 50; if (elapsed < 650 || (!framePreview.id && elapsed < 1500)) return; stop(); SECOND } }
- Timer { interval: 50; running: true; repeat: true; property int elapsed: 0; onTriggered: { elapsed += 50; if (elapsed < 1100 || (!(READY) && elapsed < 2150)) return; stop(); const a=[]; function check(name,pass){a.push({name:name,pass:!!pass})}; /*TEST_ASSERT*/; console.log("LOCAL_UX_ASSERTIONS "+JSON.stringify(a)) } }
-'''.replace('READY',ready)
    second='confirmFrames(); confirmFrames()' if mode in ['frames-result','frames-reference','frames-compact'] else 'framesDialog.reject()' if mode=='frames-cancel' else 'backToLibrary()' if mode=='frames-stale' else ''
    assertion='check("preview ready without provider", !!framePreview.id && !frameResult.synthetic)' if mode=='frames-preview' else 'check("mock result has temporal reference", frameResult.synthetic && frameResult.timestampSeconds === 1.2); check("confirmation no longer pending", !hasPending("frames-confirm"))' if mode in ['frames-result','frames-reference','frames-compact'] else 'check("cancel closes and clears preview", !framesDialog.visible && !framePreview.id)' if mode=='frames-cancel' else 'check("stale preview discarded after Back", !selected.key && !framePreview.id && !framesDialog.visible)'
   else:
@@ -101,16 +88,32 @@ for await(const line of createInterface({input:process.stdin})){
    assertion='check("onboarding reads existing destination", onboardingDialog.visible && !!onboardingDraft.revision && !localChoice.checked)' if mode=='onboarding-view' else 'check("save completes without starting service", !onboardingDialog.visible && notice.includes("nenhum serviço"))' if mode=='onboarding-saved' else 'check("cancel closes draft", !onboardingDialog.visible && !onboardingDraft.revision)' if mode=='onboarding-cancel' else 'check("invalid config visible and saving blocked", !!onboardingError && !onboardingDraft.revision && !localChoice.enabled)'
   if mode=='frames-compact':action='window.width=900; window.height=640; '+action;assertion+='; check("compact dialog within viewport", framesDialog.height <= window.height-64); check("compact content fits width and Cancel remains visible", frameColumn.width <= frameScroll.availableWidth && frameCancelButton.visible)'
   if mode=='frames-reference':
-   extra+='\n Timer { interval: 50; running: true; repeat: true; property int elapsed: 0; onTriggered: { elapsed += 50; if (!frameResult.synthetic && elapsed < 1900) return; stop(); followFrameReference() } }\n'
    assertion='check("reference points to exact source time", sourceReferenceSeconds === 1.2 && !framesDialog.visible && notice.includes("00:01.200"))'
-  extra=extra.replace('ACTION',action).replace('SECOND',second).replace('/*TEST_ASSERT*/',assertion)
+  # The smoke recording is selected (a frames reply for an earlier selection is dropped) and the capabilities are known.
+  steps=[(350,'selected.key === "synthetic-demo" && !detailLoading && !hasPending("ux-capabilities")','window.lightTheme = true; '+action)]
+  if mode.startswith('real-'):
+   if second:steps.append((650,'!!frameCapability.id',second))
+   if third:steps.append((1100,'!!framePreview.id',third))
+   if visual:steps.append((visual[0],'!!frameResult.sourceKey',visual[1]))
+   ready={'real-preview':'!!framePreview.consentKey','real-no-consent':'!!framePreview.consentKey && !hasPending("frames-confirm")','real-result':'!!frameResult.sourceKey','real-compact':'!!frameResult.sourceKey','real-cancel':'!framesDialog.visible && !framePreview.id','real-model-error':'!!uxError','real-reference':'sourceReferenceSeconds === 1.2','real-summary':'showVisualSummary && contextArea.text.includes("Resumo do transporte stub")'}[mode];at,settle=1900,500
+  elif mode.startswith('frames-'):
+   # Back while the preview is still being prepared (stale); confirm or cancel once it exists.
+   if second:steps.append((650,'hasPending("frames-preview")' if mode=='frames-stale' else '!!framePreview.id',second))
+   if mode=='frames-reference':steps.append((650,'!!frameResult.synthetic','followFrameReference()'))
+   ready={'frames-preview':'!!framePreview.id','frames-result':'!!frameResult.synthetic','frames-compact':'!!frameResult.synthetic','frames-reference':'sourceReferenceSeconds === 1.2','frames-cancel':'!framesDialog.visible && !framePreview.id','frames-stale':'!hasPending("frames-preview")'}[mode];at,settle=1100,300
+  else:
+   if second:steps.append((650,'!!onboardingDraft.revision',second))
+   ready='!!onboardingError' if mode=='onboarding-invalid' else '!!onboardingDraft.revision' if mode=='onboarding-view' else '!onboardingDialog.visible';at,settle=1100,300
+  steps.append((at,ready,'const a=[]; function check(name,pass){a.push({name:name,pass:!!pass})}; '+assertion+'; console.log("LOCAL_UX_ASSERTIONS "+JSON.stringify(a))'))
+  extra=qml_steps(steps,settle)
   qml=source.replace('../../docs/assets/',(repo/'docs/assets').as_uri()+'/').rstrip();(folder/'Main.qml').write_text(qml[:-1]+extra+'}\n');copy_qml_siblings(folder)
   png=out/(mode+'.png')
-  env={'FALATRACE_QA_ISOLATED':'1','FALATRACE_QA_ROOT':str(root),'FALATRACE_QA_NONCE':nonce,'XDG_CONFIG_HOME':str(root/'config'),'XDG_STATE_HOME':str(root/'state'),'XDG_DATA_HOME':str(root/'data'),'FALATRACE_HEAVY_PAUSE':'off','HOME':str(root/'home'),'XDG_RUNTIME_DIR':str(root/'runtime'),'XDG_CACHE_HOME':str(root/'cache'),'TMPDIR':str(root/'tmp'),'LANG':'C.UTF-8','PATH':'/usr/bin:/bin','QT_QPA_PLATFORM':'offscreen','QT_QUICK_BACKEND':'software','RECORDING_DESKTOP_SOFTWARE_SMOKE':'1','RECORDING_DESKTOP_SMOKE_KEY':'synthetic-demo','RECORDING_DESKTOP_SNAPSHOT':str(png),'RECORDING_DESKTOP_SNAPSHOT_MS':'2400' if mode.startswith('real-') else '1400'}
+  env={'FALATRACE_QA_ISOLATED':'1','FALATRACE_QA_ROOT':str(root),'FALATRACE_QA_NONCE':nonce,'XDG_CONFIG_HOME':str(root/'config'),'XDG_STATE_HOME':str(root/'state'),'XDG_DATA_HOME':str(root/'data'),'FALATRACE_HEAVY_PAUSE':'off','HOME':str(root/'home'),'XDG_RUNTIME_DIR':str(root/'runtime'),'XDG_CACHE_HOME':str(root/'cache'),'TMPDIR':str(root/'tmp'),'LANG':'C.UTF-8','PATH':'/usr/bin:/bin','QT_QPA_PLATFORM':'offscreen','QT_QUICK_BACKEND':'software','RECORDING_DESKTOP_SOFTWARE_SMOKE':'1','RECORDING_DESKTOP_SMOKE_KEY':'synthetic-demo','RECORDING_DESKTOP_SNAPSHOT':str(png),'RECORDING_DESKTOP_SNAPSHOT_MS':'12000'}
   runpy.run_path(str(repo/'scripts/qa-run.py'))['require_isolated'](env)
   result=subprocess.run([*command,str(folder),bun],env=env,capture_output=True,text=True,timeout=40)
   (out/(mode+'.stderr')).write_text(result.stderr)
   assert png.is_file() and 'ReferenceError' not in result.stderr and 'TypeError' not in result.stderr and 'Unable to assign' not in result.stderr and 'failed to load component' not in result.stderr,result.stderr
+  require_assertion_lines(result.stderr,'LOCAL_UX_ASSERTIONS ',1,mode)
   for line in result.stderr.splitlines():
    if 'LOCAL_UX_ASSERTIONS ' in line:checks.extend(json.loads(line.split('LOCAL_UX_ASSERTIONS ',1)[1]))
   data=json.loads(receipt.read_text());assert data['mockCalls']==(1 if mode in ['frames-result','frames-reference','frames-compact'] else 0),data

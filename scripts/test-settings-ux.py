@@ -11,7 +11,7 @@ import hashlib, json, secrets, subprocess, sys, tempfile, runpy
 
 repo = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(repo / 'scripts'))
-from studio_fixture import copy_qml_siblings, qml_sources_digest, require_studio_command, runner_kind
+from studio_fixture import copy_qml_siblings, qml_sources_digest, qml_steps, require_assertion_lines, require_studio_command, runner_kind
 command = require_studio_command()
 out = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path(tempfile.mkdtemp(dir='/tmp', prefix='falatrace-settings-ux-'))
 out.mkdir(parents=True, exist_ok=True)
@@ -150,7 +150,8 @@ for line in sys.stdin:
     print(json.dumps({'id':r['id'],'ok':True,'result':v}), flush=True)
 '''
 
-# mode: (action at 600 ms, assertions at 1500 ms, follow-up at 2300 ms, final at 3100 ms)
+# mode: (action at 600 ms, assertions at 1500 ms, follow-up at 2300 ms, final at 3100 ms); each step waits until the
+# settings requests sent before it were answered (bounded), never a fixed delay.
 MODES = {
     'first-run': ('', 'check("first use opens the assistant, not settings", setupWizard.visible && !settingsDialog.visible && setupWizard.step===0); check("continuing needs the consent acknowledgment", !wizardConsentGate()); check("assistant read the configuration", !!setupWizard.data.revision)', '', ''),
     'wizard-flow': ('setupWizard.consentAck=true', 'setupWizard.recommend(); check("recommended defaults go to review", setupWizard.step===4 && setupWizard.value("backend")==="audio" && setupWizard.preset()==="local" && setupWizard.value("callDetection.enabled")===false); setupWizard.finish()',
@@ -322,6 +323,8 @@ SIDE_EFFECTS = {'save': {'settings-save'}, 'services': {'settings-service'}, 'wi
                 'wizard-ollama-pending': {'settings-model-download'}, 'save-list-pending': {'settings-save'},
                 'wizard-download-double': {'settings-model-download'}}
 GUARDED = {'settings-save', 'settings-service', 'settings-secret-set', 'settings-secret-remove', 'settings-model-download', 'settings-restore'}
+# The request the stub leaves unanswered on purpose in these modes; the steps do not wait for it.
+UNANSWERED = {'keys-lost': 'settings-secret-set', 'keys-test-lost': 'settings-secret-test', 'wizard-lost': 'settings-save', 'restore-pending': 'settings-restore'}
 
 checks = []; screens = []
 with tempfile.TemporaryDirectory(dir='/tmp', prefix='falatrace-settings-fixture-') as scratch:
@@ -332,12 +335,15 @@ with tempfile.TemporaryDirectory(dir='/tmp', prefix='falatrace-settings-fixture-
     for mode, (action, assertion, follow, final) in MODES.items():
         qml = root / mode; qml.mkdir()
         base = source.replace('../../docs/assets/', (repo / 'docs/assets').as_uri() + '/').rstrip()
-        def timer(ms, body):
-            return (f' Timer {{ interval: {ms}; running: true; repeat: false; onTriggered: {{ const a=[]; function check(name,pass){{a.push({{name:"{mode}: "+name,pass:!!pass}})}}; '
-                    f'{body}; console.log("UX_ASSERTIONS "+JSON.stringify(a)) }} }}\n')
+        def timer(body):
+            return (f'const a=[]; function check(name,pass){{a.push({{name:"{mode}: "+name,pass:!!pass}})}}; '
+                    f'{body}; console.log("UX_ASSERTIONS "+JSON.stringify(a))')
         helpers = (' function wizardConsentGate() { return setupWizard.step!==0 || setupWizard.consentAck }\n'
                    ' function findObject(item, name) { if (!item) return null; if (item.objectName === name) return item; const kids = item.children || []; for (let i = 0; i < kids.length; i++) { const found = findObject(kids[i], name); if (found) return found } return null }\n')
-        extra = '\n' + helpers + f' Timer {{ interval: 600; running: true; repeat: false; onTriggered: {{ {action} }} }}\n' + timer(1500, assertion) + timer(2300, follow) + timer(3100, final)
+        # The startup read answered, and no settings request (the assistant's included) is still waiting for its reply.
+        quiet = ('settingsFirstRunChecked && !Object.keys(pending).some(function(id){ const op = pending[id].op; '
+                 'return op.indexOf("settings-") === 0 && op !== "%s" })' % UNANSWERED.get(mode, ''))
+        extra = '\n' + helpers + qml_steps([(600, quiet, action), (1500, quiet, timer(assertion)), (2300, quiet, timer(follow)), (3100, quiet, timer(final))], 500)
         (qml / 'Main.qml').write_text(base[:-1] + extra + '}\n'); copy_qml_siblings(qml)
         image = out / f'settings-{mode}.png'; receipt_path = root / f'{mode}-requests.json'
         env = {'FALATRACE_QA_ISOLATED': '1', 'FALATRACE_QA_ROOT': str(root), 'FALATRACE_QA_NONCE': nonce,
@@ -345,12 +351,13 @@ with tempfile.TemporaryDirectory(dir='/tmp', prefix='falatrace-settings-fixture-
                'HOME': str(root / 'home'), 'XDG_RUNTIME_DIR': str(root / 'runtime'), 'XDG_CACHE_HOME': str(root / 'cache'),
                'TMPDIR': str(root / 'tmp'), 'LANG': 'C.UTF-8', 'PATH': '/usr/bin:/bin', 'QT_QPA_PLATFORM': 'offscreen',
                'QT_QUICK_BACKEND': 'software', 'RECORDING_DESKTOP_SOFTWARE_SMOKE': '1', 'RECORDING_DESKTOP_SMOKE_KEY': '',
-               'RECORDING_DESKTOP_SNAPSHOT': str(image), 'RECORDING_DESKTOP_SNAPSHOT_MS': '3600',
+               'RECORDING_DESKTOP_SNAPSHOT': str(image), 'RECORDING_DESKTOP_SNAPSHOT_MS': '8000',
                'FALATRACE_TEST_MODE': mode, 'FALATRACE_RECEIPT': str(receipt_path)}
         runpy.run_path(str(repo / 'scripts/qa-run.py'))['require_isolated'](env)
         r = subprocess.run([*command, str(qml), str(stub)], env=env, capture_output=True, text=True, timeout=40)
         (out / f'settings-{mode}.stderr').write_text(r.stderr)
         problems = [line for line in r.stderr.splitlines() if any(marker in line for marker in ('ReferenceError', 'TypeError', 'failed to load component', 'Unable to assign', 'is not a type', 'unavailable'))]
+        require_assertion_lines(r.stderr, 'UX_ASSERTIONS ', 3, mode)
         if not image.exists() or problems:
             raise SystemExit(f'QML failure: {mode}: ' + ('\n'.join(problems) or r.stderr[-4000:]))
         for line in r.stderr.splitlines():
