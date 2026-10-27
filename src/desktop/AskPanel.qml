@@ -255,10 +255,10 @@ Rectangle {
         const at = typeof citation.start === "number" ? clock(citation.start) : ""
         if (scope.kind === "meeting" && String(citation.jobId).toLowerCase() === scope.jobId) return String(citation.n) + (at ? " · " + at : "")
         const title = String(citation.title || "")
-        const short = title.length > 18 ? title.slice(0, 17) + "…" : title
+        const shortTitle = title.length > 18 ? title.slice(0, 17) + "…" : title
         const date = citation.date ? new Date(citation.date) : null
         const day = date && !isNaN(date.getTime()) ? Qt.formatDate(date, t("dd/MM")) : ""
-        return [String(citation.n), short, day, at].filter(function(part){ return !!part }).join(" · ")
+        return [String(citation.n), shortTitle, day, at].filter(function(part){ return !!part }).join(" · ")
     }
     function openCited(citation) {
         const start = typeof citation.start === "number" ? citation.start : -1
