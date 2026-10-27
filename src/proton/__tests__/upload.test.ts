@@ -52,6 +52,15 @@ describe("Proton transfer commands", () => {
     expect(calls).toBe(3); expect(result).toBe("[]");
   });
 
+  test("reads the CLI's JSON whole: a month with many recordings lists past 100 KB", async () => {
+    const options: Array<{ maxOutputBytes?: number } | undefined> = [];
+    await executeProtonCommand(["filesystem", "list", "/my-files/RecordingArchive/media/2026/10"], undefined, async (_command, _args, received) => {
+      options.push(received);
+      return { stdout: "[]", stderr: "" };
+    });
+    expect(options[0]?.maxOutputBytes).toBeGreaterThanOrEqual(16 * 1024 * 1024);
+  });
+
   test("bounds handshake retries and never replays an uncertain upload failure", async () => {
     for (const [message, expectedCalls] of [
       ["Failed to load session from secrets: Client public key size is invalid (code: 16)", 3],

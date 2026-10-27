@@ -9,7 +9,14 @@ export type CommandResult = {
 const runCommandOwned = async (
   command: string,
   args: string[],
-  options: { cwd?: string; env?: NodeJS.ProcessEnv; timeoutMs?: number; inherit?: boolean; signal?: AbortSignal } = {}
+  options: {
+    cwd?: string; env?: NodeJS.ProcessEnv; timeoutMs?: number; inherit?: boolean; signal?: AbortSignal;
+    /**
+     * Read stdout whole, up to this many bytes, for output that is parsed (JSON). Past the limit
+     * the command is stopped and fails. Without it only the last 100 000 characters are kept.
+     */
+    maxOutputBytes?: number;
+  } = {}
 ): Promise<CommandResult> =>
   new Promise((resolve, reject) => {
     if (options.signal?.aborted) { reject(options.signal.reason || new Error(`${command} cancelled`)); return; }
@@ -23,11 +30,28 @@ const runCommandOwned = async (
     let settled = false;
     let timedOut = false;
     let cancelled = false;
+    let overflowed = false;
     let forceKillTimer: ReturnType<typeof setTimeout> | undefined;
+    const whole = options.maxOutputBytes !== undefined;
+    const stdoutChunks: Buffer[] = [];
+    let stdoutBytes = 0;
     const append = (current: string, chunk: Buffer): string =>
       `${current}${chunk.toString()}`.slice(-100_000);
     child.stdout?.on("data", (chunk: Buffer) => {
-      stdout = append(stdout, chunk);
+      if (!whole) {
+        stdout = append(stdout, chunk);
+        return;
+      }
+      if (overflowed) return;
+      stdoutBytes += chunk.length;
+      if (stdoutBytes > (options.maxOutputBytes as number)) {
+        overflowed = true;
+        stdoutChunks.length = 0;
+        child.kill("SIGTERM");
+        forceKillTimer ??= setTimeout(() => child.kill("SIGKILL"), 5_000);
+        return;
+      }
+      stdoutChunks.push(chunk);
     });
     child.stderr?.on("data", (chunk: Buffer) => {
       stderr = append(stderr, chunk);
@@ -59,16 +83,22 @@ const runCommandOwned = async (
       finish(err);
     });
     child.on("close", (code, signal) => {
-      if (cancelled) {
+      // Decoded once at the end, so a character split between two chunks stays whole.
+      if (whole && !overflowed) stdout = Buffer.concat(stdoutChunks).toString();
+      // Error messages keep the same 100 000 characters as before, however much was read.
+      const detail = (stderr || stdout).slice(-100_000);
+      if (overflowed) {
+        finish(new Error(`${command} output exceeded ${options.maxOutputBytes} bytes`));
+      } else if (cancelled) {
         finish(new Error(`${command} cancelled`));
       } else if (timedOut) {
-        finish(new Error(`${command} timed out after ${options.timeoutMs}ms: ${stderr || stdout}`));
+        finish(new Error(`${command} timed out after ${options.timeoutMs}ms: ${detail}`));
       } else if (code === 0) {
         finish();
       } else {
         finish(
           new Error(
-            `${command} failed${signal ? ` with signal ${signal}` : ` with code ${code}`}: ${stderr || stdout}`
+            `${command} failed${signal ? ` with signal ${signal}` : ` with code ${code}`}: ${detail}`
           )
         );
       }

@@ -85,6 +85,9 @@ const assertRemoteFolder = (path: string): void => {
   }
 };
 
+/** A listing of tens of thousands of items, far above a month of recordings. */
+const PROTON_MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
+
 export const executeProtonCommand = async (
   args: string[],
   timeoutMs?: number,
@@ -92,7 +95,8 @@ export const executeProtonCommand = async (
 ): Promise<string> => {
   for (let attempt = 0; ; attempt += 1) {
     try {
-      const result = await run("proton-drive", [...args, "-j"], { timeoutMs });
+      // The JSON is parsed, so it is read whole: a month folder with ~100 recordings lists past 100 KB.
+      const result = await run("proton-drive", [...args, "-j"], { timeoutMs, maxOutputBytes: PROTON_MAX_OUTPUT_BYTES });
       return result.stdout;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
