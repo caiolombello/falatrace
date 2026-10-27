@@ -85,6 +85,20 @@ test("cuts each speaker's segments from its own track with one ffmpeg pass per t
   } finally { await fs.rm(root, { recursive: true, force: true }); }
 }, 60_000);
 
+test("a speaker's separate segments are cut exactly and joined in order", async () => {
+  const root = await fs.mkdtemp(join(tmpdir(), "falatrace-voice-audio-"));
+  try {
+    const media = join(root, "call.mkv");
+    await synthesize(media);
+    const plans = [{ speakerId: "S01", track: "microphone" as const, segments: [[0.5, 2.5], [4, 7.25]] as Array<[number, number]>, seconds: 5.25 },
+      { speakerId: "S02", track: "desktop" as const, segments: [[9, 10.5], [12, 13], [14, 15.5]] as Array<[number, number]>, seconds: 4 }];
+    const audio = await extractSpeakerAudio(media, plans, { mix: 0, microphone: 1, desktop: 2 }, root);
+    expect(audio.get("S01")!.length).toBe(5.25 * 16_000);
+    expect(audio.get("S02")!.length).toBe(4 * 16_000);
+    expect(fakeEmbedder.embed(audio.get("S02")!)[4]).toBe(1);
+  } finally { await fs.rm(root, { recursive: true, force: true }); }
+}, 60_000);
+
 test("matching needs a confident lead over the next person and ignores what this recording taught", () => {
   const profiles: VoiceProfiles = { version: 1, model, people: [
     { id: uuid(1), name: "Ana", createdAt: "2026-10-01T00:00:00.000Z", updatedAt: "2026-10-01T00:00:00.000Z", samples: [{ recordingId: uuid(90), speakerId: "S02", seconds: 30, createdAt: "2026-10-01T00:00:00.000Z", embedding: encodeEmbedding(direction(3)) }] },

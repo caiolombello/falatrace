@@ -71,14 +71,20 @@ export const extractSpeakerAudio = async (
 ): Promise<Map<string, Float32Array>> => {
   const result = new Map<string, Float32Array>();
   for (const track of ["microphone", "desktop", "mix"] as const) {
-    const group = plans.filter((plan) => plan.track === track);
+    const group = plans.filter((plan) => plan.track === track && plan.segments.length);
     if (!group.length) continue;
     const index = tracks[track];
     if (index === undefined) throw new Error("A faixa de áudio pedida não existe nesta gravação.");
-    const split = group.length > 1 ? `,asplit=${group.length}${group.map((_, item) => `[i${item}]`).join("")}` : "[i0]";
-    // 20 ms frames: aselect keeps whole frames, so this bounds the error at each segment edge.
-    const graph = [`[0:a:${index}]aformat=channel_layouts=mono,aresample=${VOICE_SAMPLE_RATE},asetnsamples=n=320:p=0${split}`,
-      ...group.map((plan, item) => `[i${item}]aselect='${plan.segments.map(([start, end]) => `between(t,${start},${end})`).join("+")}',asetpts=N/SR/TB[o${item}]`)].join(";");
+    // Each segment is cut with atrim (exact to the sample) and a speaker's segments are joined
+    // with concat. aselect is not used: on FFmpeg 8.0 it lets every frame through, whatever
+    // its expression, which turned each speaker's audio into the whole track.
+    const branches = group.flatMap((plan, item) => plan.segments.map((segment, part) => ({ item, part, segment })));
+    const split = branches.length > 1 ? `,asplit=${branches.length}${branches.map((_, branch) => `[s${branch}]`).join("")}` : "[s0]";
+    const graph = [`[0:a:${index}]aformat=channel_layouts=mono,aresample=${VOICE_SAMPLE_RATE}${split}`,
+      ...branches.map(({ item, part, segment: [start, end] }, branch) => `[s${branch}]atrim=start=${start}:end=${end},asetpts=N/SR/TB[t${item}_${part}]`),
+      ...group.map((plan, item) => plan.segments.length > 1
+        ? `${plan.segments.map((_, part) => `[t${item}_${part}]`).join("")}concat=n=${plan.segments.length}:v=0:a=1[o${item}]`
+        : `[t${item}_0]anull[o${item}]`)].join(";");
     // Relative outputs inside the private work directory; speaker IDs are S01-style codes.
     await (options.run || runCommand)("ffmpeg", ["-hide_banner", "-loglevel", "error", "-nostdin", "-i", mediaPath, "-filter_complex", graph,
       ...group.flatMap((plan, item) => ["-map", `[o${item}]`, "-f", "f32le", "-c:a", "pcm_f32le", `${track}-${plan.speakerId}.f32`])],
