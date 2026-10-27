@@ -108,6 +108,8 @@ describe("Sign in with ChatGPT", () => {
       const exchange = auth.tokenRequests[0] as URLSearchParams;
       expect(exchange.get("grant_type")).toBe("authorization_code");
       expect(exchange.get("client_id")).toBe("oaiapp_falatrace_test");
+      expect(exchange.get("redirect_uri")).toBe(handle.redirectUri);
+      expect(exchange.get("resource")).toBe("https://api.openai.com/v1");
       expect(createHash("sha256").update(exchange.get("code_verifier") ?? "").digest("base64url")).toBe(params.get("code_challenge") as string);
 
       const stored = await deps.store.read();
@@ -337,7 +339,7 @@ describe("access tokens", () => {
       expect(token).not.toBe(before?.accessToken as string);
       expect(after?.refreshToken).not.toBe(before?.refreshToken as string);
       const refresh = auth.tokenRequests[1] as URLSearchParams;
-      expect(Object.fromEntries(refresh)).toEqual({ grant_type: "refresh_token", refresh_token: before?.refreshToken as string, client_id: "oaiapp_falatrace_test" });
+      expect(Object.fromEntries(refresh)).toEqual({ grant_type: "refresh_token", refresh_token: before?.refreshToken as string, client_id: "oaiapp_falatrace_test", resource: "https://api.openai.com/v1" });
       expect(after?.hostId).toBe(before?.hostId as string);
       expect(after?.email).toBe("ana@example.com");
     });

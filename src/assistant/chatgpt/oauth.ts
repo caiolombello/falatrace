@@ -331,7 +331,7 @@ export const getChatGptAccessToken = async (options: { signal?: AbortSignal; for
     .transaction<{ token: string } | { error: ProviderError }>(async (current) => {
       if (!current?.accessToken || !current.refreshToken || !current.clientId) return { result: { error: new ProviderError(CHATGPT_MESSAGES.signedOut, "auth") } };
       if (current.accessToken !== staleToken && !isExpired(current, now())) return { result: { token: current.accessToken } };
-      const { status, body } = await postForm(fetchImpl, endpoints.tokenUrl, { grant_type: "refresh_token", refresh_token: current.refreshToken, client_id: current.clientId }, options.signal);
+      const { status, body } = await postForm(fetchImpl, endpoints.tokenUrl, { grant_type: "refresh_token", refresh_token: current.refreshToken, client_id: current.clientId, resource: CHATGPT_OAUTH.resource }, options.signal);
       if (status === 400 || status === 401) {
         // invalid_grant, refresh_token_reused…: the pair is spent; a new sign-in is needed.
         return { next: withoutTokens(current), result: { error: new ProviderError(CHATGPT_MESSAGES.expired, "auth") } };
@@ -451,7 +451,9 @@ export const startChatGptLogin = async (input: { openUrl?: (url: string) => unkn
         code,
         redirect_uri: redirectUri,
         client_id: clientId,
-        code_verifier: pkce.verifier
+        code_verifier: pkce.verifier,
+        // Required here as on the authorization request; without it OpenAI refuses the exchange.
+        resource: CHATGPT_OAUTH.resource
       }, settled.signal).catch(() => {
         throw new Error(CHATGPT_MESSAGES.unreachable);
       });

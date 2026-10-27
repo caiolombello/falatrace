@@ -165,6 +165,8 @@ export const startFakeAuthServer = async (): Promise<FakeAuthServer> => {
         const form = new URLSearchParams(await request.text());
         state.tokenRequests.push(form);
         if (state.knobs.tokenDelayMs) await Bun.sleep(state.knobs.tokenDelayMs);
+        // OpenAI's token sharing docs require the resource on the code exchange and on every refresh.
+        if (form.get("resource") !== "https://api.openai.com/v1") return Response.json({ error: "invalid_target" }, { status: 400 });
         if (form.get("grant_type") === "authorization_code") {
           if (state.knobs.tokenStatus && state.knobs.tokenStatus !== 200) return Response.json({ error: "server_error" }, { status: state.knobs.tokenStatus });
           const pending = codes.get(form.get("code") ?? "");
