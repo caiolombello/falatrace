@@ -266,7 +266,7 @@ const validSent = (value: unknown): SentReminder | undefined => {
   if (typeof eventIdHash !== "string" || !HASH.test(eventIdHash) || (seriesIdHash !== undefined && (typeof seriesIdHash !== "string" || !HASH.test(seriesIdHash)))) return undefined;
   if (!isIsoTime(startAt) || !isIsoTime(endAt) || !isIsoTime(sentAt) || Date.parse(endAt) <= Date.parse(startAt)) return undefined;
   if (typeof title !== "string" || !title || singleLine(title, 160) !== title) return undefined;
-  if ((source !== "google-calendar" && source !== "gnome-calendar") || typeof recurring !== "boolean") return undefined;
+  if ((source !== "google-calendar" && source !== "gnome-calendar" && source !== "kde-calendar") || typeof recurring !== "boolean") return undefined;
   if (typeof recordingMode !== "string" || !RECORDING_MODES.includes(recordingMode)) return undefined;
   const notification = validNotification(value.notification);
   if (!notification) return undefined;

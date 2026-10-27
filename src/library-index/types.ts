@@ -66,7 +66,7 @@ export type CalendarLink = {
   version: 1;
   jobId: string;
   mediaSha256: string;
-  source: "google-calendar" | "gnome-calendar";
+  source: "google-calendar" | "gnome-calendar" | "kde-calendar";
   /** sha256 of the event id with a per-installation salt; never the raw id. */
   eventIdHash?: string;
   seriesIdHash?: string;

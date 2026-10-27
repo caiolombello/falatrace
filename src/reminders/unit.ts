@@ -15,7 +15,7 @@ export const REMINDERS_UNIT = "recording-cli-reminders.service";
 
 export const REMINDERS_UNIT_ERRORS = {
   off: "Os lembretes estão desligados nas configurações.",
-  noCalendar: "Conecte uma agenda (Google ou GNOME) para receber lembretes.",
+  noCalendar: "Conecte uma agenda (Google, GNOME ou KOrganizer) para receber lembretes.",
   invalidLauncher: "Comando do FalaTrace inválido para o serviço de lembretes."
 } as const;
 

@@ -91,7 +91,7 @@ export const validateCalendarLink = (value: unknown, job: Pick<JobRecord, "id" |
   const keys = ["version", "jobId", "mediaSha256", "source", "eventIdHash", "seriesIdHash", "title", "startAt", "endAt", "recurring", "attendees", "capturedAt"];
   if (Object.keys(item).some((key) => !keys.includes(key))) return undefined;
   if (item.version !== 1 || item.jobId !== job.id || item.mediaSha256 !== job.source.sha256) return undefined;
-  if (item.source !== "google-calendar" && item.source !== "gnome-calendar") return undefined;
+  if (item.source !== "google-calendar" && item.source !== "gnome-calendar" && item.source !== "kde-calendar") return undefined;
   for (const hash of [item.eventIdHash, item.seriesIdHash]) if (hash !== undefined && (typeof hash !== "string" || !/^[a-f0-9]{64}$/.test(hash))) return undefined;
   if (typeof item.title !== "string" || item.title.length > 1_000 || typeof item.recurring !== "boolean") return undefined;
   const startAt = isoOrUndefined(item.startAt), endAt = isoOrUndefined(item.endAt), capturedAt = isoOrUndefined(item.capturedAt);

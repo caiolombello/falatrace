@@ -3,6 +3,7 @@ import type { MeetingContext } from "./types";
 import type { CallApplication } from "../calls/apps";
 import { promises as fs } from "node:fs";
 import { findGnomeCalendarMatch, findGnomeCalendarMeeting } from "../calendar/gnome";
+import { findKdeCalendarMatch, findKdeCalendarMeeting } from "../calendar/kde";
 import { type CalendarMatch, writeCalendarLink } from "../calendar/links";
 import type { AppConfig } from "../config/defaults";
 import { localProcessing } from "../config/settings";
@@ -39,9 +40,10 @@ const waitForStableFile = async (filePath: string): Promise<void> => {
 type CalendarLookups<T> = {
   google: (config: AppConfig, startAt: string, endAt: string, app?: CallApplication) => Promise<T | undefined>;
   gnome: (startAt: string, endAt: string, app?: CallApplication) => Promise<T | undefined>;
+  kde?: (startAt: string, endAt: string, app?: CallApplication) => Promise<T | undefined>;
 };
 
-/** The Google Calendar when it is on and connected, else the GNOME one; a failing calendar is skipped. */
+/** The Google Calendar when it is on and connected, else KOrganizer, else the GNOME one; a failing calendar is skipped. */
 const lookUpCalendar = async <T>(config: AppConfig, options: EnqueueRecordingOptions, lookups: CalendarLookups<T>): Promise<T | undefined> => {
   if (!options.startedAt || !options.endedAt) return undefined;
   const unavailable = (error: unknown): undefined => {
@@ -53,17 +55,23 @@ const lookUpCalendar = async <T>(config: AppConfig, options: EnqueueRecordingOpt
     const google = await lookups.google(config, options.startedAt, options.endedAt, options.app).catch(unavailable);
     if (google) return google;
   }
+  if (config.calendar.kde && lookups.kde) {
+    const kde = await lookups.kde(options.startedAt, options.endedAt, options.app).catch(unavailable);
+    if (kde) return kde;
+  }
   return config.calendar.enabled ? lookups.gnome(options.startedAt, options.endedAt, options.app).catch(unavailable) : undefined;
 };
 
-/** The calendar event of a call: the Google Calendar when it is on and connected, else the GNOME one. */
+/** The calendar event of a call: the Google Calendar when it is on and connected, else KOrganizer, else the GNOME one. */
 export const findMeetingContext = async (
-  config: AppConfig, options: EnqueueRecordingOptions, lookups: CalendarLookups<MeetingContext> = { google: findGoogleCalendarMeeting, gnome: findGnomeCalendarMeeting }
+  config: AppConfig, options: EnqueueRecordingOptions,
+  lookups: CalendarLookups<MeetingContext> = { google: findGoogleCalendarMeeting, gnome: findGnomeCalendarMeeting, kde: findKdeCalendarMeeting }
 ): Promise<MeetingContext | undefined> => lookUpCalendar(config, options, lookups);
 
 /** Like findMeetingContext, with the matched event's id, series and invited names for the calendar link. */
 export const findMeetingMatch = async (
-  config: AppConfig, options: EnqueueRecordingOptions, lookups: CalendarLookups<CalendarMatch> = { google: findGoogleCalendarMatch, gnome: findGnomeCalendarMatch }
+  config: AppConfig, options: EnqueueRecordingOptions,
+  lookups: CalendarLookups<CalendarMatch> = { google: findGoogleCalendarMatch, gnome: findGnomeCalendarMatch, kde: findKdeCalendarMatch }
 ): Promise<CalendarMatch | undefined> => lookUpCalendar(config, options, lookups);
 
 /** The fast path: a recording is processed as soon as it stops, with local providers only. */

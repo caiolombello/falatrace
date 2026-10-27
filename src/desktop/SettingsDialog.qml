@@ -677,6 +677,7 @@ FtDialog {
           SettingsNumber { field:"aiContext.maxCharactersPerClient"; label:t("Tamanho máximo por cliente (caracteres)"); from:8000; to:200000 }
           SettingsSection { text:t("Calendário") }
           SettingsCheck { field:"calendar.enabled"; text:t("Usar o título do evento do GNOME Agenda na transcrição") }
+          SettingsCheck { field:"calendar.kde"; text:t("Usar a agenda do KOrganizer (KDE): título da reunião e lembretes") }
           SettingsHint { text:t("Consulta o calendário local só quando uma gravação é enfileirada.") }
         }
 

@@ -33,7 +33,7 @@ export type JobState =
   | "failed";
 
 export type MeetingContext = {
-  source: "gnome-calendar" | "google-calendar";
+  source: "gnome-calendar" | "google-calendar" | "kde-calendar";
   title: string;
   startAt: string;
   endAt: string;
@@ -339,7 +339,7 @@ const parseSummaryContext = (value: unknown): SummaryContext => {
   }
   let meeting: MeetingContext | undefined;
   if (value.meeting !== undefined) {
-    if (!isObject(value.meeting) || (value.meeting.source !== "gnome-calendar" && value.meeting.source !== "google-calendar")) {
+    if (!isObject(value.meeting) || (value.meeting.source !== "gnome-calendar" && value.meeting.source !== "google-calendar" && value.meeting.source !== "kde-calendar")) {
       throw new Error("summary.context.meeting is invalid");
     }
     const startAt = parseIsoTimestamp(

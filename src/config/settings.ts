@@ -227,6 +227,7 @@ export const SETTINGS_FIELDS: Record<string, FieldRule> = {
   "aiContext.maxMeetingsPerClient": intBetween(1, 100),
   "aiContext.maxCharactersPerClient": intBetween(8_000, 200_000),
   "calendar.enabled": bool,
+  "calendar.kde": bool,
   "speakers.voices": bool,
   // Google: the client of the user's own Cloud project (the secret is a credential, never a field)
   "google.clientId": (value) => value === "" || isGoogleClientId(value),

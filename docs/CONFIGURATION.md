@@ -254,6 +254,7 @@ falatrace google disconnect
 | `aiContext.maxMeetingsPerClient` | 1–100 | 12 | |
 | `aiContext.maxCharactersPerClient` | 8,000–200,000 | 18,000 | |
 | `calendar.enabled` | true, false | false | Reads the GNOME Calendar event title when a recording is queued. |
+| `calendar.kde` | true, false | false | Reads KOrganizer's calendars (KDE) for the event title when a recording is queued, and for reminders and pre-meeting briefs. FalaTrace opens Akonadi's SQLite database read-only and reads only the calendars checked in KOrganizer (`korganizerrc`); recurring events, moved and cancelled occurrences and declined invitations are handled. Akonadi on MySQL or PostgreSQL is not supported. |
 | `speakers.voices` | true, false | false | Recognizes known voices and learns from speaker names you confirm. Needs voice recognition from Models. Stores 512-number signatures per person in `~/.local/share/recording-cli/voices/profiles.json` (0600), never audio; a voice that identifies someone is biometric data under the LGPD. Manage or delete them in Models › Known voices or with `falatrace voices`. |
 
 ### Advanced

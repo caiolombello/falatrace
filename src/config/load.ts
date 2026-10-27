@@ -330,6 +330,9 @@ export const validateConfig = (config: AppConfig): void => {
   if (typeof config.calendar.enabled !== "boolean") {
     throw new Error("calendar.enabled must be a boolean");
   }
+  if (typeof config.calendar.kde !== "boolean") {
+    throw new Error("calendar.kde must be a boolean");
+  }
   if (typeof config.speakers.voices !== "boolean") {
     throw new Error("speakers.voices must be a boolean");
   }

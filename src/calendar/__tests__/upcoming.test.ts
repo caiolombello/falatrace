@@ -6,6 +6,7 @@ import { DEFAULT_CONFIG, type AppConfig } from "../../config/defaults";
 import { GOOGLE_EVENTS_URL, listGoogleEvents, parseGoogleEvents, type GoogleCalendarEvent } from "../../google/calendar";
 import { GOOGLE_TOKEN_URL, GoogleTokenStore } from "../../google/oauth";
 import type { GnomeCalendarEvent } from "../gnome";
+import type { KdeCalendarEvent } from "../kde";
 import {
   UPCOMING_ERRORS, UPCOMING_KNOWN_ERRORS, calendarSaltPath, clearCalendarSaltCache, gnomeAllDay, gnomeSeriesId, hashCalendarId, hashCalendarIdWithSalt,
   listUpcomingEvents, readCalendarSalt, upcomingEventSources, validateUpcomingEvent
@@ -17,12 +18,14 @@ const T0 = Date.parse("2026-10-25T12:00:00.000Z");
 const at = (minutes: number): number => T0 + minutes * 60_000;
 const iso = (minutes: number): string => new Date(at(minutes)).toISOString();
 
-const config = (options: { google?: boolean; gnome?: boolean } = {}): AppConfig => {
+const config = (options: { google?: boolean; gnome?: boolean; kde?: boolean } = {}): AppConfig => {
   const value = structuredClone(DEFAULT_CONFIG);
   value.google = { clientId: options.google ? CLIENT : "", calendar: options.google === true };
-  value.calendar = { enabled: options.gnome === true };
+  value.calendar = { enabled: options.gnome === true, kde: options.kde === true };
   return value;
 };
+const kdeEvent = (id: string, title: string, start: number, end: number, extra: Partial<KdeCalendarEvent> = {}): KdeCalendarEvent =>
+  ({ id, title, startAtMs: at(start), endAtMs: at(end), recurring: false, attendees: [], ...extra });
 const googleEvent = (id: string, start: number, end: number, extra: Partial<GoogleCalendarEvent> = {}): GoogleCalendarEvent =>
   ({ id, title: `Reunião ${id}`, startAtMs: at(start), endAtMs: at(end), recurring: false, attendees: [], ...extra });
 const gnomeEvent = (id: string, title: string, start: number, end: number): GnomeCalendarEvent =>
@@ -236,6 +239,29 @@ describe("listing upcoming events", () => {
     expect(events.map((event) => [event.source, event.title])).toEqual([
       ["gnome-calendar", "Outra"], ["google-calendar", "Revisão Semanal"], ["gnome-calendar", "Revisão semanal"]
     ]);
+  });
+
+  test("KOrganizer events keep their series and invited names, drop declined ones, and give way to Google's copy", async () => {
+    expect(upcomingEventSources(config({ kde: true }))).toEqual(["kde-calendar"]);
+    const events = await listUpcomingEvents(config({ google: true, kde: true }), {
+      ...range,
+      deps: {
+        salt: async () => SALT,
+        google: async () => [googleEvent("g1", 30, 60, { title: "Revisão Semanal" })],
+        kde: async () => [
+          kdeEvent("akonadi:a@x\nuid1", "Revisão semanal", 30, 60),
+          kdeEvent("akonadi:a@x\nuid2\n20261025T140000Z", "Daily", 120, 135, { recurring: true, seriesId: "akonadi:a@x\nuid2", attendees: [{ name: "Ana", self: false }, { name: "Caio", self: true }] }),
+          kdeEvent("akonadi:a@x\nuid3", "Recusada", 90, 100, { selfDeclined: true })
+        ]
+      }
+    });
+    expect(events.map((event) => [event.source, event.title])).toEqual([["google-calendar", "Revisão Semanal"], ["kde-calendar", "Daily"]]);
+    const daily = events[1]!;
+    expect(daily.recurring).toBe(true);
+    expect(daily.seriesIdHash).toBe(hashCalendarIdWithSalt("akonadi:a@x\nuid2", SALT));
+    expect(daily.eventIdHash).toBe(hashCalendarIdWithSalt("akonadi:a@x\nuid2\n20261025T140000Z", SALT));
+    expect(daily.attendees).toEqual([{ name: "Ana", self: false }, { name: "Caio", self: true }]);
+    expect(validateUpcomingEvent(daily)).toEqual(daily);
   });
 
   test("one calendar failing is reported while the other still answers; all failing throws", async () => {

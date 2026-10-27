@@ -2,7 +2,7 @@
 
 ## Reminders
 
-A desktop notification shortly before a calendar meeting, with a button to record it or skip it. It needs a calendar: Google Calendar (`google.calendar`, after connecting your account) or the GNOME calendar (`calendar.enabled`). See [configuration](CONFIGURATION.md#integrations).
+A desktop notification shortly before a calendar meeting, with a button to record it or skip it. It needs a calendar: Google Calendar (`google.calendar`, after connecting your account), the GNOME calendar (`calendar.enabled`) or KOrganizer (`calendar.kde`). See [configuration](CONFIGURATION.md#integrations).
 
 ### Modes
 

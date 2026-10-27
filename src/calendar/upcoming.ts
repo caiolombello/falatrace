@@ -1,5 +1,5 @@
-// The next meetings from the calendars the person connected (Google and/or the GNOME Shell
-// calendar), for reminders and pre-meeting briefs. Event ids never leave this module in clear:
+// The next meetings from the calendars the person connected (Google, the GNOME Shell calendar
+// and/or KOrganizer), for reminders and pre-meeting briefs. Event ids never leave this module in clear:
 // they are keyed with a per-installation salt, so stored files and links carry only hashes.
 import { createHmac, randomBytes } from "node:crypto";
 import { join } from "node:path";
@@ -9,8 +9,9 @@ import {
   createPrivateFile, ensurePrivateDirectory, PrivateFileError, readPrivateFile, recordingStateDir, singleLine
 } from "../runtime/private-file";
 import { queryGnomeCalendarEvents, type GnomeCalendarEvent } from "./gnome";
+import { type KdeCalendarEvent, queryKdeCalendarEvents } from "./kde";
 
-export type UpcomingEventSource = "google-calendar" | "gnome-calendar";
+export type UpcomingEventSource = "google-calendar" | "gnome-calendar" | "kde-calendar";
 
 export type UpcomingAttendee = { name: string; self: boolean };
 
@@ -33,6 +34,8 @@ export type UpcomingEventsDeps = {
   google?: (from: Date, to: Date, signal?: AbortSignal) => Promise<GoogleCalendarEvent[]>;
   /** GNOME Shell calendar events in a window; defaults to `queryGnomeCalendarEvents`. */
   gnome?: (from: Date, to: Date) => Promise<GnomeCalendarEvent[]>;
+  /** KOrganizer (Akonadi) events in a window; defaults to `queryKdeCalendarEvents`. */
+  kde?: (from: Date, to: Date) => Promise<KdeCalendarEvent[]>;
   /** The installation salt (64 hex); defaults to the salt file in the state directory. */
   salt?: () => Promise<string>;
   stateDir?: string;
@@ -124,7 +127,8 @@ export const hashCalendarId = async (id: string, options: { stateDir?: string } 
 /** Calendars that can list upcoming events with this configuration. */
 export const upcomingEventSources = (config: AppConfig): UpcomingEventSource[] => [
   ...(googleCalendarEnabled(config) ? ["google-calendar" as const] : []),
-  ...(config.calendar.enabled ? ["gnome-calendar" as const] : [])
+  ...(config.calendar.enabled ? ["gnome-calendar" as const] : []),
+  ...(config.calendar.kde ? ["kde-calendar" as const] : [])
 ];
 
 /**
@@ -204,15 +208,25 @@ const fromGnome = (event: GnomeCalendarEvent): RawEvent[] => {
   }];
 };
 
+/** KOrganizer gives ids, series and invited names; all-day and cancelled events are already left out. */
+const fromKde = (event: KdeCalendarEvent): RawEvent => ({
+  source: "kde-calendar",
+  id: validId(event.id) ? event.id : `untitled:${event.startAtMs}:${event.title}`,
+  ...(validId(event.seriesId) ? { seriesId: event.seriesId } : {}),
+  title: event.title, startAtMs: event.startAtMs, endAtMs: event.endAtMs, recurring: event.recurring === true,
+  attendees: cleanAttendees(event.attendees),
+  ...(event.selfDeclined === true ? { declined: true } : {})
+});
+
 const validTimes = (start: number, end: number): boolean =>
   Number.isSafeInteger(start) && Number.isSafeInteger(end) && end > start && Number.isFinite(new Date(start).getTime()) && Number.isFinite(new Date(end).getTime());
 
 /**
  * Events overlapping [from, to) (at most 12 hours) from every calendar turned on: Google when
- * connected, the GNOME Shell calendar when `calendar.enabled`. One calendar failing is reported
- * through `onSourceError`; all of them failing throws. The same meeting seen in both calendars
- * (same title, start within a minute) is kept once, from Google, which knows the attendees.
- * Meetings the account declined in Google and all-day entries are not meetings to remind of.
+ * connected, the GNOME Shell calendar when `calendar.enabled`, KOrganizer when `calendar.kde`.
+ * One calendar failing is reported through `onSourceError`; all of them failing throws. The same
+ * meeting seen in Google and a desktop calendar (same title, start within a minute) is kept once,
+ * from Google. Meetings the account declined and all-day entries are not meetings to remind of.
  */
 export const listUpcomingEvents = async (
   config: AppConfig,
@@ -229,10 +243,13 @@ export const listUpcomingEvents = async (
   if (sources.length === 0) return [];
   const google = deps.google ?? ((start: Date, end: Date, signal?: AbortSignal) => listGoogleEvents(config, start, end, { signal }));
   const gnome = deps.gnome ?? queryGnomeCalendarEvents;
+  const kde = deps.kde ?? ((start: Date, end: Date) => queryKdeCalendarEvents(start, end));
   const settled = await Promise.allSettled(sources.map(async (source): Promise<RawEvent[]> =>
     source === "google-calendar"
       ? (await google(new Date(fromMs), new Date(toMs), deps.signal)).map(fromGoogle)
-      : (await gnome(new Date(fromMs), new Date(toMs))).flatMap(fromGnome)));
+      : source === "kde-calendar"
+        ? (await kde(new Date(fromMs), new Date(toMs))).map(fromKde)
+        : (await gnome(new Date(fromMs), new Date(toMs))).flatMap(fromGnome)));
   const raw: RawEvent[] = [];
   let failures = 0;
   let firstError: unknown;
@@ -257,9 +274,9 @@ export const listUpcomingEvents = async (
     return [{ ...event, title }];
   });
   const googleKeys = candidates.filter((event) => event.source === "google-calendar").map((event) => ({ key: titleKey(event.title), start: event.startAtMs }));
-  // A meeting declined in Google is dropped together with its copy in the GNOME calendar (which shows it regardless).
-  const unique = candidates.filter((event) => event.source === "google-calendar" ? event.declined !== true
-    : !googleKeys.some((other) => other.key === titleKey(event.title) && Math.abs(other.start - event.startAtMs) <= DUPLICATE_START_MS));
+  // A meeting declined in Google is dropped together with its copy in a desktop calendar (which may show it regardless).
+  const unique = candidates.filter((event) => event.declined !== true && (event.source === "google-calendar" ||
+    !googleKeys.some((other) => other.key === titleKey(event.title) && Math.abs(other.start - event.startAtMs) <= DUPLICATE_START_MS)));
   unique.sort((a, b) => a.startAtMs - b.startAtMs || a.endAtMs - b.endAtMs || (a.title < b.title ? -1 : a.title > b.title ? 1 : 0));
 
   const salt = deps.salt ? await deps.salt() : await readCalendarSalt({ stateDir: deps.stateDir });
@@ -293,7 +310,7 @@ export const validateUpcomingEvent = (value: unknown): UpcomingEvent | undefined
   const startMs = typeof event.startAt === "string" ? Date.parse(event.startAt) : Number.NaN;
   const endMs = typeof event.endAt === "string" ? Date.parse(event.endAt) : Number.NaN;
   const title = typeof event.title === "string" ? singleLine(event.title, UPCOMING_LIMITS.titleLength) : "";
-  if ((event.source !== "google-calendar" && event.source !== "gnome-calendar") || typeof event.eventIdHash !== "string" ||
+  if ((event.source !== "google-calendar" && event.source !== "gnome-calendar" && event.source !== "kde-calendar") || typeof event.eventIdHash !== "string" ||
     !HASH_PATTERN.test(event.eventIdHash) || (event.seriesIdHash !== undefined && (typeof event.seriesIdHash !== "string" || !HASH_PATTERN.test(event.seriesIdHash))) ||
     !title || title !== event.title || !Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs ||
     typeof event.recurring !== "boolean" || !Array.isArray(event.attendees) || event.attendees.length > UPCOMING_LIMITS.maxAttendees) return undefined;

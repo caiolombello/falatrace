@@ -216,7 +216,10 @@ export type AppConfig = {
   };
   visualReview?: { maxInferences:number; maxPreviews:number; period:"lifetime" };
   calendar: {
+    /** Read the GNOME Shell calendar (GNOME Agenda / Evolution). */
     enabled: boolean;
+    /** Read KOrganizer's calendars from Akonadi (KDE). */
+    kde: boolean;
   };
   speakers: {
     /** Recognize known voices locally and learn from names a person confirms; needs the voice model. */
@@ -401,7 +404,8 @@ export const DEFAULT_CONFIG: AppConfig = {
     aiApp: "chatgpt-web"
   },
   calendar: {
-    enabled: false
+    enabled: false,
+    kde: false
   },
   speakers: {
     voices: false

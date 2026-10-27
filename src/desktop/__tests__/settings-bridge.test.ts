@@ -239,7 +239,7 @@ describe("settings bridge operations", () => {
     expect(await handleSettingsOperation("settings-service", { action: "reminders-apply" }, deps)).toMatchObject({ action: "reminders-apply" });
     await handleSettingsOperation("settings-service", { action: "reminders-disable" }, deps);
     expect(calls).toEqual(["lock:capture-control", "applyReminders", "services", "release", "lock:capture-control", "disableReminders", "services", "release"]);
-    const refusal = "Conecte uma agenda (Google ou GNOME) para receber lembretes.";
+    const refusal = "Conecte uma agenda (Google, GNOME ou KOrganizer) para receber lembretes.";
     const refused = fakeDeps({ applyReminders: async () => { throw new Error(refusal); } });
     await expect(handleSettingsOperation("settings-service", { action: "reminders-apply" }, refused.deps)).rejects.toThrow(refusal);
     expect(isDisplayableSettingsError("settings-service", refusal)).toBe(true);
