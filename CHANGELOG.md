@@ -1,3 +1,8 @@
+## 0.2.0-alpha.16 — the Studio opens on Qt 6.10
+
+- **Studio on Qt 6.10.** Alpha.15's Ask panel named a variable `short`, a word the Qt 6.10 QML engine (the system Qt of Ubuntu 26.04) refuses as an identifier, so the whole Studio failed to load with "Type AskPanel unavailable". The variable is renamed, and a new test refuses declarations and parameters in the Studio's QML and JavaScript named with any word Qt 6.10 reserves, each confirmed against libQt6Qml 6.10.2. The Studio journeys in CI run on PySide6 6.11, which accepts some of these words, so they could not catch it.
+- **Checks.** See [ALPHA16.md](docs/ALPHA16.md).
+
 ## 0.2.0-alpha.15 — notes during the meeting, AI that completes them, and a redesigned Studio
 
 - **Notes during the meeting.** A notepad saved per capture keeps the moment each line was typed, measured from the start of the recording; editing a line keeps its time, and two windows never overwrite each other. In the Studio the notepad is the page while you record, and **My notes** on the meeting page afterwards. Notes are private files on this computer. CLI: `notes show|edit|path`.

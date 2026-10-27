@@ -1,6 +1,6 @@
 {
   "scope": "sanitized experimental Linux source alpha; no private history/config/media/dependencies/binaries",
-  "version": "0.2.0-alpha.15",
+  "version": "0.2.0-alpha.16",
   "selfExcluded": "SOURCE-MANIFEST.json; external release manifest includes this file",
   "files": [
     {
@@ -20,8 +20,8 @@
     },
     {
       "path": "CHANGELOG.md",
-      "sha256": "fb2025495bf39ec8d6a9426d8c783a2146ab5257ef55419038db8c41ec27d178",
-      "bytes": 30136
+      "sha256": "8263beb6380cb2f07e2ec8a6417c9bcb5da22fa0696599ae7c1462d6d8d3d407",
+      "bytes": 30766
     },
     {
       "path": "LICENSE",
@@ -35,7 +35,7 @@
     },
     {
       "path": "README.md",
-      "sha256": "47f7bca9c72a45318020562b3486a61da3b995600f6923b32669094518a82166",
+      "sha256": "0164431f41646f6ba61fe4877cd8617e29c3ed99a2c60b2b9405e9a0618540be",
       "bytes": 6620
     },
     {
@@ -157,6 +157,11 @@
       "path": "docs/ALPHA15.md",
       "sha256": "8962968c716e0b4085229e85fea0cf3ccb591816b5a5a3ece2c0d150a192922a",
       "bytes": 20100
+    },
+    {
+      "path": "docs/ALPHA16.md",
+      "sha256": "dfe57222bd4fb453d004dd0edc614f0c8d10032d0d19de7d51e4f7bc8f961b6f",
+      "bytes": 2535
     },
     {
       "path": "docs/ALPHA2-LOCAL-REVIEW.md",
@@ -470,7 +475,7 @@
     },
     {
       "path": "docs/en/index.html",
-      "sha256": "b259666afaae1f821beff448e942e9c98c3f6bf3246480452089f9303c2465eb",
+      "sha256": "988608bac38872946f42af34d3572be17acd2e3fd755bcfa2b1728cee5e8dd66",
       "bytes": 43609
     },
     {
@@ -480,7 +485,7 @@
     },
     {
       "path": "docs/index.html",
-      "sha256": "91ca7a5b3893b16bbb9ab0437b63be76226e3f852bed4c1f3d7e996c0bf01ece",
+      "sha256": "af1584d1bdf7f9992536e664d762ab56173c94a2b1051bf0ae8cff41c050bcd6",
       "bytes": 44294
     },
     {
@@ -500,7 +505,7 @@
     },
     {
       "path": "package.json",
-      "sha256": "b6ff2da298eb7c93b1aefd7f03f29f4c2363c8819c4f28328a6d862918d5b883",
+      "sha256": "7d76e507165e760cdc9ed1d954ad400c5d8c684912ddbbf6cbefe9e32878a8a7",
       "bytes": 1488
     },
     {
@@ -655,7 +660,7 @@
     },
     {
       "path": "skills/falatrace/SKILL.md",
-      "sha256": "c616203e87c1b9e8a541b9372e36865a2fd3d947534235af8eab84153a75478c",
+      "sha256": "af70cdfd8b4a27156c2f4163b72356f978fb09ff34030cbad9a548d531faf6aa",
       "bytes": 9723
     },
     {
@@ -1575,8 +1580,8 @@
     },
     {
       "path": "src/desktop/AskPanel.qml",
-      "sha256": "46d6985e2153631d95bb4975558cf6e297d4adaade634775c6302e0e739654ef",
-      "bytes": 44018
+      "sha256": "67054cf9375e2f3bb65ce81c43bea431421b8879bcaa885a5f6837077232341c",
+      "bytes": 44028
     },
     {
       "path": "src/desktop/BrandMark.qml",
@@ -1992,6 +1997,11 @@
       "path": "src/desktop/__tests__/playback.test.ts",
       "sha256": "285e48cefaad0f65140170b1bcc73279f82354c4cebb7f57edfee7b516549c64",
       "bytes": 2800
+    },
+    {
+      "path": "src/desktop/__tests__/qml-reserved-identifiers.test.ts",
+      "sha256": "2648f1fd287c603d39c185d765842c9c56e622c9d07db47ae0fcd463bea8527a",
+      "bytes": 2058
     },
     {
       "path": "src/desktop/__tests__/retention-bridge.test.ts",
