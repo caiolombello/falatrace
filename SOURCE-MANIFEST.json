@@ -2940,8 +2940,8 @@
     },
     {
       "path": "src/provider-analysis/__tests__/adapters.test.ts",
-      "sha256": "6bc855d25071c212038f6bfbe1250f2909072d96e11d74b7ae58c2ef1046d78a",
-      "bytes": 15452
+      "sha256": "49014893f8f38ee2d2c569593f2507852dcb9a6033e1de5c51267a86b24e16c9",
+      "bytes": 15458
     },
     {
       "path": "src/provider-analysis/adapters.ts",

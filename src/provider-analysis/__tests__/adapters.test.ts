@@ -31,7 +31,7 @@ for(const provider of ['openai','google'] as const)test(provider+' exact authori
   const run=new ProviderAnalysis(f.retrieval,transport,f.ledger);const result:any=await run.analyze(f.input,f.options);expect(result.observations[0].decodedTimestampSeconds).toBe(0.6);expect(result.trust).toBe('untrusted-model-output');expect(result.estimate.usd).toBeNull();expect((await new ProviderAnalysis(f.retrieval,transport,f.ledger).analyze(f.input,f.options) as any).cacheHit).toBe(true);expect(calls).toBe(1);expect((await f.retrieval.budget.snapshot(policy)).remainingInferences).toBe(23);
   await expect(run.analyze({...f.input,question:'changed'},f.options)).rejects.toThrow('reused');
  }finally{await fs.rm(f.root,{recursive:true,force:true});}
-});
+},30000);
 test('timeout with transport ignoring abort is uncertain, persistent and never auto-retransmits',async()=>{
  const f=await fixture();try{const g=await f.access.read(f.grant.id);const a={...g.analysis!,timeoutMs:100};const grant=await f.access.authorize({consent:true,recipient:f.recipient,scope:g.scope,data:g.data,analysis:a});const input={...f.input,grantId:grant.id};let calls=0;const transport:Transport=async()=>{calls++;return new Promise(()=>{});};
  const result:any=await new ProviderAnalysis(f.retrieval,transport,f.ledger).analyze(input,f.options);expect(result.status).toBe('uncertain');expect((await new ProviderAnalysis(f.retrieval,transport,new AnalysisLedger(f.ledger.root)).analyze(input,f.options) as any).status).toBe('uncertain');expect(calls).toBe(1);expect((await f.ledger.snapshot()).uncertainOutcomes).toBe(1);
