@@ -53,13 +53,15 @@ export type AcpAgentPreset = {
   subscription?: string;
   /** The agent's own settings that keep it from running tools; they win over the user's environment. */
   lockdown?: Readonly<Record<string, string>>;
+  /** For an ACP adapter installed apart from its CLI: that CLI, so detection can say only the adapter is missing. */
+  cliCommand?: string;
 };
 
 export const ACP_AGENTS: Record<Exclude<AssistantAcpAgent, "custom">, AcpAgentPreset> = {
   // API key or Console login only: Anthropic does not allow third-party apps to route Claude.ai plan credentials.
-  claude: { label: "Claude Agent", command: "claude-agent-acp", args: ["--hide-claude-auth"], loginHint: "rode `claude auth login --console` (conta do Console) ou defina ANTHROPIC_API_KEY no terminal" },
+  claude: { label: "Claude Agent", command: "claude-agent-acp", cliCommand: "claude", args: ["--hide-claude-auth"], loginHint: "rode `claude auth login --console` (conta do Console) ou defina ANTHROPIC_API_KEY no terminal" },
   // codex-acp starts in "agent" mode, which runs sandboxed commands without asking.
-  codex: { label: "Codex", command: "codex-acp", args: [], loginHint: "rode `codex login` no terminal", subscription: "plano do ChatGPT via Codex", lockdown: { INITIAL_AGENT_MODE: "read-only" } },
+  codex: { label: "Codex", command: "codex-acp", cliCommand: "codex", args: [], loginHint: "rode `codex login` no terminal", subscription: "plano do ChatGPT via Codex", lockdown: { INITIAL_AGENT_MODE: "read-only" } },
   // No extensions and none of the user's MCP servers (the allow-list names one that does not exist).
   gemini: { label: "Gemini CLI", command: "gemini", args: ["--acp", ...GEMINI_NO_EXTENSIONS], loginHint: "rode `gemini` no terminal e entre com sua conta", subscription: "conta Google via Gemini CLI" },
   // OpenCode allows bash, edits and web fetches without asking by default.

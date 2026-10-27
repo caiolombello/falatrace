@@ -27,7 +27,9 @@ describe("detectAssistantTools", () => {
     expect(report.acp.map((entry) => entry.agent)).toEqual([...ACP_ORDER]);
     expect(report.acp.find((entry) => entry.agent === "codex")).toEqual({ agent: "codex", command: "codex-acp", found: true });
     expect(report.acp.find((entry) => entry.agent === "gemini")).toEqual({ agent: "gemini", command: "gemini", found: true });
-    expect(report.acp.find((entry) => entry.agent === "claude")).toEqual({ agent: "claude", command: "claude-agent-acp", found: false });
+    // claude is installed but not its ACP adapter: told apart from an agent that is not there at all.
+    expect(report.acp.find((entry) => entry.agent === "claude")).toEqual({ agent: "claude", command: "claude-agent-acp", found: false, cliFound: true });
+    expect(report.acp.find((entry) => entry.agent === "opencode")).toEqual({ agent: "opencode", command: "opencode", found: false });
     expect(report.acp.filter((entry) => entry.found).map((entry) => entry.agent)).toEqual(["codex", "gemini"]);
     expect(report.cli).toEqual([
       { tool: "claude", command: "claude", found: true, signedIn: true },
@@ -35,6 +37,10 @@ describe("detectAssistantTools", () => {
       { tool: "gemini", command: "gemini", found: true, signedIn: null },
       { tool: "opencode", command: "opencode", found: false, signedIn: null }
     ]);
+    // With agy installed, the gemini choice reports it: agy is what would answer.
+    const withAgy = await detectAssistantTools({ which: (command) => (["gemini", "agy"].includes(command) ? `/usr/local/bin/${command}` : null), run });
+    expect(withAgy.cli.find((entry) => entry.tool === "gemini")).toEqual({ tool: "gemini", command: "agy", found: true, signedIn: null });
+    expect(withAgy.cli.find((entry) => entry.tool === "claude")).toEqual({ tool: "claude", command: "claude", found: false, signedIn: null });
     expect(probes.sort()).toEqual([["/usr/local/bin/claude", "auth", "status"], ["/usr/local/bin/codex", "login", "status"]]);
     // PATH lookups only: never a download helper.
     for (const helper of ["npx", "bunx", "uvx", "npm"]) expect(looked).not.toContain(helper);

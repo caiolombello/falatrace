@@ -72,12 +72,22 @@ SettingsPage {
     function agentLabel(option) {
         if (!detected || option.value === "custom") return option.label
         const entry = found(detected.acp, "agent", option.value)
-        return option.label + (entry ? (entry.found ? t(" · encontrado") : t(" · não instalado")) : "")
+        if (!entry) return option.label
+        if (entry.found) return option.label + t(" · encontrado")
+        if (entry.cliFound) return option.label + tf(" · falta o adaptador %1", entry.command)
+        // agy, which replaced the Gemini CLI, has no ACP mode: it answers through the command line.
+        const cli = option.value === "gemini" ? found(detected.cli, "tool", "gemini") : null
+        if (cli && cli.found && cli.command === "agy") return option.label + t(" · o agy só responde pela linha de comando")
+        return option.label + t(" · não instalado")
     }
+    // signedIn is null for a tool without a status command: installed, sign-in unknown.
     function toolLabel(option) {
         if (!detected) return option.label
         const entry = found(detected.cli, "tool", option.value)
-        return option.label + (!entry ? "" : !entry.found ? t(" · não instalado") : entry.signedIn ? t(" · conectado") : t(" · sem login"))
+        if (!entry) return option.label
+        // The "gemini" choice runs agy (the Antigravity CLI) when it is installed.
+        const label = option.label + (entry.found && entry.command !== option.value ? " (" + entry.command + ")" : "")
+        return label + (!entry.found ? t(" · não instalado") : entry.signedIn === true ? t(" · conectado") : entry.signedIn === false ? t(" · sem login") : t(" · encontrado"))
     }
     function handleResponse(request, message) {
         if (request.pageGeneration !== pageGeneration) return

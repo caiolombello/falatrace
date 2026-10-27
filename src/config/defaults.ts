@@ -24,6 +24,7 @@ export const ASSISTANT_API_PRESETS = ["openai", "openrouter", "gemini", "xai", "
 export type AssistantApiPreset = (typeof ASSISTANT_API_PRESETS)[number];
 export const ASSISTANT_ACP_AGENTS = ["claude", "codex", "gemini", "opencode", "kiro", "copilot", "cursor", "goose", "qwen", "grok", "custom"] as const;
 export type AssistantAcpAgent = (typeof ASSISTANT_ACP_AGENTS)[number];
+/** "gemini" runs the Antigravity CLI (agy), Google's successor to the Gemini CLI, when it is installed. */
 export const ASSISTANT_CLI_TOOLS = ["claude", "codex", "gemini", "opencode"] as const;
 export type AssistantCliTool = (typeof ASSISTANT_CLI_TOOLS)[number];
 /**

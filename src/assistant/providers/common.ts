@@ -444,7 +444,7 @@ export const CHILD_ENVIRONMENT_NAMES: readonly string[] = [
 export const CHILD_ENVIRONMENT_PREFIXES: readonly string[] = [
   "LC_", "ANTHROPIC_", "CLAUDE_", "OPENAI_", "CODEX_", "GEMINI_", "GOOGLE_", "VERTEX_", "CLOUD_ML_", "OPENCODE_", "OPENROUTER_",
   "GOOSE_", "KIRO_", "COPILOT_", "CURSOR_", "QWEN_", "DASHSCOPE_", "XAI_", "GROK_", "GROQ_", "MISTRAL_", "DEEPSEEK_", "TOGETHER_",
-  "OLLAMA_", "AWS_", "AZURE_"
+  "OLLAMA_", "AWS_", "AZURE_", "AGY_"
 ];
 
 /**

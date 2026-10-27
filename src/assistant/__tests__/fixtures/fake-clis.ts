@@ -1,7 +1,7 @@
 import { promises as fs, mkdtempSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-// Fake subscription CLIs (claude, codex, gemini, opencode) as small POSIX shell scripts in a
+// Fake subscription CLIs (claude, codex, gemini, opencode, agy) as small POSIX shell scripts in a
 // temporary PATH. Each run records its argv (NUL-separated), working directory, directory
 // listing, stdin and environment under $FAKE_CLI_LOG, then behaves as $FAKE_CLI_MODE says.
 
@@ -91,7 +91,24 @@ case "$FAKE_CLI_MODE" in
 esac
 `;
 
-export const FAKE_CLI_SCRIPTS = { claude: CLAUDE, codex: CODEX, gemini: GEMINI, opencode: OPENCODE } as const;
+/** Antigravity CLI 1.4: stream-json events in, stream-json events out, one "result" at the end. */
+const AGY = `#!/bin/sh
+${RECORD}
+${SLOW}
+echo '{"event":"init","init":{"cwd":"/w","tools":["read_file","run_command"],"permission_mode":"always-proceed"}}'
+case "$FAKE_CLI_MODE" in
+  auth) echo '{"event":"result","result":{"status":"ERROR","response":"","error":"Print mode: auth error: not signed in"}}'; echo 'AGY_ERROR' >&2; exit 3 ;;
+  error) echo '{"event":"result","result":{"status":"ERROR","response":"","error":"model unavailable"}}'; exit 3 ;;
+  nofinal) echo '{"event":"step_update","step_update":{"step_type":"agent_response","text_delta":"Parcial"}}' ;;
+  *)
+    echo '{"event":"step_update","step_update":{"step_index":1,"state":"ACTIVE","step_type":"agent_response","text_delta":"Resposta "}}'
+    echo 'not json'
+    echo '{"event":"result","result":{"conversation_id":"c1","status":"SUCCESS","response":"Resposta do Antigravity.","num_turns":1,"usage":{"input_tokens":150,"output_tokens":9}}}'
+    ;;
+esac
+`;
+
+export const FAKE_CLI_SCRIPTS = { claude: CLAUDE, codex: CODEX, gemini: GEMINI, opencode: OPENCODE, agy: AGY } as const;
 
 export type FakeCliRun = { argv: string[]; cwd: string; listing: string; stdin: string; env: Map<string, string> };
 

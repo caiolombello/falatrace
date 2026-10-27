@@ -89,7 +89,7 @@ See [Agents and their tools](#agents-and-their-tools) for what each agent can st
 | --- | --- | --- | --- |
 | `codex` (default) | `codex-acp` | `npm install -g @agentclientprotocol/codex-acp` | `codex login` (ChatGPT plan or API key) |
 | `claude` | `claude-agent-acp --hide-claude-auth` | `npm install -g @agentclientprotocol/claude-agent-acp` (Node 22+) | `claude auth login --console`, or `ANTHROPIC_API_KEY` in the environment FalaTrace runs in |
-| `gemini` | `gemini --acp -e none --allowed-mcp-server-names falatrace-no-mcp-server` | `npm install -g @google/gemini-cli` | run `gemini` and sign in |
+| `gemini` | `gemini --acp -e none --allowed-mcp-server-names falatrace-no-mcp-server` (the legacy Gemini CLI; the Antigravity CLI `agy` that replaced it has no ACP mode, use it through the `cli` provider) | `npm install -g @google/gemini-cli` | run `gemini` and sign in |
 | `opencode` | `opencode acp` | `npm install -g opencode-ai` | `opencode auth login` |
 | `kiro` | `kiro-cli acp` | Kiro CLI 1.25 or later, from Kiro | `kiro-cli login` |
 | `copilot` | `copilot --acp` | `npm install -g @github/copilot` | run `copilot` and use `/login` |
@@ -109,10 +109,10 @@ Your own installed, signed-in command-line tool, run once per question. Set `ass
 | --- | --- | --- |
 | `claude` (default) | `claude -p --output-format json --tools "" --disallowedTools "mcp__*" --strict-mcp-config --permission-mode dontAsk --max-turns 1 --no-session-persistence` | run `claude` and sign in |
 | `codex` | `codex exec --sandbox read-only --skip-git-repo-check --ephemeral --ignore-user-config …` | `codex login` |
-| `gemini` | `gemini -p "<short instruction>" -o json -e none --allowed-mcp-server-names falatrace-no-mcp-server` (no extensions, none of your MCP servers) | run `gemini` and sign in |
+| `gemini` | The Antigravity CLI, which replaced the Gemini CLI for personal Google accounts, whenever `agy` is installed: `agy --input-format stream-json --output-format stream-json --sandbox --disable-slash-commands -p=`. The question goes on standard input as one `{"event":"user"}` line and the answer comes from the final `result` event. agy has no flag to turn its tools off and follows your own `toolPermission` setting; `--sandbox` confines its terminal commands, and it keeps the conversation in its own history. Without agy, the legacy `gemini -p "<short instruction>" -o json -e none --allowed-mcp-server-names falatrace-no-mcp-server` (no extensions, none of your MCP servers) | run `agy` (or `gemini`) and sign in |
 | `opencode` | `opencode run --format json`, with every permission set to `deny` through `OPENCODE_CONFIG_CONTENT` and `OPENCODE_PERMISSION` (output read on a best-effort basis) | `opencode auth login` |
 
-The question and excerpts go on standard input, never in the command line. Each run uses a fresh empty private folder and a minimal environment, with the tool's own tools turned off or refused as far as the tool allows (see [Agents and their tools](#agents-and-their-tools)). There is no streaming: the answer appears when the tool finishes. FalaTrace checks sign-in with `claude auth status` and `codex login status`.
+The question and excerpts go on standard input, never in the command line. Each run uses a fresh empty private folder and a minimal environment, with the tool's own tools turned off or refused as far as the tool allows (see [Agents and their tools](#agents-and-their-tools)). There is no streaming: the answer appears when the tool finishes. FalaTrace checks sign-in with `claude auth status` and `codex login status`; a tool without a status command shows as found, and a run that fails for sign-in says so.
 
 **A Claude subscription is used this way:** through your own `claude` command, signed in by you. FalaTrace never sees or stores your Claude credentials.
 

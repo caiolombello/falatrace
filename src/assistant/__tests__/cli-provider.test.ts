@@ -3,6 +3,7 @@ import { promises as fs } from "node:fs";
 import { join } from "node:path";
 import { type AppConfig, ASSISTANT_TOOL_AGENTS, type AssistantCliTool } from "../../config/defaults";
 import {
+  ANTIGRAVITY_CLI,
   buildCliInvocation,
   CLI_KNOWN_ERRORS,
   CLI_MESSAGES,
@@ -26,8 +27,8 @@ const configWith = (assistant: Partial<AppConfig["assistant"]>): AppConfig => ba
 
 type Setup = { bin: string; log: string; root: string; env: (extra?: Record<string, string>) => NodeJS.ProcessEnv };
 
-const setup = async (dir: string): Promise<Setup> => {
-  const bin = await installFakeClis(dir);
+const setup = async (dir: string, names?: Parameters<typeof installFakeClis>[1]): Promise<Setup> => {
+  const bin = await installFakeClis(dir, names);
   const log = join(dir, "cli");
   const root = join(dir, "work");
   return {
@@ -151,6 +152,40 @@ describe("subscription CLIs", () => {
       // No extensions and no MCP server of the user's.
       expect(run.argv).toEqual(["-p", GEMINI_STDIN_INSTRUCTION, "-o", "json", "-e", "none", "--allowed-mcp-server-names", "falatrace-no-mcp-server", "-m", "flash"]);
       expect(run.stdin).toContain("Quem decidiu o prazo?");
+    });
+  });
+
+  test("gemini runs agy, the Antigravity CLI, when installed: question on stdin as one stream-json user event, never in argv", async () => {
+    await withTempDir(async (dir) => {
+      // Both installed: agy, Google's successor to the Gemini CLI, wins.
+      const s = await setup(dir, ["claude", "codex", "gemini", "opencode", "agy"]);
+      const provider = cli(s, "gemini", { model: "gemini-3.8-flash-high" });
+      expect(provider.destination).toMatchObject({ id: "cli:gemini", label: "Antigravity CLI · gemini-3.8-flash-high", endpoint: "agy", subscription: ANTIGRAVITY_CLI.subscription });
+      const result = await provider.run(chatRequest());
+      expect(result).toEqual({ text: "Resposta do Antigravity.", stopReason: "end", usage: { inputTokens: 150, outputTokens: 9 } });
+      const run = await readFakeCliRun(s.log);
+      // Terminal commands sandboxed, no slash commands or skills, prompt read from stdin (-p= stays empty).
+      expect(run.argv).toEqual(["--input-format", "stream-json", "--output-format", "stream-json", "--sandbox", "--disable-slash-commands", "--model", "gemini-3.8-flash-high", "-p="]);
+      expect(run.argv.join(" ")).not.toContain("Quem decidiu o prazo?");
+      const lines = run.stdin.split("\n").filter(Boolean);
+      expect(lines).toHaveLength(1);
+      const event = JSON.parse(lines[0] as string) as { event: string; message: { content: string } };
+      expect(event.event).toBe("user");
+      expect(event.message.content).toContain("Quem decidiu o prazo?");
+      await expectProviderError(cli(s, "gemini", { env: { FAKE_CLI_MODE: "error" } }).run(chatRequest()), cliFailedMessage(ANTIGRAVITY_CLI), "unavailable");
+      await expectProviderError(cli(s, "gemini", { env: { FAKE_CLI_MODE: "nofinal" } }).run(chatRequest()), cliFailedMessage(ANTIGRAVITY_CLI), "unavailable");
+      // A sign-in problem is told by the run itself: agy has no status command.
+      await expectProviderError(cli(s, "gemini", { env: { FAKE_CLI_MODE: "auth" } }).run(chatRequest()), cliSignedOutMessage(ANTIGRAVITY_CLI), "auth");
+    });
+  });
+
+  test("with neither agy nor gemini installed, the gemini choice names both", async () => {
+    await withTempDir(async (dir) => {
+      const s = await setup(dir, ["claude"]);
+      const provider = cli(s, "gemini");
+      expect(provider.destination.label).toBe("Gemini CLI");
+      expect(await provider.check()).toEqual({ ready: false, problem: "missing-binary", message: cliNotFoundMessage(CLI_TOOLS.gemini) });
+      expect(cliNotFoundMessage(CLI_TOOLS.gemini)).toContain("agy");
     });
   });
 
@@ -285,7 +320,7 @@ describe("subscription CLIs", () => {
       // Another launch failure (EACCES) gets the same fixed message, and the private folder is removed either way.
       const failing = createCliProvider(configWith({ provider: "cli", cliTool: "gemini" }), {
         env: { PATH: bin, HOME: process.env.HOME },
-        which: () => "/usr/bin/gemini",
+        which: (command) => (command === "gemini" ? "/usr/bin/gemini" : null),
         workspaceRoot: root,
         spawn: () => {
           throw new Error(`EACCES: permission denied, posix_spawn '${dir}/gemini'`);
@@ -324,6 +359,7 @@ describe("CLI helpers", () => {
     });
     expect(buildCliInvocation("gemini", "/bin/gemini", "", paths).argv).toEqual(["/bin/gemini", "-p", GEMINI_STDIN_INSTRUCTION, "-o", "json", "-e", "none", "--allowed-mcp-server-names", "falatrace-no-mcp-server"]);
     expect(buildCliInvocation("opencode", "/bin/opencode", "anthropic/claude-sonnet-5-5", paths).argv).toEqual(["/bin/opencode", "run", "--format", "json", "-m", "anthropic/claude-sonnet-5-5"]);
+    expect(buildCliInvocation("antigravity", "/bin/agy", "", paths).argv).toEqual(["/bin/agy", "--input-format", "stream-json", "--output-format", "stream-json", "--sandbox", "--disable-slash-commands", "-p="]);
     expect(Object.keys(buildCliInvocation("opencode", "/bin/opencode", "", paths).lockdown ?? {}).sort()).toEqual(["OPENCODE_CONFIG_CONTENT", "OPENCODE_PERMISSION"]);
     for (const tool of ["claude", "codex", "gemini"] as const) expect(buildCliInvocation(tool, `/bin/${tool}`, "", paths).lockdown).toBeUndefined();
   });
@@ -353,11 +389,12 @@ describe("CLI helpers", () => {
     calls.length = 0;
     expect(await probeCliSignIn("gemini", "/bin/gemini", runner({ exitCode: 0 }))).toBeNull();
     expect(await probeCliSignIn("opencode", "/bin/opencode", runner({ exitCode: 0 }))).toBeNull();
+    expect(await probeCliSignIn("antigravity", "/bin/agy", runner({ exitCode: 0 }))).toBeNull();
     expect(calls).toEqual([]);
   });
 
   test("known errors cover every tool", () => {
-    for (const preset of Object.values(CLI_TOOLS)) {
+    for (const preset of [...Object.values(CLI_TOOLS), ANTIGRAVITY_CLI]) {
       for (const message of [cliNotFoundMessage(preset), cliSignedOutMessage(preset), cliFailedMessage(preset), cliEmptyMessage(preset)]) expect(CLI_KNOWN_ERRORS).toContain(message);
     }
     expect(CLI_KNOWN_ERRORS).toContain(CLI_MESSAGES.invalidModel);
