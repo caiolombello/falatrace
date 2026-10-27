@@ -1,6 +1,6 @@
 {
   "scope": "sanitized experimental Linux source alpha; no private history/config/media/dependencies/binaries",
-  "version": "0.2.0-alpha.16",
+  "version": "0.2.0-alpha.17",
   "selfExcluded": "SOURCE-MANIFEST.json; external release manifest includes this file",
   "files": [
     {
@@ -20,8 +20,8 @@
     },
     {
       "path": "CHANGELOG.md",
-      "sha256": "8263beb6380cb2f07e2ec8a6417c9bcb5da22fa0696599ae7c1462d6d8d3d407",
-      "bytes": 30766
+      "sha256": "213498030c1230335f1a75f260b6989417dcbe6f5e9fc1c1fd9f14901f606590",
+      "bytes": 32448
     },
     {
       "path": "LICENSE",
@@ -35,7 +35,7 @@
     },
     {
       "path": "README.md",
-      "sha256": "0164431f41646f6ba61fe4877cd8617e29c3ed99a2c60b2b9405e9a0618540be",
+      "sha256": "8cb2d59af10ebb75876253bd0bc56a472e434354b9316d0a1418dfad584091fa",
       "bytes": 6620
     },
     {
@@ -164,6 +164,11 @@
       "bytes": 2535
     },
     {
+      "path": "docs/ALPHA17.md",
+      "sha256": "2c1218dc9c375b8147d1451439ba20695f227ad5b05699e0d8e1d94f64fac275",
+      "bytes": 6129
+    },
+    {
       "path": "docs/ALPHA2-LOCAL-REVIEW.md",
       "sha256": "ab91a67ce5c670b59c4cf92d26046a0c3a3aec1c179408dc264ad666627a15dd",
       "bytes": 11842
@@ -205,8 +210,8 @@
     },
     {
       "path": "docs/ASSISTANT.md",
-      "sha256": "9d1e99b114929f9af872c9d4168c11fa259b099b3596be0004b46dd4e2bf5e89",
-      "bytes": 18798
+      "sha256": "070f09f912a281d520231a024e27e177c54c9fe84177478f2bb237b2ceeec4c9",
+      "bytes": 19551
     },
     {
       "path": "docs/CAPTURE-CALL-LIGHT.md",
@@ -220,8 +225,8 @@
     },
     {
       "path": "docs/CONFIGURATION.md",
-      "sha256": "c2e24200c959fa435fc9d7fb42f23a2ee8ea37dcaf0d5fc5b429dc545fdb4fd4",
-      "bytes": 27097
+      "sha256": "f26a5ccafd2c251d5efa141228551f753e6cbf350c9db5e72a23f2bd78cf8af8",
+      "bytes": 27621
     },
     {
       "path": "docs/DEVELOPMENT.md",
@@ -285,8 +290,8 @@
     },
     {
       "path": "docs/REMINDERS-AND-LIVE.md",
-      "sha256": "ad63f58dda684b244d366dca982b55fd61cb6bd0343ca2e79f51a22f8caba042",
-      "bytes": 7276
+      "sha256": "d78d299a4c1b332b973762a50ccb3dcfe85d57fdfaa333a20f029adc44c03263",
+      "bytes": 7305
     },
     {
       "path": "docs/REVIEWED-SNAPSHOT-COMPATIBILITY.md",
@@ -475,7 +480,7 @@
     },
     {
       "path": "docs/en/index.html",
-      "sha256": "988608bac38872946f42af34d3572be17acd2e3fd755bcfa2b1728cee5e8dd66",
+      "sha256": "fdaddb1e21b6fb66fcb12bffdeee688f72bc175c0af199cef02d17258c64c7d6",
       "bytes": 43609
     },
     {
@@ -485,7 +490,7 @@
     },
     {
       "path": "docs/index.html",
-      "sha256": "af1584d1bdf7f9992536e664d762ab56173c94a2b1051bf0ae8cff41c050bcd6",
+      "sha256": "4447f3a0212e92d1c130724481f5a51bf670a78895d37aed4f71498045af61da",
       "bytes": 44294
     },
     {
@@ -505,7 +510,7 @@
     },
     {
       "path": "package.json",
-      "sha256": "7d76e507165e760cdc9ed1d954ad400c5d8c684912ddbbf6cbefe9e32878a8a7",
+      "sha256": "8cf3bcded059e94ed8044eab0112392d3d106c5071191911cde8c5098ebaa13f",
       "bytes": 1488
     },
     {
@@ -660,7 +665,7 @@
     },
     {
       "path": "skills/falatrace/SKILL.md",
-      "sha256": "af70cdfd8b4a27156c2f4163b72356f978fb09ff34030cbad9a548d531faf6aa",
+      "sha256": "73f8625566176659b51c01ab4855baff0f7bbfa0e3c0fe0378c3100f1627f470",
       "bytes": 9723
     },
     {
@@ -865,8 +870,8 @@
     },
     {
       "path": "src/assistant/__tests__/chatgpt-oauth.test.ts",
-      "sha256": "3874896c1e0774d6ef04c2da8f3a757ba1bc09f034563e393d2f69da46ea7350",
-      "bytes": 26554
+      "sha256": "78aa31929f5c46eded567e81285342600d70478bda3c51ea6d69d52ed4803fb6",
+      "bytes": 26736
     },
     {
       "path": "src/assistant/__tests__/chatgpt-responses.test.ts",
@@ -885,13 +890,13 @@
     },
     {
       "path": "src/assistant/__tests__/cli-provider.test.ts",
-      "sha256": "0c76f072c55a5e18d05dd1a2b27a464a4ef074653e34c52d7b7cf24dfd256406",
-      "bytes": 22062
+      "sha256": "98a9a4329c3865576755239ddd9815bbd501291eb89e300c55d560ca8e275f97",
+      "bytes": 25083
     },
     {
       "path": "src/assistant/__tests__/detect.test.ts",
-      "sha256": "9a770427cb2166842ae3b9fe9b1b0e2711735f44b24e1d6874403423376bffe7",
-      "bytes": 4885
+      "sha256": "eebd1e6fe2335f4b078bd6e555fbb513915f2815b5c70745e5a251599e979240",
+      "bytes": 5656
     },
     {
       "path": "src/assistant/__tests__/fixtures/fake-acp-agent.ts",
@@ -900,13 +905,13 @@
     },
     {
       "path": "src/assistant/__tests__/fixtures/fake-clis.ts",
-      "sha256": "2586f4a955f13adbbb2e66a37aaca91b91836f1869ce38936829fd3ee6da67a3",
-      "bytes": 5447
+      "sha256": "7663b9c836b219a60ac90c2231d262eb086b65430191ece2d47113a1c3e1e359",
+      "bytes": 6489
     },
     {
       "path": "src/assistant/__tests__/fixtures/fake-openai-auth.ts",
-      "sha256": "f4981474e309e37234b59406372fb3f6aa6752b2b15c75ab0722c20d6e23c07c",
-      "bytes": 9966
+      "sha256": "64423d1595e87d1f414394fad08a82853af10eb07906b990895dd9b360c7707c",
+      "bytes": 10203
     },
     {
       "path": "src/assistant/__tests__/framing.test.ts",
@@ -970,8 +975,8 @@
     },
     {
       "path": "src/assistant/chatgpt/oauth.ts",
-      "sha256": "a0084f03f1c555803fd124c52190ab169fc5e0092ce53b455c01738db3ca795a",
-      "bytes": 29178
+      "sha256": "28a09a057c18a283540c311fed339ded3af6de91f386a5a22cd6fa8f39db3c29",
+      "bytes": 29352
     },
     {
       "path": "src/assistant/chatgpt/responses.ts",
@@ -990,8 +995,8 @@
     },
     {
       "path": "src/assistant/detect.ts",
-      "sha256": "41d4e6338cf0509b80cb522b4691673bc3a0e9d64da6b3a7ee0945c8577a03ff",
-      "bytes": 2262
+      "sha256": "ddcd89fa5c9a7924ca46461714f615fb8a1963f71f9c30c34fe5dbc779b39d22",
+      "bytes": 2599
     },
     {
       "path": "src/assistant/prompts.ts",
@@ -1000,8 +1005,8 @@
     },
     {
       "path": "src/assistant/providers/acp.ts",
-      "sha256": "3ac64f3921723ffe68f1b503878974fac6707fa4e0ae0df97b96fcd7cd25bf3a",
-      "bytes": 26724
+      "sha256": "b430beb96e9876616be954c9877fb64fefbfeeca0a4e9255e2882f7d63453f4c",
+      "bytes": 26908
     },
     {
       "path": "src/assistant/providers/anthropic.ts",
@@ -1010,13 +1015,13 @@
     },
     {
       "path": "src/assistant/providers/cli.ts",
-      "sha256": "5084b7c2356e3e9945ccda81a6dbab7c42d85cc5235ef772fdbb4f442956e130",
-      "bytes": 15926
+      "sha256": "55585b080912b2352914193aa304f307cee373b7502ccf8bda77ae8d8c290390",
+      "bytes": 19938
     },
     {
       "path": "src/assistant/providers/common.ts",
-      "sha256": "d1fab3b4225ac387ffb482da8fca4a990bf1a28be8fd0b8eaef89c2e3bd1af84",
-      "bytes": 23602
+      "sha256": "183ce9ceae62238db311fef9c48aff430673f29600e88ef0d8f1ffcaf0605b23",
+      "bytes": 23610
     },
     {
       "path": "src/assistant/providers/index.ts",
@@ -1079,19 +1084,39 @@
       "bytes": 2886
     },
     {
+      "path": "src/calendar/__tests__/ical.test.ts",
+      "sha256": "6c0f15e571d295c040cb0240ef93aa79e1bb4d2ebb33469700730f7108285284",
+      "bytes": 6481
+    },
+    {
+      "path": "src/calendar/__tests__/kde.test.ts",
+      "sha256": "4a976801d7e6040bbba52394f1978310c37665e4c9f73b73d0c3a96ea0044a8b",
+      "bytes": 9100
+    },
+    {
       "path": "src/calendar/__tests__/links.test.ts",
       "sha256": "14410c05febdb5cf2e10ad17cf2a2b4af7bf588796b832318d38bb462f6c9728",
       "bytes": 9369
     },
     {
       "path": "src/calendar/__tests__/upcoming.test.ts",
-      "sha256": "edfb4574c4a4998206acd8fab291eabdad720e2cd068c7bdeb6741ad23e2748c",
-      "bytes": 19705
+      "sha256": "ffa9ef71322e1982312437a49b75d6c002f5126bf6da8965646c9ce6f225921f",
+      "bytes": 21453
     },
     {
       "path": "src/calendar/gnome.ts",
       "sha256": "9e1f4fed3a1beba5ebd523d3447eff0acc2f24a4e04ecd64fe5d199a087ed7fe",
       "bytes": 8472
+    },
+    {
+      "path": "src/calendar/ical.ts",
+      "sha256": "605ca70819b57283aba274f16b0a96e7d00854e494824a44fd6c2d51429a61d8",
+      "bytes": 24109
+    },
+    {
+      "path": "src/calendar/kde.ts",
+      "sha256": "3757f873d779c76890463d13a9b3381e0619107bb3639b375e23dfb94021c96e",
+      "bytes": 14652
     },
     {
       "path": "src/calendar/links.ts",
@@ -1100,8 +1125,8 @@
     },
     {
       "path": "src/calendar/upcoming.ts",
-      "sha256": "ee8ff424d04c5a4d815e5de1553e20b2cd6e4fed21f5de6bad1fb04d4c1c3bf0",
-      "bytes": 15174
+      "sha256": "53bbb497c9a6b6a8131a74f4641aabd90c40d940a1e0b0bf3264d4198602a879",
+      "bytes": 16299
     },
     {
       "path": "src/calls/__tests__/app-identities.test.ts",
@@ -1525,13 +1550,13 @@
     },
     {
       "path": "src/config/defaults.ts",
-      "sha256": "801afe959733c3a1349f246a06955bd0d3a5e52b46621fb382bd8531df90a492",
-      "bytes": 13715
+      "sha256": "6d2dab2aced4e5dc08471080cbd2f541b94ecf2bb4d71ec8d117f202eba9bfa7",
+      "bytes": 13985
     },
     {
       "path": "src/config/load.ts",
-      "sha256": "fb6c862b82d013cfa78e33ac6b816e337a1cf24d7770d474ea02913112ff286c",
-      "bytes": 24554
+      "sha256": "8971d3bfd63e091d67e613d2e1da9ea1fc84ad575d14955fdb4d12226fe51b70",
+      "bytes": 24663
     },
     {
       "path": "src/config/onboarding.ts",
@@ -1545,8 +1570,8 @@
     },
     {
       "path": "src/config/settings.ts",
-      "sha256": "562ea30da1bb2766ff692bcb30b24d1a7189b6e0377b248c1912c6deb21ddc88",
-      "bytes": 29556
+      "sha256": "cc7861d7da354e2daf04c4115eb905670944e722ab3cbcee20960e5b414dff51",
+      "bytes": 29580
     },
     {
       "path": "src/config/setup-checks.ts",
@@ -1805,8 +1830,8 @@
     },
     {
       "path": "src/desktop/SettingsAssistantPage.qml",
-      "sha256": "72a71edbe28b00476b939f4561e3147adb0ed4cd9878e394004de684fd63d638",
-      "bytes": 20084
+      "sha256": "e6013335a241418548801f452dd2df2c03228aff02e4fbff5a3d0b079cf998e4",
+      "bytes": 20924
     },
     {
       "path": "src/desktop/SettingsCheck.qml",
@@ -1825,8 +1850,8 @@
     },
     {
       "path": "src/desktop/SettingsDialog.qml",
-      "sha256": "57e59fc86dd6bbd082b4257d813e252265779d9807ab3814652c5ee06612efee",
-      "bytes": 88285
+      "sha256": "2bc64a9fbb256fdc33703b2ad4a455649b6d1938d852c6ddb70daf1d0cb1b54d",
+      "bytes": 88412
     },
     {
       "path": "src/desktop/SettingsHint.qml",
@@ -1865,8 +1890,8 @@
     },
     {
       "path": "src/desktop/SettingsRemindersPage.qml",
-      "sha256": "9cb1b3b565a4d865abe64a00e2f74e63258390a12f475886990ad4fc9501675c",
-      "bytes": 3615
+      "sha256": "2935c2f48828034056bae1cb58c2f95ff8de250846f8ead6c891ade151b94ca2",
+      "bytes": 4156
     },
     {
       "path": "src/desktop/SettingsSection.qml",
@@ -2010,8 +2035,8 @@
     },
     {
       "path": "src/desktop/__tests__/settings-bridge.test.ts",
-      "sha256": "b75dc17e665e5de9b0ae37338f473330d25d21f7468bad15e9e8ce4acfccbcd0",
-      "bytes": 26539
+      "sha256": "976953c5096242a37a5a2a7964ee8a001ac8f94c31eb9b09f535bde8f3ea948e",
+      "bytes": 26551
     },
     {
       "path": "src/desktop/__tests__/settings-paths.test.ts",
@@ -2085,8 +2110,8 @@
     },
     {
       "path": "src/desktop/i18n.js",
-      "sha256": "13716e9bf250e5f1aac9835bcad459a3fbc6a8058d9e6537feee8dabf45d77e0",
-      "bytes": 291130
+      "sha256": "31f03382aab58538d72aaf91e1ac99784aa33fca735ce75003ae994d48766ad7",
+      "bytes": 292630
     },
     {
       "path": "src/desktop/install.ts",
@@ -2364,6 +2389,11 @@
       "bytes": 3563
     },
     {
+      "path": "src/jobs/__tests__/command.test.ts",
+      "sha256": "5baa16fe80365acaa25eff1fbc64e2919d40e478d5a3ddaaf1144a528e98e7e0",
+      "bytes": 1188
+    },
+    {
       "path": "src/jobs/__tests__/enqueue.test.ts",
       "sha256": "d8d25366ad1f341d47ef23c3c0408546be4aceaa7ee10a0b2a14c409602c28a4",
       "bytes": 4599
@@ -2440,13 +2470,13 @@
     },
     {
       "path": "src/jobs/command.ts",
-      "sha256": "70339dc0d8bf14c948aa44e332c73213510978c784a619936884630f0f68702e",
-      "bytes": 3243
+      "sha256": "b6a5db43698f26574e7aa808381ec0fd632fbafd089c2397c0fd794f0bda735c",
+      "bytes": 4447
     },
     {
       "path": "src/jobs/enqueue.ts",
-      "sha256": "5690dd0e8d5c10d9a56e70ab0b4d380e78f62119b7232a52a815011588679787",
-      "bytes": 6018
+      "sha256": "f5c2d9bb1b31bfbd7052a6e6f1e3107eb134ce268ff5e8d3e27afa464c1abb18",
+      "bytes": 6459
     },
     {
       "path": "src/jobs/format.ts",
@@ -2510,8 +2540,8 @@
     },
     {
       "path": "src/jobs/types.ts",
-      "sha256": "5b4e9ce20aecf80784116fac236350bf344381dc98e541f16fa5b2c38645e389",
-      "bytes": 29171
+      "sha256": "9a92d86212b4aea210284182d3b147ddf3993a97d3c0ea38785aa59fed247910",
+      "bytes": 29231
     },
     {
       "path": "src/jobs/worker.ts",
@@ -2605,8 +2635,8 @@
     },
     {
       "path": "src/library-index/build.ts",
-      "sha256": "49990c35c547e8a7944757a55ac3a696d601c04172648b2e655e7caf1f40bb6d",
-      "bytes": 23607
+      "sha256": "15a5f9985f70574780e60d5d18668a699e35f687c85ecadac92816ce4dc558dd",
+      "bytes": 23641
     },
     {
       "path": "src/library-index/embeddings.ts",
@@ -2625,8 +2655,8 @@
     },
     {
       "path": "src/library-index/types.ts",
-      "sha256": "dbaa22e7b61f2be6bc8b38426338aba7306edb018d2aa00f95f3cf75ef4ecd50",
-      "bytes": 3059
+      "sha256": "278246bb8cd04fac2ac40ae09664b7ff65db1a5f5b85f47b76edcea45a8d6e13",
+      "bytes": 3076
     },
     {
       "path": "src/lifecycle/__tests__/removal-plan.test.ts",
@@ -2930,8 +2960,8 @@
     },
     {
       "path": "src/proton/__tests__/upload.test.ts",
-      "sha256": "bb024c9273927a352391f656f7eba9edbb2fd4ebcf0b8f64d50e1aa699d3d241",
-      "bytes": 4990
+      "sha256": "2abe2ffa038581c48ae650c6c04036c85fda9d791e9170ff93acd8dd0690a900",
+      "bytes": 5479
     },
     {
       "path": "src/proton/backup.ts",
@@ -2945,8 +2975,8 @@
     },
     {
       "path": "src/proton/upload.ts",
-      "sha256": "504e926fa46892f4038aba9a430658e9f1aaa9cf1457d1e4e9c2d24c1b3cf009",
-      "bytes": 7930
+      "sha256": "7bb7bebb8945c4c9ed43d6eb4b7452d42d4d731608d463df988d6cc4780fe01c",
+      "bytes": 8208
     },
     {
       "path": "src/provider-analysis/__tests__/adapters.test.ts",
@@ -3245,13 +3275,13 @@
     },
     {
       "path": "src/reminders/scheduler.ts",
-      "sha256": "0a288cc60bcd6abddc1ab1942e1173defe5cc51419d1e2772902b6f8ca5d1204",
-      "bytes": 24725
+      "sha256": "14f258b6381cf781f86976880378749f788c88e57b8dfa9992c085712a4f38d7",
+      "bytes": 24754
     },
     {
       "path": "src/reminders/unit.ts",
-      "sha256": "7f0ff71d4901900b9d1609447e57dfb03b46cacdb90172d1d236bc433b8c9637",
-      "bytes": 4357
+      "sha256": "3d630a83a21e01d94711068f4bec2d51fb00e8cad84337fac0be8105268df50b",
+      "bytes": 4369
     },
     {
       "path": "src/revisions/__tests__/revisions.test.ts",
@@ -3375,8 +3405,8 @@
     },
     {
       "path": "src/speakers/__tests__/voices.test.ts",
-      "sha256": "d2251816c1b7e5583ba8eb875cbc1569da6a120af9e7d265f96b58ffac7c5b76",
-      "bytes": 18182
+      "sha256": "d945226c9c0abbcd7cb01b1fcc28827c534660b48ea431b03a1c2ea8a075bfe8",
+      "bytes": 19073
     },
     {
       "path": "src/speakers/conversation.ts",
@@ -3410,8 +3440,8 @@
     },
     {
       "path": "src/speakers/voice-audio.ts",
-      "sha256": "a02e41b1cc951c40f4e4189364d240b2ef0be2a1462305027b228f1c9ea350ec",
-      "bytes": 5884
+      "sha256": "7d6d280c5c11dec93e113b8cb5e2c7dab4a3682ccfcb184b8f35df1e53ebbbb8",
+      "bytes": 6407
     },
     {
       "path": "src/speakers/voice-engine.ts",

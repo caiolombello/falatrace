@@ -1,3 +1,13 @@
+## 0.2.0-alpha.17 — KOrganizer calendar, agy for Gemini, and four fixes
+
+- **KOrganizer calendar.** `calendar.kde` (off by default) reads the calendars checked in KOrganizer from Akonadi's SQLite database, read-only, to name recordings after their meeting and to feed reminders and pre-meeting briefs. Recurring events are expanded in their own time zone, with moved and cancelled occurrences, and declined invitations and all-day entries are left out. Settings: **Agenda e lembretes** and **Calendário**.
+- **The Gemini choice runs agy.** Google replaced the Gemini CLI with the Antigravity CLI (`agy`) for personal accounts. The subscription CLI choice `gemini` now runs `agy` whenever it is installed, and the legacy `gemini` only where it is not. Like the other tools that cannot switch their own tools off, it answers only once you accepted that.
+- **Installed agents told apart.** Claude Agent and Codex over ACP now say when only the `claude-agent-acp` / `codex-acp` adapter is missing; Gemini over ACP says agy answers through the command line only; OpenCode and agy show as found instead of "not signed in".
+- **Sign in with ChatGPT.** The token requests now carry `resource=https://api.openai.com/v1`, which OpenAI requires; without it the sign-in ended with "O ChatGPT não confirmou o login".
+- **Proton Drive backup.** Long folder listings (a month with about a hundred recordings) were cut at 100 000 characters and failed as invalid JSON; the output of `proton-drive` is now read whole.
+- **Known voices on FFmpeg 8.** Speaker audio is cut with `atrim`, because FFmpeg 8.0's `aselect` let the whole track through.
+- **Checks.** See [ALPHA17.md](docs/ALPHA17.md).
+
 ## 0.2.0-alpha.16 — the Studio opens on Qt 6.10
 
 - **Studio on Qt 6.10.** Alpha.15's Ask panel named a variable `short`, a word the Qt 6.10 QML engine (the system Qt of Ubuntu 26.04) refuses as an identifier, so the whole Studio failed to load with "Type AskPanel unavailable". The variable is renamed, and a new test refuses declarations and parameters in the Studio's QML and JavaScript named with any word Qt 6.10 reserves, each confirmed against libQt6Qml 6.10.2. The Studio journeys in CI run on PySide6 6.11, which accepts some of these words, so they could not catch it.
