@@ -165,8 +165,8 @@
     },
     {
       "path": "docs/ALPHA17.md",
-      "sha256": "2c1218dc9c375b8147d1451439ba20695f227ad5b05699e0d8e1d94f64fac275",
-      "bytes": 6129
+      "sha256": "7c51eb9a4418580e0730f89a00b30e387f0fd21cb1e6837c6af57e4dd0fbad5b",
+      "bytes": 6387
     },
     {
       "path": "docs/ALPHA2-LOCAL-REVIEW.md",
@@ -1090,8 +1090,8 @@
     },
     {
       "path": "src/calendar/__tests__/kde.test.ts",
-      "sha256": "4a976801d7e6040bbba52394f1978310c37665e4c9f73b73d0c3a96ea0044a8b",
-      "bytes": 9100
+      "sha256": "14ba10206cfd3d76223e954acde2cda74367e24f82a1c914fb70bb9089cc1e53",
+      "bytes": 11723
     },
     {
       "path": "src/calendar/__tests__/links.test.ts",
@@ -1115,8 +1115,8 @@
     },
     {
       "path": "src/calendar/kde.ts",
-      "sha256": "3757f873d779c76890463d13a9b3381e0619107bb3639b375e23dfb94021c96e",
-      "bytes": 14652
+      "sha256": "6073f62e7a3fcbfb8d34582b63ad8b8a530befb963f05cb15a6445522ec75e89",
+      "bytes": 14747
     },
     {
       "path": "src/calendar/links.ts",

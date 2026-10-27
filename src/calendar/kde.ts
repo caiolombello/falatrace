@@ -81,14 +81,15 @@ export const locateAkonadi = async (env: NodeJS.ProcessEnv = process.env, home =
   if (driver !== "QSQLITE") throw new Error(`KOrganizer calendar: Akonadi uses ${driver.slice(0, 20)}, only its SQLite database can be read`);
   const database = server.QSQLITE?.Name || join(dataHome, "akonadi", "akonadi.db");
   const korganizer = parseKdeConfig(await readText(join(configHome, "korganizerrc")), env, home);
-  const ids = (korganizer.GlobalCollectionSelection?.Selection ?? "").split(",").map((item) => /^c(\d+)$/.exec(item.trim())?.[1]).filter((id): id is string => !!id).map(Number);
+  const selection = korganizer.GlobalCollectionSelection?.Selection;
+  const ids = (selection ?? "").split(",").map((item) => /^c(\d+)$/.exec(item.trim())?.[1]).filter((id): id is string => !!id).map(Number);
   const ownEmails = new Set<string>();
   const entries = await fs.readdir(configHome).catch(() => [] as string[]);
   for (const name of entries.filter((entry) => /^akonadi_google_resource_\d+rc$/.test(entry)).slice(0, 20)) {
     const account = parseKdeConfig(await readText(join(configHome, name)), env, home).General?.Account?.trim().toLowerCase();
     if (account && /^[^\s@]{1,128}@[^\s@]{1,253}$/.test(account)) ownEmails.add(account);
   }
-  return { database, fileStore: join(dataHome, "akonadi", "file_db_data"), ...(ids.length ? { selection: new Set(ids) } : {}), ownEmails };
+  return { database, fileStore: join(dataHome, "akonadi", "file_db_data"), ...(selection !== undefined ? { selection: new Set(ids) } : {}), ownEmails };
 };
 
 type ItemRow = { collectionId: number; collectionName: string | null; collectionRemoteId: string | null; partId: number; storage: number; data: Uint8Array | string | null };
@@ -230,7 +231,7 @@ export const queryKdeCalendarEvents = async (
       if (startAtMs >= toMs || endAtMs <= fromMs) continue;
       const title = exception.summary.trim() ? exception.summary : master?.summary ?? "";
       if (!title.trim()) continue;
-      const { attendees, declined } = attendeesOf(exception, own);
+      const { attendees, declined } = attendeesOf(exception.attendees.length ? exception : master ?? exception, own);
       push({
         id: `${seriesKey}\n${compactUtc(icalTimeToMs(exception.recurrenceId))}`, seriesId: seriesKey,
         title, startAtMs, endAtMs, recurring: true, attendees, ...(declined ? { selfDeclined: true } : {})

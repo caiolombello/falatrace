@@ -98,6 +98,7 @@ test("only KOrganizer's checked calendars are read; series, exceptions, big payl
     expect(monday!.attendees).toEqual([{ name: "Ana", self: false }, { name: "Caio", self: true }]);
     // The moved occurrence keeps the id of the occurrence it replaces.
     expect(moved!.id).toBe("akonadi:caio@ops.team\nweekly@google.com\n20261027T123000Z");
+    expect(moved!.attendees).toEqual([{ name: "Ana", self: false }, { name: "Caio", self: true }]);
     expect(declined!.selfDeclined).toBe(true);
     expect(big_!.id).toBe("akonadi:caio@ops.team\nbig@google.com");
     expect(big_!.seriesId).toBeUndefined();
@@ -108,6 +109,39 @@ test("only KOrganizer's checked calendars are read; series, exceptions, big payl
     expect(match?.event.seriesId).toBe("akonadi:caio@ops.team\nweekly@google.com");
     // A declined meeting never names a recording.
     expect(await findKdeCalendarMatch("2026-10-27T15:00:00Z", "2026-10-27T16:00:00Z", undefined, (since, until) => queryKdeCalendarEvents(since, until, { source }))).toBeUndefined();
+  });
+});
+
+test("an explicitly empty KOrganizer selection reads no calendars", async () => {
+  await withHome(async ({ home, config, data }) => {
+    const database = join(data, "akonadi", "akonadi.db");
+    createAkonadi(database, [{ collection: 12, payload: ics("UID:private", "SUMMARY:Not selected", "DTSTART:20261027T150000Z", "DTEND:20261027T160000Z") }]);
+    await fs.writeFile(join(config, "korganizerrc"), "[GlobalCollectionSelection]\nSelection=\n");
+    const source = await locateAkonadi({ HOME: home, XDG_CONFIG_HOME: config, XDG_DATA_HOME: data }, home);
+    expect(await queryKdeCalendarEvents(T("2026-10-27T00:00:00Z"), T("2026-10-27T23:59:00Z"), { source })).toEqual([]);
+  });
+});
+
+test("moved occurrences inherit attendees and declines unless they supply their own attendees", async () => {
+  await withHome(async ({ home, config, data }) => {
+    const database = join(data, "akonadi", "akonadi.db");
+    createAkonadi(database, [
+      { collection: 12, payload: ics("UID:declined-series", "SUMMARY:Declined series", "DTSTART:20261026T150000Z", "DTEND:20261026T160000Z", "RRULE:FREQ=DAILY;COUNT=3",
+        "ATTENDEE;CN=Ana;PARTSTAT=ACCEPTED:mailto:ana@x.com", "ATTENDEE;CN=Caio;PARTSTAT=DECLINED:mailto:caio@ops.team") },
+      { collection: 12, payload: ics("UID:declined-series", "RECURRENCE-ID:20261027T150000Z", "DTSTART:20261027T160000Z", "DTEND:20261027T170000Z") },
+      { collection: 12, payload: ics("UID:declined-series", "RECURRENCE-ID:20261028T150000Z", "DTSTART:20261028T170000Z", "DTEND:20261028T180000Z",
+        "ATTENDEE;CN=Caio;PARTSTAT=ACCEPTED:mailto:caio@ops.team") }
+    ]);
+    const source = await locateAkonadi({ HOME: home, XDG_CONFIG_HOME: config, XDG_DATA_HOME: data }, home);
+    const query = (since: Date, until: Date) => queryKdeCalendarEvents(since, until, { source });
+    const [declined] = await query(T("2026-10-27T00:00:00Z"), T("2026-10-28T00:00:00Z"));
+    expect(declined?.attendees).toEqual([{ name: "Ana", self: false }, { name: "Caio", self: true }]);
+    expect(declined?.selfDeclined).toBe(true);
+    expect(await findKdeCalendarMatch("2026-10-27T16:00:00Z", "2026-10-27T17:00:00Z", undefined, query)).toBeUndefined();
+    const [accepted] = await query(T("2026-10-28T00:00:00Z"), T("2026-10-29T00:00:00Z"));
+    expect(accepted?.attendees).toEqual([{ name: "Caio", self: true }]);
+    expect(accepted?.selfDeclined).toBeUndefined();
+    expect(await findKdeCalendarMatch("2026-10-28T17:00:00Z", "2026-10-28T18:00:00Z", undefined, query)).toBeDefined();
   });
 });
 
