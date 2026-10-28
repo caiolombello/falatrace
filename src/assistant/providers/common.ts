@@ -184,7 +184,7 @@ export const readBounded = async (
   stream: ReadableStream<Uint8Array> | null | undefined,
   maxBytes: number,
   keep: "head" | "tail" = "head",
-  options: { stopWhenFull?: boolean } = {}
+  options: { stopWhenFull?: boolean; /** Accepted head bytes, before the stream completes. */ onChunk?: (chunk: Uint8Array) => void } = {}
 ): Promise<{ text: string; truncated: boolean }> => {
   if (!stream) return { text: "", truncated: false };
   const reader = stream.getReader();
@@ -207,6 +207,7 @@ export const readBounded = async (
         const room = maxBytes - size;
         if (value.byteLength > room) {
           chunks.push(value.subarray(0, room));
+          options.onChunk?.(value.subarray(0, room));
           size = maxBytes;
           truncated = true;
           if (options.stopWhenFull) {
@@ -216,6 +217,7 @@ export const readBounded = async (
         } else {
           chunks.push(value);
           size += value.byteLength;
+          options.onChunk?.(value);
         }
       } else {
         chunks.push(value);
@@ -384,11 +386,11 @@ export type CommandResult = { exitCode: number | null; stdout: string; stderr: s
 export const runCaptured = async (
   spawn: SpawnFn,
   argv: string[],
-  options: { cwd: string; env: Record<string, string | undefined>; input?: string; timeoutMs: number; signal?: AbortSignal; maxOutputBytes?: number; stopSignals?: NodeJS.Signals[]; graceMs?: number }
+  options: { cwd: string; env: Record<string, string | undefined>; input?: string; timeoutMs: number; signal?: AbortSignal; maxOutputBytes?: number; stopSignals?: NodeJS.Signals[]; graceMs?: number; onStdout?: (chunk: Uint8Array) => void }
 ): Promise<CommandResult> => {
   if (options.signal?.aborted) return { exitCode: null, stdout: "", stderr: "", timedOut: false, cancelled: true, truncated: false };
   const child = spawn(argv, { cwd: options.cwd, env: options.env });
-  const stdout = readBounded(child.stdout, options.maxOutputBytes ?? 8 * 1024 * 1024);
+  const stdout = readBounded(child.stdout, options.maxOutputBytes ?? 8 * 1024 * 1024, "head", { onChunk: options.onStdout });
   const stderr = readBounded(child.stderr, 64 * 1024, "tail");
   void writeInput(child, options.input ?? "");
   let timedOut = false;

@@ -100,6 +100,15 @@ case "$FAKE_CLI_MODE" in
   auth) echo '{"event":"result","result":{"status":"ERROR","response":"","error":"Print mode: auth error: not signed in"}}'; echo 'AGY_ERROR' >&2; exit 3 ;;
   error) echo '{"event":"result","result":{"status":"ERROR","response":"","error":"model unavailable"}}'; exit 3 ;;
   nofinal) echo '{"event":"step_update","step_update":{"step_type":"agent_response","text_delta":"Parcial"}}' ;;
+  streaming)
+    printf '%s' '{"event":"step_update","step_update":{"step_type":"agent_response","text_delta":"Ação '
+    printf '%s\\n' 'confirmada"}}'
+    echo '{"event":"step_update","step_update":{"step_type":"thought","text_delta":"pensamento privado"}}'
+    echo '{"event":"step_update","step_update":{"step_type":"tool_result","text_delta":"resultado de ferramenta"}}'
+    echo ready > "$log.partial"
+    while [ ! -f "$log.release" ]; do sleep 0.02; done
+    printf '%s' '{"event":"result","result":{"status":"SUCCESS","response":"Ação confirmada."}}'
+    ;;
   *)
     echo '{"event":"step_update","step_update":{"step_index":1,"state":"ACTIVE","step_type":"agent_response","text_delta":"Resposta "}}'
     echo 'not json'

@@ -6,8 +6,10 @@ import QtQuick.Layouts
 // the moments an answer cites. The scope comes from where you opened it (this meeting, a person, a
 // client or the whole library) and the destination is shown before anything is sent: one outside
 // this computer needs a confirmation once per conversation (assistant-plan's consentKey binds the
-// destination and the scope). The answer streams (assistant-poll every 400 ms); under each
-// paragraph its citations open the meeting at that moment. "/" at the start of the input offers
+// destination and the scope). The answer streams (assistant-poll every 400 ms); inline citations
+// open their recording moment, and source buttons below the answer keep keyboard access.
+// Markdown stays one document so lists, tables and fenced code retain their structure.
+// "/" at the start of the input offers
 // recipes, read again on each opening and after Settings changes them. The consent and the problem
 // cards sit above the input, never below the fold of a long conversation, and the consent takes the
 // focus. Every failure stays in this panel: errorText and notice are never touched.
@@ -204,7 +206,7 @@ Rectangle {
             if (request.runId !== runId || !live) return
             if (!message.ok) { finishLive("failed", t(message.error)); return }
             const result = message.result
-            live = Object.assign({}, live, {text: result.text || "", citations: asList(result.citations), cutOff: result.cutOff === true})
+            live = Object.assign({}, live, {text: result.text || "", html: result.html || "", citations: asList(result.citations), cutOff: result.cutOff === true})
             if (result.threadId) threadId = result.threadId
             if (result.status !== "running") finishLive(result.status === "done" ? "done" : result.status, result.error ? t(result.error) : "")
         } else if (request.op === "assistant-threads") {
@@ -217,7 +219,7 @@ Rectangle {
             let asked = {question: "", recipeId: ""}
             messages = asList(result.messages).map(function(item){
                 if (item.role === "user") asked = {question: item.recipeId ? "" : (item.text || ""), recipeId: item.recipeId || ""}
-                return {role: item.role, text: item.text || "", citations: asList(item.citations), status: "done", question: asked.question, recipeId: item.recipeId || asked.recipeId}
+                return {role: item.role, text: item.text || "", html: item.html || "", citations: asList(item.citations), status: "done", question: asked.question, recipeId: item.recipeId || asked.recipeId}
             })
             Qt.callLater(function(){ messageList.positionViewAtEnd() })
         }
@@ -265,6 +267,14 @@ Rectangle {
         if (selected.key && String(detail.jobId || selected.jobId || "").toLowerCase() === String(citation.jobId).toLowerCase()) {
             if (start >= 0) openCitation(citation.segmentId || "", start, false); else detailView.focusSegment(citation.segmentId || "", 0)
         } else openMeetingAt(citation.jobId, citation.segmentId || "", start)
+    }
+    function openAnswerLink(link, citations) {
+        const match = /^citation:(\d{1,6})$/.exec(String(link))
+        if (!match) return false
+        const citation = asList(citations).find(function(item){ return Number(item.n) === Number(match[1]) })
+        if (!citation) return false
+        openCited(citation)
+        return true
     }
     function copyAnswer(text) {
         askClipboard.text = String(text || "")
@@ -316,56 +326,53 @@ Rectangle {
         property int index: -1
         property bool streaming: false
         spacing: 6
-        Repeater {
-            model: askPanel.paragraphs(answer.message.text).length ? askPanel.paragraphs(answer.message.text) : (answer.streaming ? [""] : [])
-            delegate: ColumnLayout {
-                id: paragraphBlock
-                required property var modelData
-                required property int index
-                readonly property var cited: askPanel.citationsIn(modelData, asList(answer.message.citations))
-                Layout.fillWidth: true
-                spacing: 4
-                Label {
-                    Layout.fillWidth: true
-                    text: paragraphBlock.modelData + (answer.streaming && paragraphBlock.index === askPanel.paragraphs(answer.message.text).length - 1 ? "▍" : (answer.streaming && !paragraphBlock.modelData ? "▍" : ""))
-                    textFormat: Text.PlainText; wrapMode: Text.Wrap; color: aiInk; font.pixelSize: 14; lineHeight: 1.3
-                }
-                Flow {
-                    Layout.fillWidth: true
-                    spacing: 4
-                    visible: paragraphBlock.cited.length > 0
-                    Repeater {
-                        model: paragraphBlock.cited
-                        delegate: AbstractButton {
-                            id: citeChip
-                            required property var modelData
-                            objectName: "askCitation-" + answer.index + "-" + modelData.n
-                            focusPolicy: Qt.StrongFocus
-                            hoverEnabled: true
-                            implicitHeight: 22
-                            implicitWidth: citeRow.implicitWidth + 14
-                            Accessible.role: Accessible.Button
-                            Accessible.name: tf("Abrir a fonte %1", askPanel.citationLabel(modelData))
-                            ToolTip.visible: hovered
-                            ToolTip.delay: 500
-                            ToolTip.text: (modelData.title || "") + (typeof modelData.start === "number" ? " · " + clock(modelData.start) : "")
-                            onClicked: askPanel.openCited(modelData)
-                            Keys.onReturnPressed: askPanel.openCited(modelData)
-                            Keys.onEnterPressed: askPanel.openCited(modelData)
-                            background: Rectangle {
-                                radius: 11
-                                color: citeChip.down ? shade(citationSurface, 0.12) : citeChip.hovered ? shade(citationSurface, 0.05) : citationSurface
-                                Rectangle { anchors.fill: parent; anchors.margins: -3; radius: 14; color: "transparent"; border.width: 2; border.color: accent; visible: citeChip.visualFocus }
-                            }
-                            contentItem: Item {
-                                Row {
-                                    id: citeRow
-                                    anchors.centerIn: parent
-                                    spacing: 4
-                                    FtIcon { name: typeof citeChip.modelData.start === "number" ? "play" : "transcript"; tint: citationInk; size: 10; anchors.verticalCenter: parent.verticalCenter }
-                                    Label { text: askPanel.citationLabel(citeChip.modelData); textFormat: Text.PlainText; color: citationInk; font.pixelSize: 11; font.weight: Font.DemiBold; anchors.verticalCenter: parent.verticalCenter }
-                                }
-                            }
+        TextEdit {
+            objectName: "askAnswerText-" + answer.index
+            Layout.fillWidth: true
+            Layout.preferredHeight: contentHeight
+            readOnly: true
+            selectByMouse: true
+            wrapMode: TextEdit.Wrap
+            text: (answer.message.html ? "<style>a { color: " + accent + "; }</style>" + answer.message.html : (answer.message.text || "")) + (answer.streaming ? "▍" : "")
+            textFormat: answer.message.html ? TextEdit.RichText : TextEdit.PlainText
+            color: aiInk
+            font.pixelSize: 14
+            onLinkActivated: function(link) { askPanel.openAnswerLink(link, answer.message.citations) }
+        }
+        Flow {
+            Layout.fillWidth: true
+            spacing: 4
+            visible: asList(answer.message.citations).length > 0
+            Repeater {
+                model: askPanel.citationsIn(answer.message.text, asList(answer.message.citations))
+                delegate: AbstractButton {
+                    id: citeChip
+                    required property var modelData
+                    objectName: "askCitation-" + answer.index + "-" + modelData.n
+                    focusPolicy: Qt.StrongFocus
+                    hoverEnabled: true
+                    implicitHeight: 24
+                    implicitWidth: citeRow.implicitWidth + 14
+                    Accessible.role: Accessible.Button
+                    Accessible.name: tf("Abrir a fonte %1", askPanel.citationLabel(modelData))
+                    ToolTip.visible: hovered
+                    ToolTip.delay: 500
+                    ToolTip.text: (modelData.title || "") + (typeof modelData.start === "number" ? " · " + clock(modelData.start) : "")
+                    onClicked: askPanel.openCited(modelData)
+                    Keys.onReturnPressed: askPanel.openCited(modelData)
+                    Keys.onEnterPressed: askPanel.openCited(modelData)
+                    background: Rectangle {
+                        radius: 11
+                        color: citeChip.down ? shade(citationSurface, 0.12) : citeChip.hovered ? shade(citationSurface, 0.05) : citationSurface
+                        Rectangle { anchors.fill: parent; anchors.margins: -3; radius: 14; color: "transparent"; border.width: 2; border.color: accent; visible: citeChip.visualFocus }
+                    }
+                    contentItem: Item {
+                        Row {
+                            id: citeRow
+                            anchors.centerIn: parent
+                            spacing: 4
+                            FtIcon { name: typeof citeChip.modelData.start === "number" ? "play" : "transcript"; tint: citationInk; size: 10; anchors.verticalCenter: parent.verticalCenter }
+                            Label { text: askPanel.citationLabel(citeChip.modelData); textFormat: Text.PlainText; color: citationInk; font.pixelSize: 11; font.weight: Font.DemiBold; anchors.verticalCenter: parent.verticalCenter }
                         }
                     }
                 }

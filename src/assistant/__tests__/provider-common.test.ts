@@ -136,6 +136,13 @@ describe("stream readers", () => {
     expect(await readBounded(undefined, 10)).toEqual({ text: "", truncated: false });
   });
 
+  test("readBounded streams only accepted bytes to its callback", async () => {
+    const chunks: Uint8Array[] = [];
+    const result = await readBounded(streamOf(["abc", "def", "ghi"]), 5, "head", { onChunk: (chunk) => { chunks.push(chunk); } });
+    expect(Buffer.concat(chunks).toString()).toBe("abcde");
+    expect(result).toEqual({ text: "abcde", truncated: true });
+  });
+
   test("readBounded with stopWhenFull cancels a body that never ends", async () => {
     let cancelled = false;
     let pulls = 0;

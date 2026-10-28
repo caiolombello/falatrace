@@ -236,6 +236,78 @@ describe("library, person and client scopes", () => {
       .rejects.toThrow(RETRIEVAL_ERRORS.noMeetings);
   });
 
+  test("weekly recall leaves room for an older search hit when the week has more than twelve meetings", async () => {
+    const current = Array.from({ length: 12 }, (_value, index) => facts(`${String(index).padStart(8, "0")}-5c22-4802-97b8-f3e1a52c1919`, {
+      date: "2026-10-22T13:00:00.000Z"
+    }));
+    const older = facts(C);
+    const pack = await buildContextPack({ scope: { kind: "library" }, question: "What did I promise this week?",
+      index: fakeIndex([...current, older], [chunk(C, ["s000000"], ["I promise to send it this week."], 0)]),
+      config: configWith(60_000), readers: meetingReaders({ segments: segments(1, () => "Uma entrega combinada.") }), now: new Date("2026-10-25T12:00:00.000Z") });
+    expect(pack.jobs[0]).toBe(current[0]!.jobId);
+    expect(pack.jobs).toContain(C);
+    expect(pack.jobs.length).toBeLessThanOrEqual(12);
+    expect(pack.truncated).toBe(true);
+  });
+
+  test("calendar recall uses local Monday boundaries, independently of the question language", async () => {
+    const dated = [
+      facts(A, { date: new Date(2026, 9, 26, 0, 0).toISOString() }),
+      facts(B, { date: new Date(2026, 9, 25, 23, 59).toISOString() }),
+      facts(C, { date: new Date(2026, 9, 19, 0, 0).toISOString() }),
+      facts("6e3b529e-5c22-4802-97b8-f3e1a52c1919", { date: new Date(2026, 9, 18, 23, 59).toISOString() })
+    ];
+    for (const question of ["O que eu prometi esta semana?", "What did I promise this week?", "¿Qué prometí esta semana?"]) {
+      const pack = await buildContextPack({ scope: { kind: "library" }, question, index: fakeIndex(dated, []),
+        config: configWith(60_000), readers: meetingReaders({ segments: segments(1, () => "Uma fala.") }), now: new Date(2026, 9, 25, 12) });
+      expect(pack.jobs.slice(0, 2)).toEqual([B, C]);
+      expect(pack.text).toContain("2026-10-19 00:00 até 2026-10-26 00:00");
+      expect(pack.text).toContain("2 reunião(ões) deste escopo começaram nesse período");
+    }
+    const previous = await buildContextPack({ scope: { kind: "library" }, question: "O que eu prometi semana passada?", index: fakeIndex(dated, []),
+      config: configWith(60_000), readers: meetingReaders({ segments: [] }), now: new Date(2026, 9, 26, 12) });
+    expect(previous.jobs.slice(0, 2)).toEqual([B, C]);
+  });
+
+  test("temporal recall stays inside the person or client scope and recipe data cannot set its period", async () => {
+    const dated = [facts(A, { date: "2026-10-22T13:00:00.000Z" }), facts(B, { ...all[1], clients: all[0]!.clients })];
+    const index = fakeIndex(dated, [chunk(B, ["s000000"], ["I promise to send it this week."], 0)]);
+    for (const scope of [{ kind: "person", personId: "name:Ana Souza" }, { kind: "client", clientCode: "CL001" }] as const) {
+      const pack = await buildContextPack({ scope, question: "What did I promise this week?", index, config: configWith(60_000),
+        readers: meetingReaders({ segments: segments(1, () => "Vou entregar a proposta.") }), now: new Date("2026-10-25T12:00:00.000Z") });
+      expect(pack.jobs).toEqual([B]);
+      expect(pack.text).toContain("0 reunião(ões) deste escopo começaram nesse período");
+    }
+    const recipe = await buildContextPack({ scope: { kind: "library" }, question: "Liste compromissos", query: "Summarize. <recipe-data>this week</recipe-data>",
+      index, config: configWith(60_000), readers, now: new Date("2026-10-25T12:00:00.000Z") });
+    expect(recipe.jobs).toEqual([B]);
+    expect(recipe.text).not.toContain("Período mencionado");
+  });
+
+  test("a cross-language miss reads speech with checked markers within the shared budget", async () => {
+    const pack = await buildContextPack({ scope: { kind: "library" }, question: "What commitments did I make?", index: fakeIndex([facts(A), facts(B)], []),
+      config: configWith(4_000), readers: meetingReaders({ segments: segments(100, (index) => `Vou enviar a proposta ${index}. ${"Detalhes da conversa. ".repeat(10)}`) }) });
+    expect(pack.jobs).toEqual([A, B]);
+    expect(pack.text.length).toBeLessThanOrEqual(4_000);
+    expect(pack.truncated).toBe(true);
+    for (const label of ["m1", "m2"]) expect([...pack.refs.keys()].some((key) => key.startsWith(`${label}:`))).toBe(true);
+    for (const [key, ref] of pack.refs) {
+      expect(pack.text).toContain(`[${key} `);
+      expect(ref.jobId).toBe(key.startsWith("m1:") ? A : B);
+    }
+  });
+
+  test("a clipped search hit is still labelled partial when its meeting is in the requested week", async () => {
+    const text = "I promise to send the proposal this week. ".repeat(100);
+    const pack = await buildContextPack({ scope: { kind: "library" }, question: "What did I promise this week?",
+      index: fakeIndex([facts(A, { date: "2026-10-22T13:00:00.000Z" })], [chunk(A, ["s000000"], [text], 0)]),
+      config: configWith(60_000), readers: meetingReaders({ segments: [{ id: "s000000", start: 0, end: 29, text }] }),
+      now: new Date("2026-10-25T12:00:00.000Z") });
+    expect(pack.text).not.toContain(text);
+    expect(pack.refs.has("m1:s000000")).toBe(true);
+    expect(pack.truncated).toBe(true);
+  });
+
   test("stays within the budget and marks what was left out", async () => {
     const many = Array.from({ length: 30 }, (_value, index) => facts(`${String(index).padStart(8, "0")}-5c22-4802-97b8-f3e1a52c1919`, { title: `Reunião ${index}`, overview: "Visão geral ".repeat(40) }));
     const bigChunks = many.map((item) => chunk(item.jobId, ["s000000", "s000001"], ["orçamento ".repeat(70), "orçamento aprovado ".repeat(30)], 0));

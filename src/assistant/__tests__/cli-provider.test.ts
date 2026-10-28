@@ -189,6 +189,43 @@ describe("subscription CLIs", () => {
     });
   });
 
+  test("Antigravity sends only answer deltas before the process exits, without duplicating its final result", async () => {
+    await withTempDir(async (dir) => {
+      const s = await setup(dir, ["agy"]);
+      const request = chatRequest();
+      let finished = false;
+      const running = cli(s, "gemini", { env: { FAKE_CLI_MODE: "streaming" } }).run(request).finally(() => { finished = true; });
+      try {
+        await waitFor(() => exists(`${s.log}.partial`));
+        await waitFor(() => request.deltas.length > 0, 1_000);
+        expect(finished).toBe(false);
+        expect(request.deltas.join("")).toBe("Ação confirmada");
+      } finally {
+        await fs.writeFile(`${s.log}.release`, "continue");
+        const result = await running;
+        expect(result.text).toBe("Ação confirmada.");
+      }
+      expect(request.deltas.join("")).toBe("Ação confirmada.");
+    });
+  });
+
+  test("Antigravity cancels after partial text and never accepts a stream without its final result", async () => {
+    await withTempDir(async (dir) => {
+      const s = await setup(dir, ["agy"]);
+      const controller = new AbortController();
+      const request = chatRequest({ signal: controller.signal });
+      const running = cli(s, "gemini", { env: { FAKE_CLI_MODE: "streaming" } }).run(request);
+      try { await waitFor(() => request.deltas.length > 0); }
+      finally { controller.abort(); }
+      await expectProviderError(running, COMMON_PROVIDER_MESSAGES.cancelled, "cancelled");
+      expect(request.deltas.join("")).toBe("Ação confirmada");
+      expect(await fs.readdir(s.root)).toEqual([]);
+      const incomplete = chatRequest();
+      await expectProviderError(cli(s, "gemini", { env: { FAKE_CLI_MODE: "nofinal" } }).run(incomplete), cliFailedMessage(ANTIGRAVITY_CLI), "unavailable");
+      expect(incomplete.deltas).toEqual(["Parcial"]);
+    });
+  });
+
   test("opencode: text events are joined in order, other events and stray lines skipped", async () => {
     await withTempDir(async (dir) => {
       const s = await setup(dir);

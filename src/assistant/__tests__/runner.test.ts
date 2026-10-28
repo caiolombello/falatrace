@@ -423,6 +423,32 @@ describe("threads", () => {
 });
 
 describe("with the real index", () => {
+  test("a weekly question reaches this week's transcript even when only an older meeting matches its words", async () => {
+    fixture = await makeRoot();
+    const current = await writeJob(fixture, { name: "semana-atual", createdAt: "2026-10-22T13:00:00.000Z",
+      segments: [{ start: 0, end: 8, text: "Eu fico de enviar a proposta revisada na sexta.", speaker: "S1" }] });
+    const old = await writeJob(fixture, { name: "semana-anterior", createdAt: "2026-10-01T13:00:00.000Z",
+      segments: [{ start: 0, end: 8, text: "I promise to review the old contract this week.", speaker: "S2" }] });
+    const config = structuredClone(DEFAULT_CONFIG);
+    const index = new LibraryIndex(config);
+    await index.refresh();
+    for (const kind of ["chatgpt", "acp", "cli"] as const) {
+      const { provider, requests } = fakeProvider({ ...REMOTE, kind, id: kind }, async () => ({ text: "Proposta [[m1:s000000]].", stopReason: "end" }));
+      const { runner } = await setup(provider, { config, index, readers: createAssistantReaders() });
+      const input = { scope: { kind: "library" } as const, question: "What did I promise this week?" };
+      const plan = await runner.plan(input);
+      expect(plan.meetings[0]!.jobId).toBe(current.id);
+      // Older matches remain available: meeting date and a promised deadline are different facts.
+      expect(plan.meetings.some((meeting) => meeting.jobId === old.id)).toBe(true);
+      const { runId } = await runner.start({ ...input, consentKey: plan.consentKey });
+      const answer = await settle(runner, runId);
+      expect(answer.status).toBe("done");
+      expect(answer.citations[0]!.jobId).toBe(current.id);
+      expect(requests[0]!.messages[0]!.content).toContain("[m1:s000000 00:00 S1] Eu fico de enviar a proposta revisada na sexta.");
+      expect(requests[0]!.system).toContain("Today is 2026-10-25.");
+    }
+  });
+
   test("library questions label meetings m1..mN and citations resolve to recordings", async () => {
     fixture = await makeRoot();
     const budget = await writeJob(fixture, { name: "orcamento", createdAt: "2026-10-01T13:00:00.000Z",
