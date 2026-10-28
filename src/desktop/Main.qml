@@ -364,7 +364,7 @@ ApplicationWindow {
         return ({both: t("Microfone + áudio do sistema"), microphone: t("Somente microfone"), desktop: t("Somente áudio do sistema"), none: t("Áudio desativado")})[configured.audioSource] || t("Áudio: ") + configured.audioSource
     }
     function captureNeedsAttention() { return !!(captureStatus.warning || (captureStatus.audio && captureStatus.audio.error)) }
-    // Plain-text structure for model Markdown: never rendered as rich text, links or images.
+    // Legacy summaries use plain-text blocks. Ask has its own allowlisted Markdown renderer.
     function sourceSeconds(text) {
         const match = String(text || "").match(/\[(\d{1,2}):(\d{2})(?::(\d{2}))?/)
         if (!match) return -1

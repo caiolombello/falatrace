@@ -141,6 +141,8 @@
 			"src/desktop/notes-bridge.ts",
 			"src/desktop/summary-bridge.ts",
 			"src/desktop/assistant-bridge.ts",
+			"src/desktop/assistant-markdown.ts",
+			"src/desktop/__tests__/assistant-markdown.test.ts",
 			"src/desktop/share-bridge.ts",
 			"src/desktop/entities-bridge.ts",
 			"src/desktop/home-bridge.ts",

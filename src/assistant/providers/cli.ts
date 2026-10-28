@@ -25,8 +25,8 @@ import {
 
 // One-shot runs of the user's own subscription CLIs. The prompt goes on stdin, the working
 // directory is a fresh empty folder, tools/MCP/session history are switched off where the
-// CLI allows it, and the answer is read from its JSON output. No streaming: the whole answer
-// is delivered once.
+// CLI allows it, and the final answer is read from its JSON output. Antigravity also emits
+// answer deltas while running; the other variants deliver their whole answer once.
 
 export type CliToolPreset = { label: string; command: string; subscription: string; loginHint: string; /** Replaces the usual "not found" message. */ notFound?: string };
 
@@ -209,6 +209,32 @@ const parseAntigravity = (stdout: string): Parsed => {
   };
 };
 
+/** Decode NDJSON across byte/UTF-8 boundaries; thoughts and tool output never become answer text. */
+const antigravityStream = (request: ChatRequest) => {
+  const decoder = new TextDecoder();
+  let pending = "", text = "";
+  const line = (value: string): void => {
+    let event: unknown;
+    try { event = JSON.parse(value); } catch { return; }
+    if (request.signal.aborted || !isRecord(event) || event.event !== "step_update" || !isRecord(event.step_update)) return;
+    const update = event.step_update;
+    if (update.step_type !== "agent_response" || typeof update.text_delta !== "string") return;
+    const delta = update.text_delta.slice(0, Math.max(0, MAX_ANSWER_CHARACTERS - text.length));
+    if (delta) { text += delta; request.onDelta?.(delta); }
+  };
+  return {
+    push(chunk: Uint8Array): void {
+      pending += decoder.decode(chunk, { stream: true });
+      let end = pending.indexOf("\n");
+      while (end >= 0) {
+        line(pending.slice(0, end)); pending = pending.slice(end + 1);
+        end = pending.indexOf("\n");
+      }
+    },
+    finish(): string { pending += decoder.decode(); if (pending.trim()) line(pending); pending = ""; return text; }
+  };
+};
+
 /** Reads codex's final-message file without following a link someone could have put there. */
 const readOutputFile = async (path: string): Promise<string | undefined> => {
   let handle: fs.FileHandle | undefined;
@@ -343,6 +369,7 @@ export const createCliProvider = (config: AppConfig, deps: CliDeps = {}): ChatPr
       await fs.mkdir(cwd, { mode: 0o700 });
       await fs.mkdir(outputDir, { mode: 0o700 });
       const invocation = buildCliInvocation(variant, executable, model, { cwd, outputFile: join(outputDir, "last.txt") });
+      const stream = variant === "antigravity" ? antigravityStream(request) : undefined;
       const result = await runCaptured(launch, invocation.argv, {
         cwd,
         env: childEnvironment(env, invocation.lockdown),
@@ -350,10 +377,12 @@ export const createCliProvider = (config: AppConfig, deps: CliDeps = {}): ChatPr
         timeoutMs: timeouts.totalMs,
         signal: request.signal,
         stopSignals: ["SIGINT", "SIGTERM"],
-        graceMs: timeouts.stopGraceMs
+        graceMs: timeouts.stopGraceMs,
+        onStdout: stream?.push
       });
       if (result.cancelled || request.signal.aborted) throw new ProviderError(COMMON_PROVIDER_MESSAGES.cancelled, "cancelled");
       if (result.timedOut) throw new ProviderError(COMMON_PROVIDER_MESSAGES.timeout, "timeout");
+      const streamed = stream?.finish() ?? "";
       let parsed: Parsed;
       if (result.exitCode !== 0) {
         const antigravityAuth = variant === "antigravity" && (() => { const outcome = parseAntigravity(result.stdout); return "failed" in outcome && outcome.auth === true; })();
@@ -378,7 +407,9 @@ export const createCliProvider = (config: AppConfig, deps: CliDeps = {}): ChatPr
       }
       if (!parsed.text.trim()) throw new ProviderError(cliEmptyMessage(preset), "protocol");
       const text = parsed.text.length > MAX_ANSWER_CHARACTERS ? parsed.text.slice(0, MAX_ANSWER_CHARACTERS) : parsed.text;
-      request.onDelta?.(text);
+      // A final result may extend the last delta; emit only that suffix, never repeat the stream.
+      // If it revises the text, the runner replaces the partial answer with this authoritative result.
+      if (text.startsWith(streamed) && text.length > streamed.length) request.onDelta?.(text.slice(streamed.length));
       return {
         text,
         stopReason: text.length < parsed.text.length ? "length" : (parsed.stopReason ?? "end"),

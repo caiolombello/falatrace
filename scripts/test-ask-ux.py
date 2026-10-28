@@ -15,7 +15,7 @@ recipes read again on each opening and after Settings saves one, and a bridge wi
 assistant. Exit 77 means no Studio runtime is available.
 """
 from pathlib import Path
-import json, sys, tempfile
+import json, shutil, subprocess, sys, tempfile
 
 repo = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(repo / 'scripts'))
@@ -28,6 +28,10 @@ JOB = '22222222-2222-4222-8222-222222222222'
 OTHER = '55555555-5555-4555-8555-555555555555'
 LOCAL_KEY = 'c' * 64
 EXTERNAL_KEY = 'd' * 64
+MARKDOWN = '## Compromissos\n\n- **Enviar a proposta** até sexta [1].\n- Revisar o `deploy` com Ana [2].\n\n> Confirmar o prazo com o time.\n\n```sh\necho <serviço>\n\necho fim\n```'
+MARKDOWN_HTML = subprocess.check_output([shutil.which('bun'), '-e',
+    'import {renderAssistantMarkdown} from %s; process.stdout.write(renderAssistantMarkdown(await Bun.stdin.text(), [{n:1},{n:2}]));' % json.dumps(str(repo / 'src/desktop/assistant-markdown.ts'))],
+    input=MARKDOWN, text=True)
 STUB = r'''#!/usr/bin/python3
 import sys, json, os
 mode = os.environ['FALATRACE_TEST_MODE']; log = open(os.environ['FALATRACE_REQUEST_LOG'], 'a')
@@ -61,6 +65,10 @@ recipes = [{'id': 'follow-up-email', 'name': 'E-mail de follow-up', 'description
            {'id': 'prep-next-meeting', 'name': 'Preparar a próxima reunião', 'description': 'Prep.', 'scope': 'library', 'builtIn': True, 'prompt': 'x', 'version': 1},
            {'id': 'what-did-i-promise', 'name': 'O que eu prometi', 'description': 'Promises.', 'scope': 'library', 'builtIn': True, 'prompt': 'x', 'version': 1}]
 def answer(scope):
+    if mode.startswith('markdown-'):
+        return (os.environ['ASK_MARKDOWN'],
+                [{'n': 1, 'jobId': JOB, 'segmentId': 's1', 'start': 3, 'title': 'Daily do time', 'date': '2026-10-21T14:00:00Z'},
+                 {'n': 2, 'jobId': JOB, 'segmentId': 's3', 'start': 610, 'title': 'Daily do time', 'date': '2026-10-21T14:00:00Z'}])
     if scope.get('kind') == 'library':
         return ('A equipe manteve o lançamento no dia 30 [1].\n\nNa 1:1 com a Ana, o SSO ficou pronto [2].',
                 [{'n': 1, 'jobId': JOB, 'segmentId': 's1', 'start': 3, 'title': 'Daily do time', 'date': '2026-10-21T14:00:00Z'},
@@ -110,6 +118,8 @@ for line in sys.stdin:
             v = {'status': 'running', 'threadId': run['thread'], 'text': text.split('\n\n')[0][:30], 'citations': []}
         else:
             v = {'status': 'done', 'threadId': run['thread'], 'text': text, 'citations': citations, 'saved': True}
+        if mode.startswith('markdown-'):
+            v['html'] = os.environ['ASK_MARKDOWN_HTML'] if v['status'] == 'done' else '<h2>Compromissos</h2><p><b>Enviar proposta</b></p>'
     elif op == 'assistant-cancel' and features['assistant']: v = {'runId': p['runId'], 'cancelled': True}
     elif op == 'assistant-threads' and features['assistant']: v = {'threads': [{'id': '99999999-9999-4999-8999-999999999999', 'title': 'O que foi decidido?', 'updatedAt': '2026-10-21T15:00:00Z', 'messageCount': 2}]}
     elif op == 'assistant-thread' and features['assistant']:
@@ -309,12 +319,29 @@ PLANS = {
     backToLibrary()'''),
         ('home', 'homeView.visible', 'check("no Ask bar on Início", !uxFind(homeView, "askBar").visible)')]),
 }
-SMOKE = {'meeting-local', 'recipes', 'stop-compact-en', 'no-assistant', 'threads', 'unsaid', 'long'}
+for mode, size, light in [('markdown-light', '1320x820', True), ('markdown-dark', '900x640', False)]:
+    PLANS[mode] = (size, light, [MEETING_OPEN,
+        ('ask Markdown', 'askPanel.shown', 'askPanel.input.text = "Quais compromissos?"; askPanel.submit()'),
+        ('formatted partial', '!!askPanel.live && !!askPanel.live.html', '''
+    const field = uxFind(askPanel, "askAnswerText-1")
+    check("the partial response is formatted while streaming", !!field && field.textFormat === TextEdit.RichText && field.getText(0, field.length).indexOf("Compromissos") >= 0)
+    check("the response is selectable and read-only", field.readOnly && field.selectByMouse)'''),
+        ('formatted answer', ANSWERED, '''
+    const field = uxFind(askPanel, "askAnswerText-1"), plain = field.getText(0, field.length).split(String.fromCharCode(8233)).join(String.fromCharCode(10))
+    check("headings and inline styles render instead of Markdown punctuation", plain.indexOf("Compromissos") >= 0 && plain.indexOf("Enviar a proposta") >= 0 && plain.indexOf("##") < 0 && plain.indexOf("**") < 0)
+    check("code keeps literal angle brackets and blank lines", plain.indexOf("echo <serviço>" + String.fromCharCode(10, 10) + "echo fim") >= 0)
+    check("the formatted answer stays within the drawer", field.width < askPanel.width && field.contentWidth <= field.width + 1)
+    check("the original Markdown stays available for copying and sharing", askPanel.messages[1].text.indexOf("**Enviar a proposta**") >= 0)
+    check("the source buttons remain available with pointer targets", !!uxFind(askPanel, "askCitation-1-1") && !!uxFind(askPanel, "askCitation-1-2") && uxFind(askPanel, "askCitation-1-1").height >= 24)
+    field.linkActivated("citation:1")
+    check("an inline citation opens its recording moment", pendingSeek === 3 && askPanel.shown)
+    check("external and unknown citation links are inert", !askPanel.openAnswerLink("https://invalid.test", askPanel.messages[1].citations) && !askPanel.openAnswerLink("citation:99", askPanel.messages[1].citations) && pendingSeek === 3)''')])
+SMOKE = {'meeting-local', 'recipes', 'stop-compact-en', 'no-assistant', 'threads', 'unsaid', 'long', 'markdown-light', 'markdown-dark'}
 
 
 def env_for(mode):
     return {'RECORDING_DESKTOP_SMOKE_KEY': '/synthetic/Recordings/daily.mkv' if mode in SMOKE else '', 'ASK_JOB': JOB, 'ASK_OTHER': OTHER,
-            'ASK_LOCAL_KEY': LOCAL_KEY, 'ASK_EXTERNAL_KEY': EXTERNAL_KEY}
+            'ASK_LOCAL_KEY': LOCAL_KEY, 'ASK_EXTERNAL_KEY': EXTERNAL_KEY, 'ASK_MARKDOWN': MARKDOWN, 'ASK_MARKDOWN_HTML': MARKDOWN_HTML}
 
 
 checks, screens, requests = run_journey_modes(command, 'ask', out, STUB, PLANS, env_for)
