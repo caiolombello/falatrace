@@ -188,6 +188,25 @@ describe("summary status, choices and templates", () => {
 });
 
 describe("assistant and recipes", () => {
+  test("answers carry safe formatted Markdown while copied text and citation targets stay intact", async () => {
+    const answer = "## Compromissos\n\n- **Enviar a proposta** [[s000001]].\n\n```html\n<div>exemplo</div>\n```\n\n![imagem](file:///private.png) <img src=\"https://invalid.test/pixel\"> [site](https://invalid.test)";
+    const f = await setup({ provider: fakeProvider(true, answer) });
+    const scope = { kind: "meeting", jobId: f.job.id };
+    const plan = await run(f.context, "assistant-plan", { scope, question: "Quais compromissos?" });
+    const started = await run(f.context, "assistant-start", { scope, question: "Quais compromissos?", consentKey: plan.consentKey });
+    const done = await until(() => run(f.context, "assistant-poll", { runId: started.runId }), (value) => value.status !== "running");
+    expect(done.text).toContain("**Enviar a proposta** [1]");
+    expect(done.html).toContain("<b>Enviar a proposta</b>");
+    expect(done.html).toContain('href="citation:1"');
+    expect(done.html).toContain("&lt;div&gt;exemplo&lt;/div&gt;");
+    expect(done.html).not.toContain("<img");
+    expect(done.html).not.toContain('href="https:');
+    expect(done.citations[0]).toMatchObject({ n: 1, jobId: f.job.id, segmentId: "s000001" });
+    const stored = await run(f.context, "assistant-thread", { threadId: started.threadId });
+    expect(stored.messages[1].html).toBe(done.html);
+    expect(stored.messages[1].text).toBe(done.text);
+  });
+
   test("a question is planned, needs consent for an external destination, streams, and keeps numbered citations", async () => {
     const provider = fakeProvider(true);
     const f = await setup({ provider });

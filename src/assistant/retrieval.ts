@@ -96,6 +96,22 @@ const localDate = (iso: string): string => {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 };
 
+/** Calendar periods are a recall hint, never an exclusion: older meetings may contain a deadline in this period. */
+const questionPeriod = (question: string, now: Date): { start: Date; end: Date } | undefined => {
+  const matches = [...foldText(question).matchAll(/\b(esta semana|nesta semana|this week|semana passada|last week|semana pasada|hoje|today|hoy|ontem|yesterday|ayer)\b/g)];
+  if (matches.length !== 1) return undefined;
+  const phrase = matches[0]![0];
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
+  const week = /semana|week/.test(phrase);
+  if (week) start.setDate(start.getDate() - (start.getDay() + 6) % 7);
+  if (/passada|last|pasada/.test(phrase)) start.setDate(start.getDate() - 7);
+  if (/ontem|yesterday|ayer/.test(phrase)) start.setDate(start.getDate() - 1);
+  const end = new Date(start);
+  end.setDate(end.getDate() + (week ? 7 : 1));
+  return { start, end };
+};
+
 /**
  * The excerpt block's tags and their look-alikes (`< /meeting-excerpts>`, `</meeting_excerpts>`,
  * `&lt;/meeting-excerpts&gt;`): text from a meeting, a calendar invitation or an earlier answer
@@ -205,7 +221,7 @@ const selectWindows = (segments: ReadonlyArray<MeetingSegment>, question: string
     const fresh: number[] = [];
     for (let index = Math.max(0, center - 2); index <= Math.min(segments.length - 1, center + 2); index++) if (!selected.has(index)) fresh.push(index);
     if (!fresh.length) return true;
-    const cost = fresh.reduce((total, index) => total + render(index).length + 1, 0) + 4;
+    const cost = fresh.reduce((total, index) => total + render(index).length + 1, 0) + 6;
     if (used + cost > budget) return false;
     for (const index of fresh) selected.add(index);
     used += cost;
@@ -284,7 +300,7 @@ const candidatesFor = async (scope: Exclude<AssistantScope, { kind: "meeting" }>
 type Block = { label: string; facts: JobFacts; head: string[]; items: Array<{ order: number; line: string }>; segments: Map<string, SegmentInfo> };
 
 const libraryPack = async (scope: Exclude<AssistantScope, { kind: "meeting" }>, question: string, index: LibraryIndexReader & Partial<AssistantIndexReader>,
-  readers: AssistantReaders, budget: number, signal?: AbortSignal): Promise<ContextPack> => {
+  readers: AssistantReaders, budget: number, signal?: AbortSignal, period?: { start: Date; end: Date }): Promise<ContextPack> => {
   const facts = await index.listFacts();
   const candidates = await candidatesFor(scope, facts, readers);
   if (!candidates.length) throw new Error(RETRIEVAL_ERRORS.noMeetings);
@@ -295,13 +311,25 @@ const libraryPack = async (scope: Exclude<AssistantScope, { kind: "meeting" }>, 
   const order: string[] = [];
   for (const hit of hits) if (!order.includes(hit.chunk.jobId)) order.push(hit.chunk.jobId);
   const fallback = !order.length;
-  const chosen = (fallback ? candidates.slice(0, FALLBACK_MEETINGS).map((item) => item.jobId) : order).slice(0, MAX_LIBRARY_MEETINGS);
+  const recent = period ? candidates.filter((item) => {
+    const time = new Date(item.date).getTime();
+    return time >= period.start.getTime() && time < period.end.getTime();
+  }).map((item) => item.jobId) : [];
+  // Interleave so a busy week cannot fill every slot before an older, directly relevant hit.
+  const ranked = [...new Set(Array.from({ length: Math.max(recent.length, order.length) }, (_value, index) => [recent[index], order[index]])
+    .flat().filter((id): id is string => id !== undefined))];
+  if (fallback) for (const item of candidates.slice(0, FALLBACK_MEETINGS)) if (!ranked.includes(item.jobId)) ranked.push(item.jobId);
+  const chosen = ranked.slice(0, MAX_LIBRARY_MEETINGS);
+  const broad = fallback || Boolean(period);
   const refs = new Map<string, ContextRef>();
   const intro = [fallback
     ? "Nenhum trecho correspondeu diretamente à pergunta; seguem as reuniões mais recentes deste escopo (rótulos m1, m2…)."
-    : "Reuniões com trechos relacionados à pergunta (rótulos m1, m2…; a seleção não inclui tudo o que foi dito)."];
+    : "Reuniões com trechos relacionados à pergunta (rótulos m1, m2…; a seleção não inclui tudo o que foi dito).",
+    ...(period ? [`Período mencionado na pergunta: ${localDate(period.start.toISOString())} até ${localDate(period.end.toISOString())} (fim exclusivo, horário local). ` +
+      `${recent.length} reunião(ões) deste escopo começaram nesse período. As datas nos cabeçalhos são das reuniões, não dos prazos das ações. Resultados de outras datas podem aparecer como contexto.`] : [])];
   let used = lineCost(intro);
-  let truncated = fallback ? candidates.length > chosen.length : order.length > chosen.length;
+  // Ranked chunks cannot establish complete coverage, even when supplemented with speech.
+  let truncated = !fallback || candidates.length > chosen.length;
   const blocks: Block[] = [];
   /** Line with the segment markers that support a summary item; refs are recorded only if the line is sent. */
   const withEvidence = (block: Block, order: number, line: string, segmentIds: ReadonlyArray<string>): boolean => {
@@ -310,7 +338,10 @@ const libraryPack = async (scope: Exclude<AssistantScope, { kind: "meeting" }>, 
       const info = block.segments.get(id);
       if (info) markers.push([`${block.label}:${id}`, { jobId: block.facts.jobId, segmentId: id, start: info.start, end: info.end, title: block.facts.title }]);
     }
-    const sent = add(block, order, markers.length ? `${line} (trechos: ${markers.map(([key]) => key).join(", ")})` : line);
+    const rendered = markers.length ? `${line} (trechos: ${markers.map(([key]) => key).join(", ")})` : line;
+    // Broad questions also need primary evidence, rather than spending the whole pack on summaries.
+    if (broad && used + rendered.length + 1 > budget * 0.5) { truncated = true; return false; }
+    const sent = add(block, order, rendered);
     if (sent) for (const [key, ref] of markers) refs.set(key, ref);
     return sent;
   };
@@ -332,13 +363,14 @@ const libraryPack = async (scope: Exclude<AssistantScope, { kind: "meeting" }>, 
     blocks.push({ label, facts: item, head, items: [], segments: index.segmentInfo ? await index.segmentInfo(jobId) : new Map() });
   }
   const blockOf = new Map(blocks.map((block) => [block.facts.jobId, block]));
+  let ceiling = budget;
   const add = (block: Block, order: number, line: string): boolean => {
-    if (used + line.length + 1 > budget) { truncated = true; return false; }
+    if (used + line.length + 1 > ceiling) { truncated = true; return false; }
     block.items.push({ order, line });
     used += line.length + 1;
     return true;
   };
-  if (fallback || scope.kind !== "library") {
+  if (broad || scope.kind !== "library") {
     // Without matching excerpts, or for a person or client, recent decisions and actions are the useful facts.
     for (const block of blocks) {
       for (const decision of block.facts.decisions.slice(0, 5)) withEvidence(block, -2, `- Decisão: ${excerptText(decision.text, 300)}`, decision.segmentIds);
@@ -350,6 +382,8 @@ const libraryPack = async (scope: Exclude<AssistantScope, { kind: "meeting" }>, 
     }
   }
   const seenSegments = new Set<string>();
+  // Preserve ranked hits (including semantic hits and notes), leaving room for broader recall.
+  if (broad) ceiling = used + Math.floor((budget - used) / 2);
   for (const hit of hits) {
     const block = blockOf.get(hit.chunk.jobId);
     if (!block) continue;
@@ -373,6 +407,41 @@ const libraryPack = async (scope: Exclude<AssistantScope, { kind: "meeting" }>, 
       withEvidence(block, -3, `- ${excerptText(chunk.text, 600)}`, chunk.segmentIds);
     } else {
       add(block, -4, `- Nota da pessoa usuária${chunk.start !== undefined ? ` [${clock(chunk.start)}]` : ""}: ${excerptText(chunk.text, 500)}`);
+    }
+  }
+  ceiling = budget;
+  if (broad) {
+    // A lexical miss (including an English question about Portuguese audio) is not evidence
+    // that the transcript has no answer. Read reviewed speech, sharing the remaining budget.
+    for (const [position, block] of blocks.entries()) {
+      signal?.throwIfAborted();
+      let content: MeetingContent;
+      try { content = await readers.meeting(block.facts.jobId, signal); }
+      catch {
+        signal?.throwIfAborted();
+        truncated = true;
+        add(block, 0, "Transcrição indisponível; apenas os fatos indexados foram incluídos.");
+        continue;
+      }
+      const share = Math.max(0, Math.floor((budget - used) / (blocks.length - position)) - 6);
+      const limit = Math.max(80, Math.min(4_000, Math.floor(share / 4)));
+      const segments = content.segments.filter((segment) => !seenSegments.has(`${block.label}:${segment.id}`));
+      const rendered = segments.map((segment) => {
+        const text = excerptText(segment.text, Number.MAX_SAFE_INTEGER);
+        if (text.length > limit) truncated = true;
+        return segmentLine(block.label, segment, text.length > limit ? `${text.slice(0, limit)}…` : text);
+      });
+      const selected = lineCost(rendered) <= share ? segments.map((_segment, index) => index)
+        : selectWindows(segments, question, share, (index) => rendered[index]!);
+      if (selected.length < segments.length) truncated = true;
+      for (const [order, index] of selected.entries()) {
+        const segment = segments[index]!;
+        const offset = Number(segment.id.slice(1)) * 1_000;
+        if (order > 0 && index !== selected[order - 1]! + 1) add(block, offset - 1, "[…]");
+        if (add(block, offset, rendered[index]!)) refs.set(`${block.label}:${segment.id}`, {
+          jobId: block.facts.jobId, segmentId: segment.id, start: segment.start, end: segment.end, title: block.facts.title
+        });
+      }
     }
   }
   const lines = [...intro];
@@ -402,12 +471,17 @@ export const buildContextPack = async (input: {
   config: AppConfig;
   readers: AssistantReaders;
   signal?: AbortSignal;
+  /** The runner's local clock, shared with the date given to the provider. */
+  now?: Date;
+  /** Recipes can add search terms; their untrusted data must not decide the calendar period. */
+  query?: string;
 }): Promise<ContextPack> => {
   const scope = validateAssistantScope(input.scope);
   const budget = budgetOf(input.config);
-  const question = typeof input.question === "string" ? input.question.slice(0, 8_000) : "";
+  const original = typeof input.question === "string" ? input.question.slice(0, 8_000) : "";
+  const question = typeof input.query === "string" ? input.query.slice(0, 8_000) : original;
   input.signal?.throwIfAborted();
   return scope.kind === "meeting"
     ? meetingPack(scope.jobId, question, input.index, input.readers, budget, input.signal)
-    : libraryPack(scope, question, input.index, input.readers, budget, input.signal);
+    : libraryPack(scope, question, input.index, input.readers, budget, input.signal, questionPeriod(original, input.now ?? new Date()));
 };

@@ -1,3 +1,10 @@
+## Unreleased — Ask recall, streaming and formatted answers
+
+- **Questions about this week.** Ask prioritizes meetings in the requested local calendar period while keeping relevant older excerpts. Broad questions and keyword misses also read transcript passages within the shared context budget, including when the question and recording use different languages. Answers distinguish meeting dates from deadlines and leave the user's speaker identity unconfirmed unless established.
+- **Antigravity streaming.** The subscription CLI now forwards answer deltas before `agy` exits, keeps thoughts and tool output out of the answer, and checks the final result without duplicating streamed text.
+- **Markdown in the Studio.** Ask renders headings, emphasis, lists, tables and code during streaming and when reopening conversations. Checked citations open the recording moment; copying preserves the original Markdown. Raw HTML, images and external links remain passive text.
+- **Checks.** 2,620 offline tests pass across 248 files (32,963 assertions). The Ask journey passes 117 assertions across 12 screens, plus 20 assertions across two native Qt screens; type checks, Biome (no errors) and CLI builds pass.
+
 ## 0.2.0-alpha.17 — KOrganizer calendar, agy for Gemini, and four fixes
 
 - **KOrganizer calendar.** `calendar.kde` (off by default) reads the calendars checked in KOrganizer from Akonadi's SQLite database, read-only, to name recordings after their meeting and to feed reminders and pre-meeting briefs. Recurring events are expanded in their own time zone, with moved and cancelled occurrences, and declined invitations and all-day entries are left out. Settings: **Agenda e lembretes** and **Calendário**.

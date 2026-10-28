@@ -157,8 +157,8 @@ export class AssistantRunner {
     if (input.recipeId !== undefined && (typeof input.recipeId !== "string" || !RECIPE_ID.test(input.recipeId))) throw new Error(ASSISTANT_RUNNER_ERRORS.invalidRecipe);
     const question = checkQuestion(input.question, Boolean(recipe || input.recipeId));
     const destination = this.options.providerFactory(this.options.config).destination;
-    const pack = await buildContextPack({ scope, question: retrievalQuery(question, recipe), index: this.options.index,
-      config: this.options.config, readers: this.options.readers, signal: input.signal });
+    const pack = await buildContextPack({ scope, question, query: retrievalQuery(question, recipe), index: this.options.index,
+      config: this.options.config, readers: this.options.readers, signal: input.signal, now: this.now() });
     return { destination, external: destination.external, consentKey: assistantConsentKey(destination, scope), contextCharacters: pack.text.length,
       meetings: pack.meetings, truncated: pack.truncated };
   }
@@ -270,12 +270,13 @@ export class AssistantRunner {
     const timer = setTimeout(() => { this.finish(run, "failed", ASSISTANT_RUNNER_ERRORS.timeout); run.controller.abort(); }, this.options.runTimeoutMs ?? 15 * 60_000);
     const signal = run.controller.signal;
     try {
-      const pack = await buildContextPack({ scope, question: retrievalQuery(question, recipe), index: this.options.index, config,
-        readers: this.options.readers, signal });
+      const now = this.now();
+      const pack = await buildContextPack({ scope, question, query: retrievalQuery(question, recipe), index: this.options.index, config,
+        readers: this.options.readers, signal, now });
       run.refs = pack.refs;
       signal.throwIfAborted();
       const result = await provider.run({
-        system: buildChatSystemPrompt({ scope, today: localDay(this.now()) }),
+        system: buildChatSystemPrompt({ scope, today: localDay(now) }),
         messages: buildChatMessages({ pack, question, recipe, history: thread?.messages }),
         signal,
         maxOutputTokens: MAX_OUTPUT_TOKENS,

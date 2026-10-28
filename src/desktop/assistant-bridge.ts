@@ -18,6 +18,7 @@ import {
 import { type BridgeCall, type BridgeFamily, boundedObject, integer, invalid, matches, RECIPE_ID, SHA256, text, UUID, validateScope } from "./bridge-family";
 import type { BridgeContext } from "./bridge-context";
 import { studioLanguage } from "./studio-services";
+import { renderAssistantMarkdown } from "./assistant-markdown";
 
 export const ASSISTANT_BRIDGE_OPERATIONS = [
   "assistant-plan", "assistant-start", "assistant-poll", "assistant-cancel", "assistant-threads", "assistant-thread", "assistant-thread-delete",
@@ -196,7 +197,7 @@ const poll = async (call: BridgeCall, context: BridgeContext) => {
   const snapshot = runner.poll(runId);
   const answer = numberedAnswer(snapshot.text, snapshot.citations, await dates(services, snapshot.citations));
   return {
-    status: snapshot.status, threadId: snapshot.threadId, text: answer.text, citations: answer.citations,
+    status: snapshot.status, threadId: snapshot.threadId, text: answer.text, html: renderAssistantMarkdown(answer.text, answer.citations), citations: answer.citations,
     ...(snapshot.error ? { error: shownMessage(snapshot.error) } : {}),
     ...(snapshot.saved !== undefined ? { saved: snapshot.saved } : {}),
     ...(snapshot.cutOff ? { cutOff: true } : {})
@@ -212,7 +213,7 @@ const thread = async (call: BridgeCall, context: BridgeContext) => {
     id: stored.id, title: stored.title, scope: stored.scope, updatedAt: stored.updatedAt,
     messages: stored.messages.map((message) => {
       const numbered = numberedAnswer(message.text, message.citations, dateOf);
-      return { role: message.role, text: numbered.text, citations: numbered.citations, createdAt: message.createdAt, destination: message.destination,
+      return { role: message.role, text: numbered.text, ...(message.role === "assistant" ? { html: renderAssistantMarkdown(numbered.text, numbered.citations) } : {}), citations: numbered.citations, createdAt: message.createdAt, destination: message.destination,
         ...(message.recipeId ? { recipeId: message.recipeId } : {}) };
     })
   };
