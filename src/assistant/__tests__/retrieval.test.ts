@@ -308,6 +308,21 @@ describe("library, person and client scopes", () => {
     expect(pack.truncated).toBe(true);
   });
 
+  test("broad recall keeps one gap marker per jump between windows", async () => {
+    // Only segments 5, 30 and 55 match; the budget fits three windows (s3-7, s28-32, s53-57)
+    // with two gaps between them, and each gap needs its own "[…]" line.
+    const speech = segments(60, (index) => index === 5 || index === 30 || index === 55
+      ? `proposta orçamento ${index} ${"detalhe ".repeat(20)}`
+      : `fala comum numero ${index} ${"x ".repeat(60)}`);
+    const pack = await buildContextPack({ scope: { kind: "library" }, question: "orçamento proposta esta semana",
+      index: fakeIndex([facts(A, { date: "2026-10-22T13:00:00.000Z" })], []), config: configWith(3_000),
+      readers: meetingReaders({ segments: speech }), now: new Date("2026-10-25T12:00:00.000Z") });
+    const order = [...pack.text.matchAll(/^\[m1:(s\d{6}) /gm)].map((match) => Number(match[1]!.slice(1)));
+    expect(order).toEqual([3, 4, 5, 6, 7, 28, 29, 30, 31, 32, 53, 54, 55, 56, 57]);
+    // One marker per non-contiguous jump, never deduplicated to a single "[…]".
+    expect((pack.text.match(/^\[…\]$/gm) || []).length).toBe(2);
+  });
+
   test("stays within the budget and marks what was left out", async () => {
     const many = Array.from({ length: 30 }, (_value, index) => facts(`${String(index).padStart(8, "0")}-5c22-4802-97b8-f3e1a52c1919`, { title: `Reunião ${index}`, overview: "Visão geral ".repeat(40) }));
     const bigChunks = many.map((item) => chunk(item.jobId, ["s000000", "s000001"], ["orçamento ".repeat(70), "orçamento aprovado ".repeat(30)], 0));
