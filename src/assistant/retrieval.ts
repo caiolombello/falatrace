@@ -49,6 +49,8 @@ export type ContextPack = {
   /** Job ids sent, in label order (m1 is jobs[0]). */
   jobs: string[];
   truncated: boolean;
+  /** Broad (library) recall read reviewed transcripts, not only search excerpts, so whole meetings may leave the computer. */
+  fullTranscripts: boolean;
   meetings: Array<{ jobId: string; title: string; date: string; label?: string }>;
 };
 
@@ -259,7 +261,8 @@ const meetingPack = async (jobId: string, question: string, index: LibraryIndexR
   const full = [...header, ...summary, ...notes, "Transcrição completa:", ...fullLines];
   const meetings = [{ jobId, title, date }];
   if (lineCost(full) <= budget) {
-    return { text: full.join("\n"), refs: new Map(content.segments.map((segment) => [segment.id, refFor(segment)])), jobs: [jobId], truncated: false, meetings };
+    return { text: full.join("\n"), refs: new Map(content.segments.map((segment) => [segment.id, refFor(segment)])), jobs: [jobId], truncated: false,
+      fullTranscripts: false, meetings };
   }
   const fixed = [...header, ...summaryLines(content, Math.floor(budget * 0.2)), ...noteLines(content.notes, Math.floor(budget * 0.15)),
     "Trechos da transcrição (seleção; a reunião completa é mais longa):"];
@@ -282,7 +285,7 @@ const meetingPack = async (jobId: string, question: string, index: LibraryIndexR
     lines.push(render(position));
   });
   return { text: lines.join("\n"), refs: new Map(chosen.map((position) => [content.segments[position]!.id, refFor(content.segments[position]!)])),
-    jobs: [jobId], truncated: true, meetings };
+    jobs: [jobId], truncated: true, fullTranscripts: false, meetings };
 };
 
 const candidatesFor = async (scope: Exclude<AssistantScope, { kind: "meeting" }>, facts: JobFacts[], readers: AssistantReaders): Promise<JobFacts[]> => {
@@ -413,6 +416,7 @@ const libraryPack = async (scope: Exclude<AssistantScope, { kind: "meeting" }>, 
     }
   }
   ceiling = budget;
+  let readTranscripts = false;
   if (broad) {
     // A lexical miss (including an English question about Portuguese audio) is not evidence
     // that the transcript has no answer. Read reviewed speech, sharing the remaining budget.
@@ -426,6 +430,7 @@ const libraryPack = async (scope: Exclude<AssistantScope, { kind: "meeting" }>, 
         add(block, 0, "Transcrição indisponível; apenas os fatos indexados foram incluídos.");
         continue;
       }
+      readTranscripts = true;
       const share = Math.max(0, Math.floor((budget - used) / (blocks.length - position)) - 6);
       const limit = Math.max(80, Math.min(4_000, Math.floor(share / 4)));
       const segments = content.segments.filter((segment) => !seenSegments.has(`${block.label}:${segment.id}`));
@@ -463,6 +468,7 @@ const libraryPack = async (scope: Exclude<AssistantScope, { kind: "meeting" }>, 
     refs,
     jobs: blocks.map((block) => block.facts.jobId),
     truncated,
+    fullTranscripts: readTranscripts,
     meetings: blocks.map((block) => ({ jobId: block.facts.jobId, title: block.facts.title, date: block.facts.date, label: block.label }))
   };
 };

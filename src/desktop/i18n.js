@@ -2242,6 +2242,7 @@ var EN = {
     "Para responder, vou enviar trechos de 1 reunião (≈ %1 mil caracteres) para %2.": "To answer, I will send excerpts of 1 meeting (≈ %1 thousand characters) to %2.",
     "Para responder, vou enviar trechos de %1 reuniões (≈ %2 mil caracteres) para %3.": "To answer, I will send excerpts of %1 meetings (≈ %2 thousand characters) to %3.",
     "Você confirma uma vez por conversa.": "You confirm once per conversation.",
+    "Esta pergunta pode enviar a transcrição completa das reuniões, não apenas trechos.": "This question may send the full transcript of the meetings, not only excerpts.",
     "Enviar": "Send",
     "Configurar…": "Set up…",
     "Algumas reuniões ficaram de fora por causa do tamanho.": "Some meetings were left out because of the size limit.",

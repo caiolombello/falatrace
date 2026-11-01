@@ -323,6 +323,24 @@ describe("library, person and client scopes", () => {
     expect((pack.text.match(/^\[…\]$/gm) || []).length).toBe(2);
   });
 
+  test("the pack flag says when broad recall read whole transcripts", async () => {
+    const readers = meetingReaders({ segments: segments(2, (index) => `Fala ${index}.`) });
+    const noHits = fakeIndex([facts(A)], []);
+    // A keyword miss falls back to reading the meetings' reviewed speech.
+    const broad = await buildContextPack({ scope: { kind: "library" }, question: "assunto que nao aparece", index: noHits, config: configWith(8_000), readers });
+    expect(broad.fullTranscripts).toBe(true);
+    // Direct hits send excerpts only, and so does the meeting scope.
+    const hits = await buildContextPack({ scope: { kind: "library" }, question: "plano anual", index: fakeIndex(all, chunks, timeline), config: configWith(60_000), readers });
+    expect(hits.fullTranscripts).toBe(false);
+    const meeting = await buildContextPack({ scope: { kind: "meeting", jobId: A }, question: "plano", index: noHits, config: configWith(60_000), readers });
+    expect(meeting.fullTranscripts).toBe(false);
+    // A meeting that cannot be read sends only the indexed facts, never transcripts.
+    const unreadable: AssistantReaders = { meeting: async () => { throw new Error(RETRIEVAL_ERRORS.meetingUnreadable); } };
+    const failed = await buildContextPack({ scope: { kind: "library" }, question: "assunto que nao aparece", index: noHits, config: configWith(8_000), readers: unreadable });
+    expect(failed.fullTranscripts).toBe(false);
+    expect(failed.text).toContain("Transcrição indisponível");
+  });
+
   test("stays within the budget and marks what was left out", async () => {
     const many = Array.from({ length: 30 }, (_value, index) => facts(`${String(index).padStart(8, "0")}-5c22-4802-97b8-f3e1a52c1919`, { title: `Reunião ${index}`, overview: "Visão geral ".repeat(40) }));
     const bigChunks = many.map((item) => chunk(item.jobId, ["s000000", "s000001"], ["orçamento ".repeat(70), "orçamento aprovado ".repeat(30)], 0));

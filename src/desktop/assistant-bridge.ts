@@ -166,7 +166,8 @@ const plan = async (call: BridgeCall, context: BridgeContext) => {
     consentKey: result.consentKey,
     contextCharacters: result.contextCharacters,
     meetings: result.meetings,
-    truncated: result.truncated
+    truncated: result.truncated,
+    fullTranscripts: result.fullTranscripts
   };
 };
 
