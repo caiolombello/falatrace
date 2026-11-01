@@ -161,6 +161,19 @@ describe("stream readers", () => {
     // Exactly full is not cut.
     expect(await readBounded(streamOf(["abc", "de"]), 5, "head", { stopWhenFull: true })).toEqual({ text: "abcde", truncated: false });
   });
+
+  test("readBounded stops calling the callback after it throws, cancels the stream and surfaces the error", async () => {
+    let calls = 0;
+    let cancelled = false;
+    const endless = new ReadableStream<Uint8Array>({
+      pull(controller) { controller.enqueue(new TextEncoder().encode("0123456789")); },
+      cancel() { cancelled = true; }
+    });
+    await expect(readBounded(endless, 100, "head", { onChunk: () => { calls += 1; throw new Error("callback falhou"); } }))
+      .rejects.toThrow("callback falhou");
+    expect(calls).toBe(1);
+    expect(cancelled).toBe(true);
+  });
 });
 
 describe("text helpers", () => {
@@ -324,6 +337,24 @@ describe("runCaptured", () => {
       expect(result).toMatchObject({ exitCode: 0, stdout: "done\n", timedOut: false });
       expect(Date.now() - started).toBeLessThan(5_000);
       await waitFor(async () => processGone(Number((await fs.readFile(pidFile, "utf8")).trim())));
+    });
+  });
+
+  test("an onStdout that throws stops the child at once instead of waiting for the timeout", async () => {
+    await withTempDir(async (dir) => {
+      const pidFile = join(dir, "writer.pid");
+      const started = Date.now();
+      let calls = 0;
+      const running = runCaptured(defaultSpawn, ["/bin/sh", "-c", `echo $$ > ${pidFile}; while true; do echo chunk; done`], {
+        cwd: dir, env, timeoutMs: 20_000, graceMs: 300,
+        onStdout: () => { calls += 1; throw new Error("onDelta falhou"); }
+      });
+      await expect(running).rejects.toThrow("onDelta falhou");
+      // Well below timeoutMs, and the callback was never called again.
+      expect(Date.now() - started).toBeLessThan(5_000);
+      expect(calls).toBe(1);
+      const pid = Number((await fs.readFile(pidFile, "utf8")).trim());
+      await waitFor(() => processGone(pid));
     });
   });
 
