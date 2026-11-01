@@ -191,6 +191,12 @@ export const readBounded = async (
   const chunks: Uint8Array[] = [];
   let size = 0;
   let truncated = false;
+  // A callback that throws is never called again; the reader is cancelled and the error surfaces.
+  let failure: { error: unknown } | undefined;
+  const deliver = (chunk: Uint8Array): void => {
+    if (failure) return;
+    try { options.onChunk?.(chunk); } catch (error) { failure = { error }; }
+  };
   try {
     for (;;) {
       const { done, value } = await reader.read();
@@ -207,7 +213,8 @@ export const readBounded = async (
         const room = maxBytes - size;
         if (value.byteLength > room) {
           chunks.push(value.subarray(0, room));
-          options.onChunk?.(value.subarray(0, room));
+          deliver(value.subarray(0, room));
+          if (failure) break;
           size = maxBytes;
           truncated = true;
           if (options.stopWhenFull) {
@@ -217,7 +224,8 @@ export const readBounded = async (
         } else {
           chunks.push(value);
           size += value.byteLength;
-          options.onChunk?.(value);
+          deliver(value);
+          if (failure) break;
         }
       } else {
         chunks.push(value);
@@ -227,8 +235,10 @@ export const readBounded = async (
       }
     }
   } finally {
+    if (failure) await reader.cancel().catch(() => undefined);
     reader.releaseLock();
   }
+  if (failure) throw failure.error;
   const joined = Buffer.concat(chunks);
   const bytes = keep === "tail" && joined.byteLength > maxBytes ? joined.subarray(joined.byteLength - maxBytes) : joined;
   return { text: bytes.toString("utf8"), truncated: truncated || bytes.byteLength < joined.byteLength };
@@ -390,13 +400,18 @@ export const runCaptured = async (
 ): Promise<CommandResult> => {
   if (options.signal?.aborted) return { exitCode: null, stdout: "", stderr: "", timedOut: false, cancelled: true, truncated: false };
   const child = spawn(argv, { cwd: options.cwd, env: options.env });
-  const stdout = readBounded(child.stdout, options.maxOutputBytes ?? 8 * 1024 * 1024, "head", { onChunk: options.onStdout });
+  let stopping: Promise<void> | undefined;
+  const stop = () => { stopping ??= stopProcessTree(child, { signals: options.stopSignals ?? ["SIGTERM"], graceMs: options.graceMs }); };
+  // An onStdout that throws stops the whole run: the reader is cancelled inside readBounded, the
+  // tree gets the stop signals right away, and the error surfaces instead of waiting for the
+  // timeout with the child blocked on a pipe nobody drains.
+  let streamFailure: { error: unknown } | undefined;
+  const stdout = readBounded(child.stdout, options.maxOutputBytes ?? 8 * 1024 * 1024, "head", { onChunk: options.onStdout })
+    .catch((error: unknown) => { streamFailure = { error }; stop(); return { text: "", truncated: true }; });
   const stderr = readBounded(child.stderr, 64 * 1024, "tail");
   void writeInput(child, options.input ?? "");
   let timedOut = false;
   let cancelled = false;
-  let stopping: Promise<void> | undefined;
-  const stop = () => { stopping ??= stopProcessTree(child, { signals: options.stopSignals ?? ["SIGTERM"], graceMs: options.graceMs }); };
   const timer = setTimeout(() => { timedOut = true; stop(); }, options.timeoutMs);
   const onAbort = () => { cancelled = true; stop(); };
   options.signal?.addEventListener("abort", onAbort, { once: true });
@@ -406,6 +421,7 @@ export const runCaptured = async (
     if (!stopping) child.kill("SIGKILL");
     const [out, err] = await Promise.all([stdout, stderr]);
     await stopping;
+    if (streamFailure) throw streamFailure.error;
     return { exitCode: timedOut || cancelled ? null : exitCode, stdout: out.text, stderr: err.text, timedOut, cancelled, truncated: out.truncated };
   } finally {
     clearTimeout(timer);
