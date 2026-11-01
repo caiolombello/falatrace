@@ -142,6 +142,9 @@ const segmentLine = (label: string | undefined, segment: { id: string; start: nu
 
 const lineCost = (lines: ReadonlyArray<string>): number => lines.reduce((total, line) => total + line.length + 1, 0);
 
+/** Marks a gap between non-contiguous transcript windows; one per gap, never deduplicated. */
+const GAP_LINE = "[…]";
+
 /** Default readers over the job store and the validated artifacts. */
 export const createAssistantReaders = (deps: { jobs?: Pick<JobStore, "get">; source?: SourceDeps; person?: AssistantReaders["person"] } = {}): AssistantReaders => ({
   async meeting(jobId, signal) {
@@ -275,7 +278,7 @@ const meetingPack = async (jobId: string, question: string, index: LibraryIndexR
   const chosen = selectWindows(content.segments, question, Math.max(0, budget - lineCost(fixed)), render);
   const lines = [...fixed];
   chosen.forEach((position, order) => {
-    if (order > 0 && position !== chosen[order - 1]! + 1) lines.push("[…]");
+    if (order > 0 && position !== chosen[order - 1]! + 1) lines.push(GAP_LINE);
     lines.push(render(position));
   });
   return { text: lines.join("\n"), refs: new Map(chosen.map((position) => [content.segments[position]!.id, refFor(content.segments[position]!)])),
@@ -437,7 +440,7 @@ const libraryPack = async (scope: Exclude<AssistantScope, { kind: "meeting" }>, 
       for (const [order, index] of selected.entries()) {
         const segment = segments[index]!;
         const offset = Number(segment.id.slice(1)) * 1_000;
-        if (order > 0 && index !== selected[order - 1]! + 1) add(block, offset - 1, "[…]");
+        if (order > 0 && index !== selected[order - 1]! + 1) add(block, offset - 1, GAP_LINE);
         if (add(block, offset, rendered[index]!)) refs.set(`${block.label}:${segment.id}`, {
           jobId: block.facts.jobId, segmentId: segment.id, start: segment.start, end: segment.end, title: block.facts.title
         });
@@ -449,7 +452,8 @@ const libraryPack = async (scope: Exclude<AssistantScope, { kind: "meeting" }>, 
     lines.push("", ...block.head);
     const seen = new Set<string>();
     for (const item of block.items.sort((left, right) => left.order - right.order)) {
-      if (seen.has(item.line)) continue;
+      // The gap marker is exempt: one "[…]" per jump between windows, like the meeting scope.
+      if (item.line !== GAP_LINE && seen.has(item.line)) continue;
       seen.add(item.line);
       lines.push(item.line);
     }
