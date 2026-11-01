@@ -39,6 +39,46 @@ describe("assistant Markdown presentation", () => {
     }
   });
 
+  test("a raw HTML block on its own line is escaped once, in a paragraph without literal entities", () => {
+    const html = renderAssistantMarkdown("<details>x</details>", []);
+    expect(html).toContain("<p ");
+    expect(html).toContain("&lt;details&gt;x&lt;/details&gt;");
+    expect(html).not.toContain("&amp;lt;");
+    expect(html).not.toContain("<details");
+  });
+
+  test("inline HTML inside a paragraph keeps its single escape", () => {
+    const html = renderAssistantMarkdown("texto <b>x</b>", []);
+    expect(html).toContain("texto &lt;b&gt;x&lt;/b&gt;");
+    expect(html).not.toContain("&amp;lt;b&amp;gt;");
+    expect(html).not.toContain("<b>");
+  });
+
+  test("raw HTML blocks stay inert with every resource payload, without double escaping", () => {
+    // Every payload of the inertness test above, plus raw HTML blocks on their own line.
+    for (const source of [
+      '<img src="https://invalid.test/pixel"><iframe src="file:///private"></iframe>',
+      "![remote](https://invalid.test/pixel) ![local](file:///private.png)",
+      "![reference][image]\n\n[image]: https://invalid.test/pixel",
+      "[click](javascript:alert(1)) [file](file:///private) [web](https://invalid.test)",
+      '<style>p {background:url(https://invalid.test/pixel)}</style><script>bad()</script>',
+      "![<img src=x onerror=bad()>](x) &lt;img src=x&gt;",
+      '```"><img src=x>\n</pre><img src=x>\n```',
+      "<img src=x onerror=1>",
+      "<iframe>",
+      "<style>p {background:url(https://invalid.test/pixel)}</style>",
+      "<script>bad()</script>",
+      '<a href="javascript:1">clique</a>'
+    ]) {
+      const html = renderAssistantMarkdown(source, [{ n: 1 }]);
+      expect(html).not.toMatch(/<(?:img|iframe|script|style)\b/i);
+      expect(html).not.toMatch(/<[^>]*\b(?:src|href)\s*=/i);
+      // The only href the renderer itself writes is a checked citation.
+      expect(html).not.toMatch(/href="(?!citation:)/);
+      expect(html).not.toContain("&amp;lt;");
+    }
+  });
+
   test("partial Markdown stays safe while a response streams", () => {
     const text = '## Ação\n\n**Enviar** [1]\n\n<img src="https://invalid.test/x">';
     for (let end = 0; end <= text.length; end++) {
