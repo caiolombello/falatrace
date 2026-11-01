@@ -68,6 +68,8 @@ export type AssistantPlan = {
   contextCharacters: number;
   meetings: Array<{ jobId: string; title: string; date: string; label?: string }>;
   truncated: boolean;
+  /** Broad recall read reviewed transcripts, so whole meetings may leave the computer. */
+  fullTranscripts: boolean;
 };
 
 export type AssistantRunnerOptions = {
@@ -160,7 +162,7 @@ export class AssistantRunner {
     const pack = await buildContextPack({ scope, question, query: retrievalQuery(question, recipe), index: this.options.index,
       config: this.options.config, readers: this.options.readers, signal: input.signal, now: this.now() });
     return { destination, external: destination.external, consentKey: assistantConsentKey(destination, scope), contextCharacters: pack.text.length,
-      meetings: pack.meetings, truncated: pack.truncated };
+      meetings: pack.meetings, truncated: pack.truncated, fullTranscripts: pack.fullTranscripts };
   }
 
   /** Starts a question; returns at once. Poll the run for the streamed answer. */

@@ -27,7 +27,7 @@ const fakeServices = (options: { destination?: ProviderDestination; snapshots?: 
   let cancelled = false;
   const destination = options.destination ?? LOCAL;
   const plan: AssistantPlan = {
-    destination, external: destination.external, consentKey: "c".repeat(64), contextCharacters: 120, truncated: false,
+    destination, external: destination.external, consentKey: "c".repeat(64), contextCharacters: 120, truncated: false, fullTranscripts: false,
     meetings: [{ jobId: JOB, title: "Revisão semanal", date: "2026-10-25T12:00:00.000Z" }]
   };
   return {

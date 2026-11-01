@@ -597,6 +597,14 @@ Rectangle {
                             : tf("Para responder, vou enviar trechos de %1 reuniões (≈ %2 mil caracteres) para %3.", askPanel.planMeetingCount(), Math.max(1, Math.round(Number(askPanel.plan.contextCharacters || 0) / 1000)), askPanel.destinationLabel())) + " " + t("Você confirma uma vez por conversa.") : ""
                         textFormat: Text.PlainText; wrapMode: Text.WordWrap; color: ink; font.pixelSize: 13
                     }
+                    Label {
+                        objectName: "askConsentFullTranscripts"
+                        // Broad recall (a period in the question, or no search hit) reads reviewed transcripts.
+                        visible: askPanel.plan.fullTranscripts === true
+                        Layout.fillWidth: true
+                        text: t("Esta pergunta pode enviar a transcrição completa das reuniões, não apenas trechos.")
+                        textFormat: Text.PlainText; wrapMode: Text.WordWrap; color: ink; font.pixelSize: 12
+                    }
                     RowLayout {
                         spacing: 8
                         // The card goes once answered: the focus goes back to the question, like Cancelar, never nowhere.
