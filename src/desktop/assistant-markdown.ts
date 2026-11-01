@@ -8,7 +8,10 @@ export const renderAssistantMarkdown = (text: string, citations: ReadonlyArray<{
   const allowed = new Set(citations.map((citation) => citation.n));
   const html = Bun.markdown.render(text, {
     text: (value) => Bun.escapeHTML(value),
-    html: (value) => Bun.escapeHTML(value),
+    // Bun 1.4 already escapes the value it hands to `html` (verified: a raw block arrives as
+    // "&lt;details&gt;…"), and inline HTML inside a paragraph goes through `text` instead, so
+    // returning it as-is keeps exactly one escape; re-escaping showed literal entities.
+    html: (value) => `<p style="margin-top:0;margin-bottom:8px">${value}</p>`,
     paragraph: (value) => `<p style="margin-top:0;margin-bottom:8px">${value}</p>`,
     heading: (value, meta) => {
       const level = Math.max(1, Math.min(6, meta.level));
