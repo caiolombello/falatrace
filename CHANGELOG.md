@@ -1,9 +1,13 @@
-## Unreleased — Ask recall, streaming and formatted answers
+## 0.2.0-alpha.18 — Ask recall, streaming and formatted answers
 
 - **Questions about this week.** Ask prioritizes meetings in the requested local calendar period while keeping relevant older excerpts. Broad questions and keyword misses also read transcript passages within the shared context budget, including when the question and recording use different languages. Answers distinguish meeting dates from deadlines and leave the user's speaker identity unconfirmed unless established.
 - **Antigravity streaming.** The subscription CLI now forwards answer deltas before `agy` exits, keeps thoughts and tool output out of the answer, and checks the final result without duplicating streamed text.
 - **Markdown in the Studio.** Ask renders headings, emphasis, lists, tables and code during streaming and when reopening conversations. Checked citations open the recording moment; copying preserves the original Markdown. Raw HTML, images and external links remain passive text.
-- **Checks.** 2,620 offline tests pass across 248 files (32,963 assertions). The Ask journey passes 117 assertions across 12 screens, plus 20 assertions across two native Qt screens; type checks, Biome (no errors) and CLI builds pass.
+- **Consent for whole transcripts.** When a question may send whole transcripts — a calendar period, no search hit, or one chosen meeting that fits the context budget — the consent card now warns "Esta pergunta pode enviar a transcrição completa das reuniões, não apenas trechos."; the consent key semantics are unchanged.
+- **Broad recall gap markers.** Library packs keep one […] gap marker per window jump, so the model no longer reads separate passages as continuous speech.
+- **Raw HTML escaped once.** Raw HTML blocks in assistant Markdown are escaped a single time; before, they showed as literal `&amp;lt;` entities.
+- **Output callback failures stop the child.** When an output callback (for example `onDelta` while streaming) throws, the CLI child process is stopped at once instead of hanging until its timeout.
+- **Checks.** On the release machine the type, desktop type, Biome (0 errors, 587 warnings) and CLI build checks pass, and the offline suite ran 2,560 passing and 68 failing tests across 248 files (32,236 assertions) — 67 environment-only failures (FFmpeg 8.1.3 without libx264, a bun wrapper re-executed without bun mode by child-process fixtures, no strace) and one millisecond-tie flake in a Proton archive test that passes in isolation. Public CI on the same source (PR #10's head) recorded 2,628 offline passes across 248 files (33,041 assertions), the type, desktop type, Biome and build checks, and all 18 Studio journeys (975 assertions; ask-ux 117 across 12 screens). See [ALPHA18.md](docs/ALPHA18.md).
 
 ## 0.2.0-alpha.17 — KOrganizer calendar, agy for Gemini, and four fixes
 

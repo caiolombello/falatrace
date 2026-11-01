@@ -1,6 +1,6 @@
 {
   "scope": "sanitized experimental Linux source alpha; no private history/config/media/dependencies/binaries",
-  "version": "0.2.0-alpha.17",
+  "version": "0.2.0-alpha.18",
   "selfExcluded": "SOURCE-MANIFEST.json; external release manifest includes this file",
   "files": [
     {
@@ -20,8 +20,8 @@
     },
     {
       "path": "CHANGELOG.md",
-      "sha256": "09f1bd1bedc3cbeb27d976e21f50d9628e2775719aa0361c47c80301fcd90a43",
-      "bytes": 33657
+      "sha256": "a799a4220490487daa1488371758345fc50b91451fd5e4cf909376b52e66c920",
+      "bytes": 34973
     },
     {
       "path": "LICENSE",
@@ -35,7 +35,7 @@
     },
     {
       "path": "README.md",
-      "sha256": "8cb2d59af10ebb75876253bd0bc56a472e434354b9316d0a1418dfad584091fa",
+      "sha256": "3769a96a1143343858481754e81c15ea1ef9fc73ff9c268ca1fe1f97c39d3818",
       "bytes": 6620
     },
     {
@@ -167,6 +167,11 @@
       "path": "docs/ALPHA17.md",
       "sha256": "7c51eb9a4418580e0730f89a00b30e387f0fd21cb1e6837c6af57e4dd0fbad5b",
       "bytes": 6387
+    },
+    {
+      "path": "docs/ALPHA18.md",
+      "sha256": "29fa69db6a003cd5ba73b54f4edac31bd3f27078c016e5986a9c4c67dfb738ca",
+      "bytes": 5067
     },
     {
       "path": "docs/ALPHA2-LOCAL-REVIEW.md",
@@ -480,7 +485,7 @@
     },
     {
       "path": "docs/en/index.html",
-      "sha256": "fdaddb1e21b6fb66fcb12bffdeee688f72bc175c0af199cef02d17258c64c7d6",
+      "sha256": "76806ae938c04b5792b9c52e3b5ec9521f14ffce46ee846f14cde04cbf254ff2",
       "bytes": 43609
     },
     {
@@ -490,7 +495,7 @@
     },
     {
       "path": "docs/index.html",
-      "sha256": "4447f3a0212e92d1c130724481f5a51bf670a78895d37aed4f71498045af61da",
+      "sha256": "c5d7df89589d3e09d89ab6cae269fb5fb0ddbf866f81d3359e8e5d698c80e9cb",
       "bytes": 44294
     },
     {
@@ -510,7 +515,7 @@
     },
     {
       "path": "package.json",
-      "sha256": "8cf3bcded059e94ed8044eab0112392d3d106c5071191911cde8c5098ebaa13f",
+      "sha256": "06d294a38aea03d440b4e001c80b14dbd64a989d5ee755566e39923f09dc9e13",
       "bytes": 1488
     },
     {
@@ -665,7 +670,7 @@
     },
     {
       "path": "skills/falatrace/SKILL.md",
-      "sha256": "73f8625566176659b51c01ab4855baff0f7bbfa0e3c0fe0378c3100f1627f470",
+      "sha256": "531c18c703907c5b6c823f7d68aecfcd61bc46f9b52791bced50e657447edbd0",
       "bytes": 9723
     },
     {
@@ -935,8 +940,8 @@
     },
     {
       "path": "src/assistant/__tests__/provider-common.test.ts",
-      "sha256": "d91b622d170cf6ed802d04903c8c67dcb4e4946140b05836ced0996c882226cc",
-      "bytes": 18198
+      "sha256": "89b89cc41a82af590c75cf7c808db7cf6dc9c46d811785427972a800c550128d",
+      "bytes": 19653
     },
     {
       "path": "src/assistant/__tests__/provider-helpers.ts",
@@ -950,13 +955,13 @@
     },
     {
       "path": "src/assistant/__tests__/retrieval.test.ts",
-      "sha256": "a9c9ec60308056ff204295a0d900ffd52e20dd8d5301527fae16809a1e8b3d41",
-      "bytes": 25004
+      "sha256": "b02e42d1a0b6fcaa75247c0c26bbfdfd20ed25b5c452a8311d5143db98b395ce",
+      "bytes": 27944
     },
     {
       "path": "src/assistant/__tests__/runner.test.ts",
-      "sha256": "3b985cd2ee47b1c42dda2db04e07e581c8207a04bba23ebb1f35c1d1f627c7c0",
-      "bytes": 33539
+      "sha256": "eae1484c5c6650ac6eea30a32ee4b1419367fc28f1636eae61eddd1357b67779",
+      "bytes": 34240
     },
     {
       "path": "src/assistant/__tests__/shell-words.test.ts",
@@ -1020,8 +1025,8 @@
     },
     {
       "path": "src/assistant/providers/common.ts",
-      "sha256": "2bd286bf9b54dd561a809d76ee0cd168d364a69da86ebbd936799efd84f54b9a",
-      "bytes": 23875
+      "sha256": "4df6d8f017b7e2a04620365602cb0e3b1d7220cfd144b9511add0ff7edee33b4",
+      "bytes": 24781
     },
     {
       "path": "src/assistant/providers/index.ts",
@@ -1045,13 +1050,13 @@
     },
     {
       "path": "src/assistant/retrieval.ts",
-      "sha256": "fa76964dbd3beb526fab8c25a3b8dfb471f3313f29f24f0fd2ae5893ff8da411",
-      "bytes": 27793
+      "sha256": "2e23d11eca11d9e86097a99031d423a3ce0fe222b184df9251e8a1f18fc38067",
+      "bytes": 28376
     },
     {
       "path": "src/assistant/runner.ts",
-      "sha256": "0c56fed199906a5ba99832028094e11f6175f6b80920ff9d332b07a964e5194c",
-      "bytes": 16551
+      "sha256": "dd178459cb773950d1c0f9316a9260c8c41b39cc2e52f9c15882cf0e767e2b49",
+      "bytes": 16762
     },
     {
       "path": "src/assistant/threads.ts",
@@ -1265,8 +1270,8 @@
     },
     {
       "path": "src/cli/__tests__/ask-recipes.test.ts",
-      "sha256": "e6b1dc58c9b9c5ce8a673171e327259e4eb59336e9e8333f11702ca4c9330992",
-      "bytes": 13237
+      "sha256": "d782352cabc76cf929a05c8a016e575e3590b0173dad984d8b6157832a410c46",
+      "bytes": 13261
     },
     {
       "path": "src/cli/__tests__/cli-helpers.ts",
@@ -1605,8 +1610,8 @@
     },
     {
       "path": "src/desktop/AskPanel.qml",
-      "sha256": "7270b347d80ef3227af2e466737fd43cd7e88fccb2108d3548af7360b98acf7f",
-      "bytes": 44032
+      "sha256": "692d2d31ee7154b6a8873ced6dc2208334c8e535cef6597c802ffdccfcdebc18",
+      "bytes": 44604
     },
     {
       "path": "src/desktop/BrandMark.qml",
@@ -1965,8 +1970,8 @@
     },
     {
       "path": "src/desktop/__tests__/assistant-markdown.test.ts",
-      "sha256": "2dafb137203f7379c839e999ae7f7cbf92e60ba42f4d26a3c18272be4094a070",
-      "bytes": 2979
+      "sha256": "b468dc26b1a6d29e213524f81867446fddc1adfb956c983777747a26357fdf33",
+      "bytes": 4966
     },
     {
       "path": "src/desktop/__tests__/bridge-families.test.ts",
@@ -1990,8 +1995,8 @@
     },
     {
       "path": "src/desktop/__tests__/families-handlers.test.ts",
-      "sha256": "eb35709c575a15b604c874a3a1a4e75f1eeb32dc669c22c0be95444f0fb28deb",
-      "bytes": 45598
+      "sha256": "769cb3a2cf389d23ccb6d5e9ea5ac66cbc8400deb30333e028c2a23ff7aef254",
+      "bytes": 46142
     },
     {
       "path": "src/desktop/__tests__/g4-onboarding-bridge.test.ts",
@@ -2070,13 +2075,13 @@
     },
     {
       "path": "src/desktop/assistant-bridge.ts",
-      "sha256": "b78d94644e976b61ba9b39b5a5f2bd7bc2a093817e3b6a12b249505efbaecde5",
-      "bytes": 17606
+      "sha256": "71bf178946538fbafc5942c33dcb162b659ff05e106861cccdb81bab26a53bb3",
+      "bytes": 17651
     },
     {
       "path": "src/desktop/assistant-markdown.ts",
-      "sha256": "0a5fb501c9859b3e3032fda9facd8a902ce9d589c992f07a39375a946de4aa49",
-      "bytes": 2455
+      "sha256": "654ba471e7a5585670deb8876970dbd5d66de29207c2175991c3f15f7768d7b3",
+      "bytes": 2770
     },
     {
       "path": "src/desktop/bridge-context.ts",
@@ -2120,8 +2125,8 @@
     },
     {
       "path": "src/desktop/i18n.js",
-      "sha256": "31f03382aab58538d72aaf91e1ac99784aa33fca735ce75003ae994d48766ad7",
-      "bytes": 292630
+      "sha256": "9a1e06b55ff784afa5bf32453f43c80b8639cd28e571649e06ee793844a51786",
+      "bytes": 292806
     },
     {
       "path": "src/desktop/install.ts",
