@@ -599,7 +599,7 @@ Rectangle {
                     }
                     Label {
                         objectName: "askConsentFullTranscripts"
-                        // Broad recall (a period in the question, or no search hit) reads reviewed transcripts.
+                        // Broad recall, or a single meeting that fits the context, sends whole transcripts.
                         visible: askPanel.plan.fullTranscripts === true
                         Layout.fillWidth: true
                         text: t("Esta pergunta pode enviar a transcrição completa das reuniões, não apenas trechos.")

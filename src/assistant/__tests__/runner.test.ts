@@ -138,14 +138,15 @@ describe("consent", () => {
     expect(requests).toHaveLength(1);
   });
 
-  test("the plan says when broad recall may send whole transcripts", async () => {
+  test("the plan says when whole transcripts may be sent", async () => {
     const { provider } = fakeProvider(REMOTE, async () => ({ text: "ok", stopReason: "end" }));
     const { runner } = await setup(provider);
     // A keyword miss over the library falls back to reading the meetings' reviewed speech.
     const broad = await runner.plan({ scope: { kind: "library" }, question: "assunto que nao aparece" });
     expect(broad.fullTranscripts).toBe(true);
+    // One chosen meeting that fits the budget sends its whole transcript, not only excerpts.
     const meeting = await runner.plan({ scope: MEETING, question: "Quando é a entrega?" });
-    expect(meeting.fullTranscripts).toBe(false);
+    expect(meeting.fullTranscripts).toBe(true);
   });
 
   test("changing the model or endpoint asks again", async () => {

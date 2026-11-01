@@ -216,10 +216,10 @@ describe("assistant and recipes", () => {
     expect(plan.consentKey).toMatch(/^[a-f0-9]{64}$/);
     expect(plan.contextCharacters).toBeGreaterThan(0);
     expect(plan.meetings.map((meeting: { jobId: string }) => meeting.jobId)).toEqual([f.job.id]);
-    // The meeting scope sends one chosen meeting; a period question enters broad recall, which
-    // reads reviewed transcripts, and the plan says so for the consent card. The person scope
+    // A single meeting that fits the context sends its whole transcript, and a period question
+    // enters broad recall; either way the plan says so for the consent card. The person scope
     // keeps to this fixture's meetings: the QA job store is shared by the whole offline suite.
-    expect(plan.fullTranscripts).toBe(false);
+    expect(plan.fullTranscripts).toBe(true);
     const weekly = await run(f.context, "assistant-plan", { scope: { kind: "person", personId: "name:ana souza" }, question: "O que a Ana prometeu esta semana?" });
     expect(weekly.fullTranscripts).toBe(true);
     expect(await shown(f.context, "assistant-start", { scope, question: "O que foi decidido?" })).toBe(ASSISTANT_RUNNER_ERRORS.consent);
