@@ -68,7 +68,7 @@ export type AssistantPlan = {
   contextCharacters: number;
   meetings: Array<{ jobId: string; title: string; date: string; label?: string }>;
   truncated: boolean;
-  /** Broad recall read reviewed transcripts, so whole meetings may leave the computer. */
+  /** Whole reviewed transcripts may be sent (broad recall, or a meeting that fits the budget), so complete meetings may leave the computer. */
   fullTranscripts: boolean;
 };
 

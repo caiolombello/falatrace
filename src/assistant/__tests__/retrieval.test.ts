@@ -84,6 +84,8 @@ describe("meeting scope", () => {
     const pack = await buildContextPack({ scope: { kind: "meeting", jobId: A }, question: "qual a data?", index: fakeIndex([facts(A, { title: "Cronograma Q4" })], []),
       config: configWith(60_000), readers });
     expect(pack.truncated).toBe(false);
+    // The whole transcript is sent: the consent card must be able to say so.
+    expect(pack.fullTranscripts).toBe(true);
     expect(pack.jobs).toEqual([A]);
     expect(pack.text).toContain('Reunião: "Cronograma Q4"');
     expect(pack.text).toContain("[s000000 00:00 Ana] Fala 0 sobre o cronograma.");
@@ -102,6 +104,8 @@ describe("meeting scope", () => {
     const config = configWith(8_000);
     const pack = await buildContextPack({ scope: { kind: "meeting", jobId: A }, question: "por que trocar o fornecedor de pagamentos?", index: fakeIndex([], []), config, readers });
     expect(pack.truncated).toBe(true);
+    // Only windows of it are sent, not the whole transcript.
+    expect(pack.fullTranscripts).toBe(false);
     expect(pack.text.length).toBeLessThanOrEqual(8_000);
     expect(pack.text).toContain("Resumo (gerado por IA, pode conter erros): Reunião longa de acompanhamento.");
     expect(pack.text).toContain("fornecedor!");
@@ -323,17 +327,18 @@ describe("library, person and client scopes", () => {
     expect((pack.text.match(/^\[…\]$/gm) || []).length).toBe(2);
   });
 
-  test("the pack flag says when broad recall read whole transcripts", async () => {
+  test("the pack flag says when whole transcripts were read", async () => {
     const readers = meetingReaders({ segments: segments(2, (index) => `Fala ${index}.`) });
     const noHits = fakeIndex([facts(A)], []);
     // A keyword miss falls back to reading the meetings' reviewed speech.
     const broad = await buildContextPack({ scope: { kind: "library" }, question: "assunto que nao aparece", index: noHits, config: configWith(8_000), readers });
     expect(broad.fullTranscripts).toBe(true);
-    // Direct hits send excerpts only, and so does the meeting scope.
+    // Direct hits send excerpts only; a meeting that fits sends its whole transcript.
     const hits = await buildContextPack({ scope: { kind: "library" }, question: "plano anual", index: fakeIndex(all, chunks, timeline), config: configWith(60_000), readers });
     expect(hits.fullTranscripts).toBe(false);
     const meeting = await buildContextPack({ scope: { kind: "meeting", jobId: A }, question: "plano", index: noHits, config: configWith(60_000), readers });
-    expect(meeting.fullTranscripts).toBe(false);
+    expect(meeting.fullTranscripts).toBe(true);
+    expect(meeting.text).toContain("Transcrição completa:");
     // A meeting that cannot be read sends only the indexed facts, never transcripts.
     const unreadable: AssistantReaders = { meeting: async () => { throw new Error(RETRIEVAL_ERRORS.meetingUnreadable); } };
     const failed = await buildContextPack({ scope: { kind: "library" }, question: "assunto que nao aparece", index: noHits, config: configWith(8_000), readers: unreadable });

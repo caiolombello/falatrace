@@ -49,7 +49,7 @@ export type ContextPack = {
   /** Job ids sent, in label order (m1 is jobs[0]). */
   jobs: string[];
   truncated: boolean;
-  /** Broad (library) recall read reviewed transcripts, not only search excerpts, so whole meetings may leave the computer. */
+  /** Whole reviewed transcripts are in the pack (a meeting that fits the budget, or broad library recall), so complete meetings may leave the computer. */
   fullTranscripts: boolean;
   meetings: Array<{ jobId: string; title: string; date: string; label?: string }>;
 };
@@ -262,7 +262,7 @@ const meetingPack = async (jobId: string, question: string, index: LibraryIndexR
   const meetings = [{ jobId, title, date }];
   if (lineCost(full) <= budget) {
     return { text: full.join("\n"), refs: new Map(content.segments.map((segment) => [segment.id, refFor(segment)])), jobs: [jobId], truncated: false,
-      fullTranscripts: false, meetings };
+      fullTranscripts: true, meetings };
   }
   const fixed = [...header, ...summaryLines(content, Math.floor(budget * 0.2)), ...noteLines(content.notes, Math.floor(budget * 0.15)),
     "Trechos da transcrição (seleção; a reunião completa é mais longa):"];
