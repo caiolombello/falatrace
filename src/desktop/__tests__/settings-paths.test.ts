@@ -37,7 +37,7 @@ const pathsIn = (text: string, prefix: string): string[] => {
 };
 
 test("the settings sections are read from the dialog", () => {
-  expect(titles).toHaveLength(16);
+  expect(titles).toHaveLength(17);
   expect(titles).toContain("Perguntar e receitas");
 });
 

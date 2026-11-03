@@ -59,7 +59,7 @@ SettingsPage {
         field: "summary.language"; label: t("Idioma das notas")
         options: [{label: t("Igual ao da conversa"), value: "auto"}, {label: "Português (Brasil)", value: "pt-BR"}, {label: "English", value: "en"}, {label: "Español", value: "es"}]
     }
-    SettingsChoice { objectName: "settingsDefaultTemplate"; field: "summary.template"; label: t("Modelo padrão"); options: notesPage.templateOptions }
+    SettingsChoice { objectName: "settingsDefaultTemplate"; field: "summary.template"; label: t("Modelo de notas padrão"); options: notesPage.templateOptions }
     SettingsChoice {
         field: "summary.templateDetection"; label: t("Quando a agenda não diz o tipo")
         options: [{label: t("Deixar a IA escolher"), value: "ai"}, {label: t("Só por palavras-chave (senão, Geral)"), value: "keywords"}]
@@ -72,7 +72,7 @@ SettingsPage {
     SettingsHint { text: notesPage.localDraft ? t("Só com processamento neste computador: nada sai daqui.") : t("Só com processamento neste computador. Hoje a transcrição ou o resumo vão para fora.") ; color: notesPage.localDraft ? muted : warningColor }
     FtButton { visible: !notesPage.localDraft; compact: true; variant: "outline"; text: t("Abrir Processamento e IA"); onClicked: settingsDialog.goToSection(2) }
 
-    SettingsSection { visible: feature("templates"); text: t("Modelos") }
+    SettingsSection { visible: feature("templates"); text: t("Modelos de notas") }
     RowLayout {
         visible: feature("templates")
         Layout.fillWidth: true

@@ -12,7 +12,9 @@ Rectangle {
     property string detail: ""
     property string iconName: ""
     default property alias extra: extraColumn.data
-    readonly property bool selected: settingsDraft[field] === value
+    // A card can stand for several values of its field (one family of choices); choosing it sets `value`.
+    property var values: []
+    readonly property bool selected: values.length > 0 ? values.indexOf(settingsDraft[field]) >= 0 : settingsDraft[field] === value
     Layout.fillWidth: true
     implicitHeight: cardColumn.implicitHeight + 20
     radius: 10

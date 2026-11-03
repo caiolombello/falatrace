@@ -20,7 +20,7 @@ export const SPEAKER_MESSAGES = {
   "no-microphone-speech": "Não há fala no microfone nesta gravação.",
   "no-match": "Nenhum falante coincide com a fala no microfone.",
   ambiguous: "Mais de dois falantes aparecem no microfone; sem sugestão pelo microfone.",
-  voiceNotInstalled: "Para reconhecer vozes conhecidas, baixe o reconhecimento de voz em Configurações › Modelos.",
+  voiceNotInstalled: "Para reconhecer vozes conhecidas, baixe o reconhecimento de voz em Configurações › Modelos locais.",
   voiceMissing: "As vozes desta gravação ainda não foram calculadas. Use Sugerir nomes…",
   voiceEmpty: "Ainda não há vozes conhecidas: elas são aprendidas quando você confirma um nome.",
   voiceNoMatch: "Nenhuma voz conhecida reconhecida com segurança nesta gravação.",
