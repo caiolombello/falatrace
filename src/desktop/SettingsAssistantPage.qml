@@ -2,8 +2,9 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-// Settings 11 · Perguntar e receitas: who answers questions about your meetings (five choices, each
-// saying what leaves this computer and what it costs), the context size, the optional meaning search
+// Settings 11 · Perguntar e receitas: who answers questions about your meetings — this computer, a
+// subscription the person already pays for (ChatGPT or a command-line tool), or an API key, each saying
+// what leaves this computer and what it costs; an ACP agent and the context size under "Mais opções" —
 // and your recipes. Detection (assistant-detect), the ChatGPT sign-in and the recipe list are sent
 // only with features.assistant / features.recipes and fail into this page's own state.
 SettingsPage {
@@ -128,83 +129,237 @@ SettingsPage {
         onTriggered: { if (!hasPending("assistant-chatgpt-status")) assistantPage.request("assistant-chatgpt-status") }
     }
 
-    SettingsHint { text: t("Escolha quem responde quando você pergunta sobre suas reuniões. Destinos fora deste computador pedem confirmação antes do primeiro envio de cada conversa.") }
+    // Subscriptions the person already pays for: the ChatGPT sign-in and the four command-line tools,
+    // in one list (installed and connected first) instead of two cards that both named Claude and Codex.
+    readonly property var subscriptionOptions: [
+        {key: "chatgpt", provider: "chatgpt", tool: "", label: "ChatGPT", detail: t("Pela sua conta Plus ou Pro, com login no navegador. Sem cobrança por uso.")},
+        {key: "claude", provider: "cli", tool: "claude", label: "Claude Code", detail: t("Pelo comando claude, com a conta em que ele entrou (assinatura do Claude ou chave da Anthropic).")},
+        {key: "codex", provider: "cli", tool: "codex", label: "Codex", detail: t("Pelo comando codex, com a conta em que ele entrou (plano do ChatGPT ou chave da OpenAI, cobrada por uso).")},
+        {key: "gemini", provider: "cli", tool: "gemini", label: "Gemini", detail: t("Pelo agy (ou o Gemini CLI), com a sua conta do Google.")},
+        {key: "opencode", provider: "cli", tool: "opencode", label: "OpenCode", detail: t("Pelo comando opencode; o custo segue o provedor configurado nele.")}
+    ]
+    readonly property string subscriptionKey: settingsDraft["assistant.provider"] === "chatgpt" ? "chatgpt" : settingsDraft["assistant.provider"] === "cli" ? (settingsDraft["assistant.cliTool"] || "claude") : ""
+    // 0 connected · 1 installed, sign-in unknown · 2 installed without sign-in · 3 not installed · 4 not checked yet.
+    function subscriptionRank(option) {
+        if (option.provider === "chatgpt") return chatgpt.state === "signed-in" ? 0 : 1
+        const entry = detected ? found(detected.cli, "tool", option.tool) : null
+        if (!entry) return 4
+        return !entry.found ? 3 : entry.signedIn === true ? 0 : entry.signedIn === false ? 2 : 1
+    }
+    function subscriptionStatus(option) {
+        if (option.provider === "chatgpt") return chatgpt.state === "signed-in" ? {text: t("Conectado"), kind: "accent"} : chatgpt.state === "waiting" ? {text: t("Aguardando o navegador…"), kind: "neutral"} : {text: t("Sem conta conectada"), kind: "neutral"}
+        const entry = detected ? found(detected.cli, "tool", option.tool) : null
+        if (!entry) return {text: "", kind: "neutral"}
+        if (!entry.found) return {text: t("Não instalado"), kind: "neutral"}
+        const via = entry.command && entry.command !== option.tool ? " · " + entry.command : ""
+        return entry.signedIn === true ? {text: t("Conectado") + via, kind: "accent"} : entry.signedIn === false ? {text: t("Sem login") + via, kind: "warning"} : {text: t("Instalado") + via, kind: "neutral"}
+    }
+    readonly property var sortedSubscriptions: subscriptionOptions.slice().sort(function(a, b){ return subscriptionRank(a) - subscriptionRank(b) })
+    function chooseSubscription(option) {
+        if (!settingsEditable) return
+        setSettingsField("assistant.provider", option.provider)
+        if (option.tool) setSettingsField("assistant.cliTool", option.tool)
+    }
+    // Choosing the card picks what is ready: a connected tool, else the ChatGPT account if connected, else Claude Code.
+    readonly property var defaultSubscription: sortedSubscriptions.length ? sortedSubscriptions[0] : subscriptionOptions[1]
+    property bool showAdvanced: settingsDraft["assistant.provider"] === "acp"
+
+    readonly property string provider: settingsDraft["assistant.provider"] || "local"
+    readonly property string choiceHeading: provider === "local" ? t("Neste computador") : provider === "api" ? t("Uma chave de API") : provider === "acp" ? t("Um agente ACP") : t("Sua conta ou ferramenta")
+
+    SettingsHint { text: t("Quem responde quando você pergunta sobre suas reuniões. O que sai deste computador pede confirmação antes do primeiro envio de cada conversa.") }
+    // The choices stay short and all in view; the chosen one's settings go in one panel below them.
     SettingsRadioCard {
         objectName: "assistantLocal"; field: "assistant.provider"; value: "local"; iconName: "lock"
         heading: t("Neste computador")
         detail: t("O Ollama deste computador responde. Nada sai daqui. Grátis.")
-        SettingsText { field: "assistant.localModel"; label: t("Modelo do Ollama"); placeholder: "qwen3.5:9b" }
-        SettingsHint { objectName: "assistantCloudModel"; visible: ollamaCloudModel(settingsDraft["assistant.localModel"]); color: warningColor; text: t("Esse é um modelo na nuvem do Ollama: os trechos saem deste computador, com confirmação antes do primeiro envio de cada conversa.") }
+    }
+    SettingsRadioCard {
+        objectName: "assistantSubscription"; field: "assistant.provider"; values: ["cli", "chatgpt"]; iconName: "external"
+        value: assistantPage.defaultSubscription.provider
+        heading: t("Sua conta ou ferramenta")
+        detail: t("Uma conta ou ferramenta que você já usa (ChatGPT, Claude Code, Codex…). Os trechos vão para o serviço dela; o custo segue o seu plano ou a configuração da ferramenta.")
     }
     SettingsRadioCard {
         objectName: "assistantApi"; field: "assistant.provider"; value: "api"; iconName: "cloud"
-        heading: t("Uma API")
+        heading: t("Uma chave de API")
         detail: t("Os trechos das reuniões vão para o provedor escolhido. Cobrado por uso na sua conta da API.")
-        SettingsChoice { field: "assistant.apiPreset"; label: t("Provedor"); options: assistantPage.presetOptions }
-        SettingsText { visible: settingsDraft["assistant.apiPreset"] === "custom"; field: "assistant.apiBaseUrl"; label: t("Endereço da API"); placeholder: "https://api.exemplo.com/v1"; hint: t("HTTPS, ou HTTP só neste computador.") }
-        SettingsText { field: "assistant.apiModel"; label: t("Modelo (opcional)"); placeholder: t("o padrão do provedor") }
-        SecretField {
-            name: assistantPage.presetKeys[settingsDraft["assistant.apiPreset"]] || "OPENROUTER_API_KEY"
-            label: tf("Chave %1", assistantPage.presetKeys[settingsDraft["assistant.apiPreset"]] || "OPENROUTER_API_KEY")
-            testService: settingsDraft["assistant.apiPreset"] || "openrouter"
-        }
     }
-    SettingsRadioCard {
-        objectName: "assistantAcp"; field: "assistant.provider"; value: "acp"; iconName: "external"
-        heading: t("Um agente instalado")
-        detail: t("Um agente deste computador (Claude Agent, Codex…) recebe os trechos e usa a conta dele. O custo segue o plano do agente.")
-        SettingsChoice { field: "assistant.acpAgent"; label: t("Agente"); options: assistantPage.acpAgents.map(function(option){ return {label: assistantPage.agentLabel(option), value: option.value} }) }
-        SettingsText { visible: settingsDraft["assistant.acpAgent"] === "custom"; field: "assistant.acpCommand"; label: t("Comando do agente"); placeholder: "meu-agente --acp" }
-        SettingsHint { text: t("O FalaTrace não instala agentes. Instale e entre na conta pelo terminal.") }
-        AgentToolsOk { kind: "acp"; objectName: "assistantAcpTools" }
-    }
-    SettingsRadioCard {
-        objectName: "assistantCli"; field: "assistant.provider"; value: "cli"; iconName: "external"
-        heading: t("Assinatura pela linha de comando")
-        detail: t("A ferramenta (claude, codex…) recebe os trechos e usa a sua assinatura. Sem custo além do plano.")
-        SettingsChoice { field: "assistant.cliTool"; label: t("Ferramenta"); options: assistantPage.cliTools.map(function(option){ return {label: assistantPage.toolLabel(option), value: option.value} }) }
-        SettingsText { field: "assistant.cliModel"; label: t("Modelo (opcional)"); placeholder: t("o padrão da ferramenta") }
-        AgentToolsOk { kind: "cli"; objectName: "assistantCliTools" }
-    }
-    SettingsRadioCard {
-        objectName: "assistantChatgpt"; field: "assistant.provider"; value: "chatgpt"; iconName: "cloud"
-        heading: t("Entrar com o ChatGPT")
-        detail: t("Os trechos vão para a OpenAI pela sua conta do ChatGPT (Plus ou Pro). Sem cobrança por uso.")
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: 8
-            Label {
-                Layout.fillWidth: true
-                text: assistantPage.chatgpt.state === "signed-in" ? (assistantPage.chatgpt.email ? tf("Conectado como %1.", assistantPage.chatgpt.email) : t("Conta do ChatGPT conectada."))
-                    : assistantPage.chatgpt.state === "waiting" ? t("Aguardando a autorização no navegador…")
-                    : assistantPage.chatgpt.state === "failed" ? (t(assistantPage.chatgpt.error || "") || t("O login do ChatGPT não foi concluído."))
-                    : t("Sem conta conectada.")
-                textFormat: Text.PlainText; wrapMode: Text.WordWrap; font.pixelSize: 12
-                color: assistantPage.chatgpt.state === "signed-in" ? accent : assistantPage.chatgpt.state === "failed" ? warningColor : muted
-            }
-            FtButton {
-                objectName: "chatgptSignIn"
-                visible: feature("assistant")
-                compact: true; variant: assistantPage.chatgpt.state === "signed-in" ? "outline" : "primary"
-                text: assistantPage.chatgpt.state === "signed-in" ? t("Sair") : assistantPage.chatgpt.state === "waiting" ? t("Aguardando o navegador…") : t("Entrar com o ChatGPT")
-                enabled: backend.available && assistantPage.chatgpt.state !== "waiting" && !hasPending("assistant-chatgpt-login") && !hasPending("assistant-chatgpt-logout")
-                onClicked: assistantPage.chatgpt.state === "signed-in" ? assistantPage.signOut() : assistantPage.signIn()
-            }
-        }
-        SettingsText { field: "assistant.chatgptModel"; label: t("Modelo (opcional)"); placeholder: t("o padrão do plano") }
-    }
-    RowLayout {
-        visible: feature("assistant")
-        Layout.fillWidth: true
-        spacing: 8
-        SettingsHint { text: assistantPage.detecting ? t("Procurando agentes e ferramentas neste computador…") : assistantPage.detected ? t("Agentes e ferramentas conferidos neste computador.") : t("Confere quais agentes e ferramentas estão instalados.") }
-        FtButton { objectName: "assistantDetect"; compact: true; variant: "outline"; iconName: "refresh"; text: t("Procurar de novo"); enabled: backend.available && !assistantPage.detecting; onClicked: assistantPage.detect() }
-    }
-    Label { visible: !!assistantPage.error; text: assistantPage.error; textFormat: Text.PlainText; color: warningColor; font.pixelSize: 12; wrapMode: Text.WordWrap; Layout.fillWidth: true }
 
-    SettingsSection { text: t("Contexto") }
-    SettingsNumber { field: "assistant.maxContextCharacters"; label: t("Tamanho máximo do que é enviado por pergunta (caracteres)"); from: 8000; to: 400000 }
-    SettingsText { field: "assistant.embeddingModel"; label: t("Busca por significado (opcional)"); placeholder: "nomic-embed-text"; hint: t("Um modelo de embeddings no Ollama deste computador. Vazio: busca por palavras.") }
+    Rectangle {
+        objectName: "assistantChoicePanel"
+        Layout.fillWidth: true
+        implicitHeight: choicePanel.implicitHeight + 24
+        radius: 10; color: surfaceAlt; border.width: 1; border.color: divider
+        ColumnLayout {
+            id: choicePanel
+            anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
+            anchors.margins: 12
+            spacing: 8
+            FtOverline { text: assistantPage.choiceHeading; Layout.fillWidth: true }
+
+            // Neste computador
+            ColumnLayout {
+                visible: assistantPage.provider === "local"
+                Layout.fillWidth: true
+                spacing: 8
+                SettingsText { field: "assistant.localModel"; label: t("Modelo do Ollama"); placeholder: "qwen3.5:9b" }
+                SettingsHint { objectName: "assistantCloudModel"; visible: ollamaCloudModel(settingsDraft["assistant.localModel"]); color: warningColor; text: t("Esse é um modelo na nuvem do Ollama: os trechos saem deste computador, com confirmação antes do primeiro envio de cada conversa.") }
+            }
+
+            // Sua assinatura: the ChatGPT sign-in and the command-line tools, installed and connected first
+            ColumnLayout {
+                visible: assistantPage.provider === "cli" || assistantPage.provider === "chatgpt"
+                Layout.fillWidth: true
+                spacing: 4
+                Repeater {
+                    model: assistantPage.sortedSubscriptions
+                    delegate: AbstractButton {
+                        id: subscriptionRow
+                        required property var modelData
+                        readonly property bool chosen: assistantPage.subscriptionKey === modelData.key
+                        readonly property var status: assistantPage.subscriptionStatus(modelData)
+                        objectName: "assistantSubscription-" + modelData.key
+                        Layout.fillWidth: true
+                        implicitHeight: subscriptionRowLayout.implicitHeight + 12
+                        hoverEnabled: true
+                        enabled: settingsEditable
+                        Accessible.role: Accessible.RadioButton
+                        Accessible.name: modelData.label + (status.text ? ", " + status.text : "")
+                        Accessible.description: modelData.detail
+                        Accessible.checked: chosen
+                        onClicked: assistantPage.chooseSubscription(modelData)
+                        Keys.onSpacePressed: clicked()
+                        contentItem: Item {}
+                        background: Rectangle {
+                            radius: 8
+                            color: subscriptionRow.chosen ? selectedSurface : subscriptionRow.hovered ? hoverSurface : "transparent"
+                            border.width: subscriptionRow.visualFocus ? 2 : 0
+                            border.color: accent
+                        }
+                        RowLayout {
+                            id: subscriptionRowLayout
+                            anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+                            anchors.leftMargin: 10; anchors.rightMargin: 10
+                            spacing: 10
+                            Rectangle {
+                                Layout.alignment: Qt.AlignTop; Layout.topMargin: 2
+                                implicitWidth: 14; implicitHeight: 14; radius: 7
+                                color: "transparent"; border.width: 2; border.color: subscriptionRow.chosen ? accent : dividerStrong
+                                Rectangle { anchors.centerIn: parent; width: 6; height: 6; radius: 3; color: accent; visible: subscriptionRow.chosen }
+                            }
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 1
+                                Label { text: subscriptionRow.modelData.label; textFormat: Text.PlainText; color: assistantPage.subscriptionRank(subscriptionRow.modelData) === 3 ? muted : ink; font.weight: Font.DemiBold; Layout.fillWidth: true; elide: Text.ElideRight }
+                                Label { text: subscriptionRow.modelData.detail; textFormat: Text.PlainText; color: muted; font.pixelSize: 12; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                            }
+                            FtChip { visible: subscriptionRow.status.text !== ""; text: subscriptionRow.status.text; kind: subscriptionRow.status.kind; Layout.alignment: Qt.AlignTop; maximumWidth: 180 }
+                        }
+                    }
+                }
+                ColumnLayout {
+                    objectName: "assistantChatgpt"
+                    visible: assistantPage.provider === "chatgpt"
+                    Layout.fillWidth: true
+                    Layout.topMargin: 6
+                    spacing: 8
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+                        Label {
+                            Layout.fillWidth: true
+                            text: assistantPage.chatgpt.state === "signed-in" ? (assistantPage.chatgpt.email ? tf("Conectado como %1.", assistantPage.chatgpt.email) : t("Conta do ChatGPT conectada."))
+                                : assistantPage.chatgpt.state === "waiting" ? t("Aguardando a autorização no navegador…")
+                                : assistantPage.chatgpt.state === "failed" ? (t(assistantPage.chatgpt.error || "") || t("O login do ChatGPT não foi concluído."))
+                                : t("Sem conta conectada.")
+                            textFormat: Text.PlainText; wrapMode: Text.WordWrap; font.pixelSize: 13
+                            color: assistantPage.chatgpt.state === "signed-in" ? accent : assistantPage.chatgpt.state === "failed" ? warningColor : muted
+                        }
+                        FtButton {
+                            objectName: "chatgptSignIn"
+                            visible: feature("assistant")
+                            compact: true; variant: assistantPage.chatgpt.state === "signed-in" ? "outline" : "primary"
+                            text: assistantPage.chatgpt.state === "signed-in" ? t("Sair") : assistantPage.chatgpt.state === "waiting" ? t("Aguardando o navegador…") : t("Entrar com o ChatGPT")
+                            enabled: backend.available && assistantPage.chatgpt.state !== "waiting" && !hasPending("assistant-chatgpt-login") && !hasPending("assistant-chatgpt-logout")
+                            onClicked: assistantPage.chatgpt.state === "signed-in" ? assistantPage.signOut() : assistantPage.signIn()
+                        }
+                    }
+                    SettingsText { field: "assistant.chatgptModel"; label: t("Modelo (opcional)"); placeholder: t("o padrão do plano") }
+                }
+                ColumnLayout {
+                    objectName: "assistantCli"
+                    visible: assistantPage.provider === "cli"
+                    Layout.fillWidth: true
+                    Layout.topMargin: 6
+                    spacing: 8
+                    SettingsText { field: "assistant.cliModel"; label: t("Modelo (opcional)"); placeholder: t("o padrão da ferramenta") }
+                    SettingsHint { text: t("O FalaTrace não instala essas ferramentas: instale e entre na conta pelo terminal.") }
+                    AgentToolsOk { kind: "cli"; objectName: "assistantCliTools" }
+                }
+            }
+
+            // Uma chave de API
+            ColumnLayout {
+                visible: assistantPage.provider === "api"
+                Layout.fillWidth: true
+                spacing: 8
+                SettingsChoice { field: "assistant.apiPreset"; label: t("Provedor"); options: assistantPage.presetOptions }
+                SettingsText { visible: settingsDraft["assistant.apiPreset"] === "custom"; field: "assistant.apiBaseUrl"; label: t("Endereço da API"); placeholder: "https://api.exemplo.com/v1"; hint: t("HTTPS, ou HTTP só neste computador.") }
+                SettingsText { field: "assistant.apiModel"; label: t("Modelo (opcional)"); placeholder: t("o padrão do provedor") }
+                SecretField {
+                    name: assistantPage.presetKeys[settingsDraft["assistant.apiPreset"]] || "OPENROUTER_API_KEY"
+                    label: tf("Chave %1", assistantPage.presetKeys[settingsDraft["assistant.apiPreset"]] || "OPENROUTER_API_KEY")
+                    testService: settingsDraft["assistant.apiPreset"] || "openrouter"
+                }
+            }
+
+            // Um agente ACP (chosen under "Mais opções")
+            ColumnLayout {
+                visible: assistantPage.provider === "acp"
+                Layout.fillWidth: true
+                spacing: 8
+                SettingsChoice { field: "assistant.acpAgent"; label: t("Agente"); options: assistantPage.acpAgents.map(function(option){ return {label: assistantPage.agentLabel(option), value: option.value} }) }
+                SettingsText { visible: settingsDraft["assistant.acpAgent"] === "custom"; field: "assistant.acpCommand"; label: t("Comando do agente"); placeholder: "meu-agente --acp" }
+                SettingsHint { text: t("O FalaTrace não instala agentes. Instale e entre na conta pelo terminal.") }
+                AgentToolsOk { kind: "acp"; objectName: "assistantAcpTools" }
+            }
+
+            RowLayout {
+                visible: feature("assistant") && ["cli", "chatgpt", "acp"].indexOf(assistantPage.provider) >= 0
+                Layout.fillWidth: true
+                Layout.topMargin: 4
+                spacing: 8
+                SettingsHint { text: assistantPage.detecting ? t("Procurando agentes e ferramentas neste computador…") : assistantPage.detected ? t("Agentes e ferramentas conferidos neste computador.") : t("Confere quais agentes e ferramentas estão instalados.") }
+                FtButton { objectName: "assistantDetect"; compact: true; variant: "outline"; iconName: "refresh"; text: t("Procurar de novo"); enabled: backend.available && !assistantPage.detecting; onClicked: assistantPage.detect() }
+            }
+            Label { visible: !!assistantPage.error; text: assistantPage.error; textFormat: Text.PlainText; color: warningColor; font.pixelSize: 12; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+        }
+    }
+
+    // Less common: an ACP agent (adapters, custom commands) and how much each question sends.
+    FtButton {
+        objectName: "assistantAdvancedToggle"
+        compact: true; variant: "ghost"
+        iconName: assistantPage.showAdvanced ? "chevron-down" : "chevron-right"
+        text: assistantPage.showAdvanced ? t("Menos opções") : t("Mais opções: agente ACP e contexto")
+        Accessible.name: text
+        onClicked: assistantPage.showAdvanced = !assistantPage.showAdvanced
+    }
+    ColumnLayout {
+        objectName: "assistantAdvanced"
+        visible: assistantPage.showAdvanced
+        Layout.fillWidth: true
+        spacing: 10
+        SettingsRadioCard {
+            objectName: "assistantAcp"; field: "assistant.provider"; value: "acp"; iconName: "tools"
+            heading: t("Um agente ACP")
+            detail: t("Um agente deste computador (Claude Agent, Codex…) pelo protocolo ACP, com a conta dele. Para quem já usa um adaptador ACP.")
+        }
+        SettingsSection { text: t("Contexto") }
+        SettingsNumber { field: "assistant.maxContextCharacters"; label: t("Tamanho máximo do que é enviado por pergunta (caracteres)"); from: 8000; to: 400000 }
+        SettingsText { field: "assistant.embeddingModel"; label: t("Busca por significado (opcional)"); placeholder: "nomic-embed-text"; hint: t("Um modelo de embeddings no Ollama deste computador. Vazio: busca por palavras.") }
+    }
 
     SettingsSection { visible: feature("recipes"); text: t("Receitas") }
     RowLayout {

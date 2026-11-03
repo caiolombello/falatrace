@@ -30,7 +30,7 @@ export const loadVoiceEmbedder = (installation: VoiceInstallation): VoiceEmbedde
   if (cached?.key === key) return cached.embedder;
   const module = { exports: {} as Partial<Addon> };
   try { process.dlopen(module, join(installation.runtimeDir, "sherpa-onnx.node")); }
-  catch { throw new Error("Não foi possível carregar o reconhecimento de voz instalado. Baixe-o de novo em Configurações › Modelos."); }
+  catch { throw new Error("Não foi possível carregar o reconhecimento de voz instalado. Baixe-o de novo em Configurações › Modelos locais."); }
   const addon = module.exports;
   if (REQUIRED.some((name) => typeof addon[name] !== "function")) throw new Error("O runtime de voz instalado não é compatível com esta versão do FalaTrace.");
   const native = addon as Addon;

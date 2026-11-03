@@ -14,7 +14,7 @@ FtDialog {
         { title: t("Captura e áudio"), icon: "record" },
         { title: t("Processamento e IA"), icon: "spark" },
         { title: t("Chaves de API"), icon: "key" },
-        { title: t("Modelos"), icon: "transcript" },
+        { title: t("Modelos locais"), icon: "transcript" },
         { title: t("Integrações"), icon: "plug" },
         { title: t("Recursos opcionais"), icon: "clock" },
         { title: t("Avançado"), icon: "tools" },
@@ -25,13 +25,17 @@ FtDialog {
         { title: t("Agenda e lembretes"), icon: "calendar" },
         { title: t("Transcrição ao vivo"), icon: "wave" },
         { title: t("Compartilhar"), icon: "share" },
-        { title: t("Privacidade e retenção"), icon: "lock" }
+        { title: t("Privacidade e retenção"), icon: "lock" },
+        { title: t("Visão geral da IA"), icon: "spark" }
     ]
     // The list shows the sections grouped (DESIGN-STUDIO §2.13); every index above keeps its meaning.
+    // Everything that chooses an AI (who transcribes, summarizes, answers questions, the live transcript,
+    // the keys and the local models) sits in one group, opened by an overview of where each part runs.
     readonly property var sectionGroups: [
-        { title: t("Reuniões"), sections: [10, 11, 12, 13, 14, 15] },
-        { title: t("Gravação e processamento"), sections: [0, 1, 2, 4] },
-        { title: t("Sistema"), sections: [3, 5, 6, 7, 8, 9] }
+        { title: t("Reuniões"), sections: [10, 12, 14, 15] },
+        { title: t("Inteligência artificial"), sections: [16, 11, 2, 13, 3, 4] },
+        { title: t("Gravação"), sections: [0, 1] },
+        { title: t("Sistema"), sections: [5, 6, 7, 8, 9] }
     ]
     // Display order: Up/Down and the compact list follow it and map back to section indices.
     readonly property var sectionOrder: sectionGroups.reduce(function(order, group){ return order.concat(group.sections) }, [])
@@ -283,6 +287,9 @@ FtDialog {
         id:page
         default property alias content: pageColumn.data
         clip:true; contentWidth:availableWidth
+        // Visible bar whenever the page scrolls, in its own fixed gutter (see SettingsPage.qml).
+        rightPadding:14
+        ScrollBar.vertical.policy:contentHeight>availableHeight?ScrollBar.AlwaysOn:ScrollBar.AsNeeded
         ColumnLayout { id:pageColumn; width:page.availableWidth; spacing:10 }
     }
     component StatusLine: Label {
@@ -316,7 +323,7 @@ FtDialog {
           id:sectionScroll
           Layout.fillWidth:true; Layout.fillHeight:true
           contentHeight:sectionColumn.implicitHeight; clip:true; boundsBehavior:Flickable.StopAtBounds
-          ScrollBar.vertical: ScrollBar { policy:sectionScroll.contentHeight>sectionScroll.height?ScrollBar.AsNeeded:ScrollBar.AlwaysOff }
+          ScrollBar.vertical: ScrollBar { policy:sectionScroll.contentHeight>sectionScroll.height?ScrollBar.AlwaysOn:ScrollBar.AlwaysOff }
           // Keeps the chosen section in view when Up/Down or goToSection moves to one out of sight.
           function reveal(item) {
             const top = item.mapToItem(sectionColumn, 0, 0).y
@@ -817,12 +824,14 @@ FtDialog {
         SettingsLivePage {}
         SettingsSharePage {}
         SettingsPrivacyPage {}
+        // 16 · Visão geral da IA
+        SettingsAiOverviewPage {}
        }
       }
      }
     }
     footer:Item { implicitHeight:60; RowLayout { anchors.fill:parent; anchors.margins:12; spacing:10
-     Label { text:settingsHasChanges()?Object.keys(settingsChanges()).length+t(" alteração(ões) não salva(s)"):""; color:warningColor; Layout.fillWidth:true; elide:Text.ElideRight }
+     Label { readonly property int count: settingsHasChanges() ? Object.keys(settingsChanges()).length : 0; text:count===1?t("1 alteração não salva"):count>1?tf("%1 alterações não salvas", count):""; color:warningColor; Layout.fillWidth:true; elide:Text.ElideRight }
      FtButton { objectName:"settingsCancel"; text:settingsHasChanges()?t("Descartar e fechar"):t("Fechar"); enabled:!hasSettingsPending("settings-save")&&!hasSettingsPending("settings-service"); onClicked:settingsDialog.reject() }
      FtButton { visible:settingsNeedsReload||!!settingsError; text:backend.available?t("Reler configuração"):t("Reconectar"); enabled:!hasSettingsPending("settings-read")&&!hasSettingsPending("settings-save"); onClicked:{if(backend.available)loadSettings(false);else backend.reconnect()} }
      FtButton { objectName:"settingsSave"; highlighted:enabled; text:hasSettingsPending("settings-save")?t("Salvando…"):t("Salvar"); enabled:backend.available&&settingsEditable&&settingsHasChanges(); onClicked:saveSettingsDraft() }

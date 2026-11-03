@@ -21,7 +21,7 @@ import {
 export const LOCAL_MESSAGES = {
   invalidUrl: "O endereço do Ollama é inválido: use HTTPS, ou HTTP só em 127.0.0.1.",
   unreachable: "Não foi possível falar com o Ollama. Confira se ele está rodando e o endereço em Configurações.",
-  modelMissing: "O modelo do assistente não está instalado no Ollama. Baixe-o em Configurações › Modelos ou escolha outro.",
+  modelMissing: "O modelo do assistente não está instalado no Ollama. Baixe-o em Configurações › Modelos locais ou escolha outro.",
   rejected: "O Ollama recusou o pedido. Confira o modelo do assistente em Configurações.",
   failed: "O Ollama interrompeu a resposta. Tente de novo.",
   cloudModel: "Esse modelo roda na nuvem do Ollama, não neste computador. Escolha um modelo baixado em Configurações."
