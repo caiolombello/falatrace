@@ -289,8 +289,9 @@ export const assistantBridge: BridgeFamily<BridgeContext> = {
       case "assistant-detect": {
         const [tools, chatgpt] = await Promise.all([detectAssistantTools(context.deps.detect), chatGptStatus(context.deps.chatgpt)]);
         return {
-          acp: tools.acp.map(({ agent, found }) => ({ agent, found })),
-          cli: tools.cli.map(({ tool, found, signedIn }) => ({ tool, found, signedIn })),
+          // The command names (claude-agent-acp, agy…) let Settings say which program runs and what is missing.
+          acp: tools.acp.map(({ agent, command, found, cliFound }) => ({ agent, command, found, ...(cliFound ? { cliFound } : {}) })),
+          cli: tools.cli.map(({ tool, command, found, signedIn }) => ({ tool, command, found, signedIn })),
           chatgpt: { signedIn: chatgpt.signedIn, ...(chatgpt.email ? { email: chatgpt.email } : {}) }
         };
       }
