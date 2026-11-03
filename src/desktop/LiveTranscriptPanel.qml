@@ -185,7 +185,7 @@ Rectangle {
             spacing: 6
             model: panel.lines
             boundsBehavior: Flickable.StopAtBounds
-            ScrollBar.vertical: ScrollBar {}
+            ScrollBar.vertical: ScrollBar { policy: size < 1 ? ScrollBar.AlwaysOn : ScrollBar.AsNeeded }
             onCountChanged: if (panel.followEnd) Qt.callLater(positionViewAtEnd)
             onMovementEnded: panel.followEnd = atYEnd
             delegate: Item {

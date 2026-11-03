@@ -16,6 +16,8 @@ ApplicationWindow {
     property real duration: 0
     property string location: ""
     property bool mediaReady: false
+    // Picture aspect mpv reports for the open file: captions and the speaker chip follow the picture, not the black bands.
+    property real videoAspect: 16 / 9
     property string errorText: ""
     // Interface language. Portuguese is the source text; English comes from i18n.js. The saved
     // choice (studio.language) wins, a settings draft previews it, and "auto" follows the system:
@@ -55,7 +57,8 @@ ApplicationWindow {
     property color ink: lightTheme ? "#102B2A" : "#F4F1E9"
     property color muted: lightTheme ? "#566B66" : "#AAC0B8"
     property color accent: lightTheme ? "#0F705A" : "#57D5B0"
-    property color onAccent: lightTheme ? "#FFFFFF" : "#0B1716"
+    // Text and icons on accent fills. (A name like "onAccent" is parsed as a change handler of `accent` and never binds.)
+    property color accentInk: lightTheme ? "#FFFFFF" : "#0B1716"
     property color accentSoft: lightTheme ? "#DDEFE6" : "#173D35"
     property color warningSoft: lightTheme ? "#F7E6D7" : "#33291F"
     property color errorSoft: lightTheme ? "#F6E1DC" : "#3A2422"
@@ -212,7 +215,7 @@ ApplicationWindow {
     palette.midlight: divider
     palette.light: surface
     palette.highlight: accent
-    palette.highlightedText: onAccent
+    palette.highlightedText: accentInk
     palette.toolTipBase: surface
     palette.toolTipText: ink
 
@@ -872,6 +875,11 @@ ApplicationWindow {
 
     property bool textHasFocus: !!activeFocusItem && typeof activeFocusItem.cursorPosition === "number"
 
+    // Player clock: h:mm:ss once the recording reaches an hour (1:02:05, not 62:05).
+    function mediaClock(seconds) {
+        const value = Math.max(0, Math.floor(seconds || 0))
+        return duration >= 3600 ? Math.floor(value / 3600) + ":" + clock(value % 3600) : clock(value)
+    }
     function clock(seconds) {
         const value = Math.max(0, Math.floor(seconds || 0))
         return Math.floor(value / 60).toString().padStart(2, "0") + ":" + (value % 60).toString().padStart(2, "0")
@@ -1491,6 +1499,8 @@ ApplicationWindow {
             duration = length
             mediaReady = length > 0
             if (mediaReady && mediaLoadGeneration === generation) { const codec = video.getProperty("video-codec"); mediaHasVideo = !!codec; mediaProbed = true } else mediaProbed = false
+            const aspect = Number(video.getProperty("video-params/aspect"))
+            if (aspect > 0) videoAspect = aspect
             position = Number(video.getProperty("time-pos")) || 0
             paused = video.getProperty("pause") !== false
             const segments = detail.transcript.segments || []

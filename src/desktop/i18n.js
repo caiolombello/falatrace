@@ -5,6 +5,9 @@
 // QML has an entry here and that placeholders and edge whitespace are preserved.
 
 var EN = {
+    "Altura do vídeo": "Video height",
+    "Arraste ou use as setas para cima e para baixo; Home volta ao tamanho automático.": "Drag, or use the Up and Down arrows; Home goes back to the automatic size.",
+    "Arraste para ajustar a altura do vídeo; clique duas vezes para o tamanho automático.": "Drag to adjust the video height; double-click for the automatic size.",
     "Sobre o FalaTrace": "About FalaTrace",
     "Gravações e contexto com origem para Linux · experimental": "Recordings and traceable context for Linux · experimental",
     "Studio em execução: ": "Running Studio: ",

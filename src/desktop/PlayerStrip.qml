@@ -196,7 +196,7 @@ Rectangle {
                 Rectangle { anchors.fill: parent; anchors.margins: -4; radius: 12; color: "transparent"; border.width: 2; border.color: accent; visible: timeline.visualFocus }
             }
         }
-        Label { text: clock(position) + " / " + clock(duration); color: muted; font.family: "monospace"; font.pixelSize: 12 }
+        Label { text: mediaClock(position) + " / " + mediaClock(duration); color: muted; font.family: "monospace"; font.pixelSize: 13 }
         FtButton {
             id: speedButton
             objectName: "playerSpeed"
@@ -227,12 +227,13 @@ Rectangle {
             indicator: Rectangle {
                 implicitWidth: 30; implicitHeight: 18; radius: 9
                 x: captionToggle.leftPadding; y: captionToggle.topPadding + (captionToggle.availableHeight - height) / 2
-                color: captionToggle.checked ? accent : dividerStrong
-                border.width: captionToggle.visualFocus ? 2 : 0; border.color: ink
+                color: captionToggle.checked ? accent : "transparent"
+                border.width: captionToggle.checked ? 0 : 2; border.color: muted
                 opacity: captionToggle.enabled ? 1 : 0.5
-                Rectangle { width: 12; height: 12; radius: 6; y: 3; x: captionToggle.checked ? parent.width - width - 3 : 3; color: captionToggle.checked ? onAccent : surface }
+                Rectangle { width: 12; height: 12; radius: 6; y: 3; x: captionToggle.checked ? parent.width - width - 3 : 3; color: captionToggle.checked ? accentInk : muted }
+                Rectangle { anchors.fill: parent; anchors.margins: -3; radius: 12; color: "transparent"; border.width: 2; border.color: accent; visible: captionToggle.visualFocus }
             }
-            contentItem: Label { text: captionToggle.text; color: captionToggle.enabled ? ink : muted; font.pixelSize: 12; font.weight: Font.DemiBold; leftPadding: captionToggle.indicator.width + captionToggle.spacing; verticalAlignment: Text.AlignVCenter }
+            contentItem: Label { text: captionToggle.text; color: captionToggle.enabled ? ink : muted; font.pixelSize: 13; font.weight: Font.DemiBold; leftPadding: captionToggle.indicator.width + captionToggle.spacing; verticalAlignment: Text.AlignVCenter }
         }
         FtButton { objectName: "videoToggle"; iconOnly: true; compact: true; variant: strip.videoExpanded ? "secondary" : "ghost"; iconName: strip.hasVideo ? "video" : "wave"; text: strip.hasVideo ? (strip.videoExpanded ? t("Recolher o vídeo (v)") : t("Mostrar o vídeo (v)")) : (strip.videoExpanded ? t("Recolher (v)") : t("Mostrar legendas e falantes (v)")); Accessible.name: text; onClicked: strip.toggleVideo() }
         FtButton { objectName: "fullScreenButton"; visible: strip.hasVideo && !strip.narrow; iconOnly: true; compact: true; variant: "ghost"; iconName: "fullscreen"; text: t("Tela cheia (F)"); Accessible.name: text; onClicked: strip.setFullScreen(true) }
@@ -246,9 +247,12 @@ Rectangle {
         anchors.fill: parent
         color: "#05080D"; radius: strip.fullScreen ? 0 : strip.videoExpanded ? 12 : 6; clip: true
         readonly property bool large: strip.videoExpanded || strip.fullScreen
+        readonly property real pictureHeight: Math.min(height, width / videoAspect)
+        readonly property real pictureTop: (height - pictureHeight) / 2
+        readonly property real pictureBottom: pictureTop + pictureHeight
         RecordingVideo {
             id: video; objectName: "recordingVideo"; anchors.fill: parent
-            onReady: { playerInitialized = true; setPropertyAsync("pause", true); setPropertyAsync("hwdec", smokeSoftware ? "no" : "auto-safe"); setPropertyAsync("volume", 70); loadMedia() }
+            onReady: { playerInitialized = true; setPropertyAsync("pause", true); setPropertyAsync("hwdec", smokeSoftware ? "no" : "auto-safe"); setPropertyAsync("volume", 70); setPropertyAsync("sub-auto", "no"); setPropertyAsync("sid", "no"); setPropertyAsync("osd-level", 0); loadMedia() }
         }
         // Not open yet, or audio only: a tile instead of a black frame (a film tile for video, a waveform for audio).
         Rectangle {
@@ -280,8 +284,11 @@ Rectangle {
             }
         }
         Rectangle {
-            anchors.top: parent.top; anchors.left: parent.left; anchors.margins: 12
-            width: Math.min(parent.width - 24, voicesRow.implicitWidth + 20); height: voicesRow.implicitHeight + 12; radius: 8
+            anchors.left: parent.left; anchors.leftMargin: 12
+            y: parent.pictureTop - height - 6 >= 8 ? parent.pictureTop - height - 6 : 12
+            width: Math.min(parent.width - (strip.fullScreen ? 24 : 150), voicesRow.implicitWidth + 20); height: voicesRow.implicitHeight + 12; radius: 8
+            HoverHandler { id: voicesHover }
+            ToolTip.visible: voicesHover.hovered && currentVoices.truncated; ToolTip.text: currentVoices.text; ToolTip.delay: 400
             color: "#D90B1716"
             visible: videoFrame.large && mediaReady && !!activeSpeakerLabels(position)
             RowLayout {
@@ -289,13 +296,18 @@ Rectangle {
                 anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; anchors.leftMargin: 10; anchors.rightMargin: 10
                 spacing: 7
                 FtIcon { name: "users"; tint: "#57D5B0"; size: 14 }
-                Label { id: currentVoices; Layout.fillWidth: true; text: activeSpeakerLabels(position); textFormat: Text.PlainText; color: "#57D5B0"; font.pixelSize: strip.fullScreen ? 15 : 12; wrapMode: Text.WordWrap; maximumLineCount: 2; elide: Text.ElideRight }
+                Label { id: currentVoices; Layout.fillWidth: true; text: activeSpeakerLabels(position); textFormat: Text.PlainText; color: "#57D5B0"; font.pixelSize: strip.fullScreen ? 15 : 13; wrapMode: Text.WordWrap; maximumLineCount: 2; elide: Text.ElideRight }
             }
         }
         Rectangle {
             id: captionOverlay; objectName: "captionOverlay"
-            anchors.bottom: parent.bottom; anchors.bottomMargin: strip.fullScreen ? 84 : 20; anchors.horizontalCenter: parent.horizontalCenter
-            width: Math.min(parent.width - 36, caption.implicitWidth + 28); height: Math.min(caption.implicitHeight + 16, parent.height * 0.42)
+            // Under the picture when the black band has room, otherwise over its lower edge (above the
+            // full-screen bar), at most three or four lines; longer captions scroll.
+            readonly property real captionLine: caption.implicitHeight / Math.max(1, caption.lineCount)
+            anchors.horizontalCenter: parent.horizontalCenter
+            y: Math.max(8, Math.min(parent.height - height - (strip.fullScreen ? 84 : 8), parent.pictureBottom + 6))
+            width: Math.min(parent.width - 24, caption.implicitWidth + 28, caption.font.pixelSize * 36)
+            height: Math.min(caption.implicitHeight, captionLine * (parent.pictureHeight < 360 ? 3 : 4), parent.height * 0.42 - 16) + 16
             radius: 10; color: "#E6050B0B"
             visible: videoFrame.large && captions && mediaReady && captionAvailable && activeCaptionText.length > 0
             border.width: captionViewport.activeFocus ? 2 : 0; border.color: "#57D5B0"
@@ -310,8 +322,8 @@ Rectangle {
                 ScrollBar.vertical: ScrollBar { policy: captionViewport.contentHeight > captionViewport.height + 1 ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff }
                 Keys.onPressed: event => {
                     let step = 0
-                    if (event.key === Qt.Key_Down) step = 22
-                    else if (event.key === Qt.Key_Up) step = -22
+                    if (event.key === Qt.Key_Down) step = Math.round(caption.font.pixelSize * 1.4)
+                    else if (event.key === Qt.Key_Up) step = -Math.round(caption.font.pixelSize * 1.4)
                     else if (event.key === Qt.Key_PageDown || event.key === Qt.Key_Space) step = height * 0.8
                     else if (event.key === Qt.Key_PageUp) step = -height * 0.8
                     else return
@@ -319,7 +331,7 @@ Rectangle {
                     event.accepted = true
                 }
                 // Bigger with the picture: readable in cinema mode and in full screen.
-                Label { id: caption; width: captionViewport.width - 12; text: activeCaptionText; textFormat: Text.PlainText; color: "white"; wrapMode: Text.WordWrap; horizontalAlignment: Text.AlignHCenter; font.pixelSize: Math.round(Math.max(16, Math.min(30, videoFrame.height / 24))); onTextChanged: captionViewport.contentY = 0 }
+                Label { id: caption; width: captionViewport.width - 12; text: activeCaptionText; textFormat: Text.PlainText; color: "white"; wrapMode: Text.WordWrap; horizontalAlignment: Text.AlignHCenter; font.pixelSize: Math.round(Math.max(16, Math.min(30, videoFrame.pictureHeight / 20))); lineHeight: 1.08; onTextChanged: captionViewport.contentY = 0 }
             }
         }
         // Collapsed: a click opens the pane. Expanded or full screen: a double click toggles full screen.
@@ -354,7 +366,7 @@ Rectangle {
                 spacing: 10
                 VideoButton { iconName: paused ? "play" : "pause"; text: paused ? t("Reproduzir") : t("Pausar"); enabled: mediaReady; opacity: enabled ? 1 : 0.5; onClicked: togglePlay() }
                 VideoButton { iconName: "undo"; text: t("Voltar dez segundos"); enabled: mediaReady; opacity: enabled ? 1 : 0.5; onClicked: seek(position - 10) }
-                Label { anchors.verticalCenter: parent.verticalCenter; text: clock(position) + " / " + clock(duration); color: "#F4F1E9"; font.family: "monospace"; font.pixelSize: 14 }
+                Label { anchors.verticalCenter: parent.verticalCenter; text: mediaClock(position) + " / " + mediaClock(duration); color: "#F4F1E9"; font.family: "monospace"; font.pixelSize: 15 }
                 VideoButton { objectName: "fullScreenExit"; iconName: "fullscreen-exit"; text: t("Sair da tela cheia (Esc)"); onClicked: strip.setFullScreen(false) }
             }
         }

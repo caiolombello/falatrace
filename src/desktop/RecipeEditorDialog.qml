@@ -117,7 +117,7 @@ FtDialog {
                     wrapMode: TextEdit.Wrap; textFormat: TextEdit.PlainText; color: ink
                     placeholderText: t("Ex.: Escreva um e-mail de follow-up para {{meeting.people}} com as decisões e as próximas ações.")
                     placeholderTextColor: muted
-                    selectionColor: accent; selectedTextColor: onAccent
+                    selectionColor: accent; selectedTextColor: accentInk
                     Accessible.name: t("Pedido da receita")
                     Keys.onTabPressed: event => { const next = nextItemInFocusChain(true); if (next) next.forceActiveFocus(Qt.TabFocusReason); event.accepted = true }
                     Keys.onBacktabPressed: event => { const previous = nextItemInFocusChain(false); if (previous) previous.forceActiveFocus(Qt.BacktabFocusReason); event.accepted = true }

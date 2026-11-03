@@ -503,7 +503,7 @@ Rectangle {
             leftMargin: 14; rightMargin: 14
             model: askPanel.messages
             boundsBehavior: Flickable.StopAtBounds
-            ScrollBar.vertical: ScrollBar {}
+            ScrollBar.vertical: ScrollBar { policy: size < 1 ? ScrollBar.AlwaysOn : ScrollBar.AsNeeded }
             onCountChanged: Qt.callLater(function(){ messageList.positionViewAtEnd() })
             header: ColumnLayout {
                 width: messageList.width - 28

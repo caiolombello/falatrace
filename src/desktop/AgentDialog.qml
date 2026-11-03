@@ -77,7 +77,7 @@ FtDialog {
            Label { text:agentDialog.connectionHint(); wrapMode:Text.WordWrap; Layout.fillWidth:true; color:muted; font.pixelSize:12 }
            Rectangle {
             Layout.fillWidth:true; implicitHeight:connectCommand.implicitHeight + 16; radius:8; color:fieldSurface; border.width:1; border.color:divider
-            TextEdit { id:connectCommand; objectName:"connectCommand"; anchors.fill:parent; anchors.margins:8; readOnly:true; selectByMouse:true; text:agentDialog.connectionText(); textFormat:TextEdit.PlainText; wrapMode:TextEdit.WrapAnywhere; color:ink; selectionColor:accent; selectedTextColor:onAccent; font.family:"monospace"; font.pixelSize:12; Accessible.name:t("Comando de conexão") }
+            TextEdit { id:connectCommand; objectName:"connectCommand"; anchors.fill:parent; anchors.margins:8; readOnly:true; selectByMouse:true; text:agentDialog.connectionText(); textFormat:TextEdit.PlainText; wrapMode:TextEdit.WrapAnywhere; color:ink; selectionColor:accent; selectedTextColor:accentInk; font.family:"monospace"; font.pixelSize:12; Accessible.name:t("Comando de conexão") }
            }
            FtButton { objectName:"connectCopy"; compact:true; iconName:"copy"; text:t("Copiar"); enabled:!!connectCommand.text; onClicked:{ connectCommand.selectAll(); connectCommand.copy(); connectCommand.deselect(); notice = t("Comando de conexão copiado. Cole no seu terminal.") } }
           }

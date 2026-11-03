@@ -16,7 +16,7 @@ Flickable {
     contentWidth: width
     contentHeight: homeColumn.implicitHeight + 2 * homeColumn.y
     boundsBehavior: Flickable.StopAtBounds
-    ScrollBar.vertical: ScrollBar {}
+    ScrollBar.vertical: ScrollBar { policy: size < 1 ? ScrollBar.AlwaysOn : ScrollBar.AsNeeded }
 
     // home-read: its own generation, state and error.
     property var home: ({})
@@ -189,7 +189,7 @@ Flickable {
             FtButton {
                 objectName: "homeRecord"
                 visible: backend.available && captureKnown && !captureStatus.active
-                variant: "primary"; iconName: "record"; iconTint: onAccent
+                variant: "primary"; iconName: "record"; iconTint: accentInk
                 text: t("Gravar…")
                 enabled: !captureBusy
                 Accessible.name: t("Iniciar uma gravação manual após confirmação")
@@ -267,7 +267,7 @@ Flickable {
                                 color: modelData.done ? accent : "transparent"
                                 border.width: modelData.done ? 0 : 1.5; border.color: dividerStrong
                                 anchors.verticalCenter: parent.verticalCenter
-                                FtIcon { anchors.centerIn: parent; visible: modelData.done; name: "check"; tint: onAccent; size: 12 }
+                                FtIcon { anchors.centerIn: parent; visible: modelData.done; name: "check"; tint: accentInk; size: 12 }
                             }
                             Label { text: modelData.label; textFormat: Text.PlainText; color: modelData.done ? ink : muted; font.pixelSize: 13; anchors.verticalCenter: parent.verticalCenter }
                         }
@@ -284,7 +284,7 @@ Flickable {
                 Flow {
                     Layout.fillWidth: true
                     spacing: 8
-                    FtButton { objectName: "firstRunRecord"; visible: homeView.firstRunState === "start"; variant: "primary"; iconName: "record"; iconTint: onAccent; text: t("Gravar conversa de teste"); enabled: backend.available && captureKnown && !captureBusy; onClicked: startCaptureFor(t("Conversa de teste"), true) }
+                    FtButton { objectName: "firstRunRecord"; visible: homeView.firstRunState === "start"; variant: "primary"; iconName: "record"; iconTint: accentInk; text: t("Gravar conversa de teste"); enabled: backend.available && captureKnown && !captureBusy; onClicked: startCaptureFor(t("Conversa de teste"), true) }
                     FtButton { visible: homeView.firstRunState === "recording" && liveAvailable(); variant: "outline"; iconName: "note"; text: t("Abrir notas"); onClicked: openLive() }
                     FtButton { objectName: "firstRunOpen"; visible: homeView.firstRunState === "done" && !!homeView.newestNotes(); variant: "primary"; iconName: "note"; text: t("Ver notas"); onClicked: { const item = homeView.newestNotes(); if (item) selectRecording(item) } }
                     FtButton { objectName: "firstRunDismiss"; visible: homeView.firstRunState === "done"; variant: "outline"; text: t("Fechar"); onClicked: homeView.dismissFirstRun() }
@@ -370,7 +370,7 @@ Flickable {
                                 FtButton { objectName: "eventSkip-" + eventCard.hash; visible: eventCard.modelData.plan === "record"; compact: true; variant: "outline"; iconName: "skip"; text: t("Pular esta gravação"); enabled: backend.available && !eventCard.pendingDecision; onClicked: homeView.decide(eventCard.modelData, "skip") }
                                 FtButton { objectName: "eventRecord-" + eventCard.hash; visible: eventCard.modelData.plan === "notify"; compact: true; variant: "outline"; iconName: "record"; iconTint: recordingColor; text: t("Gravar esta reunião"); enabled: backend.available && !eventCard.pendingDecision; onClicked: homeView.decide(eventCard.modelData, "record") }
                                 FtButton { objectName: "eventClear-" + eventCard.hash; visible: eventCard.modelData.plan === "skip" || eventCard.modelData.plan === "record-override"; compact: true; variant: "ghost"; iconName: "undo"; text: t("Desfazer a escolha"); enabled: backend.available && !eventCard.pendingDecision; onClicked: homeView.decide(eventCard.modelData, "clear") }
-                                FtButton { objectName: "eventRecordNow-" + eventCard.hash; visible: homeView.recordNowAllowed(eventCard.modelData) && !captureStatus.active; compact: true; variant: "primary"; iconName: "record"; iconTint: onAccent; text: t("Gravar agora"); enabled: backend.available && captureKnown && !captureBusy; onClicked: startCaptureFor(eventCard.modelData.title, false) }
+                                FtButton { objectName: "eventRecordNow-" + eventCard.hash; visible: homeView.recordNowAllowed(eventCard.modelData) && !captureStatus.active; compact: true; variant: "primary"; iconName: "record"; iconTint: accentInk; text: t("Gravar agora"); enabled: backend.available && captureKnown && !captureBusy; onClicked: startCaptureFor(eventCard.modelData.title, false) }
                             }
                         }
                     }

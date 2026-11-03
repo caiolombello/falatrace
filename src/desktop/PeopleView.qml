@@ -127,7 +127,7 @@ Rectangle {
                     boundsBehavior: Flickable.StopAtBounds
                     Accessible.role: Accessible.List
                     Accessible.name: t("Pessoas")
-                    ScrollBar.vertical: ScrollBar {}
+                    ScrollBar.vertical: ScrollBar { policy: size < 1 ? ScrollBar.AlwaysOn : ScrollBar.AsNeeded }
                     Keys.onReturnPressed: { if (currentIndex >= 0) peopleView.select(peopleView.shown[currentIndex].id) }
                     Keys.onEnterPressed: { if (currentIndex >= 0) peopleView.select(peopleView.shown[currentIndex].id) }
                     delegate: ItemDelegate {
@@ -202,7 +202,7 @@ Rectangle {
             contentWidth: width
             contentHeight: personColumn.implicitHeight + 48
             boundsBehavior: Flickable.StopAtBounds
-            ScrollBar.vertical: ScrollBar {}
+            ScrollBar.vertical: ScrollBar { policy: size < 1 ? ScrollBar.AlwaysOn : ScrollBar.AsNeeded }
             ColumnLayout {
                 id: personColumn
                 x: compactLayout ? 16 : 32

@@ -46,7 +46,7 @@ Flickable {
     Behavior on opacity { NumberAnimation { duration: 150 } }
     clip: true
     boundsBehavior: Flickable.StopAtBounds
-    ScrollBar.vertical: ScrollBar {}
+    ScrollBar.vertical: ScrollBar { policy: size < 1 ? ScrollBar.AlwaysOn : ScrollBar.AsNeeded }
 
     Connections {
         target: window

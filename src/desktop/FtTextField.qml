@@ -11,7 +11,7 @@ TextField {
     color: ink
     placeholderTextColor: muted
     selectionColor: accent
-    selectedTextColor: onAccent
+    selectedTextColor: accentInk
     font.pixelSize: 14
     background: Rectangle {
         radius: 8

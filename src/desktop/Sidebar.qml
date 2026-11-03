@@ -130,7 +130,7 @@ Rectangle {
             Keys.onShortcutOverride: event => { if (event.key === Qt.Key_Space) event.accepted = true }
             Keys.onUpPressed: event => { if (currentIndex <= 0) { search.forceActiveFocus(Qt.TabFocusReason); event.accepted = true } else event.accepted = false }
             onActiveFocusChanged: { if (activeFocus && currentIndex < 0 && count > 0) currentIndex = 0; else if (!activeFocus) followSelection() }
-            ScrollBar.vertical: ScrollBar {}
+            ScrollBar.vertical: ScrollBar { policy: size < 1 ? ScrollBar.AlwaysOn : ScrollBar.AsNeeded }
             delegate: Column {
                 id: libraryEntry
                 required property var modelData
