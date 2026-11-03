@@ -13,6 +13,8 @@ ColumnLayout {
     Layout.fillWidth:true; spacing:4
     Label { text:areaControl.label; color:ink; font.pixelSize:13; wrapMode:Text.WordWrap; Layout.fillWidth:true }
     ScrollView {
+        // Visible bar whenever this scrolls (Basic style hides it until used).
+        ScrollBar.vertical.policy:contentHeight>availableHeight?ScrollBar.AlwaysOn:ScrollBar.AsNeeded
         Layout.fillWidth:true; Layout.preferredHeight:96
         clip:true
         TextArea {
@@ -23,7 +25,7 @@ ColumnLayout {
             color:ink; wrapMode:TextEdit.Wrap; textFormat:TextEdit.PlainText
             selectionColor:accent; selectedTextColor:accentInk
             enabled:settingsEditable
-            background:Rectangle { radius:8; color:fieldSurface; border.width:areaInput.activeFocus?2:1; border.color:areaInput.activeFocus?accent:divider }
+            background:Rectangle { radius:8; color:fieldSurface; border.width:areaInput.activeFocus?2:1; border.color:areaInput.activeFocus?accent:controlBorder }
             onTextChanged:if (activeFocus) setSettingsField(areaControl.field, text.length > areaControl.maximumLength ? text.slice(0, areaControl.maximumLength) : text)
             Accessible.name:areaControl.label
             Keys.onTabPressed: event => { const next = nextItemInFocusChain(true); if (next) next.forceActiveFocus(Qt.TabFocusReason); event.accepted = true }

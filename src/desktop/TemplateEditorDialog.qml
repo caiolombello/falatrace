@@ -124,6 +124,9 @@ FtDialog {
     onClosed: { editorGeneration += 1; saving = false; const back = opener; opener = null; if (back && back.visible) back.forceActiveFocus(Qt.TabFocusReason) }
 
     contentItem: ScrollView {
+        // Visible bar whenever this scrolls (Basic style hides it until used).
+        ScrollBar.vertical.policy:contentHeight>availableHeight?ScrollBar.AlwaysOn:ScrollBar.AsNeeded
+        rightPadding:14
         id: editorScroll
         clip: true
         contentWidth: availableWidth

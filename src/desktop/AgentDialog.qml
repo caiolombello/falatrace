@@ -40,6 +40,9 @@ FtDialog {
     onOpened:{agentLoaded=false;showAgentSetup=false;detailsOpen=false;preferredGrantId="";agentGeneration+=1;agentState=({grants:[],budget:({}),capabilities:({})});agentResult=({});agentError="";connection=({});agentConsent.checked=false;send("agent-status",selected.key);agentMode.forceActiveFocus(Qt.TabFocusReason)}
     onClosed:{connection=({});cancelProvider();if(activeGrant.id && hasPending("agent-frames"))send("agent-cancel",selected.key,{grantId:activeGrant.id});agentGeneration+=1;agentConsent.checked=false;agentResult=({});agentAccessButton.forceActiveFocus(Qt.TabFocusReason)}
     contentItem:ScrollView {
+        // Visible bar whenever this scrolls (Basic style hides it until used).
+        ScrollBar.vertical.policy:contentHeight>availableHeight?ScrollBar.AlwaysOn:ScrollBar.AsNeeded
+        rightPadding:14
       id:agentScrollView; clip:true; contentWidth:availableWidth
       ColumnLayout {
         width:agentScrollView.availableWidth; spacing:12

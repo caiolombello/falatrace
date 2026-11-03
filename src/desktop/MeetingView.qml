@@ -609,6 +609,8 @@ ColumnLayout {
                 TextEdit { id: compactContext; visible: false; text: contextCopyText; textFormat: TextEdit.PlainText }
 
                 ScrollView {
+                    // Visible bar whenever this scrolls (Basic style hides it until used).
+                    ScrollBar.vertical.policy:contentHeight>availableHeight?ScrollBar.AlwaysOn:ScrollBar.AsNeeded
                     visible: (tabs.currentIndex === 0 && !(detail.transcript.segments || []).length) || (tabs.currentIndex === 3 && !contextData)
                     Layout.fillWidth: true; Layout.fillHeight: true; clip: true
                     TextArea { id: contextArea; readOnly: true; selectByMouse: true; wrapMode: TextEdit.Wrap; textFormat: TextEdit.PlainText; color: ink; font.pixelSize: 14; text: tabs.currentIndex === 0 ? detail.transcript.text || (detailLoading ? t("Carregando…") : t("Transcrição ainda não disponível.")) : tabs.currentIndex === 1 ? (showVisualSummary && detail.visualReview ? detail.visualReview.summaryMarkdown : detail.summary) || t("Resumo ainda não disponível.") : tabs.currentIndex === 3 ? (contextText || (contextLoading ? t("Preparando contexto sob demanda…") : t("Peça o contexto para esta gravação quando precisar."))) : detail.timesheet || t("Nenhum apontamento vinculado a esta gravação.")

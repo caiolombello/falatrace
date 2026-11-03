@@ -60,6 +60,8 @@ ApplicationWindow {
     // Text and icons on accent fills. (A name like "onAccent" is parsed as a change handler of `accent` and never binds.)
     property color accentInk: lightTheme ? "#FFFFFF" : "#0B1716"
     property color accentSoft: lightTheme ? "#DDEFE6" : "#173D35"
+    // Borders that must stand out (text fields, combo boxes): at least 3:1 on the surfaces they sit on.
+    property color controlBorder: lightTheme ? "#76887F" : "#527F76"
     property color warningSoft: lightTheme ? "#F7E6D7" : "#33291F"
     property color errorSoft: lightTheme ? "#F6E1DC" : "#3A2422"
     property color recordingSoft: lightTheme ? "#F8E0E2" : "#3A1E22"
