@@ -177,6 +177,8 @@ SettingsPage {
     SettingsRadioCard {
         objectName: "assistantSubscription"; field: "assistant.provider"; values: ["cli", "chatgpt"]; iconName: "external"
         value: assistantPage.defaultSubscription.provider
+        // Picks the tool too, so a card chosen with only Codex installed does not keep running claude.
+        chooseAction: function() { assistantPage.chooseSubscription(assistantPage.defaultSubscription) }
         heading: t("Sua conta ou ferramenta")
         detail: t("Uma conta ou ferramenta que você já usa (ChatGPT, Claude Code, Codex…). Os trechos vão para o serviço dela; o custo segue o seu plano ou a configuração da ferramenta.")
     }

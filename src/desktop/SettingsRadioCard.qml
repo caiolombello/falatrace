@@ -14,6 +14,8 @@ Rectangle {
     default property alias extra: extraColumn.data
     // A card can stand for several values of its field (one family of choices); choosing it sets `value`.
     property var values: []
+    // Optional: what choosing the card does instead of writing `value` (when one choice sets several fields).
+    property var chooseAction: null
     readonly property bool selected: values.length > 0 ? values.indexOf(settingsDraft[field]) >= 0 : settingsDraft[field] === value
     Layout.fillWidth: true
     implicitHeight: cardColumn.implicitHeight + 20
@@ -38,7 +40,7 @@ Rectangle {
             Accessible.name: card.heading
             Accessible.description: card.detail
             Accessible.checked: card.selected
-            onClicked: if (!card.selected) setSettingsField(card.field, card.value)
+            onClicked: if (!card.selected) { if (card.chooseAction) card.chooseAction(); else setSettingsField(card.field, card.value) }
             Keys.onSpacePressed: clicked()
             contentItem: Item {}
             background: Item {}
