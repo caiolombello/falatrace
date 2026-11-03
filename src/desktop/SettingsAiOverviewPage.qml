@@ -50,7 +50,8 @@ SettingsPage {
                       : assistant === "cli" ? tf("%1, pela linha de comando", toolLabel(d["assistant.cliTool"]))
                       : assistant === "acp" ? tf("Agente ACP · %1", agentLabel(d["assistant.acpAgent"]))
                       : tf("API · %1", presetLabel(d["assistant.apiPreset"])),
-                   local: assistant === "local" && !ollamaCloudModel(d["assistant.localModel"]),
+                   // The local assistant uses the same Ollama address as the summaries (summary.ollamaUrl).
+                   local: assistant === "local" && loopback(d["summary.ollamaUrl"]) && !ollamaCloudModel(d["assistant.localModel"]),
                    apiKey: assistant === "api" ? (settingsDialog.assistantPage.presetKeys[d["assistant.apiPreset"]] || "") : ""})
         list.push({key: "live", icon: "wave", title: t("Transcrição ao vivo"), section: 13,
                    who: d["live.enabled"] !== true ? t("Desligada") : live === "whisper-cpp" ? t("Whisper.cpp") : live === "groq" ? "Groq" : "OpenAI",
