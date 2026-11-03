@@ -249,7 +249,7 @@ Rectangle {
             boundsBehavior: Flickable.StopAtBounds
             Accessible.role: Accessible.List
             Accessible.name: t("Ações")
-            ScrollBar.vertical: ScrollBar {}
+            ScrollBar.vertical: ScrollBar { policy: size < 1 ? ScrollBar.AlwaysOn : ScrollBar.AsNeeded }
             onActiveFocusChanged: if (activeFocus && currentIndex < 0 && count > 0) currentIndex = Math.min(1, count - 1)
             Keys.onPressed: event => {
                 const action = actionsView.rowAction(currentIndex)

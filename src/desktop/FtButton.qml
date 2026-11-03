@@ -11,7 +11,7 @@ Button {
     property bool compact: false
     readonly property bool flatVariant: variant === "ghost" || variant === "outline"
     readonly property color baseColor: variant === "primary" ? accent : variant === "danger" ? recordingColor : buttonSurface
-    readonly property color foreground: variant === "primary" ? onAccent : variant === "danger" ? (lightTheme ? "#FFFFFF" : "#2B0B0E") : ink
+    readonly property color foreground: variant === "primary" ? accentInk : variant === "danger" ? (lightTheme ? "#FFFFFF" : "#2B0B0E") : ink
     implicitHeight: compact ? 32 : 36
     implicitWidth: iconOnly ? implicitHeight : Math.max(implicitHeight, implicitContentWidth + leftPadding + rightPadding)
     leftPadding: iconOnly ? 0 : (compact ? 10 : 14)

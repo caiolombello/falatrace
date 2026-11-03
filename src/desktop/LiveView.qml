@@ -228,7 +228,7 @@ Rectangle {
                                             color: stepRow.stepStatus === "done" ? accent : "transparent"
                                             border.width: stepRow.stepStatus === "done" ? 0 : 2
                                             border.color: stepRow.stepStatus === "active" ? accent : dividerStrong
-                                            FtIcon { anchors.centerIn: parent; visible: stepRow.stepStatus === "done"; name: "check"; tint: onAccent; size: 12 }
+                                            FtIcon { anchors.centerIn: parent; visible: stepRow.stepStatus === "done"; name: "check"; tint: accentInk; size: 12 }
                                         }
                                         Label { text: stepRow.modelData; textFormat: Text.PlainText; color: stepRow.stepStatus === "todo" ? muted : ink; font.pixelSize: 13; font.weight: stepRow.stepStatus === "active" ? Font.DemiBold : Font.Normal }
                                     }

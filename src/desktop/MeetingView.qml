@@ -126,7 +126,6 @@ ColumnLayout {
                         visible: detailView.meetingClient !== "" || (feature("clients") && !!detail.jobId)
                         iconName: "building"
                         text: detailView.meetingClient || t("Sem cliente")
-                        opacity: detailView.meetingClient ? 1 : 0.8
                         maximumWidth: 220
                         Accessible.role: feature("clients") ? Accessible.Button : Accessible.StaticText
                         Accessible.name: (detailView.meetingClient ? tf("Cliente: %1", detailView.meetingClient) : t("Sem cliente")) + (feature("clients") ? t(", definir cliente") : "")
@@ -238,7 +237,20 @@ ColumnLayout {
         id: stage
         objectName: "meetingStage"
         readonly property bool cinema: playerStrip.cinema && playerStrip.videoExpanded && playerStrip.hasVideo
-        readonly property bool side: cinema && window.width >= 1100
+        // Beside the notes only when the room left for the video is wider than tall (1.1×); a tall window
+        // stacks them instead of drawing black bands above and below the picture.
+        readonly property real sideNotesWidth: Math.round(Math.max(360, Math.min(460, width * 0.34)))
+        readonly property bool side: cinema && window.width >= 1100 && (width - sideNotesWidth) >= height * 1.1
+        // The video pane leaves the document room to read: by default up to 55 % of this area but always
+        // about 280 px for the document (62 % in cinema), never taller than the 16:9 picture. The divider
+        // below it sets the height by hand for the session (double click, or Home on it, goes back to
+        // automatic); the document keeps at least 160 px.
+        property real userPaneHeight: 0
+        readonly property real paneCap: videoPane.width * 9 / 16
+        readonly property real paneHeight: {
+            const wanted = cinema ? height * 0.62 : userPaneHeight > 0 ? Math.min(userPaneHeight, height - 160) : Math.min(height * 0.55, height - 292)
+            return Math.round(Math.max(Math.min(120, paneCap), Math.min(paneCap, wanted)))
+        }
         Layout.fillWidth: true
         Layout.fillHeight: true
         columns: side ? 2 : 1
@@ -251,16 +263,53 @@ ColumnLayout {
             Layout.fillWidth: true
             Layout.fillHeight: stage.side
             Layout.leftMargin: compactLayout ? 12 : 20; Layout.rightMargin: stage.side ? 12 : compactLayout ? 12 : 20
-            Layout.bottomMargin: playerStrip.videoExpanded ? 10 : 0
-            Layout.preferredHeight: !playerStrip.videoExpanded ? 0 : stage.side ? -1 : stage.cinema ? Math.round(stage.height * 0.62) : Math.min(width * 9 / 16, detailView.height * (compactLayout ? 0.36 : 0.45))
+            Layout.bottomMargin: playerStrip.videoExpanded && stage.side ? 10 : 0
+            Layout.preferredHeight: !playerStrip.videoExpanded ? 0 : stage.side ? -1 : stage.paneHeight
             visible: playerStrip.videoExpanded
+        }
+        // Divider between the video and the document: drag (or Up/Down with the keyboard) to give the
+        // reading more room; double click or Home goes back to the automatic height.
+        Item {
+            id: paneDivider
+            objectName: "videoPaneDivider"
+            visible: playerStrip.videoExpanded && !stage.side
+            Layout.fillWidth: true
+            Layout.preferredHeight: 12
+            activeFocusOnTab: visible
+            Accessible.role: Accessible.Separator
+            Accessible.name: t("Altura do vídeo")
+            Accessible.description: t("Arraste ou use as setas para cima e para baixo; Home volta ao tamanho automático.")
+            function resize(height) { stage.userPaneHeight = Math.max(120, Math.min(stage.height - 160, height)) }
+            Keys.onUpPressed: resize(videoPane.height - 40)
+            Keys.onDownPressed: resize(videoPane.height + 40)
+            Keys.onPressed: event => { if (event.key === Qt.Key_Home) { stage.userPaneHeight = 0; event.accepted = true } }
+            Rectangle {
+                anchors.centerIn: parent
+                width: 48; height: 4; radius: 2
+                color: dividerMouse.pressed || dividerMouse.containsMouse || paneDivider.activeFocus ? accent : dividerStrong
+            }
+            Rectangle { anchors.fill: parent; anchors.leftMargin: 20; anchors.rightMargin: 20; radius: 4; color: "transparent"; border.width: 2; border.color: accent; visible: paneDivider.activeFocus }
+            MouseArea {
+                id: dividerMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.SizeVerCursor
+                property real startY: 0
+                property real startHeight: 0
+                onPressed: mouse => { startY = mapToItem(stage, mouse.x, mouse.y).y; startHeight = videoPane.height }
+                onPositionChanged: mouse => { if (pressed) paneDivider.resize(startHeight + mapToItem(stage, mouse.x, mouse.y).y - startY) }
+                onDoubleClicked: stage.userPaneHeight = 0
+            }
+            ToolTip.visible: dividerMouse.containsMouse && !dividerMouse.pressed
+            ToolTip.text: t("Arraste para ajustar a altura do vídeo; clique duas vezes para o tamanho automático.")
+            ToolTip.delay: 600
         }
 
         Rectangle {
             id: pageArea
             objectName: "meetingPages"
             Layout.fillWidth: !stage.side
-            Layout.preferredWidth: stage.side ? Math.round(Math.max(360, Math.min(460, stage.width * 0.34))) : -1
+            Layout.preferredWidth: stage.side ? stage.sideNotesWidth : -1
             Layout.fillHeight: true
             color: pageSurface
             Rectangle { anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; height: 1; color: divider }
@@ -375,7 +424,7 @@ ColumnLayout {
                     id:revisionSegmentsList; objectName:"revisionSegmentsList"
                     visible: tabs.currentIndex === 0 && (detail.transcript.segments || []).length > 0
                     Layout.fillWidth: true; Layout.fillHeight: true; model: detail.transcript.segments || []; clip: true; spacing: 2
-                    ScrollBar.vertical: ScrollBar {}
+                    ScrollBar.vertical: ScrollBar { policy: size < 1 ? ScrollBar.AlwaysOn : ScrollBar.AsNeeded }
                     delegate: ItemDelegate {
                         id: segmentItem
                         required property var modelData; required property int index
@@ -431,7 +480,7 @@ ColumnLayout {
                         id:revisionSpeakersList; objectName:"revisionSpeakersList"
                         visible: speakerRows.length > 0
                         Layout.fillWidth: true; Layout.preferredHeight: Math.min(236, speakerRows.reduce(function(total, row){return total + 44 + suggestionsFor(row.speakerId).length * 30}, 0)); model: speakerRows; clip: true; spacing: 2
-                        ScrollBar.vertical: ScrollBar {}
+                        ScrollBar.vertical: ScrollBar { policy: size < 1 ? ScrollBar.AlwaysOn : ScrollBar.AsNeeded }
                         delegate: ItemDelegate {
                             id: speakerItem
                             required property var modelData
@@ -472,7 +521,7 @@ ColumnLayout {
                     ListView {
                         id:revisionTurnsList; objectName:"revisionTurnsList"
                         Layout.fillWidth: true; Layout.fillHeight: true; model: detail.diarization.turns || []; clip: true; spacing: 2
-                        ScrollBar.vertical: ScrollBar {}
+                        ScrollBar.vertical: ScrollBar { policy: size < 1 ? ScrollBar.AlwaysOn : ScrollBar.AsNeeded }
                         delegate: ItemDelegate {
                             id: turnItem
                             required property var modelData
@@ -519,7 +568,7 @@ ColumnLayout {
                         clip: true
                         spacing: 8
                         model: contextData ? contextData.excerpts : []
-                        ScrollBar.vertical: ScrollBar {}
+                        ScrollBar.vertical: ScrollBar { policy: size < 1 ? ScrollBar.AlwaysOn : ScrollBar.AsNeeded }
                         header: Item {
                             width: contextExcerpts.width
                             height: contextHeader.implicitHeight + 10

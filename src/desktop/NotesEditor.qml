@@ -236,7 +236,7 @@ FocusScope {
             contentWidth: width
             contentHeight: Math.max(height, area.implicitHeight + 24)
             boundsBehavior: Flickable.StopAtBounds
-            ScrollBar.vertical: ScrollBar {}
+            ScrollBar.vertical: ScrollBar { policy: size < 1 ? ScrollBar.AlwaysOn : ScrollBar.AsNeeded }
             Item {
                 id: gutter
                 x: 0; y: 0
@@ -275,7 +275,7 @@ FocusScope {
                 font.pixelSize: 15
                 color: noteInk
                 selectionColor: accent
-                selectedTextColor: onAccent
+                selectedTextColor: accentInk
                 placeholderText: editor.loaded ? editor.placeholder : ""
                 placeholderTextColor: muted
                 leftPadding: 4; rightPadding: 4; topPadding: 2; bottomPadding: 8

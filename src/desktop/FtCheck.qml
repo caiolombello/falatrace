@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-// 18 px checkbox drawn in QML (accent box, onAccent tick). Space toggles; the ring shows keyboard focus.
+// 18 px checkbox drawn in QML (accent box, accentInk tick). Space toggles; the ring shows keyboard focus.
 // `text` is the accessible name only; put the visible label next to it.
 AbstractButton {
     id: check
@@ -28,7 +28,7 @@ AbstractButton {
             color: check.checked ? accent : check.hovered ? hoverSurface : fieldSurface
             border.width: check.checked ? 0 : 1.5
             border.color: check.hovered ? accent : dividerStrong
-            FtIcon { anchors.centerIn: parent; visible: check.checked; name: "check"; tint: onAccent; size: check.boxSize - 4 }
+            FtIcon { anchors.centerIn: parent; visible: check.checked; name: "check"; tint: accentInk; size: check.boxSize - 4 }
         }
         Rectangle {
             anchors.centerIn: parent

@@ -383,11 +383,11 @@ FtDialog {
             Accessible.role:Accessible.Button; Accessible.name:t("Começar rápido (recomendado)"); Accessible.description:t("Só áudio, tudo neste computador, notas geradas assim que a gravação parar.")
             onClicked:setupWizard.recommend()
             contentItem:RowLayout { id:recommendedRow; spacing:12
-              Rectangle { Layout.alignment:Qt.AlignTop; implicitWidth:36; implicitHeight:36; radius:10; color:wizardRecommended.enabled?onAccent:surfaceAlt; opacity:0.95
+              Rectangle { Layout.alignment:Qt.AlignTop; implicitWidth:36; implicitHeight:36; radius:10; color:wizardRecommended.enabled?accentInk:surfaceAlt; opacity:0.95
                 FtIcon { anchors.centerIn:parent; name:"spark"; tint:accent; size:18 } }
               ColumnLayout { Layout.fillWidth:true; spacing:2
-                Label { text:t("Começar rápido (recomendado)"); textFormat:Text.PlainText; color:wizardRecommended.enabled?onAccent:muted; font.pixelSize:16; font.weight:Font.DemiBold; wrapMode:Text.WordWrap; Layout.fillWidth:true }
-                Label { text:t("Só áudio, tudo neste computador, notas geradas assim que a gravação parar."); textFormat:Text.PlainText; color:wizardRecommended.enabled?onAccent:muted; font.pixelSize:13; wrapMode:Text.WordWrap; Layout.fillWidth:true; opacity:0.92 }
+                Label { text:t("Começar rápido (recomendado)"); textFormat:Text.PlainText; color:wizardRecommended.enabled?accentInk:muted; font.pixelSize:16; font.weight:Font.DemiBold; wrapMode:Text.WordWrap; Layout.fillWidth:true }
+                Label { text:t("Só áudio, tudo neste computador, notas geradas assim que a gravação parar."); textFormat:Text.PlainText; color:wizardRecommended.enabled?accentInk:muted; font.pixelSize:13; wrapMode:Text.WordWrap; Layout.fillWidth:true; opacity:wizardRecommended.enabled?0.92:1 }
               }
             }
             background:Rectangle { radius:12; color:wizardRecommended.enabled?(wizardRecommended.down?shade(accent,0.16):wizardRecommended.hovered?shade(accent,0.08):accent):surfaceAlt; border.width:wizardRecommended.enabled?0:1; border.color:divider
@@ -539,7 +539,7 @@ FtDialog {
           // by itself after a minute; with the fast path the notes follow and Início celebrates them.
           FtButton {
             id:wizardRecordTest; objectName:"wizardRecordTest"
-            variant:"primary"; iconName:"record"; iconTint:onAccent
+            variant:"primary"; iconName:"record"; iconTint:accentInk
             text:t("Gravar 1 minuto de teste")
             enabled:backend.available && captureKnown && !captureBusy && !captureStatus.active
             Accessible.name:t("Gravar 1 minuto de teste: pede confirmação e para sozinho")

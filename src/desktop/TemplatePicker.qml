@@ -147,7 +147,7 @@ Popup {
             boundsBehavior: Flickable.StopAtBounds
             Accessible.role: Accessible.List
             Accessible.name: t("Modelos")
-            ScrollBar.vertical: ScrollBar {}
+            ScrollBar.vertical: ScrollBar { policy: size < 1 ? ScrollBar.AlwaysOn : ScrollBar.AsNeeded }
             onCurrentIndexChanged: { if (!picker.syncing && currentIndex >= 0 && currentIndex < picker.options.length) picker.chosen = picker.options[currentIndex].id }
             Keys.onReturnPressed: picker.apply()
             Keys.onEnterPressed: picker.apply()

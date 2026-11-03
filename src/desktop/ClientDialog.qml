@@ -134,7 +134,7 @@ FtDialog {
             spacing: 2
             keyNavigationEnabled: true
             model: [{code: "auto", name: t("Automático"), hint: t("Pelo título da agenda e pela conversa")}, {code: "", name: t("Nenhum"), hint: t("Esta reunião não é de um cliente")}].concat(clientDialog.catalog.map(function(item){ return {code: item.code, name: item.name, hint: item.code} }))
-            ScrollBar.vertical: ScrollBar {}
+            ScrollBar.vertical: ScrollBar { policy: size < 1 ? ScrollBar.AlwaysOn : ScrollBar.AsNeeded }
             delegate: ItemDelegate {
                 id: assignRow
                 required property var modelData

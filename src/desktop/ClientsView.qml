@@ -129,7 +129,7 @@ Rectangle {
                     boundsBehavior: Flickable.StopAtBounds
                     Accessible.role: Accessible.List
                     Accessible.name: t("Clientes")
-                    ScrollBar.vertical: ScrollBar {}
+                    ScrollBar.vertical: ScrollBar { policy: size < 1 ? ScrollBar.AlwaysOn : ScrollBar.AsNeeded }
                     Keys.onReturnPressed: { if (currentIndex >= 0) clientsView.select(clientsView.shown[currentIndex].code) }
                     Keys.onEnterPressed: { if (currentIndex >= 0) clientsView.select(clientsView.shown[currentIndex].code) }
                     delegate: ItemDelegate {
@@ -202,7 +202,7 @@ Rectangle {
             contentWidth: width
             contentHeight: clientColumn.implicitHeight + 48
             boundsBehavior: Flickable.StopAtBounds
-            ScrollBar.vertical: ScrollBar {}
+            ScrollBar.vertical: ScrollBar { policy: size < 1 ? ScrollBar.AlwaysOn : ScrollBar.AsNeeded }
             ColumnLayout {
                 id: clientColumn
                 x: compactLayout ? 16 : 32
