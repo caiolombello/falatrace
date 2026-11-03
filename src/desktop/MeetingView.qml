@@ -244,13 +244,16 @@ ColumnLayout {
         // The video pane leaves the document room to read: by default up to 55 % of this area but always
         // about 280 px for the document (62 % in cinema), never taller than the 16:9 picture. The divider
         // below it sets the height by hand for the session (double click, or Home on it, goes back to
-        // automatic); the document keeps at least 160 px.
+        // automatic); the document keeps at least 160 px. Normal and (stacked) cinema keep their own height.
         property real userPaneHeight: 0
+        property real userCinemaHeight: 0
         readonly property real paneCap: videoPane.width * 9 / 16
         readonly property real paneHeight: {
-            const wanted = cinema ? height * 0.62 : userPaneHeight > 0 ? Math.min(userPaneHeight, height - 160) : Math.min(height * 0.55, height - 292)
+            const manual = cinema ? userCinemaHeight : userPaneHeight
+            const wanted = manual > 0 ? Math.min(manual, height - 160) : cinema ? height * 0.62 : Math.min(height * 0.55, height - 292)
             return Math.round(Math.max(Math.min(120, paneCap), Math.min(paneCap, wanted)))
         }
+        function setManualPaneHeight(value) { if (cinema) userCinemaHeight = value; else userPaneHeight = value }
         Layout.fillWidth: true
         Layout.fillHeight: true
         columns: side ? 2 : 1
@@ -279,10 +282,10 @@ ColumnLayout {
             Accessible.role: Accessible.Separator
             Accessible.name: t("Altura do vídeo")
             Accessible.description: t("Arraste ou use as setas para cima e para baixo; Home volta ao tamanho automático.")
-            function resize(height) { stage.userPaneHeight = Math.max(120, Math.min(stage.height - 160, height)) }
+            function resize(height) { stage.setManualPaneHeight(Math.max(120, Math.min(stage.height - 160, height))) }
             Keys.onUpPressed: resize(videoPane.height - 40)
             Keys.onDownPressed: resize(videoPane.height + 40)
-            Keys.onPressed: event => { if (event.key === Qt.Key_Home) { stage.userPaneHeight = 0; event.accepted = true } }
+            Keys.onPressed: event => { if (event.key === Qt.Key_Home) { stage.setManualPaneHeight(0); event.accepted = true } }
             Rectangle {
                 anchors.centerIn: parent
                 width: 48; height: 4; radius: 2
@@ -298,7 +301,7 @@ ColumnLayout {
                 property real startHeight: 0
                 onPressed: mouse => { startY = mapToItem(stage, mouse.x, mouse.y).y; startHeight = videoPane.height }
                 onPositionChanged: mouse => { if (pressed) paneDivider.resize(startHeight + mapToItem(stage, mouse.x, mouse.y).y - startY) }
-                onDoubleClicked: stage.userPaneHeight = 0
+                onDoubleClicked: stage.setManualPaneHeight(0)
             }
             ToolTip.visible: dividerMouse.containsMouse && !dividerMouse.pressed
             ToolTip.text: t("Arraste para ajustar a altura do vídeo; clique duas vezes para o tamanho automático.")
