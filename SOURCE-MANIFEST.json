@@ -1,6 +1,6 @@
 {
   "scope": "sanitized experimental Linux source alpha; no private history/config/media/dependencies/binaries",
-  "version": "0.2.0-alpha.18",
+  "version": "0.2.0-alpha.19",
   "selfExcluded": "SOURCE-MANIFEST.json; external release manifest includes this file",
   "files": [
     {
@@ -20,8 +20,8 @@
     },
     {
       "path": "CHANGELOG.md",
-      "sha256": "a799a4220490487daa1488371758345fc50b91451fd5e4cf909376b52e66c920",
-      "bytes": 34973
+      "sha256": "d1bb69222f90d054c4e6087c06f5b797c348edd8e8f19594cd932c9b36f6312b",
+      "bytes": 37277
     },
     {
       "path": "LICENSE",
@@ -35,7 +35,7 @@
     },
     {
       "path": "README.md",
-      "sha256": "3769a96a1143343858481754e81c15ea1ef9fc73ff9c268ca1fe1f97c39d3818",
+      "sha256": "4ca62ce7a1637e8b1e4edb7a4b2216ea89b6a9e6b2bed15184834d8165c5a126",
       "bytes": 6620
     },
     {
@@ -172,6 +172,11 @@
       "path": "docs/ALPHA18.md",
       "sha256": "29fa69db6a003cd5ba73b54f4edac31bd3f27078c016e5986a9c4c67dfb738ca",
       "bytes": 5067
+    },
+    {
+      "path": "docs/ALPHA19.md",
+      "sha256": "cf815a06ae2445dc0d5895e55ea3a06276906907df6b6db2626e0bd371e7dc97",
+      "bytes": 6617
     },
     {
       "path": "docs/ALPHA2-LOCAL-REVIEW.md",
@@ -485,7 +490,7 @@
     },
     {
       "path": "docs/en/index.html",
-      "sha256": "76806ae938c04b5792b9c52e3b5ec9521f14ffce46ee846f14cde04cbf254ff2",
+      "sha256": "299a2b8aa780d0b791fe220a3e2d5919c69a2acbad224f4cac0405a062b08ec6",
       "bytes": 43609
     },
     {
@@ -495,7 +500,7 @@
     },
     {
       "path": "docs/index.html",
-      "sha256": "c5d7df89589d3e09d89ab6cae269fb5fb0ddbf866f81d3359e8e5d698c80e9cb",
+      "sha256": "13620c5401c688513af6d374d21109e5b04d7b260c311088dada5a470e17dce5",
       "bytes": 44294
     },
     {
@@ -515,7 +520,7 @@
     },
     {
       "path": "package.json",
-      "sha256": "06d294a38aea03d440b4e001c80b14dbd64a989d5ee755566e39923f09dc9e13",
+      "sha256": "7db445e432bc22d0ee9019106c84f02744b5baf9b24ce2799c40c47844212efe",
       "bytes": 1488
     },
     {
@@ -670,7 +675,7 @@
     },
     {
       "path": "skills/falatrace/SKILL.md",
-      "sha256": "531c18c703907c5b6c823f7d68aecfcd61bc46f9b52791bced50e657447edbd0",
+      "sha256": "4157c8075d488dbc165dd1a432f546f0d594801eefc67e9ee2e98a435168f2cc",
       "bytes": 9723
     },
     {
@@ -1595,13 +1600,13 @@
     },
     {
       "path": "src/desktop/ActionsView.qml",
-      "sha256": "cf9d9d67358e218195245ce04bbabc152106580bd305e2c0352baa79b5f5f311",
-      "bytes": 26572
+      "sha256": "35b323026819ee1afc37701495ec987b2349e15037ff274ec85c755a79cd6f53",
+      "bytes": 26632
     },
     {
       "path": "src/desktop/AgentDialog.qml",
-      "sha256": "8f042958a2b35262a40889b6d96aaa108161199127b863225689a5c3859c7bd7",
-      "bytes": 26626
+      "sha256": "61e1904e4687fa931ea027195e3f5ecebb3f8e2972d40b2e7a110718b5720649",
+      "bytes": 26627
     },
     {
       "path": "src/desktop/AskBar.qml",
@@ -1610,8 +1615,8 @@
     },
     {
       "path": "src/desktop/AskPanel.qml",
-      "sha256": "692d2d31ee7154b6a8873ced6dc2208334c8e535cef6597c802ffdccfcdebc18",
-      "bytes": 44604
+      "sha256": "560c562736b05a3dcbd6e856f1f6608a0e2e2e33c461b439081551f734362110",
+      "bytes": 44664
     },
     {
       "path": "src/desktop/BrandMark.qml",
@@ -1630,13 +1635,13 @@
     },
     {
       "path": "src/desktop/ClientDialog.qml",
-      "sha256": "5733779fd8507bb76163dff26a15f93d8819690ecda8d1545c3b8881b63d3a76",
-      "bytes": 12816
+      "sha256": "1f4d5ad4ba15aafc1942a06e8a8db6438df8ced664319652ad371eabe42ca0f5",
+      "bytes": 12876
     },
     {
       "path": "src/desktop/ClientsView.qml",
-      "sha256": "5603d59bad5e565af420b232d869aa479df3fed923695481b960ac22796dd92d",
-      "bytes": 17855
+      "sha256": "aeb70bf8fffdc8044f7a4fb8c69cc4d461da51919b3611dfa9ea55fa2cffb8c5",
+      "bytes": 17975
     },
     {
       "path": "src/desktop/EntitySections.qml",
@@ -1665,8 +1670,8 @@
     },
     {
       "path": "src/desktop/FtButton.qml",
-      "sha256": "7a642c81533d6c24a01584f1c915f5cc2fbe6ec130429fb5d7fca5a0da2e6c37",
-      "bytes": 3026
+      "sha256": "d4bcd7edf0b78869a7a41b451e84c1027046feb868d493b44967a08c5b80a379",
+      "bytes": 3027
     },
     {
       "path": "src/desktop/FtCard.qml",
@@ -1675,8 +1680,8 @@
     },
     {
       "path": "src/desktop/FtCheck.qml",
-      "sha256": "029346a1d43eaba38234abd3abb14ddf41f0f64a539d8dfae18bc6622507fdb6",
-      "bytes": 1454
+      "sha256": "06311fe4972ac1ba5f37bebaa84b851f54289570f84e65b759f64ca351f15c16",
+      "bytes": 1456
     },
     {
       "path": "src/desktop/FtChip.qml",
@@ -1690,8 +1695,8 @@
     },
     {
       "path": "src/desktop/FtComboBox.qml",
-      "sha256": "54a7b2f663b7fd414416994591174675137c159f88d371de1ec0fad171e9aec9",
-      "bytes": 437
+      "sha256": "f0189c41a7a42447b7408ca78711d1167964e2c3a044db30b9bb25573cf4142c",
+      "bytes": 1189
     },
     {
       "path": "src/desktop/FtDialog.qml",
@@ -1730,8 +1735,8 @@
     },
     {
       "path": "src/desktop/FtTextField.qml",
-      "sha256": "44a3f2249f5d8e938bf00240e8ce6a37060683ec851e1a06b6a042a87a9a9e5e",
-      "bytes": 805
+      "sha256": "d5cdff0c9580320ecb870f1c3c0727e82a18818fbf117c25dd5c06f6fda52adc",
+      "bytes": 806
     },
     {
       "path": "src/desktop/FtToast.qml",
@@ -1740,23 +1745,23 @@
     },
     {
       "path": "src/desktop/HomeView.qml",
-      "sha256": "2130386ad0950b2903fb26feb61b39bae9e3f07fb93a39ade468e7602851a558",
-      "bytes": 34724
+      "sha256": "7a612de55f6fe34dc1c29a7e5957f31242d76c4a6ad17edfca41169e38cb4635",
+      "bytes": 34788
     },
     {
       "path": "src/desktop/LiveTranscriptPanel.qml",
-      "sha256": "916f537dc379a260e3a4acc2e0d6f2e6040d6a5e28a400d8af2db437028a90b1",
-      "bytes": 12706
+      "sha256": "37a361e0449ff2792bb49f70ecae71ad0aacac0a02af980f28f541c6d9a0a945",
+      "bytes": 12766
     },
     {
       "path": "src/desktop/LiveView.qml",
-      "sha256": "c8b5ac600e2d9b5f6494b552902fd98ce8e37161973e031c6422dc9a301472b7",
-      "bytes": 17191
+      "sha256": "09d95f610bf1f2b9b3a31447f4bdde0f69406459c804edeca4fd445595d8f34f",
+      "bytes": 17192
     },
     {
       "path": "src/desktop/Main.qml",
-      "sha256": "1adc7b90f6adfae811ce3dfeda39475fe2487f7d8af91d72088377303b99c09d",
-      "bytes": 125107
+      "sha256": "f6adb0eec5c0327d1a42abca8864be07c172afc6809d7fadcad1a456f2fec6f4",
+      "bytes": 125808
     },
     {
       "path": "src/desktop/MediaRemoveDialog.qml",
@@ -1770,18 +1775,18 @@
     },
     {
       "path": "src/desktop/MeetingView.qml",
-      "sha256": "cc9e3e0084f5b57c68e19b2c28109c3c1b8251f76803cfc67526d58eb0dd743a",
-      "bytes": 49986
+      "sha256": "2798bd5dde4e3e60ae64f8a2b11e34ef28c93118aa754f538849b8a37950a3ad",
+      "bytes": 53733
     },
     {
       "path": "src/desktop/NotesDocument.qml",
-      "sha256": "767d0dcce855b7729f26d02eae99ce7914b17dc37af1f982c5dd568efbf15f1b",
-      "bytes": 34875
+      "sha256": "e8dabf470f72d3af06b1c3f758421bfbaebb53ce9e775d99cee959d25a2e2799",
+      "bytes": 34935
     },
     {
       "path": "src/desktop/NotesEditor.qml",
-      "sha256": "9518b707da326b8018e60e09fc1023abf098bddd3457f358ad9b5b0e70ace6e7",
-      "bytes": 16248
+      "sha256": "8aa5bcf60953b5219b54a42e0ab77d137277a7a5df86b397648da3a95928aa10",
+      "bytes": 16309
     },
     {
       "path": "src/desktop/OnboardingDialog.qml",
@@ -1790,8 +1795,8 @@
     },
     {
       "path": "src/desktop/PeopleView.qml",
-      "sha256": "1eb64c133b0593edff023ef5e6800118c2672f81865aec8d33ea5fdbfb5c6e5f",
-      "bytes": 16622
+      "sha256": "d9ab0f59ff5ac448cfa21b5613d084204e7fbad17cf594432d4f58f79091b9fd",
+      "bytes": 16742
     },
     {
       "path": "src/desktop/PersonDialog.qml",
@@ -1800,8 +1805,8 @@
     },
     {
       "path": "src/desktop/PlayerStrip.qml",
-      "sha256": "dcfa029d58abbd8859004ca4d54cebfd9e0723aa804cfb44cc65bebacc8c1cc0",
-      "bytes": 23376
+      "sha256": "b16fef0aeb91d0d35508c2d367976cb4a80e6f74ebb4f4cb0872ae374ba7c973",
+      "bytes": 24701
     },
     {
       "path": "src/desktop/ProcessRecordingDialog.qml",
@@ -1810,8 +1815,8 @@
     },
     {
       "path": "src/desktop/RecipeEditorDialog.qml",
-      "sha256": "39d8421d2c1805766c663da2b12c29af709a1018946f80be44f6e90bd8f5b8ea",
-      "bytes": 9052
+      "sha256": "7610e3236d041a2ce628286f6c2dffa44ead41eebe85a349b61e6c98c2f4b6c5",
+      "bytes": 9053
     },
     {
       "path": "src/desktop/RecipePicker.qml",
@@ -1915,13 +1920,13 @@
     },
     {
       "path": "src/desktop/SettingsTextArea.qml",
-      "sha256": "f3477a66bf525b57b03e3c55c4d599e84530e0d3aeaad716d2b4795a326e4d51",
-      "bytes": 1907
+      "sha256": "faac90f6b1c887c7c528a0726a7ccf73d960dd3c6dcffc554ff6b83c13b62af7",
+      "bytes": 1908
     },
     {
       "path": "src/desktop/SetupWizard.qml",
-      "sha256": "609ab3292b3ad421df8eac1efec7d80d382e2b797c079144180dea7d86fb8f21",
-      "bytes": 56239
+      "sha256": "144cd152838d09ff18bb5fa8aebf2b1e2516dd74bc8a098f6af7a20e324c1171",
+      "bytes": 56271
     },
     {
       "path": "src/desktop/ShareDialog.qml",
@@ -1935,8 +1940,8 @@
     },
     {
       "path": "src/desktop/Sidebar.qml",
-      "sha256": "35c246c68bdadfc67f271ec6b61d90ed2b567ad5173b5242eb537a8e506c184b",
-      "bytes": 16231
+      "sha256": "2badab4da717304796bbf7a3d7bf23ff76b309b472935c71e851fe46e1ff99d1",
+      "bytes": 16291
     },
     {
       "path": "src/desktop/SpeakerSuggestDialog.qml",
@@ -1955,13 +1960,13 @@
     },
     {
       "path": "src/desktop/TemplatePicker.qml",
-      "sha256": "8774ca3fd50be01e75ac6711a55911b88efc2f06310b029d562067025031ee3f",
-      "bytes": 13234
+      "sha256": "0ad06066680382c56e50441b2cb42e3a33ae47b9d26576c47718fe1fde59e75b",
+      "bytes": 13294
     },
     {
       "path": "src/desktop/WrappedCheck.qml",
-      "sha256": "6a79a711fb762cd491aaaba3a8b9b81f35cb1c8a7ab3c59fb05fdb8f354aefd3",
-      "bytes": 1066
+      "sha256": "f6454f94bb6f812ba1c320a306c71c85cde7e2e39595e117b7d60d5fc84139ac",
+      "bytes": 1067
     },
     {
       "path": "src/desktop/__tests__/alpha6-build.test.ts",
@@ -2125,8 +2130,8 @@
     },
     {
       "path": "src/desktop/i18n.js",
-      "sha256": "9a1e06b55ff784afa5bf32453f43c80b8639cd28e571649e06ee793844a51786",
-      "bytes": 292806
+      "sha256": "e848c4c4accac35439f6d558d3a8be377c52127a6fb5b4101773a86266eaf1de",
+      "bytes": 293181
     },
     {
       "path": "src/desktop/install.ts",
