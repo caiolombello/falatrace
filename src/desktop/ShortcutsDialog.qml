@@ -43,6 +43,9 @@ FtDialog {
     onClosed: { if (opener && opener.visible) opener.forceActiveFocus(Qt.TabFocusReason); opener = null }
 
     contentItem: ScrollView {
+        // Visible bar whenever this scrolls (Basic style hides it until used).
+        ScrollBar.vertical.policy:contentHeight>availableHeight?ScrollBar.AlwaysOn:ScrollBar.AsNeeded
+        rightPadding:14
         id: shortcutsScroll
         clip: true
         contentWidth: availableWidth

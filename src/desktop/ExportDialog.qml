@@ -17,7 +17,7 @@ FtDialog {
         }
         Label { objectName:"exportError"; visible:!!exportError||!!exportResult.error; text:t(exportError||exportResult.error||""); color:errorColor; textFormat:Text.PlainText; wrapMode:Text.WordWrap; Layout.fillWidth:true }
         Label { objectName:"exportWarnings"; text:(exportResult.warnings||[]).join("\n")+(exportResult.displayTruncated?t("\nPrévia parcial; o arquivo local preserva o resultado completo."):""); visible:!!text; textFormat:Text.PlainText; color:warningColor; wrapMode:Text.WordWrap; Layout.fillWidth:true }
-        ScrollView { Layout.fillWidth:true; Layout.fillHeight:true; clip:true
+        ScrollView { ScrollBar.vertical.policy:contentHeight>availableHeight?ScrollBar.AlwaysOn:ScrollBar.AsNeeded; Layout.fillWidth:true; Layout.fillHeight:true; clip:true
             TextArea { id:exportPreviewText; objectName:"exportPreviewText"; padding:10; background:Rectangle { radius:8; color:surfaceAlt; border.width:1; border.color:divider } readOnly:true; selectByMouse:true; textFormat:TextEdit.PlainText; wrapMode:TextEdit.Wrap; color:ink; text:exportResult.display|| (hasPending("export-preview")?t("Preparando prévia local…"):t("Prévia indisponível.")); Accessible.name:t("Prévia do arquivo exportado")
                 Keys.priority:Keys.BeforeItem
                 Keys.onPressed:event=>{if(event.key===Qt.Key_Tab||event.key===Qt.Key_Backtab){exportClose.forceActiveFocus(event.key===Qt.Key_Backtab||!!(event.modifiers&Qt.ShiftModifier)?Qt.BacktabFocusReason:Qt.TabFocusReason);event.accepted=true}}

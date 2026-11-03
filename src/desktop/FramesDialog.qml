@@ -21,6 +21,9 @@ FtDialog {
     onOpened: { frameQuestion.text = t("O que falta verificar neste momento?"); frameSeconds.text = "0"; frameScope=({}); scopeStart.text="0"; scopeEnd.text=""; plannerTranscriptConsent.checked=false; uxError = "" }
     onClosed: selectionChanged()
     contentItem: ScrollView {
+        // Visible bar whenever this scrolls (Basic style hides it until used).
+        ScrollBar.vertical.policy:contentHeight>availableHeight?ScrollBar.AlwaysOn:ScrollBar.AsNeeded
+        rightPadding:14
       id: frameScroll; clip: true; contentWidth: availableWidth; implicitHeight: frameColumn.implicitHeight
       ColumnLayout {
         id: frameColumn; width: frameScroll.availableWidth; spacing: 12

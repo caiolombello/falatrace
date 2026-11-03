@@ -85,6 +85,9 @@ FtDialog {
     onClosed: { editorGeneration += 1; saving = false; const back = opener; opener = null; if (back && back.visible) back.forceActiveFocus(Qt.TabFocusReason) }
 
     contentItem: ScrollView {
+        // Visible bar whenever this scrolls (Basic style hides it until used).
+        ScrollBar.vertical.policy:contentHeight>availableHeight?ScrollBar.AlwaysOn:ScrollBar.AsNeeded
+        rightPadding:14
         id: recipeScroll
         clip: true
         contentWidth: availableWidth
@@ -108,6 +111,8 @@ FtDialog {
             }
             Label { text: t("Pedido"); color: ink; font.pixelSize: 13; Layout.topMargin: 4 }
             ScrollView {
+                // Visible bar whenever this scrolls (Basic style hides it until used).
+                ScrollBar.vertical.policy:contentHeight>availableHeight?ScrollBar.AlwaysOn:ScrollBar.AsNeeded
                 Layout.fillWidth: true
                 Layout.preferredHeight: 180
                 clip: true

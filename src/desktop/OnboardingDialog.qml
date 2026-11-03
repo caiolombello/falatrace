@@ -12,7 +12,7 @@ FtDialog {
     onClosed:{onboardingGeneration+=1;onboardingDraft=({});localChoice.checked=false;(settingsDialog.visible?settingsTabs:onboardingButton).forceActiveFocus(Qt.TabFocusReason)}
     contentItem:ColumnLayout { spacing:12
      Label { objectName:"onboardingError"; visible:!!onboardingError; text:t(onboardingError); textFormat:Text.PlainText; wrapMode:Text.WordWrap; color:errorColor; Layout.fillWidth:true; Accessible.name:text }
-     ScrollView { id:onboardingScroll; objectName:"onboardingScroll"; clip:true; contentWidth:availableWidth; Layout.fillWidth:true; Layout.fillHeight:true
+     ScrollView { ScrollBar.vertical.policy:contentHeight>availableHeight?ScrollBar.AlwaysOn:ScrollBar.AsNeeded; rightPadding:14; id:onboardingScroll; objectName:"onboardingScroll"; clip:true; contentWidth:availableWidth; Layout.fillWidth:true; Layout.fillHeight:true
      ColumnLayout { width:onboardingScroll.availableWidth; spacing:16
       Label { text:onboardingDraft.revision?(onboardingDraft.exists?t("Suas escolhas atuais"):t("Comece neste computador")):(hasOnboardingPending("onboarding-read")?t("Lendo configuração…"):t("Releia a configuração")); color:ink; font.pixelSize:22; font.weight:Font.DemiBold; wrapMode:Text.WordWrap; Layout.fillWidth:true }
       Label { text:onboardingDraft.exists?t("Você só altera a configuração ao salvar. Cancelar mantém tudo como está."):t("Escolha o processamento local para a primeira configuração. Esta tela não instala modelos nem inicia uma gravação."); color:muted; wrapMode:Text.WordWrap; Layout.fillWidth:true }

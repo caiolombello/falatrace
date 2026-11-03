@@ -346,7 +346,7 @@ Flickable {
                                     textFormat: Text.PlainText; color: muted; font.pixelSize: 12; elide: Text.ElideRight; Layout.fillWidth: true
                                 }
                             }
-                            FtChip { visible: !compactLayout || !eventCard.open; text: homeView.planText(eventCard.modelData.plan); kind: homeView.planKind(eventCard.modelData.plan); iconName: eventCard.modelData.plan === "skip" ? "skip" : eventCard.modelData.plan === "notify" ? "bell" : "record" }
+                            FtChip { visible: (!compactLayout || !eventCard.open) && homeView.planText(eventCard.modelData.plan) !== ""; text: homeView.planText(eventCard.modelData.plan); kind: homeView.planKind(eventCard.modelData.plan); iconName: eventCard.modelData.plan === "skip" ? "skip" : eventCard.modelData.plan === "notify" ? "bell" : "record" }
                             FtButton {
                                 objectName: "eventMore-" + eventCard.hash
                                 iconOnly: true; compact: true; variant: "ghost"

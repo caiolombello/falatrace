@@ -18,7 +18,7 @@ TextField {
         color: fieldSurface
         opacity: fieldControl.enabled ? 1 : 0.6
         border.width: fieldControl.activeFocus ? 2 : 1
-        border.color: fieldControl.activeFocus ? accent : fieldControl.hovered ? dividerStrong : divider
+        border.color: fieldControl.activeFocus ? accent : fieldControl.hovered ? muted : controlBorder
         FtIcon { name: fieldControl.leadingIcon; tint: muted; size: 16; anchors.left: parent.left; anchors.leftMargin: 12; anchors.verticalCenter: parent.verticalCenter }
     }
 }

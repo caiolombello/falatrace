@@ -658,6 +658,8 @@ Rectangle {
                 anchors.leftMargin: 10; anchors.rightMargin: 6
                 spacing: 6
                 ScrollView {
+                    // Visible bar whenever this scrolls (Basic style hides it until used).
+                    ScrollBar.vertical.policy:contentHeight>availableHeight?ScrollBar.AlwaysOn:ScrollBar.AsNeeded
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     TextArea {

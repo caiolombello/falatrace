@@ -32,6 +32,6 @@ ComboBox {
         radius: 8
         color: fieldSurface
         border.width: comboControl.visualFocus ? 2 : 1
-        border.color: comboControl.visualFocus ? accent : comboControl.hovered ? dividerStrong : divider
+        border.color: comboControl.visualFocus ? accent : comboControl.hovered ? muted : controlBorder
     }
 }

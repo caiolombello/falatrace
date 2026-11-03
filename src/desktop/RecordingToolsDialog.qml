@@ -7,7 +7,7 @@ FtDialog {
     property alias toolsScroll: toolsScroll
     anchors.centerIn:parent; width:Math.min(window.width-48,560); height:Math.min(window.height-64,620); modal:true
     closePolicy:Popup.CloseOnEscape
-    contentItem:ScrollView { id:toolsScroll; clip:true; contentWidth:availableWidth
+    contentItem:ScrollView { ScrollBar.vertical.policy:contentHeight>availableHeight?ScrollBar.AlwaysOn:ScrollBar.AsNeeded; rightPadding:14; id:toolsScroll; clip:true; contentWidth:availableWidth
         ColumnLayout { width:toolsScroll.availableWidth; spacing:14
             Label { text:t("Confira a origem do áudio e as permissões antes de gravar. Pausar a automação não encerra uma captura em andamento."); wrapMode:Text.WordWrap; Layout.fillWidth:true; color:muted }
             Rectangle {

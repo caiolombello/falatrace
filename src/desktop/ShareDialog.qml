@@ -214,6 +214,8 @@ FtDialog {
                 color: surfaceAlt
                 border.width: 1; border.color: divider
                 ScrollView {
+                    // Visible bar whenever this scrolls (Basic style hides it until used).
+                    ScrollBar.vertical.policy:contentHeight>availableHeight?ScrollBar.AlwaysOn:ScrollBar.AsNeeded
                     anchors.fill: parent
                     anchors.margins: 1
                     clip: true

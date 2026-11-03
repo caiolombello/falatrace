@@ -397,7 +397,7 @@ FtDialog {
         }
 
         // 1 · Captura
-        ScrollView { id:captureScroll; clip:true; contentWidth:availableWidth
+        ScrollView { ScrollBar.vertical.policy:contentHeight>availableHeight?ScrollBar.AlwaysOn:ScrollBar.AsNeeded; rightPadding:14; id:captureScroll; clip:true; contentWidth:availableWidth
          ColumnLayout { width:captureScroll.availableWidth; spacing:10
           Label { text:t("O que gravar"); color:ink; font.pixelSize:16; font.weight:Font.DemiBold }
           Choice { heading:t("Só áudio"); detail:t("Microfone e som do sistema com o FFmpeg. Basta para transcrever e resumir. Recomendado."); selected:setupWizard.value("backend")==="audio"; onClicked:setupWizard.set("backend","audio") }
@@ -429,7 +429,7 @@ FtDialog {
         }
 
         // 2 · Processamento
-        ScrollView { id:processingScroll; clip:true; contentWidth:availableWidth
+        ScrollView { ScrollBar.vertical.policy:contentHeight>availableHeight?ScrollBar.AlwaysOn:ScrollBar.AsNeeded; rightPadding:14; id:processingScroll; clip:true; contentWidth:availableWidth
          ColumnLayout { width:processingScroll.availableWidth; spacing:10
           Label { text:t("Onde transcrever e resumir"); color:ink; font.pixelSize:16; font.weight:Font.DemiBold }
           Choice { objectName:"wizardPresetLocal"; heading:t("Tudo neste computador"); detail:t("Whisper.cpp transcreve e o Ollama resume. Nada sai do computador; precisa dos modelos instalados."); selected:setupWizard.preset()==="local"; onClicked:setupWizard.applyPreset("local") }
@@ -502,7 +502,7 @@ FtDialog {
         }
 
         // 4 · Revisão
-        ScrollView { id:reviewScroll; clip:true; contentWidth:availableWidth
+        ScrollView { ScrollBar.vertical.policy:contentHeight>availableHeight?ScrollBar.AlwaysOn:ScrollBar.AsNeeded; rightPadding:14; id:reviewScroll; clip:true; contentWidth:availableWidth
          ColumnLayout { width:reviewScroll.availableWidth; spacing:10
           Label { text:t("Revise antes de concluir"); color:ink; font.pixelSize:16; font.weight:Font.DemiBold }
           Status { objectName:"wizardReviewCapture"; label:t("Captura"); status:setupWizard.diag.recording&&setupWizard.diag.recording.blockedReason?"warning":"ok"; detail:(setupWizard.value("backend")==="gpu-screen-recorder"?t("Tela e áudio"):setupWizard.value("backend")==="obs"?"OBS":t("Só áudio"))+" · "+({both:t("microfone e áudio do sistema"),microphone:t("só microfone"),desktop:t("só áudio do sistema"),none:t("sem áudio")})[setupWizard.value("capture.audioSource")||"both"]+(setupWizard.diag.recording&&setupWizard.diag.recording.blockedReason?"\n"+t(setupWizard.diag.recording.blockedReason):"") }
