@@ -8,7 +8,7 @@ import { JobStore } from "../../jobs/store";
 import type { PipeWireNodeRecord } from "../types";
 import { CallMonitorRuntime } from "../runtime";
 
-test("cancelled-start recovery snapshots the new default; later route warnings never restart that capture", async () => {
+test("a recovered call coalesces route events and moves its audio without restarting", async () => {
   const root = await fs.mkdtemp(join(tmpdir(), "audio-recovery-composition-"));
   const previous = { state: process.env.XDG_STATE_HOME, data: process.env.XDG_DATA_HOME };
   process.env.XDG_STATE_HOME = join(root, "state");
@@ -32,16 +32,25 @@ test("cancelled-start recovery snapshots the new default; later route warnings n
   }));
   let active = false, starts = 0, stops = 0, sink = "output-a";
   const paths: string[] = [];
+  let sourceIndex = 1, moves = 0, pulseClient = "";
   const notices: string[] = [];
   const run: typeof runCommand = async (command, args) => {
     if (command === "pactl") {
-      if (args.includes("list")) return { stdout: JSON.stringify(["output-a.monitor", "output-b.monitor", "output-c.monitor"].map(name => ({
-        name, mute: false, volume: { mono: { value: 65536 } }
+      if (args.includes("source-outputs")) return { stdout: JSON.stringify([{ index: 12, source: sourceIndex,
+        properties: { "application.name": pulseClient, "application.process.id": "345" } }]), stderr: "" };
+      if (args[0] === "move-source-output") {
+        moves++;
+        sourceIndex = Number(args[2]);
+        return { stdout: "", stderr: "" };
+      }
+      if (args.includes("list")) return { stdout: JSON.stringify(["output-a.monitor", "output-b.monitor", "output-c.monitor"].map((name,index) => ({
+        name,index, mute: false, volume: { mono: { value: 65536 } }
       }))), stderr: "" };
       return { stdout: args[0] === "get-default-source" ? "synthetic-unused-mic\n" : `${sink}\n`, stderr: "" };
     }
     if (command === "systemd-run") {
       expect(active).toBe(false);
+      pulseClient = args[args.indexOf("-name") + 1];
       starts++;
       active = true;
       paths.push(args[args.length - 1]);
@@ -49,6 +58,7 @@ test("cancelled-start recovery snapshots the new default; later route warnings n
       if (starts === 1) runtime.onNodesChanged([]);
       return { stdout: "", stderr: "" };
     }
+    if (command === "systemctl" && args.includes("--value")) return { stdout: "345", stderr: "" };
     if (command === "systemctl" && args.includes("show")) return { stdout: `ActiveState=${active ? "active" : "inactive"}`, stderr: "" };
     if (command === "systemctl" && args.includes("stop")) { stops++; active = false; return { stdout: "", stderr: "" }; }
     throw Error(`Offline composition fixture refused command: ${command}`);
@@ -91,7 +101,14 @@ test("cancelled-start recovery snapshots the new default; later route warnings n
     expect(stops).toBe(stoppedDuringCancellation);
     expect(runtime.recorder.getSession().id).toBe(recovered.id);
     expect(runtime.recorder.getSession().audio).toEqual({ desktop: "output-b.monitor" });
-    expect((await runtime.recorder.health()).active).toBe(true);
+    for (let i = 0; i < 3; i++) runtime.scheduleAudioRoutes(["desktop"]);
+    await Bun.sleep(350);
+    await flush();
+    expect(moves).toBe(1);
+    expect(starts).toBe(2);
+    expect(runtime.recorder.getSession().id).toBe(recovered.id);
+    expect(runtime.recorder.getSession().audio.desktop).toBe("output-c.monitor");
+    expect(await runtime.recorder.health()).toEqual({ active: true });
   } finally {
     await runtime.shutdown();
     if (previous.state === undefined) delete process.env.XDG_STATE_HOME; else process.env.XDG_STATE_HOME = previous.state;

@@ -22,6 +22,10 @@ export interface ManualObsClient {
     requestType: "SetRecordDirectory",
     requestData: { recordDirectory: string }
   ): Promise<void>;
+  call(requestType: "GetInputList", data: { inputKind: string }): Promise<{ inputs: { inputName: string }[] }>;
+  call(requestType: "GetSourceActive", data: { sourceName: string }): Promise<{ videoActive: boolean }>;
+  call(requestType: "GetInputSettings", data: { inputName: string }): Promise<{ inputKind: string; inputSettings: { device_id?: string } }>;
+  call(requestType: "SetInputSettings", data: { inputName: string; inputSettings: { device_id: string }; overlay: true }): Promise<void>;
   call(requestType: "StartRecord"): Promise<void>;
   call(requestType: "StopRecord"): Promise<{ outputPath: string }>;
 }
@@ -66,11 +70,37 @@ export class ManualObsController {
     const client = this.createClient();
     await this.connect(client);
     try {
-      const status = await client.call("GetRecordStatus");
-      const directory = await client.call("GetRecordDirectory");
-      const elapsed = Date.now() - Date.parse(startedAt);
-      return status.outputActive && directory.recordDirectory === recordDirectory &&
-        typeof status.outputDuration === "number" && Math.abs(elapsed - status.outputDuration) < 10_000;
+      return await this.owned(client, recordDirectory, startedAt);
+    } finally { await client.disconnect().catch(() => undefined); }
+  }
+
+  private async owned(client: ManualObsClient, recordDirectory: string, startedAt: string): Promise<boolean> {
+    const status = await client.call("GetRecordStatus");
+    const directory = await client.call("GetRecordDirectory");
+    const elapsed = Date.now() - Date.parse(startedAt);
+    return status.outputActive && directory.recordDirectory === recordDirectory &&
+      typeof status.outputDuration === "number" && Math.abs(elapsed - status.outputDuration) < 10_000;
+  }
+
+  async refreshAudioRoutes(recordDirectory: string, startedAt: string, routes: ("desktop" | "microphone")[]): Promise<void> {
+    this.assertLoopback();
+    const client = this.createClient();
+    await this.connect(client);
+    try {
+      if (!await this.owned(client, recordDirectory, startedAt)) return;
+      for (const route of routes) {
+        const inputKind = route === "desktop" ? "pulse_output_capture" : "pulse_input_capture";
+        const { inputs } = await client.call("GetInputList", { inputKind });
+        for (const { inputName } of inputs) {
+          const { videoActive } = await client.call("GetSourceActive", { sourceName: inputName });
+          if (!videoActive) continue;
+          const settings = await client.call("GetInputSettings", { inputName });
+          if (settings.inputKind !== inputKind || (settings.inputSettings.device_id ?? "default") !== "default") continue;
+          // linux-pulseaudio resolves "default" to a concrete device on start. Reapplying
+          // it reopens just this source while the output and other tracks keep recording.
+          await client.call("SetInputSettings", { inputName, inputSettings: { device_id: "default" }, overlay: true });
+        }
+      }
     } finally { await client.disconnect().catch(() => undefined); }
   }
 

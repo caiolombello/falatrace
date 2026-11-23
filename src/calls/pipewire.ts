@@ -134,9 +134,49 @@ export const readPipeWireSnapshot = async (): Promise<PipeWireNodeRecord[]> => {
   return graph.values();
 };
 
+export type AudioRoute = "microphone" | "desktop";
+
+/** pw-dump sends both full snapshots and incremental metadata updates. */
+export class AudioDefaultsObserver {
+  private metadataId?: number;
+  private readonly defaults = new Map<AudioRoute, string>();
+
+  apply(batch: unknown): AudioRoute[] {
+    const changed = new Set<AudioRoute>();
+    if (!Array.isArray(batch)) return [];
+    for (const item of batch) {
+      if (!isObject(item) || typeof item.id !== "number") continue;
+      if (item.type === "PipeWire:Interface:Metadata" && isObject(item.props) && item.props["metadata.name"] === "default") {
+        if (this.metadataId !== item.id) this.defaults.clear();
+        this.metadataId = item.id;
+      }
+      if (item.id !== this.metadataId) continue;
+      if (item.type === null) {
+        this.metadataId = undefined;
+        this.defaults.clear();
+        continue;
+      }
+      if (!Array.isArray(item.metadata)) continue;
+      for (const entry of item.metadata) {
+        if (!isObject(entry) || entry.subject !== 0) continue;
+        const kind = entry.key === "default.audio.sink" ? "desktop" : entry.key === "default.audio.source" ? "microphone" : undefined;
+        if (!kind) continue;
+        const name = isObject(entry.value) && entry.value.name;
+        if (typeof name !== "string" || !name) this.defaults.delete(kind);
+        else if (name !== this.defaults.get(kind)) {
+          this.defaults.set(kind, name);
+          changed.add(kind);
+        }
+      }
+    }
+    return [...changed];
+  }
+}
+
 export const monitorPipeWire = (
   onNodesChanged: (nodes: PipeWireNodeRecord[]) => void,
-  signal: AbortSignal
+  signal: AbortSignal,
+  onAudioRoutes?: (routes: AudioRoute[]) => void
 ): Promise<void> =>
   new Promise((resolve, reject) => {
     const child = spawn("pw-dump", ["--monitor", "--no-colors", "--indent", "0"], {
@@ -144,6 +184,7 @@ export const monitorPipeWire = (
     });
     const parser = new JsonValueStreamParser();
     const decoder = new StringDecoder("utf8");
+    const defaults = new AudioDefaultsObserver();
     const graph = new PipeWireGraph();
     let stderr = "";
     let settled = false;
@@ -164,6 +205,10 @@ export const monitorPipeWire = (
     child.stdout.on("data", (chunk: Buffer) => {
       try {
         for (const value of parser.push(decoder.write(chunk))) {
+          if (onAudioRoutes) {
+            const changed = defaults.apply(value);
+            if (changed.length) onAudioRoutes(changed);
+          }
           if (graph.apply(value)) onNodesChanged(graph.values());
         }
       } catch (err) {

@@ -1,6 +1,6 @@
 {
   "scope": "sanitized experimental Linux source alpha; no private history/config/media/dependencies/binaries",
-  "version": "0.2.0-alpha.20",
+  "version": "0.2.0-alpha.21",
   "selfExcluded": "SOURCE-MANIFEST.json; external release manifest includes this file",
   "files": [
     {
@@ -20,8 +20,8 @@
     },
     {
       "path": "CHANGELOG.md",
-      "sha256": "f7d27997af970529210e2be60767b11ab0e93df76a16f04a2d9b32a2bb475810",
-      "bytes": 39250
+      "sha256": "3b00f3ef14a7420ae47591017773b92318b2bc49a965b7d4c027b7b0749681b4",
+      "bytes": 40059
     },
     {
       "path": "LICENSE",
@@ -35,7 +35,7 @@
     },
     {
       "path": "README.md",
-      "sha256": "733ec49890ce45755772f6ddb19d68bcb22f6954ddf9d75d25ff32347d6e0d9c",
+      "sha256": "ef57ce5db3bf36c150bab1c0d258820f2daadf56dbc5b14eea5e98d16b7ccefd",
       "bytes": 6620
     },
     {
@@ -235,8 +235,8 @@
     },
     {
       "path": "docs/COMPATIBILITY.md",
-      "sha256": "6affb2a2fc510e03a3c0cd23a9309babedabdf93c7a6e644a8bf63423974c5ec",
-      "bytes": 12964
+      "sha256": "e0d110ea6dcc3e129d90d4b8993fef527694447419e517d28da1c6e891600aa8",
+      "bytes": 13244
     },
     {
       "path": "docs/CONFIGURATION.md",
@@ -495,7 +495,7 @@
     },
     {
       "path": "docs/en/index.html",
-      "sha256": "a72b2af96ce411e4b25e4629e4e4922f128af22fb87ae1b1d57e031cc984f4cb",
+      "sha256": "f86c4433fb03cb12d8d7a66bf11c473ed4df718273b26721cf834256b49a9aca",
       "bytes": 43609
     },
     {
@@ -505,7 +505,7 @@
     },
     {
       "path": "docs/index.html",
-      "sha256": "67f3314b641eca735a3f8ef3be36c7dbed19e65b315b60ca2fe45b1b4bb4f151",
+      "sha256": "e9437127fd34f42c5814a1d0587fc585f52ef8e51b7e005183bbf98fd0f8126f",
       "bytes": 44294
     },
     {
@@ -525,7 +525,7 @@
     },
     {
       "path": "package.json",
-      "sha256": "c49a0e5e296db133975217c5822ca62fd7fbb854ac000ab251f53ab96e7cab4c",
+      "sha256": "c226ce3709caab1fc6fb9a3c54fc3be7ae3a8415c09606078320efc6829d5ab1",
       "bytes": 1488
     },
     {
@@ -680,7 +680,7 @@
     },
     {
       "path": "skills/falatrace/SKILL.md",
-      "sha256": "ea38d666aee82dd716782b22a40fd802fedab47edc4219a506be39adefa36380",
+      "sha256": "ca78d70ada233f1d33d477d2f384b1d102e2234c333f5153ade6e8d3882606af",
       "bytes": 9723
     },
     {
@@ -1150,8 +1150,8 @@
     },
     {
       "path": "src/calls/__tests__/audio-recovery-composition.test.ts",
-      "sha256": "5547afb1a89d67d8d73f883ba5807ac1b4cb7ccaafe492e4d32ed080d57fa6d8",
-      "bytes": 5292
+      "sha256": "b1de43e0539581bce07d69e6d7bb7e5c858d91a83f0d9c38d2350c69fdb63724",
+      "bytes": 6187
     },
     {
       "path": "src/calls/__tests__/automation-runtime.test.ts",
@@ -1245,13 +1245,13 @@
     },
     {
       "path": "src/calls/pipewire.ts",
-      "sha256": "269b3f4c6b3f832c34dc71fd4718d9688418049819a9d9682ee4e1bcd9f0b619",
-      "bytes": 6390
+      "sha256": "02d8a6bf0f01fffa5a75a65eedb43c71b408ed0461feb39e74265cc9861a5a6d",
+      "bytes": 8169
     },
     {
       "path": "src/calls/runtime.ts",
-      "sha256": "932f1169bcd2c23c0f8b4c1b4b38df3c50d24d7e12bb4f4976ee6a8432c27e95",
-      "bytes": 34066
+      "sha256": "7476fcd616eb12e6821664caa3ad08f772d3c6e29c6b1c2c4196c440578dbf2b",
+      "bytes": 36731
     },
     {
       "path": "src/calls/service.ts",
@@ -3109,6 +3109,11 @@
       "bytes": 2924
     },
     {
+      "path": "src/recording/__tests__/automatic-routes.test.ts",
+      "sha256": "436be98419eb2d29c11efc896500a9c8588a8acbc0a85cbf7c8a5d3f9d43fd4c",
+      "bytes": 7121
+    },
+    {
       "path": "src/recording/__tests__/capabilities.test.ts",
       "sha256": "014c787d9301372072fbae9ada014f37580ffda6a05b240ec824bc7efabee1d9",
       "bytes": 5887
@@ -3165,8 +3170,18 @@
     },
     {
       "path": "src/recording/application.ts",
-      "sha256": "c0f2283bfb42003e633b3a4911deec9a2b9b3ddfc68face33c8ccfaf97bfed76",
-      "bytes": 12510
+      "sha256": "57256ddec9e31bfecbdaaccef882f7cc5527d5b239a3d345127f0187228668d5",
+      "bytes": 12576
+    },
+    {
+      "path": "src/recording/audio-parts.ts",
+      "sha256": "204da92e96c30bb0607cdd7a965a46ffec72d73a2750eeabbc938b2b8116a8dc",
+      "bytes": 3575
+    },
+    {
+      "path": "src/recording/audio-routes.ts",
+      "sha256": "7d748e83d795d23a482c4b1caad217210c685c699fbec09e8f794043b51ff517",
+      "bytes": 3369
     },
     {
       "path": "src/recording/audio-test.ts",
@@ -3180,13 +3195,13 @@
     },
     {
       "path": "src/recording/capture.ts",
-      "sha256": "34568b2a039fdbce0534ebb8fc427b74c85ffb3c7981d1215e6d0a4a53012747",
-      "bytes": 6625
+      "sha256": "552e91743cb25334537eb9b4895d76db9bf3dbc587eb75b4c0fb41b267061a0a",
+      "bytes": 6971
     },
     {
       "path": "src/recording/controller.ts",
-      "sha256": "4e49720e70bb20c3aa3dc45638b01fff5177e732a990722ea4ffc11348fd854a",
-      "bytes": 22325
+      "sha256": "48dabe4389812ffc52d574861808cf29c944d602406bb66a470953addda223af",
+      "bytes": 28853
     },
     {
       "path": "src/recording/ffmpeg-only.ts",
@@ -3240,8 +3255,8 @@
     },
     {
       "path": "src/recording/obs-recording.ts",
-      "sha256": "9ae31e14fa3c5c8eceeeeaaf82e8527675700ec9e19d0677450ada7094a3d1c5",
-      "bytes": 8226
+      "sha256": "2d642a3775a020e2e42b3a5b5b0c1c750480cf97029da2bb8c4277b28a7e98fa",
+      "bytes": 10192
     },
     {
       "path": "src/recording/obsLauncher.ts",
@@ -3255,8 +3270,8 @@
     },
     {
       "path": "src/recording/session.ts",
-      "sha256": "f876d7e708d6cbe0f0ccb8c3bb543a165c5e77ca5fd819b9ed606c34fb400e19",
-      "bytes": 4635
+      "sha256": "03165b984e278b2df80f2f2d90fb7ca1a47a9120c7835f8924b7fc9042f94c97",
+      "bytes": 5795
     },
     {
       "path": "src/recording/simple.ts",

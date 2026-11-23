@@ -1,3 +1,5 @@
+import { audioPartPath, joinAudioParts } from "./audio-parts";
+import { AudioMoveRefused, moveDefaultInputs } from "./audio-routes";
 import { assertCaptureProfile, verifyCallLightSupport, captureProfileNotice } from './profile';
 import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
@@ -11,7 +13,7 @@ import { transientCommand } from "../runtime/systemd-units";
 import { buildCaptureCommand, inspectAudioSources, resolveGpuRecorder } from "./capture";
 import { ManualObsController, ObsStartUncertain, RecordingStartCancelled } from "./obs-recording";
 import { formatName } from "./naming";
-import { capturedAudioConfig, RecordingSessionStore, type RecordingSession, type AudioSelection } from "./session";
+import { sessionAudioConfig, RecordingSessionStore, type RecordingSession, type AudioSelection } from "./session";
 import type { AudioSources } from "./capture";
 import { readState } from "./state";
 import { sharedControllerBackend } from "./capabilities";
@@ -56,8 +58,11 @@ export type RecordingStartOptions = {
   shouldContinue?: () => boolean | Promise<boolean>;
 };
 
+type AudioRecoveryDecision = () => "resume" | "wait" | "finish";
+
 const wait = (ms: number): Promise<void> => new Promise((done) => setTimeout(done, ms));
-const unitName = (id: string): string => `recording-cli-capture-${validateJobId(id)}.service`;
+const unitName = (id: string, part = 0): string =>
+  `recording-cli-capture-${validateJobId(id)}${part ? `-part-${part}` : ""}.service`;
 const hasMedia = async (path: string): Promise<boolean> =>
   fs.stat(path).then((stat) => stat.isFile() && stat.size > 0).catch(() => false);
 const hasVolumeControl = (value: unknown): boolean => {
@@ -75,6 +80,7 @@ const hasVolumeControl = (value: unknown): boolean => {
 export class RecordingController {
   private session: RecordingSession | null = null;
   private obsStartedHere = false;
+  private waitingForDevice?: { id: string; retryAt: number };
 
   constructor(
     private readonly config: AppConfig,
@@ -98,6 +104,35 @@ export class RecordingController {
     return { session, active };
   }
 
+  async refreshAudioRoutes(id: string, routes: (keyof AudioSources)[]): Promise<void> {
+    if (this.owner !== "call") return;
+    const lease = await acquireSingleton("capture-control");
+    try {
+      const session = await this.store.read();
+      if (!session || session.id !== id || session.owner !== "call" || session.phase !== "recording") return;
+      if (session.backend === "obs") {
+        await new ManualObsController(this.config.obs).refreshAudioRoutes(dirname(session.outputPath), session.startedAt, routes);
+      } else if (session.namedPulseInputs) {
+        let moved: AudioSources;
+        try {
+          if (!routes.some(kind => session.audioSelection?.[kind] === "default")) return;
+          const { stdout } = await this.run("systemctl", ["--user", "show", unitName(id, session.audioPartStarts?.length),
+            "--property=MainPID", "--value"], { timeoutMs: 3000 });
+          moved = await moveDefaultInputs(session, routes, Number(stdout.trim()), this.run);
+        } catch (error) {
+          if (!(error instanceof AudioMoveRefused)) throw error;
+          await this.restartAudioPart(session);
+          return;
+        }
+        if (Object.entries(moved).some(([kind, device]) => session.audio?.[kind as keyof AudioSources] !== device)) {
+          session.audio = { ...session.audio, ...moved };
+          await this.store.write(session);
+          this.session = session;
+        }
+      }
+    } finally { await lease.release(); }
+  }
+
   async health(): Promise<{ active: boolean; warning?: string }> {
     const { session, active } = await this.inspect();
     if (!session) return { active: false };
@@ -105,7 +140,8 @@ export class RecordingController {
     const warnings: string[] = [];
     if (session.backend !== "obs") {
       if (!session.audio) warnings.push("As origens capturadas desta sessão estão indisponíveis; os defaults atuais não validam esta captura.");
-      const stat = await fs.stat(session.outputPath).catch(() => null);
+      const currentPath = session.audioPartStarts?.length ? audioPartPath(session, session.audioPartStarts.length) : session.outputPath;
+      const stat = await fs.stat(currentPath).catch(() => null);
       if (!stat || Date.now() - stat.mtimeMs > 30_000) {
         warnings.push("O arquivo de gravação está sem novos dados há mais de 30 segundos.");
       }
@@ -131,9 +167,9 @@ export class RecordingController {
           return result;
         };
         try {
-          const inspection = await inspectAudioSources(capturedAudioConfig(this.config.capture, session.audio!), inspectRun);
+          const inspection = await inspectAudioSources(sessionAudioConfig(this.config.capture, session), inspectRun);
           warnings.push(...(inspection.warnings || []));
-          for (const [kind, captured] of Object.entries(session.audio!)) {
+          for (const [kind, captured] of Object.entries(inspection.selected)) {
             const metadata = sourceMetadata.find((source) => source.name === captured);
             if (typeof metadata?.mute !== "boolean" || !hasVolumeControl(metadata.volume)) {
               warnings.push(`Os metadados de mute/volume da origem ${kind} capturada estão indisponíveis; o sinal de áudio não foi confirmado.`);
@@ -150,6 +186,7 @@ export class RecordingController {
           warnings.push(...(session.audioWarnings || []).map((warning) => `Na verificação inicial: ${warning}`));
         }
         for (const [kind, captured] of Object.entries(session.audio!) as [keyof AudioSources, string][]) {
+          if (session.nativeDefaultRoutes && session.audioSelection?.[kind] === "default") continue;
           const current = defaults[kind];
           const selection = session.audioSelection?.[kind];
           if (!current || !available?.includes(current)) {
@@ -173,18 +210,18 @@ export class RecordingController {
   }
 
   private async isUnitActive(session: RecordingSession): Promise<boolean> {
-    const { stdout } = await this.run("systemctl", ["--user", "show", unitName(session.id),
+    const { stdout } = await this.run("systemctl", ["--user", "show", unitName(session.id, session.audioPartStarts?.length),
       "--property=ActiveState", "--property=MainPID"], { timeoutMs: 5_000 });
     return /ActiveState=(active|activating|deactivating)\b/.test(stdout);
   }
 
-  async recover(): Promise<RecordingSession | null> {
+  async recover(continueCall?: AudioRecoveryDecision): Promise<RecordingSession | null> {
     const lease = await acquireSingleton("capture-control");
-    try { return await this.recoverLocked(); }
+    try { return await this.recoverLocked(continueCall); }
     finally { await lease.release(); }
   }
 
-  private async recoverLocked(): Promise<RecordingSession | null> {
+  private async recoverLocked(continueCall?: AudioRecoveryDecision): Promise<RecordingSession | null> {
     const session = await this.store.read();
     if (!session || session.owner !== this.owner) { this.session = null; return null; }
     if (session.backend === "obs" && session.phase !== "stopped" && !this.obsStartedHere) {
@@ -205,11 +242,32 @@ export class RecordingController {
       this.obsStartedHere = true;
     }
     if (session.backend !== "obs" && session.phase !== "stopped" && !await this.isActive(session)) {
+      if (session.namedPulseInputs && session.phase === "recording" && continueCall) {
+        const decision = continueCall();
+        const waiting = this.waitingForDevice?.id === session.id ? this.waitingForDevice : undefined;
+        // Call detection can briefly lose both streams while Bluetooth changes profile.
+        if (decision === "wait" || (decision === "resume" && waiting && Date.now() < waiting.retryAt)) return session;
+        if (decision === "resume") {
+          const inspection = await inspectAudioSources(this.followingAudioConfig(session), this.run).catch(() => undefined);
+          if (!inspection) {
+            this.waitingForDevice = { id: session.id, retryAt: Date.now() + 2000 };
+            return session;
+          }
+          const changed = Object.entries(inspection.selected).some(([kind, device]) =>
+            session.audio?.[kind as keyof AudioSources] !== device);
+          if ((waiting || changed) && continueCall() === "resume") {
+            this.waitingForDevice = undefined;
+            await this.restartAudioPart(session, inspection.selected, false);
+            return session;
+          }
+        }
+      }
       if (!await hasMedia(session.outputPath)) {
         throw new Error("Capture exited without media; inspect the capture logs before resetting the session");
       }
       session.phase = "stopped";
-      session.endedAt = (await fs.stat(session.outputPath)).mtime.toISOString();
+      const latest = session.audioPartStarts?.length ? audioPartPath(session, session.audioPartStarts.length) : session.outputPath;
+      session.endedAt = (await fs.stat(latest).catch(() => fs.stat(session.outputPath))).mtime.toISOString();
       await this.store.write(session);
     }
     this.session = session;
@@ -243,6 +301,8 @@ export class RecordingController {
       if(profile === "call-light") { await verifyCallLightSupport(gpu!,this.run); console.error(captureProfileNotice(captureConfig)); }
       await fs.mkdir(folder, { recursive: true, mode: 0o700 });
       const session: RecordingSession = { version: 1, id, owner: this.owner, backend,
+        ...(backend === "audio" && this.owner === "call" ? { namedPulseInputs: true } : {}),
+        ...(backend === "gpu-screen-recorder" && this.owner === "call" ? { nativeDefaultRoutes: true } : {}),
         phase: "starting", captureProfile: profile, outputPath, startedAt: new Date().toISOString(), audio, audioSelection,
         audioWarnings: audioInspection.warnings || [], app: options.app,
         ...(gpu?.args.includes("run") ? { flatpak: true } : {}) };
@@ -256,15 +316,12 @@ export class RecordingController {
           // OBS answers StartRecord once its output runs: that is the media's t=0.
           session.mediaStartedAt = session.startedAt;
         } else {
-          const capture = buildCaptureCommand(backend, captureConfig, audio, outputPath, join(dirname(this.store.path), "portal-token"));
+          const capture = buildCaptureCommand(backend, captureConfig, audio, outputPath, join(dirname(this.store.path), "portal-token"),
+            this.owner === "call" ? id : undefined);
           const command = gpu?.command || capture.command;
           const commandArgs = [...(gpu?.args || []), ...capture.args];
-          const envArgs = ["DISPLAY", "WAYLAND_DISPLAY", "XDG_SESSION_TYPE", "XDG_CURRENT_DESKTOP", "DBUS_SESSION_BUS_ADDRESS", "PULSE_SERVER"]
-            .filter((key) => process.env[key]).map((key) => `--setenv=${key}=${process.env[key]}`);
           if (options.signal?.aborted || await options.shouldContinue?.() === false) throw new RecordingStartCancelled("Recording start cancelled");
-          await this.run("systemd-run", ["--user", "--quiet", `--unit=${unitName(id)}`,
-            "--property=Type=exec", "--property=KillSignal=SIGINT", "--property=TimeoutStopSec=30",
-            "--property=UMask=0077", "--property=Restart=no", ...envArgs, "--", ...transientCommand([command, ...commandArgs])], { timeoutMs: 15_000 });
+          await this.launchCapture(id, [command, ...commandArgs]);
           const deadline = Date.now() + this.config.capture.startupTimeoutSeconds * 1_000;
           while (true) {
             if (options.signal?.aborted || await options.shouldContinue?.() === false) {
@@ -316,6 +373,50 @@ export class RecordingController {
     } finally { await lease.release(); }
   }
 
+  private async launchCapture(id: string, command: string[], part = 0): Promise<void> {
+    const envArgs = ["DISPLAY", "WAYLAND_DISPLAY", "XDG_SESSION_TYPE", "XDG_CURRENT_DESKTOP", "DBUS_SESSION_BUS_ADDRESS", "PULSE_SERVER"]
+      .filter((key) => process.env[key]).map((key) => `--setenv=${key}=${process.env[key]}`);
+    await this.run("systemd-run", ["--user", "--quiet", `--unit=${unitName(id, part)}`,
+      "--property=Type=exec", "--property=KillSignal=SIGINT", "--property=TimeoutStopSec=30",
+      "--property=UMask=0077", "--property=Restart=no", ...envArgs, "--", ...transientCommand(command)], { timeoutMs: 15_000 });
+  }
+
+  private followingAudioConfig(session: RecordingSession) {
+    const config = sessionAudioConfig(this.config.capture, session);
+    for (const kind of ["microphone", "desktop"] as const) {
+      if (session.audioSelection?.[kind] === "default") config[kind] = "default";
+    }
+    return config;
+  }
+
+  private async restartAudioPart(session: RecordingSession, sources?: AudioSources, stopActive = true): Promise<void> {
+    const config = this.followingAudioConfig(session);
+    const selected = sources ?? (await inspectAudioSources(config, this.run)).selected;
+    if (stopActive && !await this.isUnitActive(session)) throw new Error("A captura já terminou.");
+    const index = (session.audioPartStarts?.length ?? 0) + 1;
+    const path = audioPartPath(session, index);
+    if (index === 1) {
+      // Same filesystem, no copy. Keep part zero independently addressable across an atomic final rename.
+      const original = audioPartPath(session, 0);
+      await fs.link(session.outputPath, original).catch(async (error: NodeJS.ErrnoException) => {
+        if (error.code !== "EEXIST" || (await fs.stat(original)).ino !== (await fs.stat(session.outputPath)).ino) throw error;
+      });
+    }
+    const capture = buildCaptureCommand("audio", config, selected, path, "", session.id);
+    if (stopActive) await this.run("systemctl", ["--user", "stop", unitName(session.id, session.audioPartStarts?.length)], { timeoutMs: 40_000 });
+    session.audioPartStarts = [...(session.audioPartStarts ?? []), Date.now()];
+    session.audio = selected;
+    // Persist the intent first: recovery can join all earlier media even if the next launch fails.
+    await this.store.write(session);
+    await this.launchCapture(session.id, [capture.command, ...capture.args], index);
+    const deadline = Date.now() + this.config.capture.startupTimeoutSeconds * 1000;
+    while (!await hasMedia(path)) {
+      if (Date.now() >= deadline || !await this.isUnitActive(session)) throw Error("O novo trecho ainda não tem áudio.");
+      await wait(250);
+    }
+    this.session = session;
+  }
+
   private async stopCapture(session: RecordingSession): Promise<void> {
     if (session.flatpak) {
       const capture = await findFlatpakCapture(session.outputPath, this.run);
@@ -330,7 +431,7 @@ export class RecordingController {
     }
     if (await this.isUnitActive(session)) {
       // The unit belongs to this UUID. SIGINT finalizes the container; systemd waits for exit.
-      await this.run("systemctl", ["--user", "stop", unitName(session.id)], { timeoutMs: 40_000 });
+      await this.run("systemctl", ["--user", "stop", unitName(session.id, session.audioPartStarts?.length)], { timeoutMs: 40_000 });
     }
     if (session.flatpak && await findFlatpakCapture(session.outputPath, this.run)) {
       throw new Error("Flatpak capture is still active; recording state retained");
@@ -371,6 +472,16 @@ export class RecordingController {
         session.phase = "stopped";
         session.endedAt = endedAt;
         await this.store.write(session);
+      }
+      if (session.audioPartStarts?.length) {
+        const parts = session.audioPartStarts.length;
+        const joined = await joinAudioParts(session);
+        const originals = Array.from({ length: parts + 1 }, (_, i) => audioPartPath(session, i));
+        session.outputPath = joined;
+        delete session.audioPartStarts;
+        await this.store.write(session);
+        // Only remove redundant parts after the complete, probed result is durably selected.
+        await Promise.all(originals.filter(path => path !== joined).map(path => fs.rm(path, { force: true }).catch(() => undefined)));
       }
       this.session = session;
       // Before the session is acknowledged (and gone): notes typed later are then not put on the timeline.

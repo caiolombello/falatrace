@@ -1,3 +1,10 @@
+## 0.2.0-alpha.21 — automatic recording follows audio device changes
+
+- Automatic recording follows the system defaults for microphone and desktop audio independently. Devices explicitly selected for capture stay pinned.
+- OBS refreshes the active PulseAudio source during capture. GPU Screen Recorder uses its automatic device selectors. The audio-only backend moves the recording stream in place when possible.
+- If a device change interrupts audio-only capture, recording can resume in the same session. Finalization joins the available segments without re-encoding and marks the resumption with a chapter. Audio can be missing while a device reconnects.
+- The call monitor reuses PipeWire events and groups rapid updates. The audio-only backend joins segments only when it has multiple playable parts.
+
 ## 0.2.0-alpha.20 — clearer AI settings
 
 - **Every AI choice in one place.** Settings groups what chooses an AI — the new **Visão geral da IA**, Perguntar e receitas, Processamento e IA, Transcrição ao vivo, Chaves de API and **Modelos locais** (was Modelos) — under *Inteligência artificial*. The overview shows who transcribes, writes the notes, answers questions and runs the live transcript, whether each stays on this computer, a warning when a chosen provider has no key, and a way to each page.

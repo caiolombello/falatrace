@@ -7,7 +7,7 @@ import { TimeEntryStore } from "../timesheet/store";
 import { readAutomationState, type AutomationState } from "../calls/control";
 import { inspectAudioSources, type AudioSources } from "./capture";
 import { RecordingController } from "./controller";
-import { capturedAudioConfig, RecordingSessionStore, type RecordingSession } from "./session";
+import { sessionAudioConfig, RecordingSessionStore, type RecordingSession } from "./session";
 import { startRecording as startSimpleRecording } from "./simple";
 import { readState, type RecordingState } from "./state";
 import { stopLegacyRecording } from "./legacy-stop";
@@ -117,7 +117,7 @@ export const readCaptureStatus = async (
         const health = await controller.health();
         active = health.active;
         warning = health.warning;
-        selected = session.audio;
+        selected = session.nativeDefaultRoutes ? undefined : session.audio;
       }
     } catch {
       unconfirmed = !active;
@@ -137,14 +137,14 @@ export const readCaptureStatus = async (
     };
   }
 
-  const audioConfig = active ? (session?.audio ? capturedAudioConfig(config.capture, session.audio) : undefined) : config.capture;
+  const audioConfig = active ? (session?.audio ? sessionAudioConfig(config.capture, session) : undefined) : config.capture;
   if (active && !audioConfig) audioError = "As origens capturadas desta sessão estão indisponíveis; os defaults atuais não validam esta captura.";
   if (audioConfig && audioConfig.audioSource !== "none" && (!active || !warning)) {
     try {
       const inspection = await (dependencies.inspectAudioSources || inspectAudioSources)(
         audioConfig
       );
-      if (!active) selected = inspection.selected;
+      if (!active || session?.nativeDefaultRoutes) selected = inspection.selected;
       const sourceWarning = (inspection.warnings || [])
         .map((value) => value.replace(/[\r\n\0]+/g, " ").slice(0, 300))
         .filter(Boolean)

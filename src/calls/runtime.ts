@@ -23,7 +23,7 @@ import {
   notifyRecordingWarning
 } from "./notifier";
 import { RecordingController } from "../recording/controller";
-import { monitorPipeWire } from "./pipewire";
+import { monitorPipeWire, type AudioRoute } from "./pipewire";
 import { CallStateMachine } from "./stateMachine";
 import {
   logCallEvent,
@@ -89,6 +89,10 @@ export class CallMonitorRuntime {
   private networkTimer?: ReturnType<typeof setTimeout>;
   private recordingStopTimer?: ReturnType<typeof setTimeout>;
   private captureHealthTimer?: ReturnType<typeof setInterval>;
+  private readonly routeVersions = { desktop: 0, microphone: 0 };
+  private routeTimer?: ReturnType<typeof setTimeout>;
+  private pendingRoutes = new Set<AudioRoute>();
+  private pendingRouteSession?: string;
   private recordingWarning?: string;
   // Only a cancelled startup can authorize recovery inside the same inferred call.
   private cancelledStartRecovery = false;
@@ -183,7 +187,11 @@ export class CallMonitorRuntime {
       }
       while (!signal.aborted) {
         try {
-          await (this.services.monitor || monitorPipeWire)((nodes) => this.onNodesChanged(nodes), signal);
+          await (this.services.monitor || monitorPipeWire)((nodes) => this.onNodesChanged(nodes), signal,
+            routes => {
+              for (const route of routes) this.routeVersions[route]++;
+              this.scheduleAudioRoutes(routes);
+            });
         } catch (err) {
           if (signal.aborted) break;
           logCallEvent("pipewire.monitor-error", { error: sanitizeError(err), retrySeconds: 2 });
@@ -194,6 +202,39 @@ export class CallMonitorRuntime {
       await this.shutdown();
       logCallEvent("call-monitor.stopped");
     }
+  }
+
+  private audioRecoveryDecision(): "resume" | "wait" | "finish" {
+    const state = this.machine.getSnapshot().state;
+    if (this.stopped || this.runSignal?.aborted || this.recorder.getSession()?.id !== this.sessionId ||
+      (state !== "IN_CALL" && state !== "ENDING")) return "finish";
+    return this.observation.active ? "resume" : "wait";
+  }
+
+  private scheduleAudioRoutes(routes: AudioRoute[], attempt = 0): void {
+    const session = this.recorder.getSession();
+    if (this.dryRun || this.stopped || session?.owner !== "call" || session.phase === "stopped" ||
+      session.backend === "gpu-screen-recorder") return;
+    if (this.pendingRouteSession !== session.id) this.pendingRoutes.clear();
+    this.pendingRouteSession = session.id;
+    for (const route of routes) this.pendingRoutes.add(route);
+    if (this.routeTimer) clearTimeout(this.routeTimer);
+    this.routeTimer = setTimeout(() => {
+      const changed = [...this.pendingRoutes];
+      this.pendingRoutes.clear();
+      this.evaluationQueue = this.evaluationQueue.then(async () => {
+        if (this.stopped || this.runSignal?.aborted || this.recorder.getSession()?.id !== session.id) return;
+        try {
+          await this.recorder.refreshAudioRoutes(session.id, changed);
+        } catch (err) {
+          logCallEvent("recording.audio-route-error", { error: sanitizeError(err) });
+          if (attempt < 2) this.scheduleAudioRoutes(changed, attempt + 1);
+          else await (this.services.notifications || defaultNotifications).warning(
+            "A mudança de dispositivo de áudio não pôde ser confirmada. Confira as fontes da gravação."
+          ).catch(() => undefined);
+        }
+      });
+    }, attempt ? 1000 * attempt : 250);
   }
 
   private onNodesChanged(nodes: PipeWireNodeRecord[]): void {
@@ -231,7 +272,7 @@ export class CallMonitorRuntime {
       await this.persistStatus();
       return;
     }
-    if (!this.dryRun) await this.recorder.recover();
+    if (!this.dryRun) await this.recorder.recover(() => this.audioRecoveryDecision());
     const transition = this.machine.update(this.observation, now);
     if (transition) await this.handleTransition(transition);
     await this.recoverCancelledStart();
@@ -412,6 +453,7 @@ export class CallMonitorRuntime {
     // A meeting marked "record" names the recording folder after the meeting.
     const decided = this.recordDecision();
     const title = decided?.title;
+    const routesAtStart = { ...this.routeVersions };
     try {
       const result = await this.recorder.start({
         sessionId: this.sessionId || undefined,
@@ -432,6 +474,8 @@ export class CallMonitorRuntime {
       }
       logCallEvent(result === "started" ? "recording.started" : "recording.already-recording");
       if (result === "started") {
+        const changed = (["desktop", "microphone"] as const).filter(kind => routesAtStart[kind] !== this.routeVersions[kind]);
+        if (changed.length) this.scheduleAudioRoutes(changed);
         // The decision is used up by this call: a later call in its window follows the configured mode.
         if (decided && this.sessionId) this.recordDecisionUsed = { key: recordDecisionKey(decided), sessionId: this.sessionId };
         this.overrideRecording = decided && this.sessionId
@@ -573,8 +617,10 @@ export class CallMonitorRuntime {
         const health = await this.recorder.health();
         this.recordingWarning = health.warning;
         if (!health.active) {
-          await this.recorder.recover();
-          await this.stopOwnedRecording(this.recorder.getSession()?.app);
+          const recovered = await this.recorder.recover(() => this.audioRecoveryDecision());
+          if (recovered?.phase === "stopped") await this.stopOwnedRecording(recovered.app);
+          else if (recovered?.namedPulseInputs) this.recordingWarning = "A captura de áudio foi interrompida durante a troca de dispositivo.";
+
         }
       } else {
         this.recordingWarning = undefined;
@@ -616,6 +662,7 @@ export class CallMonitorRuntime {
   private async shutdown(): Promise<void> {
     this.stopped = true;
     this.automationWatcher?.close();
+    if (this.routeTimer) clearTimeout(this.routeTimer);
     await this.automationQueue;
     if (this.captureHealthTimer) clearInterval(this.captureHealthTimer);
     if (this.evaluationTimer) clearTimeout(this.evaluationTimer);

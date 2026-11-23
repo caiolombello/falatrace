@@ -1,3 +1,4 @@
+import { pulseClientName } from "./audio-routes";
 import { assertCaptureProfile, CALL_LIGHT_PROFILE } from './profile';
 import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
@@ -112,12 +113,18 @@ export const buildCaptureCommand = (
   config: AppConfig["capture"],
   sources: AudioSources,
   outputPath: string,
-  tokenPath: string
+  tokenPath: string,
+  callSessionId?: string
 ): CaptureCommand => {
   const profile = assertCaptureProfile(backend, config);
   const entries = Object.entries(sources);
   if (backend === "gpu-screen-recorder") {
-    const devices = entries.map(([, device]) => `device:${device}`);
+    const devices = entries.map(([kind, device]) => {
+      if (callSessionId && config[kind as keyof AudioSources] === "default") {
+        return kind === "desktop" ? "default_output" : "default_input";
+      }
+      return `device:${device}`;
+    });
     const tracks = devices.length === 2 ? [devices.join("|"), ...devices] : devices;
     return {
       command: "gpu-screen-recorder",
@@ -130,7 +137,8 @@ export const buildCaptureCommand = (
   }
   if (!entries.length) throw new Error("Audio recording requires microphone or desktop audio");
   const args = ["-hide_banner", "-nostdin", "-n",
-    ...entries.flatMap(([, device]) => ["-thread_queue_size", "1024", "-f", "pulse", "-i", device])];
+    ...entries.flatMap(([kind, device]) => ["-thread_queue_size", "1024", "-f", "pulse",
+      ...(callSessionId ? ["-name", pulseClientName(callSessionId, kind)] : []), "-i", device])];
   if (entries.length === 2) {
     args.push("-filter_complex",
       "[0:a]asplit=2[micmix][microphone];[1:a]asplit=2[deskmix][desktop];[micmix][deskmix]amix=inputs=2:duration=longest:normalize=0,alimiter=limit=0.95[mix]",

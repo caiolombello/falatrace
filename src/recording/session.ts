@@ -35,12 +35,27 @@ export type RecordingSession = {
   endedAt?: string;
   audio?: AudioSources;
   audioSelection?: AudioSelection;
+  nativeDefaultRoutes?: true;
+  namedPulseInputs?: true;
+  /** Wall-clock starts of fallback audio parts after recording.mka. */
+  audioPartStarts?: number[];
   /** Historical startup observations; current health checks refresh these observations. */
   audioWarnings?: string[];
   app?: CallApplication;
   flatpak?: boolean;
   captureProfile?: "standard"|"call-light";
 };
+
+/** GPU Screen Recorder follows its default_input/output selectors internally. */
+export function sessionAudioConfig(config: AppConfig["capture"], session: RecordingSession) {
+  const selection = capturedAudioConfig(config, session.audio ?? {});
+  if (session.nativeDefaultRoutes) {
+    for (const kind of ["microphone", "desktop"] as const) {
+      if (session.audioSelection?.[kind] === "default") selection[kind] = "default";
+    }
+  }
+  return selection;
+}
 
 /** The media time reference of a capture (notes and live transcript offsets): its first media, else its start. */
 export const captureMediaStartedAt = (session: Pick<RecordingSession, "startedAt" | "mediaStartedAt">): string =>
@@ -63,6 +78,10 @@ export class RecordingSessionStore {
         !["audio", "gpu-screen-recorder", "obs"].includes(session.backend) ||
         !["starting", "recording", "stopped"].includes(session.phase) ||
         (session.captureProfile !== undefined && !["standard","call-light"].includes(session.captureProfile)) ||
+        (session.audioPartStarts !== undefined && (session.backend !== "audio" || session.owner !== "call" ||
+          !Array.isArray(session.audioPartStarts) || session.audioPartStarts.some(time => !Number.isSafeInteger(time) || time <= 0))) ||
+        (session.namedPulseInputs !== undefined && (session.namedPulseInputs !== true || session.owner !== "call" || session.backend !== "audio")) ||
+        (session.nativeDefaultRoutes !== undefined && (session.nativeDefaultRoutes !== true || session.backend !== "gpu-screen-recorder")) ||
         (session.flatpak !== undefined && typeof session.flatpak !== "boolean") ||
         typeof session.outputPath !== "string" || !isAbsolute(session.outputPath) || /[\r\n\0]/.test(session.outputPath) ||
         !Number.isFinite(Date.parse(session.startedAt)) || !validOptionalTime(session.mediaStartedAt) ||
